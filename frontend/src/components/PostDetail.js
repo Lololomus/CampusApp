@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Heart, MessageCircle, Eye, Send } from 'lucide-react';
-import { getPost } from '../api';
+import { getPost, getPostComments, createComment, likePost } from '../api';
 import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
 import { MOCK_COMMENTS } from '../types';
@@ -11,6 +11,7 @@ function PostDetail() {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isLiked, setIsLiked] = useState(false);
 
   useEffect(() => {
     if (viewPostId) {
@@ -21,7 +22,6 @@ function PostDetail() {
     return () => {
       hideBackButton();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewPostId]);
 
   const loadPost = async () => {
@@ -29,7 +29,16 @@ function PostDetail() {
     try {
       const data = await getPost(viewPostId);
       setPost(data);
-      setComments(MOCK_COMMENTS);
+      setIsLiked(data.is_liked || false);
+
+      // Загружаем реальные комментарии
+      try {
+        const commentsData = await getPostComments(viewPostId);
+        setComments(commentsData);
+      } catch (error) {
+        console.error('Ошибка загрузки комментариев:', error);
+        setComments([]);
+      }
     } catch (error) {
       console.error('Error loading post:', error);
     } finally {
@@ -42,27 +51,31 @@ function PostDetail() {
     setViewPostId(null);
   };
 
-  const handleSendComment = () => {
+  const handleSendComment = async () => {
     if (!newComment.trim()) return;
     
     hapticFeedback('medium');
     
-    const comment = {
-      id: Date.now(),
-      author: 'Ты',
-      time: 'только что',
-      text: newComment,
-      likes: 0,
-      replies: []
-    };
-    
-    setComments([comment, ...comments]);
-    setNewComment('');
+    try {
+      const comment = await createComment(viewPostId, newComment.trim());
+      setComments([comment, ...comments]);
+      setNewComment('');
+    } catch (error) {
+      console.error('Ошибка создания комментария:', error);
+      alert('Не удалось отправить комментарий');
+    }
   };
 
-  const handleLike = () => {
+  const handleLike = async () => {
     hapticFeedback('light');
-    console.log('Liked post:', post.id);
+    
+    try {
+      const result = await likePost(post.id);
+      setPost({ ...post, likes: result.likes });
+      setIsLiked(result.is_liked);
+    } catch (error) {
+      console.error('Ошибка лайка:', error);
+    }
   };
 
   if (!viewPostId) return null;
@@ -109,11 +122,15 @@ function PostDetail() {
       <div style={styles.content}>
         {/* Автор */}
         <div style={styles.authorSection}>
-          <div style={styles.avatar}>{post.author[0]}</div>
+          <div style={styles.avatar}>
+            {(typeof post.author === 'object' ? post.author.name : post.author)?.[0] || '?'}
+          </div>
           <div style={styles.authorInfo}>
-            <div style={styles.authorName}>{post.author}</div>
+            <div style={styles.authorName}>
+              {typeof post.author === 'object' ? post.author.name : post.author}
+            </div>
             <div style={styles.authorMeta}>
-              {post.uni} · {post.institute} · {post.course} курс
+              {post.university || post.uni} · {post.institute} · {post.course} курс
             </div>
             <div style={styles.time}>{post.time}</div>
           </div>
@@ -147,8 +164,14 @@ function PostDetail() {
 
         {/* Статистика */}
         <div style={styles.stats}>
-          <button style={styles.statButton} onClick={handleLike}>
-            <Heart size={20} />
+          <button 
+            style={{
+              ...styles.statButton,
+              color: isLiked ? '#ff3b5c' : '#999'
+            }} 
+            onClick={handleLike}
+          >
+            <Heart size={20} fill={isLiked ? '#ff3b5c' : 'none'} />
             <span>{post.likes}</span>
           </button>
           <div style={styles.statItem}>
@@ -212,10 +235,14 @@ function Comment({ comment, depth = 0 }) {
 
   return (
     <div style={{ ...styles.comment, marginLeft: depth > 0 ? '32px' : 0 }}>
-      <div style={styles.commentAvatar}>{comment.author[0]}</div>
+      <div style={styles.commentAvatar}>
+        {(typeof comment.author === 'object' ? comment.author.name : comment.author)?.[0] || '?'}
+      </div>
       <div style={styles.commentContent}>
         <div style={styles.commentHeader}>
-          <span style={styles.commentAuthor}>{comment.author}</span>
+          <span style={styles.commentAuthor}>
+            {typeof comment.author === 'object' ? comment.author.name : comment.author}
+          </span>
           <span style={styles.commentTime}>{comment.time}</span>
         </div>
         <p style={styles.commentText}>{comment.text}</p>

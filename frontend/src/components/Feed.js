@@ -12,8 +12,16 @@ function Feed() {
     const loadPosts = async () => {
       setLoading(true);
       try {
-        const data = await getPosts({ category: feedMode === 'global' ? null : feedMode });
+        const data = await getPosts({ 
+          category: feedMode === 'global' ? null : feedMode 
+        });
         setPosts(data.items);
+        
+        // 🔍 ВРЕМЕННЫЙ ЛОГ
+        if (data.items.length > 0) {
+          console.log('📦 Структура поста:', data.items[0]);
+          console.log('👤 Автор поста:', data.items[0].author);
+        }
       } catch (error) {
         console.error('Error loading posts:', error);
       } finally {

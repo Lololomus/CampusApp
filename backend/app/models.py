@@ -2,6 +2,8 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Bool
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
+from sqlalchemy import UniqueConstraint
+from datetime import datetime
 
 class User(Base):
     """Пользователи (студенты)"""
@@ -75,3 +77,17 @@ class Comment(Base):
     post = relationship("Post", back_populates="comments")
     author = relationship("User", back_populates="comments")
     replies = relationship("Comment", backref="parent", remote_side=[id])
+
+class PostLike(Base):
+    """Лайки постов (связь многие ко многим)"""
+    __tablename__ = "post_likes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Уникальность: один пользователь = один лайк на пост
+    __table_args__ = (
+        UniqueConstraint('user_id', 'post_id', name='unique_user_post_like'),
+    )

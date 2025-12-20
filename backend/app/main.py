@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -121,32 +121,61 @@ def get_posts(
     category: Optional[str] = None,
     university: Optional[str] = None,
     course: Optional[int] = None,
+    telegram_id: int = Query(None),  # Опциональный параметр
     db: Session = Depends(get_db)
 ):
     """Получить список постов с фильтрами"""
     posts = crud.get_posts(db, skip, limit, category, university, course)
     
-    # Конвертируем теги из строки в список для каждого поста
+    # Получаем user_id если telegram_id передан
+    user_id = None
+    if telegram_id:
+        user = crud.get_user_by_telegram_id(db, telegram_id)
+        if user:
+            user_id = user.id
+    
+    # Конвертируем теги и загружаем автора + проверяем лайк
     for post in posts:
         post.tags = post.get_tags_list()
+        post.author = crud.get_user_by_id(db, post.author_id)
+        
+        # Проверяем лайкнул ли текущий пользователь
+        if user_id:
+            post.is_liked = crud.is_post_liked_by_user(db, post.id, user_id)
+        else:
+            post.is_liked = False
     
     return posts
 
 @app.get("/posts/{post_id}", response_model=schemas.Post)
 def get_post(
-    post_id: int,
+    post_id: int, 
+    telegram_id: int = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Получить пост по ID"""
+    """Получить конкретный пост"""
     post = crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
     
-    # Увеличиваем счётчик просмотров
+    # Увеличиваем просмотры
     crud.increment_post_views(db, post_id)
+    
+    # Загружаем автора
+    post.author = crud.get_user_by_id(db, post.author_id)
     
     # Конвертируем теги
     post.tags = post.get_tags_list()
+    
+    # Проверяем лайк текущего пользователя
+    if telegram_id:
+        user = crud.get_user_by_telegram_id(db, telegram_id)
+        if user:
+            post.is_liked = crud.is_post_liked_by_user(db, post.id, user.id)
+        else:
+            post.is_liked = False
+    else:
+        post.is_liked = False
     
     return post
 
@@ -171,18 +200,22 @@ def create_post(
     return new_post
 
 @app.post("/posts/{post_id}/like")
-def like_post(
+def toggle_like_post(
     post_id: int,
+    telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Лайкнуть пост"""
+    """Toggle лайка поста"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
     post = crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
     
-    crud.like_post(db, post_id)
-    return {"success": True, "likes": post.likes + 1}
-
+    result = crud.toggle_post_like(db, post_id, user.id)
+    return {"success": True, **result}
 
 # ===== COMMENT ENDPOINTS =====
 
@@ -200,8 +233,8 @@ def get_post_comments(
 
 @app.post("/comments", response_model=schemas.Comment)
 def create_comment(
-    telegram_id: int,
     comment_data: schemas.CommentCreate,
+    telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
     """Создать комментарий"""
@@ -215,7 +248,12 @@ def create_comment(
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
     
-    return crud.create_comment(db, comment_data, user.id)
+    db_comment = crud.create_comment(db, comment_data, user.id)
+    
+    # Загружаем автора комментария
+    db_comment.author = user
+    
+    return db_comment
 
 @app.post("/comments/{comment_id}/like")
 def like_comment(

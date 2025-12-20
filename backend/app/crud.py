@@ -122,13 +122,41 @@ def increment_post_views(db: Session, post_id: int):
         db_post.views += 1
         db.commit()
 
-def like_post(db: Session, post_id: int):
-    """Добавить лайк посту"""
-    db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
-    if db_post:
-        db_post.likes += 1
-        db.commit()
+# ===== LIKES (Лайки постов) =====
 
+def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
+    """Проверить лайкнул ли пользователь пост"""
+    like = db.query(models.PostLike).filter(
+        models.PostLike.post_id == post_id,
+        models.PostLike.user_id == user_id
+    ).first()
+    return like is not None
+
+
+def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
+    """Toggle лайка (добавить или убрать)"""
+    like = db.query(models.PostLike).filter(
+        models.PostLike.post_id == post_id,
+        models.PostLike.user_id == user_id
+    ).first()
+    
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    if not post:
+        return {"is_liked": False, "likes": 0}
+    
+    if like:
+        # Убираем лайк
+        db.delete(like)
+        post.likes = max(0, post.likes - 1)
+        db.commit()
+        return {"is_liked": False, "likes": post.likes}
+    else:
+        # Добавляем лайк
+        new_like = models.PostLike(user_id=user_id, post_id=post_id)
+        db.add(new_like)
+        post.likes += 1
+        db.commit()
+        return {"is_liked": True, "likes": post.likes}
 
 # ===== COMMENT CRUD =====
 

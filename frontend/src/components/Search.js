@@ -34,12 +34,20 @@ function Search() {
     // Поиск по тексту
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      results = results.filter(post => 
-        post.title.toLowerCase().includes(query) ||
-        post.body.toLowerCase().includes(query) ||
-        post.tags.some(tag => tag.toLowerCase().includes(query)) ||
-        post.author.toLowerCase().includes(query)
-      );
+      results = results.filter(post => {
+        // Безопасная проверка всех полей
+        const title = post.title?.toLowerCase() || '';
+        const body = post.body?.toLowerCase() || '';
+        const tags = Array.isArray(post.tags) ? post.tags.join(' ').toLowerCase() : '';
+        const authorName = typeof post.author === 'string' 
+          ? post.author.toLowerCase() 
+          : post.author?.name?.toLowerCase() || '';
+
+        return title.includes(query) || 
+              body.includes(query) || 
+              tags.includes(query) || 
+              authorName.includes(query);
+      });
     }
 
     // Фильтр по категории
@@ -49,7 +57,9 @@ function Search() {
 
     // Фильтр по ВУЗу
     if (selectedUni !== 'all') {
-      results = results.filter(post => post.uni === selectedUni);
+      results = results.filter(post => 
+        post.university === selectedUni || post.uni === selectedUni
+      );
     }
 
     // Фильтр по курсу

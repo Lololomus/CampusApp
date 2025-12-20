@@ -61,16 +61,17 @@ class PostUpdate(BaseModel):
     tags: Optional[List[str]] = None
 
 class Post(PostBase):
-    """Полная информация о посте (для ответа API)"""
     id: int
     author_id: int
+    author: Optional['User'] = None
+    is_liked: bool = False
     university: str
     institute: str
     course: int
     likes: int
     views: int
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
