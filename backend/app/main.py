@@ -106,6 +106,53 @@ def update_current_user(
     updated_user = crud.update_user(db, user.id, user_update)
     return updated_user
 
+@app.get("/users/{user_id}/posts", response_model=List[schemas.Post])
+def get_user_posts_endpoint(
+    user_id: int,
+    limit: int = Query(5, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Получить посты пользователя"""
+    # Проверяем что запрашивающий пользователь существует
+    requesting_user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not requesting_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Проверяем что целевой пользователь существует
+    target_user = crud.get_user_by_id(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем посты
+    posts = crud.get_user_posts(db, user_id, limit, offset)
+    
+    # Обогащаем данными
+    for post in posts:
+        post.tags = post.get_tags_list()
+        post.author = target_user
+        post.is_liked = crud.is_post_liked_by_user(db, post.id, requesting_user.id)
+        post.comments_count = crud.count_post_comments(db, post.id)
+    
+    return posts
+
+
+@app.get("/users/{user_id}/stats")
+def get_user_stats(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """Получить статистику пользователя"""
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    return {
+        "posts_count": crud.count_user_posts(db, user_id),
+        "comments_count": crud.count_user_comments(db, user_id)
+    }
+
 # ===== POST ENDPOINTS =====
 
 @app.get("/posts", response_model=List[schemas.Post])
@@ -115,7 +162,7 @@ def get_posts(
     category: Optional[str] = None,
     university: Optional[str] = None,
     course: Optional[int] = None,
-    telegram_id: int = Query(None),  # Опциональный параметр
+    telegram_id: int = Query(None),
     db: Session = Depends(get_db)
 ):
     """Получить список постов с фильтрами"""
@@ -138,7 +185,9 @@ def get_posts(
             post.is_liked = crud.is_post_liked_by_user(db, post.id, user_id)
         else:
             post.is_liked = False
-    
+        
+        post.comments_count = crud.count_post_comments(db, post.id)
+
     return posts
 
 @app.get("/posts/{post_id}", response_model=schemas.Post)
@@ -151,26 +200,24 @@ def get_post(
     post = crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
-    
+
     # Увеличиваем просмотры
     crud.increment_post_views(db, post_id)
-    
-    # Загружаем автора
+
+    # Обогащаем данными
     post.author = crud.get_user_by_id(db, post.author_id)
-    
-    # Конвертируем теги
     post.tags = post.get_tags_list()
-    
-    # Проверяем лайк текущего пользователя
+
+    # Лайк текущего пользователя
     if telegram_id:
         user = crud.get_user_by_telegram_id(db, telegram_id)
-        if user:
-            post.is_liked = crud.is_post_liked_by_user(db, post.id, user.id)
-        else:
-            post.is_liked = False
+        post.is_liked = crud.is_post_liked_by_user(db, post.id, user.id) if user else False
     else:
         post.is_liked = False
-    
+
+    # КЛЮЧЕВОЕ: всегда считаем актуальный счетчик тут
+    post.comments_count = crud.count_post_comments(db, post_id)
+
     return post
 
 @app.post("/posts", response_model=schemas.Post)
@@ -187,6 +234,39 @@ def create_post(
     new_post = crud.create_post(db, post_data, user.id, user)
     new_post.tags = new_post.get_tags_list()
     return new_post
+
+@app.patch("/posts/{post_id}", response_model=schemas.Post)
+def update_post_endpoint(
+    post_id: int,
+    post_update: schemas.PostUpdate,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Обновить пост"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    post = crud.get_post(db, post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Пост не найден")
+    
+    # Проверка прав (только автор может редактировать)
+    if post.author_id != user.id:
+        raise HTTPException(status_code=403, detail="Нет прав на редактирование")
+    
+    # Обновляем пост
+    updated_post = crud.update_post(db, post_id, post_update)
+    if not updated_post:
+        raise HTTPException(status_code=500, detail="Не удалось обновить пост")
+    
+    # Обогащаем данными
+    updated_post.tags = updated_post.get_tags_list()
+    updated_post.author = user
+    updated_post.is_liked = crud.is_post_liked_by_user(db, post_id, user.id)
+    updated_post.comments_count = crud.count_post_comments(db, post_id)
+    
+    return updated_post
 
 @app.post("/posts/{post_id}/like")
 def toggle_like_post(
@@ -349,3 +429,28 @@ def report_comment(
         raise HTTPException(status_code=400, detail="Невозможно создать жалобу")
     
     return report
+
+@app.delete("/posts/{post_id}")
+def delete_post_endpoint(
+    post_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Удалить пост"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    post = crud.get_post(db, post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Пост не найден")
+    
+    # Проверка прав (только автор может удалить)
+    if post.author_id != user.id:
+        raise HTTPException(status_code=403, detail="Нет прав на удаление")
+    
+    success = crud.delete_post(db, post_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Не удалось удалить пост")
+    
+    return {"success": True}

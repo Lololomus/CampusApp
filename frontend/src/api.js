@@ -262,4 +262,54 @@ export async function reportComment(commentId, reason, description = null) {
   }
 }
 
+export async function getUserPosts(userId, limit = 5, offset = 0) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get(`/users/${userId}/posts`, {
+      params: { telegram_id, limit, offset }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка загрузки постов пользователя:', error);
+    throw error;
+  }
+}
+
+export async function getUserStats(userId) {
+  try {
+    const response = await api.get(`/users/${userId}/stats`);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка загрузки статистики:', error);
+    throw error;
+  }
+}
+
+export async function deletePost(postId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.delete(`/posts/${postId}`, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка удаления поста:', error);
+    throw error;
+  }
+}
+
+export async function updatePost(postId, postData) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.patch(`/posts/${postId}`, postData, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка обновления поста:', error);
+    throw error;
+  }
+}
+
+
 export { api };

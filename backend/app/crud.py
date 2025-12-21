@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from typing import List, Optional
 
+
 # ===== USER CRUD =====
 
 def get_user_by_telegram_id(db: Session, telegram_id: int) -> Optional[models.User]:
@@ -314,3 +315,36 @@ def create_comment_report(db: Session, comment_id: int, reporter_id: int, reason
     db.commit()
     db.refresh(report)
     return report
+
+def count_post_comments(db: Session, post_id: int) -> int:
+    """Посчитать количество НЕудалённых комментариев к посту (включая ответы)."""
+    return db.query(models.Comment).filter(
+        models.Comment.post_id == post_id,
+        models.Comment.is_deleted == False
+    ).count()
+
+def get_user_posts(db: Session, user_id: int, limit: int = 5, offset: int = 0) -> List[models.Post]:
+    """Получить посты пользователя"""
+    return db.query(models.Post)\
+        .filter(models.Post.author_id == user_id)\
+        .order_by(models.Post.created_at.desc())\
+        .offset(offset)\
+        .limit(limit)\
+        .all()
+
+
+def count_user_posts(db: Session, user_id: int) -> int:
+    """Посчитать количество постов пользователя"""
+    return db.query(models.Post)\
+        .filter(models.Post.author_id == user_id)\
+        .count()
+
+
+def count_user_comments(db: Session, user_id: int) -> int:
+    """Посчитать количество комментариев пользователя"""
+    return db.query(models.Comment)\
+        .filter(
+            models.Comment.author_id == user_id,
+            models.Comment.is_deleted == False
+        )\
+        .count()

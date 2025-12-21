@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import PostCard from './PostCard';
 import { getPosts } from '../api';
 import { useStore } from '../store';
@@ -6,36 +6,35 @@ import { useStore } from '../store';
 function Feed() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { feedMode, setViewPostId } = useStore();
+  const { feedMode, setViewPostId, viewPostId } = useStore();
+
+  const loadPosts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getPosts({ 
+        category: feedMode === 'global' ? null : feedMode 
+      });
+      setPosts(data.items);
+    } catch (error) {
+      console.error('Error loading posts:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [feedMode]);
 
   useEffect(() => {
-    const loadPosts = async () => {
-      setLoading(true);
-      try {
-        const data = await getPosts({ 
-          category: feedMode === 'global' ? null : feedMode 
-        });
-        setPosts(data.items);
-        
-        // 🔍 ВРЕМЕННЫЙ ЛОГ
-        if (data.items.length > 0) {
-          console.log('📦 Структура поста:', data.items[0]);
-          console.log('👤 Автор поста:', data.items[0].author);
-        }
-      } catch (error) {
-        console.error('Error loading posts:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     loadPosts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedMode]);
+  }, [loadPosts]);
+
+  // Когда закрываем PostDetail, обновляем ленту свежими данными с сервера
+  useEffect(() => {
+    if (!viewPostId) {
+      loadPosts();
+    }
+  }, [viewPostId, loadPosts]);
 
   const handlePostClick = (postId) => {
     setViewPostId(postId);
-    console.log('Open post detail:', postId);
   };
 
   if (loading) {

@@ -25,6 +25,10 @@ export const useStore = create(
       setShowCreateModal: (show) => set({ showCreateModal: show }),
       setViewPostId: (id) => set({ viewPostId: id }),
 
+      // My posts screen
+      showUserPosts: false,
+      setShowUserPosts: (show) => set({ showUserPosts: show }),
+
       // Onboarding state
       onboardingStep: 0,
       onboardingData: {},
@@ -38,6 +42,12 @@ export const useStore = create(
       setPosts: (posts) => set({ posts }),
       addNewPost: (newPost) => set((state) => ({
         posts: [newPost, ...state.posts]
+      })),
+
+      updatePost: (postId, updates) => set((state) => ({
+        posts: state.posts.map(p => 
+          p.id === postId ? { ...p, ...updates } : p
+        )
       })),
 
       // Actions

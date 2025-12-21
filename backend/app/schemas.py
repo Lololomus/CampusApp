@@ -70,6 +70,7 @@ class Post(PostBase):
     course: int
     likes: int
     views: int
+    comments_count: int = 0
     created_at: datetime
 
     class Config:

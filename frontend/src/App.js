@@ -8,7 +8,8 @@ import CreatePost from './components/CreatePost';
 import Onboarding from './components/Onboarding';
 import AuthModal from './components/AuthModal';
 import Profile from './components/Profile';
-import Search from './components/Search'; // НОВОЕ
+import Search from './components/Search';
+import UserPosts from './components/UserPosts';
 import './App.css';
 
 function App() {
@@ -16,7 +17,8 @@ function App() {
     activeTab, 
     viewPostId, 
     showCreateModal,
-    onboardingStep 
+    onboardingStep,
+    showUserPosts
   } = useStore();
 
   useEffect(() => {
@@ -24,34 +26,45 @@ function App() {
   }, []);
 
   const renderContent = () => {
-    // Если открыт детальный просмотр поста
+    // Если открыт детальный просмотр поста – он всегда главный
     if (viewPostId) {
       return <PostDetail />;
     }
 
-    // Рендер экранов по активному табу
+    // Экран "Мои посты"
+    if (showUserPosts) {
+      return <UserPosts />;
+    }
+
+    // Остальные экраны...
     switch (activeTab) {
       case 'feed':
         return <Feed />;
       case 'search':
-        return <Search />; // ИЗМЕНЕНО
-      case 'messages':
-        return <PlaceholderScreen title="Сообщения" />;
+        return <Search />;
       case 'profile':
         return <Profile />;
       default:
         return <Feed />;
     }
   };
+  
+  // если идёт онбординг - показываем только его
+  if (onboardingStep > 0) {
+    return (
+      <div style={styles.app}>
+        <Onboarding />
+      </div>
+    );
+  }
 
   return (
     <div style={styles.app}>
       {renderContent()}
-      {!viewPostId && <Navigation />}
+      {!viewPostId && !showUserPosts && <Navigation />}
       
       {/* Модальные окна */}
       {showCreateModal && <CreatePost />}
-      {onboardingStep > 0 && <Onboarding />}
       <AuthModal />
     </div>
   );

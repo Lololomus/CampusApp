@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
 
 function PostDetail() {
-  const { viewPostId, setViewPostId, user } = useStore();
+  const { viewPostId, setViewPostId, user, updatePost } = useStore();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
@@ -59,6 +59,23 @@ function PostDetail() {
     }
   };
 
+  const refreshPost = async () => {
+    try {
+      console.log('🔄 Запрашиваю свежий пост с сервера...');
+      const fresh = await getPost(viewPostId);
+      console.log('✅ Получил с сервера comments_count:', fresh.comments_count);
+      console.log('📦 Полный объект поста:', fresh);
+      
+      setPost(fresh);
+      
+      if (updatePost && viewPostId) {
+        updatePost(viewPostId, { comments_count: fresh.comments_count, likes: fresh.likes, views: fresh.views });
+      }
+    } catch (e) {
+      console.error('❌ Не удалось обновить пост:', e);
+    }
+  };
+
   const handleBack = () => {
     hapticFeedback('light');
     setViewPostId(null);
@@ -66,7 +83,6 @@ function PostDetail() {
 
   const handleSendComment = async () => {
     if (!newComment.trim()) return;
-
     hapticFeedback('medium');
     try {
       const comment = await createComment(viewPostId, newComment.trim(), replyTo);
@@ -77,6 +93,9 @@ function PostDetail() {
       });
       setNewComment('');
       setReplyTo(null);
+
+      // берем актуальный счетчик с бэкенда
+      await refreshPost();
     } catch (error) {
       console.error('Ошибка создания комментария:', error);
       alert('Не удалось отправить комментарий');
@@ -132,13 +151,21 @@ function PostDetail() {
 
     try {
       const result = await deleteComment(commentId);
+
       if (result.type === 'hard_delete') {
+        // HARD DELETE: полностью убираем из массива
         setComments(comments.filter(c => c.id !== commentId));
       } else {
-        setComments(comments.map(c => 
-          c.id === commentId ? { ...c, text: 'Комментарий удалён', is_deleted: true } : c
+        // SOFT DELETE: оставляем, но меняем текст и is_deleted = true
+        setComments(comments.map(c =>
+          c.id === commentId
+            ? { ...c, text: 'Комментарий удалён', is_deleted: true }
+            : c
         ));
       }
+
+      // берем свежий счётчик с сервера (для обоих случаев)
+      await refreshPost();
       hapticFeedback('success');
     } catch (error) {
       console.error('Ошибка удаления:', error);
@@ -338,7 +365,7 @@ function PostDetail() {
           </button>
           <div style={styles.statItem}>
             <MessageCircle size={20} />
-            <span>{comments.length}</span>
+            <span>{post.comments_count || comments.length}</span>
           </div>
           <div style={styles.statItem}>
             <Eye size={20} />
@@ -348,7 +375,7 @@ function PostDetail() {
 
         {/* Comments Section */}
         <div style={styles.commentsSection}>
-          <h3 style={styles.commentsTitle}>Комментарии ({comments.length})</h3>
+          <h3 style={styles.commentsTitle}>Комментарии ({post.comments_count || comments.length})</h3>
 
           {commentTree.length === 0 ? (
             <div style={styles.noComments}>
@@ -460,139 +487,152 @@ function Comment({
   const isEditing = editingComment === comment.id;
 
   return (
-    <div style={{
-      ...styles.comment,
-      marginLeft: depth > 0 ? '12px' : 0,
-      borderLeft: depth > 0 ? '2px solid #8774e1' : 'none',
-      paddingLeft: depth > 0 ? '8px' : 0
-    }}>
-      <div style={styles.commentAvatar}>
-        {typeof comment.author === 'object' 
-          ? comment.author.name[0] 
-          : comment.author?.[0] || '?'}
-      </div>
-      
-      <div style={styles.commentContent}>
-        <div style={styles.commentHeader}>
-          <span style={styles.commentAuthor}>
-            {typeof comment.author === 'object' ? comment.author.name : comment.author}
-          </span>
-          <span style={styles.commentMeta}>
-            {comment.author?.university} • {comment.author?.course} курс
-          </span>
+    <div style={{ position: 'relative' }}>
+      {/* Вертикальная линия на всю высоту ветки */}
+      {comment.replies && comment.replies.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '18px',
+            top: '36px',
+            bottom: '0',
+            width: '2px',
+            backgroundColor: 'rgba(135, 116, 225, 0.25)',
+            zIndex: 0,
+          }}
+        />
+      )}
+
+      <div style={styles.comment}>
+        <div style={styles.commentAvatar}>
+          {typeof comment.author === 'object' 
+            ? comment.author.name[0] 
+            : comment.author?.[0] || '?'}
+        </div>
+        
+        <div style={styles.commentContent}>
+          <div style={styles.commentHeader}>
+            <span style={styles.commentAuthor}>
+              {typeof comment.author === 'object' ? comment.author.name : comment.author}
+            </span>
+            <span style={styles.commentMeta}>
+              {comment.author?.university} • {comment.author?.course} курс
+            </span>
+            
+            {!comment.is_deleted && (
+              <div style={{ marginLeft: 'auto', position: 'relative' }}>
+                <button
+                  onClick={() => setMenuOpen(menuOpen === comment.id ? null : comment.id)}
+                  style={styles.menuButton}
+                >
+                  <MoreVertical size={16} />
+                </button>
+                
+                {menuOpen === comment.id && (
+                  <div style={styles.menu}>
+                    {isMyComment ? (
+                      <>
+                        <button onClick={() => onEdit(comment)} style={styles.menuItem}>
+                          Редактировать
+                        </button>
+                        <button onClick={() => onDelete(comment.id)} style={styles.menuItem}>
+                          Удалить
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => onReport(comment.id)} style={styles.menuItem}>
+                        Пожаловаться
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           
-          {!comment.is_deleted && (
-            <div style={{ marginLeft: 'auto', position: 'relative' }}>
+          {isEditing ? (
+            <div style={styles.editForm}>
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                style={styles.editTextarea}
+                rows={3}
+                autoFocus
+              />
+              <div style={styles.editButtons}>
+                <button onClick={() => onSaveEdit(comment.id)} style={styles.saveButton}>
+                  Сохранить
+                </button>
+                <button onClick={onCancelEdit} style={styles.cancelEditButton}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p style={{
+                ...styles.commentText,
+                fontStyle: comment.is_deleted ? 'italic' : 'normal',
+                color: comment.is_deleted ? '#666' : '#ccc'
+              }}>
+                {comment.text}
+              </p>
+              
+              {comment.is_edited && !comment.is_deleted && (
+                <span style={styles.editedLabel}>(отредактировано)</span>
+              )}
+            </>
+          )}
+          
+          {!comment.is_deleted && !isEditing && (
+            <div style={styles.commentActions}>
               <button
-                onClick={() => setMenuOpen(menuOpen === comment.id ? null : comment.id)}
-                style={styles.menuButton}
+                style={{
+                  ...styles.commentAction,
+                  color: likes.isLiked ? '#ff3b5c' : '#999'
+                }}
+                onClick={() => onLike(comment.id)}
               >
-                <MoreVertical size={16} />
+                <Heart size={14} fill={likes.isLiked ? '#ff3b5c' : 'none'} />
+                <span>{likes.count}</span>
               </button>
               
-              {menuOpen === comment.id && (
-                <div style={styles.menu}>
-                  {isMyComment ? (
-                    <>
-                      <button onClick={() => onEdit(comment)} style={styles.menuItem}>
-                        Редактировать
-                      </button>
-                      <button onClick={() => onDelete(comment.id)} style={styles.menuItem}>
-                        Удалить
-                      </button>
-                    </>
-                  ) : (
-                    <button onClick={() => onReport(comment.id)} style={styles.menuItem}>
-                      Пожаловаться
-                    </button>
-                  )}
-                </div>
+              {depth < maxDepth && (
+                <button style={styles.commentAction} onClick={() => onReply(comment)}>
+                  Ответить
+                </button>
               )}
             </div>
           )}
         </div>
-        
-        {isEditing ? (
-          <div style={styles.editForm}>
-            <textarea
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              style={styles.editTextarea}
-              rows={3}
-              autoFocus
-            />
-            <div style={styles.editButtons}>
-              <button onClick={() => onSaveEdit(comment.id)} style={styles.saveButton}>
-                Сохранить
-              </button>
-              <button onClick={onCancelEdit} style={styles.cancelEditButton}>
-                Отмена
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <p style={{
-              ...styles.commentText,
-              fontStyle: comment.is_deleted ? 'italic' : 'normal',
-              color: comment.is_deleted ? '#666' : '#ccc'
-            }}>
-              {comment.text}
-            </p>
-            
-            {comment.is_edited && !comment.is_deleted && (
-              <span style={styles.editedLabel}>(отредактировано)</span>
-            )}
-          </>
-        )}
-        
-        {!comment.is_deleted && !isEditing && (
-          <div style={styles.commentActions}>
-            <button
-              style={{
-                ...styles.commentAction,
-                color: likes.isLiked ? '#ff3b5c' : '#999'
-              }}
-              onClick={() => onLike(comment.id)}
-            >
-              <Heart size={14} fill={likes.isLiked ? '#ff3b5c' : 'none'} />
-              <span>{likes.count}</span>
-            </button>
-            
-            {depth < maxDepth && (
-              <button style={styles.commentAction} onClick={() => onReply(comment)}>
-                Ответить
-              </button>
-            )}
-          </div>
-        )}
-        
-        {comment.replies && comment.replies.length > 0 && (
-          <div style={styles.replies}>
-            {comment.replies.map(reply => (
-              <Comment
-                key={reply.id}
-                comment={reply}
-                depth={depth + 1}
-                currentUser={currentUser}
-                commentLikes={commentLikes}
-                onLike={onLike}
-                onReply={onReply}
-                onDelete={onDelete}
-                onEdit={onEdit}
-                onReport={onReport}
-                menuOpen={menuOpen}
-                setMenuOpen={setMenuOpen}
-                editingComment={editingComment}
-                editText={editText}
-                setEditText={setEditText}
-                onSaveEdit={onSaveEdit}
-                onCancelEdit={onCancelEdit}
-              />
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* Replies */}
+      {comment.replies && comment.replies.length > 0 && (
+        <div style={{ marginLeft: '30px', marginTop: '12px', position: 'relative', zIndex: 1 }}>
+          {comment.replies.map((reply) => (
+            <Comment
+              key={reply.id}
+              comment={reply}
+              depth={depth + 1}
+              currentUser={currentUser}
+              commentLikes={commentLikes}
+              onLike={onLike}
+              onReply={onReply}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              onReport={onReport}
+              menuOpen={menuOpen}
+              setMenuOpen={setMenuOpen}
+              editingComment={editingComment}
+              editText={editText}
+              setEditText={setEditText}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -812,9 +852,6 @@ const styles = {
     minWidth: '44px',
     borderRadius: '8px',
     transition: 'background 0.2s',
-  },
-  replies: {
-    marginTop: '12px',
   },
   menuButton: {
     background: 'none',
