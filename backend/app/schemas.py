@@ -25,6 +25,10 @@ class UserUpdate(BaseModel):
     age: Optional[int] = None
     bio: Optional[str] = None
     avatar: Optional[str] = None
+    university: Optional[str] = None
+    institute: Optional[str] = None
+    course: Optional[int] = None
+    group: Optional[str] = None
 
 class User(UserBase):
     """Полная информация о пользователе (для ответа API)"""

@@ -7,6 +7,7 @@ import PostDetail from './components/PostDetail';
 import CreatePost from './components/CreatePost';
 import Onboarding from './components/Onboarding';
 import AuthModal from './components/AuthModal';
+import EditProfile from './components/EditProfile';
 import Profile from './components/Profile';
 import Search from './components/Search';
 import UserPosts from './components/UserPosts';
@@ -66,6 +67,7 @@ function App() {
       {/* Модальные окна */}
       {showCreateModal && <CreatePost />}
       <AuthModal />
+      <EditProfile />
     </div>
   );
 }

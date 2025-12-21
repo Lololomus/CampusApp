@@ -23,6 +23,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
+    last_profile_edit = Column(DateTime, nullable=True)
     
     # Relationships (связи с другими таблицами)
     posts = relationship("Post", back_populates="author", cascade="all, delete-orphan")

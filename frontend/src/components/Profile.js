@@ -6,7 +6,7 @@ import { getUserPosts, getUserStats } from '../api';
 import PostCard from './PostCard';
 
 function Profile() {
-  const { isRegistered, user, logout, startRegistration, setViewPostId, setShowUserPosts } = useStore();
+  const { isRegistered, user, logout, startRegistration, setViewPostId, setShowUserPosts, setShowEditModal } = useStore();
   const [userPosts, setUserPosts] = useState([]);
   const [stats, setStats] = useState({ posts_count: 0, comments_count: 0 });
   const [loading, setLoading] = useState(false);
@@ -43,7 +43,7 @@ function Profile() {
 
   const handleEdit = () => {
     hapticFeedback('light');
-    alert('Редактирование профиля - в разработке');
+    setShowEditModal(true);
   };
 
   const handlePostClick = (postId) => {

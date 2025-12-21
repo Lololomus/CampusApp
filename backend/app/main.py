@@ -103,8 +103,35 @@ def update_current_user(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
+    # Проверяем РЕАЛЬНО ЛИ меняются критичные поля (university, institute, course)
+    update_data = user_update.model_dump(exclude_unset=True)
+    critical_fields = ['university', 'institute', 'course']
+    changing_critical = any(
+        field in update_data and update_data[field] != getattr(user, field)
+        for field in critical_fields
+    )
+    
+    if changing_critical:
+        # Проверяем cooldown (30 дней)
+        if not crud.can_edit_critical_fields(db, user.id):
+            days_left = crud.get_cooldown_days_left(db, user.id)
+            raise HTTPException(
+                status_code=403,
+                detail=f"Изменить можно через {days_left} дней"
+            )
+
+    # Обновляем профиль
     updated_user = crud.update_user(db, user.id, user_update)
+
+    # Если меняли критичные поля - обновляем timestamp ПОСЛЕ успешного сохранения
+    if changing_critical:
+        from datetime import datetime
+        updated_user.last_profile_edit = datetime.utcnow()
+        db.commit()
+        db.refresh(updated_user)  # обновляем объект из БД
+
     return updated_user
+
 
 @app.get("/users/{user_id}/posts", response_model=List[schemas.Post])
 def get_user_posts_endpoint(

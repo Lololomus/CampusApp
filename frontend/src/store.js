@@ -21,9 +21,11 @@ export const useStore = create(
       showAuthModal: false,
       showCreateModal: false,
       viewPostId: null,
+      showEditModal: false,
       setShowAuthModal: (show) => set({ showAuthModal: show }),
       setShowCreateModal: (show) => set({ showCreateModal: show }),
       setViewPostId: (id) => set({ viewPostId: id }),
+      setShowEditModal: (show) => set({ showEditModal: show }),
 
       // My posts screen
       showUserPosts: false,

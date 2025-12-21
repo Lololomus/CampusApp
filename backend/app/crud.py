@@ -348,3 +348,25 @@ def count_user_comments(db: Session, user_id: int) -> int:
             models.Comment.is_deleted == False
         )\
         .count()
+
+# ===== COOLDOWN для критичных полей =====
+def can_edit_critical_fields(db: Session, user_id: int) -> bool:
+    """Проверка можно ли редактировать критичные поля (cooldown 30 дней)"""
+    user = get_user_by_id(db, user_id)
+    if not user or not user.last_profile_edit:
+        return True  # первое редактирование или пользователь не найден
+    
+    from datetime import datetime, timedelta
+    days_passed = (datetime.utcnow() - user.last_profile_edit).days
+    return days_passed >= 30
+
+
+def get_cooldown_days_left(db: Session, user_id: int) -> int:
+    """Сколько дней осталось до снятия cooldown"""
+    user = get_user_by_id(db, user_id)
+    if not user or not user.last_profile_edit:
+        return 0
+    
+    from datetime import datetime
+    days_passed = (datetime.utcnow() - user.last_profile_edit).days
+    return max(0, 30 - days_passed)
