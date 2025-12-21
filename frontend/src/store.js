@@ -33,7 +33,7 @@ export const useStore = create(
         onboardingData: { ...state.onboardingData, ...data }
       })),
 
-      // Posts state
+      // Posts state (НЕ СОХРАНЯЕМ В LOCALSTORAGE!)
       posts: [],
       setPosts: (posts) => set({ posts }),
       addNewPost: (newPost) => set((state) => ({
@@ -53,11 +53,10 @@ export const useStore = create(
             ...useStore.getState().onboardingData,
             ...data
           };
-
           console.log('📤 Отправляем данные:', fullData);
           const user = await registerUser(fullData);
           console.log('✅ Регистрация успешна:', user);
-
+          
           set({
             user: user,
             isRegistered: true,
@@ -72,9 +71,8 @@ export const useStore = create(
       },
     }),
     {
-      name: 'campus-storage', // ← Имя в localStorage
-      partialPersist: (state) => ({
-        // Сохраняем только важные поля
+      name: 'campus-storage',
+      partialize: (state) => ({
         isRegistered: state.isRegistered,
         user: state.user,
         activeTab: state.activeTab,

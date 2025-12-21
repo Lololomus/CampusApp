@@ -47,7 +47,7 @@ function App() {
   return (
     <div style={styles.app}>
       {renderContent()}
-      <Navigation />
+      {!viewPostId && <Navigation />}
       
       {/* Модальные окна */}
       {showCreateModal && <CreatePost />}

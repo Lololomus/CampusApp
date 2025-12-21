@@ -63,10 +63,7 @@ function CreatePost() {
         category,
         title: title.trim(),
         body: body.trim(),
-        tags,
-        uni: 'МГСУ',
-        institute: 'ИЦИТ',
-        course: 3
+        tags
       });
 
       // Добавляем пост в store

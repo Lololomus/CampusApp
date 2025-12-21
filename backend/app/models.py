@@ -69,14 +69,32 @@ class Comment(Base):
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
+    is_deleted = Column(Boolean, default=False)
+    is_edited = Column(Boolean, default=False)
     likes = Column(Integer, default=0)
-    parent_id = Column(Integer, ForeignKey("comments.id"), nullable=True)  # Для вложенных ответов
+    parent_id = Column(Integer, ForeignKey("comments.id"), nullable=True)
     created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
     
     # Relationships
     post = relationship("Post", back_populates="comments")
     author = relationship("User", back_populates="comments")
     replies = relationship("Comment", backref="parent", remote_side=[id])
+
+class CommentReport(Base):
+    """Жалобы на комментарии"""
+    __tablename__ = "comment_reports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
+    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    reason = Column(String(50), nullable=False)  # spam, abuse, inappropriate
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    
+    __table_args__ = (
+        UniqueConstraint('reporter_id', 'comment_id', name='unique_user_comment_report'),
+    )
 
 class PostLike(Base):
     """Лайки постов (связь многие ко многим)"""
@@ -90,4 +108,18 @@ class PostLike(Base):
     # Уникальность: один пользователь = один лайк на пост
     __table_args__ = (
         UniqueConstraint('user_id', 'post_id', name='unique_user_post_like'),
+    )
+
+class CommentLike(Base):
+    """Лайки комментариев (связь многие ко многим)"""
+    __tablename__ = "comment_likes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Уникальность: один пользователь = один лайк на комментарий
+    __table_args__ = (
+        UniqueConstraint('user_id', 'comment_id', name='unique_user_comment_like'),
     )

@@ -87,17 +87,44 @@ class CommentCreate(CommentBase):
     """Создание комментария"""
     post_id: int
 
+class CommentUpdate(BaseModel):
+    """Обновление комментария"""
+    text: str = Field(..., min_length=1)
+
 class Comment(CommentBase):
     """Полная информация о комментарии (для ответа API)"""
     id: int
     post_id: int
     author_id: int
+    author: Optional['User'] = None
+    is_liked: bool = False
+    is_deleted: bool = False
+    is_edited: bool = False  # ← НОВОЕ
     likes: int
     created_at: datetime
+    updated_at: Optional[datetime] = None  # ← НОВОЕ
     
     class Config:
         from_attributes = True
 
+# ===== REPORT SCHEMAS =====
+class CommentReportCreate(BaseModel):
+    """Создание жалобы на комментарий"""
+    comment_id: int
+    reason: str = Field(..., pattern="^(spam|abuse|inappropriate)$")
+    description: Optional[str] = None
+
+class CommentReport(BaseModel):
+    """Информация о жалобе"""
+    id: int
+    comment_id: int
+    reporter_id: int
+    reason: str
+    description: Optional[str]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 # ===== AUTH SCHEMAS =====
 

@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 from typing import List, Optional
 
@@ -34,7 +34,6 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> O
     db.commit()
     db.refresh(db_user)
     return db_user
-
 
 # ===== POST CRUD =====
 
@@ -132,7 +131,6 @@ def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
     ).first()
     return like is not None
 
-
 def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
     """Toggle лайка (добавить или убрать)"""
     like = db.query(models.PostLike).filter(
@@ -160,9 +158,26 @@ def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
 
 # ===== COMMENT CRUD =====
 
-def get_post_comments(db: Session, post_id: int) -> List[models.Comment]:
-    """Получить все комментарии к посту"""
-    return db.query(models.Comment).filter(models.Comment.post_id == post_id).order_by(models.Comment.created_at).all()
+def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) -> List[models.Comment]:
+    """
+    Получить все комментарии к посту с авторами
+    user_id — для проверки лайков текущего пользователя
+    """
+    comments = db.query(models.Comment)\
+        .options(joinedload(models.Comment.author))\
+        .filter(models.Comment.post_id == post_id)\
+        .order_by(models.Comment.created_at)\
+        .all()
+    
+    # Проверяем лайки текущего пользователя
+    if user_id:
+        for comment in comments:
+            comment.is_liked = is_comment_liked_by_user(db, comment.id, user_id)
+    else:
+        for comment in comments:
+            comment.is_liked = False
+    
+    return comments
 
 def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int) -> models.Comment:
     """Создать комментарий"""
@@ -172,14 +187,130 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int) 
         text=comment.text,
         parent_id=comment.parent_id
     )
+    
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
     return db_comment
 
-def like_comment(db: Session, comment_id: int):
-    """Добавить лайк комментарию"""
-    db_comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
-    if db_comment:
-        db_comment.likes += 1
+# ===== COMMENT LIKES (Лайки комментариев) =====
+
+def is_comment_liked_by_user(db: Session, comment_id: int, user_id: int) -> bool:
+    """Проверить лайкнул ли пользователь комментарий"""
+    like = db.query(models.CommentLike).filter(
+        models.CommentLike.comment_id == comment_id,
+        models.CommentLike.user_id == user_id
+    ).first()
+    return like is not None
+
+def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
+    """Toggle лайка комментария (добавить или убрать)"""
+    like = db.query(models.CommentLike).filter(
+        models.CommentLike.comment_id == comment_id,
+        models.CommentLike.user_id == user_id
+    ).first()
+    
+    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+    if not comment:
+        return {"is_liked": False, "likes": 0}
+    
+    if like:
+        # Убираем лайк
+        db.delete(like)
+        comment.likes = max(0, comment.likes - 1)
         db.commit()
+        return {"is_liked": False, "likes": comment.likes}
+    else:
+        # Добавляем лайк
+        new_like = models.CommentLike(user_id=user_id, comment_id=comment_id)
+        db.add(new_like)
+        comment.likes += 1
+        db.commit()
+        return {"is_liked": True, "likes": comment.likes}
+    
+def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
+    """
+    Удалить комментарий (hard delete если нет ответов, soft delete если есть)
+    """
+    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+    
+    if not comment:
+        return {"success": False, "error": "Комментарий не найден"}
+    
+    # Проверка прав (только автор может удалить)
+    if comment.author_id != user_id:
+        return {"success": False, "error": "Нет прав на удаление"}
+    
+    # Проверяем есть ли ответы на этот комментарий
+    has_replies = db.query(models.Comment).filter(
+        models.Comment.parent_id == comment_id
+    ).count() > 0
+    
+    if has_replies:
+        # Soft delete: помечаем как удалённый
+        comment.is_deleted = True
+        comment.text = "Комментарий удалён"
+        db.commit()
+        return {"success": True, "type": "soft_delete"}
+    else:
+        # Hard delete: удаляем полностью
+        db.delete(comment)
+        db.commit()
+        return {"success": True, "type": "hard_delete"}
+    
+def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Optional[models.Comment]:
+    """Обновить текст комментария"""
+    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+    
+    if not comment:
+        return None
+    
+    # Проверка прав (только автор может редактировать)
+    if comment.author_id != user_id:
+        return None
+    
+    # Нельзя редактировать удалённые комментарии
+    if comment.is_deleted:
+        return None
+    
+    # Обновляем текст
+    comment.text = text
+    comment.is_edited = True
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+
+def create_comment_report(db: Session, comment_id: int, reporter_id: int, reason: str, description: Optional[str] = None):
+    """Создать жалобу на комментарий"""
+    from app.models import CommentReport
+    
+    # Проверяем что комментарий существует
+    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+    if not comment:
+        return None
+    
+    # Проверяем что пользователь не жалуется на свой комментарий
+    if comment.author_id == reporter_id:
+        return None
+    
+    # Проверяем что жалоба ещё не была подана
+    existing_report = db.query(CommentReport).filter(
+        CommentReport.comment_id == comment_id,
+        CommentReport.reporter_id == reporter_id
+    ).first()
+    
+    if existing_report:
+        return existing_report  # Уже жаловались
+    
+    # Создаём жалобу
+    report = CommentReport(
+        comment_id=comment_id,
+        reporter_id=reporter_id,
+        reason=reason,
+        description=description
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return report

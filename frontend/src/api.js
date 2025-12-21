@@ -138,9 +138,11 @@ export async function getPost(id) {
 export async function createPost(postData) {
   try {
     const telegram_id = getTelegramId();
+    
     const response = await api.post('/posts', postData, {
-      params: { telegram_id },
+      params: { telegram_id }
     });
+    
     return response.data;
   } catch (error) {
     console.error('Ошибка создания поста:', error);
@@ -154,7 +156,10 @@ export async function createPost(postData) {
 
 export async function getPostComments(postId) {
   try {
-    const response = await api.get(`/posts/${postId}/comments`);
+    const telegram_id = getTelegramId();
+    const response = await api.get(`/posts/${postId}/comments`, {
+      params: { telegram_id }
+    });
     return response.data;
   } catch (error) {
     console.error('Ошибка получения комментариев:', error);
@@ -163,12 +168,13 @@ export async function getPostComments(postId) {
 }
 
 
-export async function createComment(postId, text) {
+export async function createComment(postId, text, parentId = null) {
   try {
     const telegram_id = getTelegramId();
     const response = await api.post('/comments', {
       post_id: postId,
       text: text,
+      parent_id: parentId
     }, {
       params: { telegram_id },
     });
@@ -199,10 +205,59 @@ export async function likePost(postId) {
 
 export async function likeComment(commentId) {
   try {
-    const response = await api.post(`/comments/${commentId}/like`);
+    const telegram_id = getTelegramId();
+    const response = await api.post(`/comments/${commentId}/like`, null, {
+      params: { telegram_id }
+    });
     return response.data;
   } catch (error) {
     console.error('Ошибка лайка комментария:', error);
+    throw error;
+  }
+}
+
+export async function deleteComment(commentId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.delete(`/comments/${commentId}`, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка удаления комментария:', error);
+    throw error;
+  }
+}
+
+export async function updateComment(commentId, text) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.patch(`/comments/${commentId}`, null, {
+      params: { 
+        telegram_id,
+        text 
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка обновления комментария:', error);
+    throw error;
+  }
+}
+
+export async function reportComment(commentId, reason, description = null) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.post(`/comments/${commentId}/report`, {
+      comment_id: commentId,
+      reason,
+      description
+    }, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка отправки жалобы:', error);
     throw error;
   }
 }
