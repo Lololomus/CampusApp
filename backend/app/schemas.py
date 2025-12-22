@@ -30,16 +30,20 @@ class UserUpdate(BaseModel):
     course: Optional[int] = None
     group: Optional[str] = None
 
-class User(UserBase):
-    """Полная информация о пользователе (для ответа API)"""
+class User(BaseModel):
     id: int
     telegram_id: int
-    username: Optional[str]
-    age: Optional[int]
-    group: Optional[str]
-    bio: Optional[str]
-    avatar: Optional[str]
+    name: str
+    age: Optional[int] = None
+    bio: Optional[str] = None
+    avatar: Optional[str] = None
+    university: str
+    institute: str
+    course: int
+    group: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    last_profile_edit: Optional[datetime] = None
     
     class Config:
         from_attributes = True
