@@ -3,12 +3,12 @@ import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical } from 'lucide
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment } from '../api';
 import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
+import BottomActionBar from './BottomActionBar';
 
 function PostDetail() {
   const { viewPostId, setViewPostId, user, updatePost } = useStore();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
   const [commentLikes, setCommentLikes] = useState({});
@@ -81,25 +81,40 @@ function PostDetail() {
     setViewPostId(null);
   };
 
-  const handleSendComment = async () => {
-    if (!newComment.trim()) return;
-    hapticFeedback('medium');
+  const handleSendComment = async (text) => {
+    if (!text || !text.trim()) return;
+    
     try {
-      const comment = await createComment(viewPostId, newComment.trim(), replyTo);
+      const comment = await createComment(viewPostId, text.trim(), replyTo);
       setComments([...comments, comment]);
       setCommentLikes({
         ...commentLikes,
         [comment.id]: { isLiked: false, count: 0 }
       });
-      setNewComment('');
       setReplyTo(null);
 
-      // берем актуальный счетчик с бэкенда
       await refreshPost();
     } catch (error) {
       console.error('Ошибка создания комментария:', error);
       alert('Не удалось отправить комментарий');
     }
+  };
+
+  const handleDirectSend = async (text) => {
+    console.log('✉️ Личное сообщение автору:', text);
+    hapticFeedback('success');
+    
+    // Mock отправка (пока нет backend API)
+    alert(`Отклик отправлен автору!\n\n"${text}"`);
+    
+    // TODO: После создания backend раскомментируй:
+    // try {
+    //   await createResponse(viewPostId, text);
+    //   alert('Отклик успешно отправлен!');
+    // } catch (error) {
+    //   console.error('Ошибка отправки отклика:', error);
+    //   alert('Не удалось отправить отклик');
+    // }
   };
 
   const handleLike = async () => {
@@ -133,15 +148,11 @@ function PostDetail() {
     hapticFeedback('light');
     setReplyTo(comment.id);
     const authorName = typeof comment.author === 'object' ? comment.author.name : comment.author;
-    setNewComment(`@${authorName}, `);
+    setReplyToName(authorName || '');
     setMenuOpen(null);
   };
 
-  const cancelReply = () => {
-    hapticFeedback('light');
-    setReplyTo(null);
-    setNewComment('');
-  };
+  const [replyToName, setReplyToName] = useState('');
 
   const handleDeleteComment = async (commentId) => {
     if (!window.confirm('Удалить комментарий?')) return;
@@ -409,35 +420,13 @@ function PostDetail() {
         </div>
       </div>
 
-      {/* Comment Form */}
-      <div style={styles.commentForm}>
-        {replyTo && (
-          <div style={styles.replyIndicator}>
-            <span style={{ color: '#8774e1' }}>Ответ на комментарий</span>
-            <button onClick={cancelReply} style={styles.cancelReply}>Отмена</button>
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <input
-            type="text"
-            placeholder="Напишите комментарий..."
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSendComment()}
-            style={styles.commentInput}
-          />
-          <button
-            onClick={handleSendComment}
-            disabled={!newComment.trim()}
-            style={{
-              ...styles.sendButton,
-              opacity: newComment.trim() ? 1 : 0.5,
-            }}
-          >
-            <Send size={20} />
-          </button>
-        </div>
-      </div>
+      <BottomActionBar
+        onCommentSend={handleSendComment}
+        onDirectSend={handleDirectSend}
+        replyTo={replyTo}
+        replyToName={replyToName}
+        onCancelReply={() => setReplyTo(null)}
+      />
 
       {/* Report Modal */}
       {reportingComment && (
@@ -642,7 +631,7 @@ const styles = {
     flex: 1,
     backgroundColor: '#121212',
     minHeight: '100vh',
-    paddingBottom: '80px',
+    paddingBottom: '72px',
   },
   header: {
     position: 'sticky',
@@ -893,60 +882,6 @@ const styles = {
     alignItems: 'center',
     gap: '8px',
   },
-  commentForm: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#1a1a1a',
-    borderTop: '1px solid #333',
-    padding: '12px 16px',
-    paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
-    zIndex: 100,
-  },
-  replyIndicator: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '8px 12px',
-    marginBottom: '8px',
-    backgroundColor: '#2a2a2a',
-    borderRadius: '8px',
-    fontSize: '13px',
-  },
-  cancelReply: {
-    background: 'none',
-    border: 'none',
-    color: '#8774e1',
-    fontSize: '13px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    padding: '4px 8px',
-  },
-  commentInput: {
-    flex: 1,
-    padding: '12px 16px',
-    borderRadius: '24px',
-    border: '1px solid #333',
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    fontSize: '15px',
-    outline: 'none',
-  },
-  sendButton: {
-    width: '44px',
-    height: '44px',
-    borderRadius: '50%',
-    border: 'none',
-    backgroundColor: '#8774e1',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    transition: 'opacity 0.2s',
-    flexShrink: 0,
-  },
   loading: {
     textAlign: 'center',
     color: '#999',
@@ -957,10 +892,13 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '8px',
-    marginBottom: '8px'
+    marginBottom: '8px',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
   },
   editTextarea: {
     width: '100%',
+    maxWidth: '100%',
     padding: '12px',
     borderRadius: '8px',
     border: '1px solid #333',
@@ -969,7 +907,8 @@ const styles = {
     fontSize: '15px',
     fontFamily: 'inherit',
     resize: 'vertical',
-    outline: 'none'
+    outline: 'none',
+    boxSizing: 'border-box',
   },
   editButtons: {
     display: 'flex',
