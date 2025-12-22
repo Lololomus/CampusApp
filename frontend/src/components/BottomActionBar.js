@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, Mail, X } from 'lucide-react';
+import { MessageCircle, Send, Mail, X, Check } from 'lucide-react';
 import { hapticFeedback } from '../utils/telegram';
 
 function BottomActionBar({
@@ -14,28 +14,20 @@ function BottomActionBar({
   const [commentText, setCommentText] = useState('');
   const [directText, setDirectText] = useState('');
   const [isAnimating, setIsAnimating] = useState(false);
+  const [sendState, setSendState] = useState('idle');
 
   const commentInputRef = useRef(null);
   const directInputRef = useRef(null);
 
-  // Автооткрытие режима комментария по replyTo + подстановка "@имя, "
   useEffect(() => {
     if (!replyTo) return;
     if (mode !== 'comment') switchMode('comment');
     setTimeout(() => {
-      setCommentText((prev) => {
-        const mention = replyToName ? `@${replyToName}, ` : '';
-        if (!mention) return prev;
-        if (prev.startsWith(mention)) return prev;
-        return prev ? prev : mention;
-      });
       if (commentInputRef.current) {
-        const v = commentInputRef.current.value;
-        commentInputRef.current.setSelectionRange(v.length, v.length);
         commentInputRef.current.focus();
       }
     }, 0);
-  }, [replyTo]); // eslint-disable-line
+  }, [replyTo]);
 
   const switchMode = (next) => {
     if (isAnimating || disabled || mode === next) return;
@@ -49,14 +41,25 @@ function BottomActionBar({
     }, 220);
   };
 
+  const performSendWithSuccess = (sendCallback, clearCallback) => {
+    sendCallback();
+    hapticFeedback('success');
+    setSendState('success');
+    clearCallback();
+    setTimeout(() => {
+      setSendState('idle');
+      setMode('default');
+      if (onCancelReply) onCancelReply();
+    }, 500);
+  };
+
   const sendComment = () => {
     const text = commentText.trim();
     if (!text) return;
-    hapticFeedback('medium');
-    onCommentSend(text);
-    setCommentText('');
-    setMode('default');
-    if (onCancelReply) onCancelReply();
+    performSendWithSuccess(
+      () => onCommentSend(text),
+      () => setCommentText('')
+    );
   };
 
   const sendDirect = () => {
@@ -65,10 +68,10 @@ function BottomActionBar({
       hapticFeedback('error');
       return;
     }
-    hapticFeedback('success');
-    onDirectSend(text);
-    setDirectText('');
-    setMode('default');
+    performSendWithSuccess(
+      () => onDirectSend(text),
+      () => setDirectText('')
+    );
   };
 
   const autoResize = (e) => {
@@ -77,7 +80,6 @@ function BottomActionBar({
     ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
   };
 
-  // Поднятие бара с клавиатурой
   useEffect(() => {
     const onResize = () => {
       if (!window.visualViewport) return;
@@ -91,8 +93,7 @@ function BottomActionBar({
     };
   }, []);
 
-  const placeholderComment =
-    replyTo && replyToName ? `Ответить @${replyToName}…` : 'Напишите комментарий...';
+  const isSuccess = sendState === 'success';
 
   return (
     <div
@@ -115,10 +116,9 @@ function BottomActionBar({
         onClick={() => mode !== 'comment' && switchMode('comment')}
       >
         {mode === 'comment' ? (
-          <div style={styles.inputWrap} className="input-container-active">
-            {/* НОВОЕ: индикатор ответа НАД полем, крестик слева */}
+          <div style={styles.inputWrap}>
             {replyTo && replyToName && (
-              <div style={styles.replyBar}>
+              <div style={styles.contextRow}>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -126,12 +126,12 @@ function BottomActionBar({
                     hapticFeedback('light');
                     onCancelReply && onCancelReply();
                   }}
-                  style={styles.replyCloseBtn}
+                  style={styles.closeBtn}
                   aria-label="Отменить ответ"
                 >
-                  <X size={16} />
+                  <X size={16} color="#8e8e93" />
                 </button>
-                <span style={styles.replyText}>Ответ для @{replyToName}</span>
+                <span style={styles.contextLabel}>Ответ для @{replyToName}</span>
               </div>
             )}
 
@@ -149,21 +149,29 @@ function BottomActionBar({
                     sendComment();
                   }
                 }}
-                placeholder={placeholderComment}
+                placeholder="Напишите комментарий..."
                 style={styles.textarea}
                 rows={1}
                 maxLength={2000}
               />
 
-              {/* ИСПРАВЛЕНО: кнопка появляется только при наличии текста */}
-              {commentText.trim() && (
+              {(commentText.trim() || isSuccess) && (
                 <button
                   type="button"
                   onClick={sendComment}
-                  style={styles.sendFab}
+                  disabled={isSuccess}
+                  style={{
+                    ...styles.sendFab,
+                    background: isSuccess
+                      ? '#34c759'
+                      : 'linear-gradient(135deg, #8774e1 0%, #6b5dd3 100%)',
+                    transform: isSuccess
+                      ? 'translateY(-50%) scale(1.1)'
+                      : 'translateY(-50%) scale(1)',
+                  }}
                   className="send-fab-animate"
                 >
-                  <Send size={18} />
+                  {isSuccess ? <Check size={20} /> : <Send size={18} />}
                 </button>
               )}
             </div>
@@ -190,7 +198,26 @@ function BottomActionBar({
         onClick={() => mode !== 'direct' && switchMode('direct')}
       >
         {mode === 'direct' ? (
-          <div style={styles.inputWrap} className="input-container-active">
+          <div style={styles.inputWrap}>
+            {/* Крестик для закрытия панели Direct */}
+            <div style={styles.contextRow}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  hapticFeedback('light');
+                  switchMode('default');
+                }}
+                style={styles.closeBtn}
+                aria-label="Закрыть"
+              >
+                <X size={16} color="#8e8e93" />
+              </button>
+              <span style={styles.contextLabel}>
+                ЛС для @{replyToName || 'автора'}
+              </span>
+            </div>
+
             <div style={styles.inputRow}>
               <textarea
                 ref={directInputRef}
@@ -211,15 +238,23 @@ function BottomActionBar({
                 maxLength={500}
               />
 
-              {/* ИСПРАВЛЕНО: кнопка появляется только при наличии текста */}
-              {directText.trim() && (
+              {(directText.trim() || isSuccess) && (
                 <button
                   type="button"
                   onClick={sendDirect}
-                  style={styles.sendFab}
+                  disabled={isSuccess}
+                  style={{
+                    ...styles.sendFab,
+                    background: isSuccess
+                      ? '#34c759'
+                      : 'linear-gradient(135deg, #8774e1 0%, #6b5dd3 100%)',
+                    transform: isSuccess
+                      ? 'translateY(-50%) scale(1.1)'
+                      : 'translateY(-50%) scale(1)',
+                  }}
                   className="send-fab-animate"
                 >
-                  <Send size={18} />
+                  {isSuccess ? <Check size={20} /> : <Send size={18} />}
                 </button>
               )}
             </div>
@@ -252,7 +287,7 @@ const styles = {
     zIndex: 100,
     transition: 'transform .25s ease',
   },
-    button: {
+  button: {
     minHeight: 48,
     borderRadius: 14,
     display: 'flex',
@@ -260,14 +295,13 @@ const styles = {
     justifyContent: 'center',
     cursor: 'pointer',
     overflow: 'hidden',
-    transition: 'flex .25s cubic-bezier(.4,0,.2,1), background-color .18s ease, border .18s ease, height .25s ease',  // ← ДОБАВИЛ height в transition
+    transition: 'flex .25s cubic-bezier(.4,0,.2,1), background-color .18s ease, border .18s ease, height .25s ease',
     position: 'relative',
-    },
+  },
   bgIdle: '#2a2a2a',
   bgActive: '#333',
   accent: '#8774e1',
 
-  // Контент свернутой кнопки
   buttonContent: {
     width: '100%',
     height: '100%',
@@ -285,50 +319,37 @@ const styles = {
     transition: 'opacity .25s ease, width .25s ease',
   },
 
-  // Активный ввод
   inputWrap: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    gap: 4,
     width: '100%',
     padding: '8px 12px',
   },
-  
-  // НОВОЕ: индикатор ответа с крестиком слева
-    replyBar: {
+
+  contextRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
-    padding: '4px 8px',
-    backgroundColor: 'rgba(135, 116, 225, 0.15)',
-    borderRadius: 8,
-    minHeight: 28,
-    },
-  replyCloseBtn: {
+    gap: 6,
+    minHeight: 20,
+  },
+  closeBtn: {
+    background: 'none',
+    border: 'none',
+    padding: 4,
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 28,
-    height: 28,
-    minWidth: 28,
-    minHeight: 28,
-    borderRadius: '50%',
-    border: 'none',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    color: '#9aa0a6',
-    cursor: 'pointer',
-    padding: 0,
-    transition: 'background-color .15s ease, transform .1s ease',
     flexShrink: 0,
+    transition: 'transform .1s ease',
   },
-  replyText: {
-    flex: 1,
-    fontSize: 13,
+  contextLabel: {
+    fontSize: 11,
     color: '#8774e1',
-    fontWeight: '500',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: '0.3px',
   },
 
   inputRow: {
@@ -338,7 +359,7 @@ const styles = {
     width: '100%',
     minHeight: 32,
   },
-    textarea: {
+  textarea: {
     flex: 1,
     border: 'none',
     outline: 'none',
@@ -352,8 +373,8 @@ const styles = {
     lineHeight: '24px',
     padding: '0 48px 0 0',
     overflowY: 'auto',
-    },
-  
+  },
+
   sendFab: {
     position: 'absolute',
     right: 4,
@@ -368,16 +389,14 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(135deg, #8774e1 0%, #6b5dd3 100%)',
     color: '#fff',
     boxShadow: '0 4px 14px rgba(135,116,225,0.4)',
     cursor: 'pointer',
-    transition: 'transform .15s ease, box-shadow .15s ease',
+    transition: 'all .3s cubic-bezier(0.34, 1.56, 0.64, 1)',
     flexShrink: 0,
   },
 };
 
-// CSS для анимаций и состояний
 const styleTag = document.createElement('style');
 styleTag.textContent = `
   .action-button.active {
@@ -388,7 +407,6 @@ styleTag.textContent = `
     50%      { box-shadow: 0 0 26px rgba(135,116,225,.45); }
   }
 
-  /* Когда кнопка сжата — скрыть лейбл, центрировать иконку */
   .action-button.inactive .button-label { 
     display: none; 
   }
@@ -398,7 +416,6 @@ styleTag.textContent = `
     padding: 0; 
   }
 
-  /* Анимация появления кнопки Send */
   .send-fab-animate {
     animation: sendBounceIn 0.35s cubic-bezier(0.68, -0.55, 0.27, 1.55);
   }
@@ -416,7 +433,6 @@ styleTag.textContent = `
     }
   }
 
-  /* Hover/Active эффекты для кнопки Send */
   .send-fab-animate:hover {
     transform: translateY(-50%) scale(1.08) !important;
     box-shadow: 0 6px 20px rgba(135,116,225,0.6) !important;
@@ -426,17 +442,15 @@ styleTag.textContent = `
     box-shadow: 0 2px 8px rgba(135,116,225,0.3) !important;
   }
 
-  /* Hover/Active для крестика отмены */
-  .bottom-action-bar button[aria-label="Отменить ответ"]:hover {
-    background-color: rgba(255,255,255,0.18);
-    transform: scale(1.05);
+  .bottom-action-bar button[aria-label="Отменить ответ"]:hover,
+  .bottom-action-bar button[aria-label="Закрыть"]:hover {
+    transform: scale(1.1);
   }
-  .bottom-action-bar button[aria-label="Отменить ответ"]:active {
-    background-color: rgba(255,255,255,0.25);
-    transform: scale(0.95);
+  .bottom-action-bar button[aria-label="Отменить ответ"]:active,
+  .bottom-action-bar button[aria-label="Закрыть"]:active {
+    transform: scale(0.9);
   }
 
-  /* Скроллбар textarea */
   .bottom-action-bar textarea::-webkit-scrollbar {
     width: 4px;
   }
@@ -452,6 +466,9 @@ styleTag.textContent = `
     opacity: 1;
   }
 `;
-document.head.appendChild(styleTag);
+if (!document.getElementById('bottom-action-bar-styles')) {
+  styleTag.id = 'bottom-action-bar-styles';
+  document.head.appendChild(styleTag);
+}
 
 export default BottomActionBar;

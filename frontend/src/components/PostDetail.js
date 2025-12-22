@@ -426,6 +426,7 @@ function PostDetail() {
         replyTo={replyTo}
         replyToName={replyToName}
         onCancelReply={() => setReplyTo(null)}
+        postAuthorName={typeof post.author === 'object' ? post.author.name : post.author || 'автора'}
       />
 
       {/* Report Modal */}
