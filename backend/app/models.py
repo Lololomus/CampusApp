@@ -1,169 +1,194 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, CheckConstraint
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Enum, CheckConstraint, UniqueConstraint
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-from app.database import Base
 from datetime import datetime
+from .database import Base
+
 
 class User(Base):
-    """Пользователи (студенты)"""
-    __tablename__ = "users"
+    __tablename__ = 'users'
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    telegram_id = Column(Integer, unique=True, index=True, nullable=False)
     username = Column(String(255), nullable=True)
     name = Column(String(255), nullable=False)
     age = Column(Integer, nullable=True)
+    bio = Column(Text, nullable=True)
+    
+    # Академическая инфа
     university = Column(String(255), nullable=False)
     institute = Column(String(255), nullable=False)
-    course = Column(Integer, nullable=False)
+    course = Column(Integer, nullable=True)
     group = Column(String(100), nullable=True)
-    bio = Column(Text, nullable=True)
-    avatar = Column(String(500), nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, onupdate=func.now())
-    last_profile_edit = Column(DateTime, nullable=True)
-    show_in_dating = Column(Boolean, default=True)
-    hide_course_group = Column(Boolean, default=False)
-    interests = Column(Text, default="")
     
-    # Relationships (связи с другими таблицами)
-    posts = relationship("Post", back_populates="author", cascade="all, delete-orphan")
-    comments = relationship("Comment", back_populates="author", cascade="all, delete-orphan")
+    # Dating поля (НОВЫЕ)
+    show_in_dating = Column(Boolean, default=True)  # показывать в знакомствах
+    hide_course_group = Column(Boolean, default=False)  # скрыть курс/группу
+    interests = Column(Text, nullable=True)  # JSON array как строка: ["python", "спорт"]
+    
+    # Метаданные
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_active_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Отношения
+    posts = relationship('Post', back_populates='author', cascade='all, delete-orphan')
+    requests = relationship('Request', back_populates='author', cascade='all, delete-orphan')
+    comments = relationship('Comment', back_populates='author', cascade='all, delete-orphan')
+    
+    # Dating отношения
+    likes_given = relationship('Like', foreign_keys='Like.liker_id', back_populates='liker', cascade='all, delete-orphan')
+    likes_received = relationship('Like', foreign_keys='Like.liked_id', back_populates='liked', cascade='all, delete-orphan')
 
 
 class Post(Base):
-    """Посты студентов"""
-    __tablename__ = "posts"
+    __tablename__ = 'posts'
     
     id = Column(Integer, primary_key=True, index=True)
-    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    university = Column(String(255), nullable=False)
-    institute = Column(String(255), nullable=False)
-    course = Column(Integer, nullable=False)
-    title = Column(String(255), nullable=False)
+    author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    
+    # НОВЫЕ категории (general/confessions/lost_found/news/events)
+    category = Column(
+        Enum('general', 'confessions', 'lost_found', 'news', 'events', name='post_category_enum'),
+        nullable=False,
+        index=True
+    )
+    
+    title = Column(String(200), nullable=True)
     body = Column(Text, nullable=False)
-    category = Column(String(50), nullable=False, index=True)
-    tags = Column(Text, default="")  # Храним как строку: "python,backend,fastapi"
-    likes = Column(Integer, default=0)
-    views = Column(Integer, default=0)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, onupdate=func.now())
+    tags = Column(Text, nullable=True)  # JSON array: '["python", "react"]'
     
-    # Relationships
-    author = relationship("User", back_populates="posts")
-    comments = relationship("Comment", back_populates="post", cascade="all, delete-orphan")
+    # АНОНИМНОСТЬ (НОВОЕ)
+    is_anonymous = Column(Boolean, default=False)  # пост анонимный
+    enable_anonymous_comments = Column(Boolean, default=False)  # комменты анонимные
     
-    # Helper methods для работы с тегами
-    def get_tags_list(self):
-        """Конвертирует строку тегов в список"""
-        return self.tags.split(",") if self.tags else []
+    # Для lost_found (НОВОЕ)
+    lost_or_found = Column(Enum('lost', 'found', name='lost_found_enum'), nullable=True)
+    item_description = Column(String(500), nullable=True)
+    location = Column(String(200), nullable=True)
     
-    def set_tags_list(self, tags_list):
-        """Конвертирует список тегов в строку"""
-        self.tags = ",".join(tags_list) if tags_list else ""
+    # Для events (НОВОЕ)
+    event_name = Column(String(200), nullable=True)
+    event_date = Column(DateTime, nullable=True)
+    event_location = Column(String(200), nullable=True)
+    
+    # Общее
+    is_important = Column(Boolean, default=False)  # закреплённость (для news)
+    expires_at = Column(DateTime, nullable=True)  # для lost_found (7 дней)
+    
+    # Счётчики
+    likes_count = Column(Integer, default=0)
+    comments_count = Column(Integer, default=0)
+    views_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Отношения
+    author = relationship('User', back_populates='posts')
+    comments = relationship('Comment', back_populates='post', cascade='all, delete-orphan')
+
+
+class Request(Base):
+    """
+    Запросы для карточек Dating (study/help/hangout)
+    Временные, исчезают после откликов или expires_at
+    """
+    __tablename__ = 'requests'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    
+    # Только 3 категории для карточек
+    category = Column(
+        Enum('study', 'help', 'hangout', name='request_category_enum'),
+        nullable=False,
+        index=True
+    )
+    
+    title = Column(String(200), nullable=False)
+    body = Column(Text, nullable=False)
+    tags = Column(Text, nullable=True)  # JSON array
+    
+    # Временность (ОБЯЗАТЕЛЬНО)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    max_responses = Column(Integer, default=5)
+    status = Column(
+        Enum('active', 'closed', 'expired', name='request_status_enum'),
+        default='active',
+        index=True
+    )
+    
+    # Счётчики
+    responses_count = Column(Integer, default=0)
+    views_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Отношения
+    author = relationship('User', back_populates='requests')
 
 
 class Comment(Base):
-    """Комментарии к постам"""
-    __tablename__ = "comments"
+    __tablename__ = 'comments'
     
     id = Column(Integer, primary_key=True, index=True)
-    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
-    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    text = Column(Text, nullable=False)
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False)
+    author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    body = Column(Text, nullable=False)
+    
+    # АНОНИМНОСТЬ (НОВОЕ)
+    is_anonymous = Column(Boolean, default=False)
+    anonymous_index = Column(Integer, nullable=True)  # Аноним1, Аноним2...
     is_deleted = Column(Boolean, default=False)
     is_edited = Column(Boolean, default=False)
-    likes = Column(Integer, default=0)
-    parent_id = Column(Integer, ForeignKey("comments.id"), nullable=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, onupdate=func.now())
+    updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
     
-    # Relationships
-    post = relationship("Post", back_populates="comments")
-    author = relationship("User", back_populates="comments")
-    replies = relationship("Comment", backref="parent", remote_side=[id])
-
-class CommentReport(Base):
-    """Жалобы на комментарии"""
-    __tablename__ = "comment_reports"
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
-    id = Column(Integer, primary_key=True, index=True)
-    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
-    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    reason = Column(String(50), nullable=False)  # spam, abuse, inappropriate
-    description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=func.now())
-    
-    __table_args__ = (
-        UniqueConstraint('reporter_id', 'comment_id', name='unique_user_comment_report'),
-    )
+    # Отношения
+    post = relationship('Post', back_populates='comments')
+    author = relationship('User', back_populates='comments')
 
-class PostLike(Base):
-    """Лайки постов (связь многие ко многим)"""
-    __tablename__ = "post_likes"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # Уникальность: один пользователь = один лайк на пост
-    __table_args__ = (
-        UniqueConstraint('user_id', 'post_id', name='unique_user_post_like'),
-    )
-
-class CommentLike(Base):
-    """Лайки комментариев (связь многие ко многим)"""
-    __tablename__ = "comment_likes"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Уникальность: один пользователь = один лайк на комментарий
-    __table_args__ = (
-        UniqueConstraint('user_id', 'comment_id', name='unique_user_comment_like'),
-    )
-
-# ===== DATING MODELS =====
 
 class Like(Base):
-    """Лайки для знакомств"""
-    __tablename__ = "likes"
+    """
+    Лайки для знакомств (dating режим)
+    """
+    __tablename__ = 'likes'
     
     id = Column(Integer, primary_key=True, index=True)
-    liker_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    liked_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    liker_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    liked_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
-    # Relationships
-    liker = relationship("User", foreign_keys=[liker_id], backref="given_likes")
-    liked = relationship("User", foreign_keys=[liked_id], backref="received_likes")
+    # Отношения
+    liker = relationship('User', foreign_keys=[liker_id], back_populates='likes_given')
+    liked = relationship('User', foreign_keys=[liked_id], back_populates='likes_received')
     
-    # Constraints
+    # Ограничения
     __table_args__ = (
-        UniqueConstraint('liker_id', 'liked_id', name='unique_user_like'),
-        CheckConstraint('liker_id != liked_id', name='check_no_self_like'),
+        UniqueConstraint('liker_id', 'liked_id', name='unique_like'),
+        CheckConstraint('liker_id != liked_id', name='no_self_like'),
     )
 
 
 class Match(Base):
-    """Матчи (взаимные лайки)"""
-    __tablename__ = "matches"
+    """
+    Матчи для знакомств (взаимные лайки)
+    """
+    __tablename__ = 'matches'
     
     id = Column(Integer, primary_key=True, index=True)
-    user_a_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    user_b_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    matched_at = Column(DateTime, default=datetime.utcnow)
+    user_a_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_b_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    matched_at = Column(DateTime, default=datetime.utcnow, index=True)
     
-    # Relationships
-    user_a = relationship("User", foreign_keys=[user_a_id])
-    user_b = relationship("User", foreign_keys=[user_b_id])
+    # Отношения
+    user_a = relationship('User', foreign_keys=[user_a_id])
+    user_b = relationship('User', foreign_keys=[user_b_id])
     
-    # Constraints
+    # Ограничения (user_a_id всегда меньше user_b_id для нормализации)
     __table_args__ = (
         UniqueConstraint('user_a_id', 'user_b_id', name='unique_match'),
-        CheckConstraint('user_a_id < user_b_id', name='check_user_order'),
+        CheckConstraint('user_a_id < user_b_id', name='ordered_match'),
     )

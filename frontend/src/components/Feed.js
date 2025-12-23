@@ -6,21 +6,23 @@ import { useStore } from '../store';
 function Feed() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState('all'); // 'all' | 'news' | 'events' | 'confessions' | 'lost_found'
   const { feedMode, setViewPostId, viewPostId } = useStore();
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getPosts({ 
-        category: feedMode === 'global' ? null : feedMode 
+        category: activeCategory === 'all' ? null : activeCategory
       });
-      setPosts(data.items);
+      setPosts(data.items || []);
     } catch (error) {
       console.error('Error loading posts:', error);
+      setPosts([]);
     } finally {
       setLoading(false);
     }
-  }, [feedMode]);
+  }, [activeCategory]);
 
   useEffect(() => {
     loadPosts();
@@ -35,6 +37,10 @@ function Feed() {
 
   const handlePostClick = (postId) => {
     setViewPostId(postId);
+  };
+
+  const handleCategoryChange = (category) => {
+    setActiveCategory(category);
   };
 
   if (loading) {
@@ -53,11 +59,33 @@ function Feed() {
         <p style={styles.subtitle}>Студенческая соцсеть</p>
       </div>
 
-      {/* Табы фильтров */}
+      {/* Табы категорий */}
       <div style={styles.tabs}>
-        <Tab label="Все" active={feedMode === 'global'} />
-        <Tab label="Мой вуз" active={feedMode === 'my_uni'} />
-        <Tab label="Уникальное" active={feedMode === 'unique'} />
+        <Tab 
+          label="Все" 
+          active={activeCategory === 'all'}
+          onClick={() => handleCategoryChange('all')}
+        />
+        <Tab 
+          label="📰 Новости" 
+          active={activeCategory === 'news'}
+          onClick={() => handleCategoryChange('news')}
+        />
+        <Tab 
+          label="🎉 События" 
+          active={activeCategory === 'events'}
+          onClick={() => handleCategoryChange('events')}
+        />
+        <Tab 
+          label="💭 Признания" 
+          active={activeCategory === 'confessions'}
+          onClick={() => handleCategoryChange('confessions')}
+        />
+        <Tab 
+          label="🔍 Находки" 
+          active={activeCategory === 'lost_found'}
+          onClick={() => handleCategoryChange('lost_found')}
+        />
       </div>
 
       {/* Список постов */}
@@ -81,9 +109,10 @@ function Feed() {
   );
 }
 
-function Tab({ label, active }) {
+function Tab({ label, active, onClick }) {
   return (
     <button
+      onClick={onClick}
       style={{
         ...styles.tab,
         backgroundColor: active ? '#8774e1' : 'transparent',

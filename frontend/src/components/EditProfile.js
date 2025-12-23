@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
 import { updateUserProfile, getCurrentUser } from '../api';
+import { Z_EDIT_PROFILE } from '../constants/zIndex';
 
 // TODO: перелопатить логику "возможности редактирования КРИТИЧЕСКИХ полей"
 
@@ -399,7 +400,7 @@ const styles = {
     position: 'fixed',
     inset: 0,
     backgroundColor: '#121212',
-    zIndex: 300,
+    zIndex: Z_EDIT_PROFILE,
     overflowY: 'auto'
   },
   container: {

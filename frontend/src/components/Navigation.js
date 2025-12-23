@@ -3,29 +3,38 @@ import { Home, Search, PlusCircle, User, Users } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
 import DatingFeed from './dating/DatingFeed';
+import { Z_NAVIGATION } from '../constants/zIndex';
 
 function Navigation() {
-  const { activeTab, setActiveTab, setShowCreateModal } = useStore();
+  const { activeTab, setActiveTab, setShowCreateModal, isRegistered, setShowAuthModal } = useStore();
   
   const tabs = [
     { id: 'feed', icon: Home, label: 'Главная' },
     { id: 'search', icon: Search, label: 'Поиск' },
-    { id: 'people', icon: Users, label: 'Люди' },  // ← НОВЫЙ ТАБ
+    { id: 'people', icon: Users, label: 'Люди' },
     { id: 'create', icon: PlusCircle, label: 'Создать' },
     { id: 'profile', icon: User, label: 'Профиль' },
   ];
 
+
   const handleTabClick = (tabId) => {
     hapticFeedback('light');
     
+    // Проверка регистрации для защищенных разделов
+    if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people')) {
+      setShowAuthModal(true);
+      return;
+    }
+    
     // Если кликнули на "создать" - открываем модалку
     if (tabId === 'create') {
-      setShowCreateModal(true); // ИСПРАВЛЕНО
+      setShowCreateModal(true);
       return;
     }
     
     setActiveTab(tabId);
   };
+
 
   return (
     <nav style={styles.nav}>
@@ -33,6 +42,7 @@ function Navigation() {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
         const isCreateButton = tab.id === 'create';
+
 
         // Центральная кнопка создания
         if (isCreateButton) {
@@ -47,6 +57,7 @@ function Navigation() {
             </div>
           );
         }
+
 
         // Обычные кнопки навигации
         return (
@@ -67,6 +78,7 @@ function Navigation() {
   );
 }
 
+
 const styles = {
   nav: {
     position: 'fixed',
@@ -80,7 +92,7 @@ const styles = {
     justifyContent: 'space-around',
     alignItems: 'center',
     paddingBottom: 'env(safe-area-inset-bottom)',
-    zIndex: 1
+    zIndex: Z_NAVIGATION
   },
   button: {
     display: 'flex',
@@ -120,5 +132,6 @@ const styles = {
     transition: 'transform 0.2s'
   }
 };
+
 
 export default Navigation;

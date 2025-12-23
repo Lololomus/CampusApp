@@ -7,21 +7,19 @@ const API_URL = 'http://localhost:8000';
 export const useStore = create(
   persist(
     (set) => ({
-      // Auth state
+      // ===== AUTH STATE =====
       isRegistered: false,
       user: {},
       setUser: (user) => set({ user, isRegistered: true }),
       logout: () => set({ user: {}, isRegistered: false }),
 
-
-      // Navigation state
-      activeTab: 'feed',
-      feedMode: 'global',
+      // ===== NAVIGATION STATE =====
+      activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile'
+      feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
 
-
-      // Modal states
+      // ===== MODAL STATES =====
       showAuthModal: false,
       showCreateModal: false,
       viewPostId: null,
@@ -31,13 +29,11 @@ export const useStore = create(
       setViewPostId: (id) => set({ viewPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
-
       // My posts screen
       showUserPosts: false,
       setShowUserPosts: (show) => set({ showUserPosts: show }),
 
-
-      // Onboarding state
+      // ===== ONBOARDING STATE =====
       onboardingStep: 0,
       onboardingData: {},
       setOnboardingStep: (step) => set({ onboardingStep: step }),
@@ -45,26 +41,33 @@ export const useStore = create(
         onboardingData: { ...state.onboardingData, ...data }
       })),
 
-
-      // Posts state (НЕ СОХРАНЯЕМ В LOCALSTORAGE!)
+      // ===== POSTS STATE (НЕ СОХРАНЯЕМ В LOCALSTORAGE!) =====
       posts: [],
       setPosts: (posts) => set({ posts }),
       addNewPost: (newPost) => set((state) => ({
         posts: [newPost, ...state.posts]
       })),
-
-
       updatePost: (postId, updates) => set((state) => ({
-        posts: state.posts.map(p => 
+        posts: state.posts.map(p =>
           p.id === postId ? { ...p, ...updates } : p
         )
       })),
 
+      // ===== REQUESTS STATE (НОВОЕ) =====
+      myRequests: [],
+      setMyRequests: (requests) => set({ myRequests: requests }),
+      addNewRequest: (newRequest) => set((state) => ({
+        myRequests: [newRequest, ...state.myRequests]
+      })),
+      removeRequest: (requestId) => set((state) => ({
+        myRequests: state.myRequests.filter(r => r.id !== requestId)
+      })),
 
       // ===== DATING STATE =====
       datingMode: 'dating', // 'dating' | 'study' | 'help' | 'hangout'
       setDatingMode: (mode) => set({ datingMode: mode }),
 
+      // Профили (карточки)
       currentProfile: null,
       profilesQueue: [],
       setCurrentProfile: (profile) => set({ currentProfile: profile }),
@@ -93,34 +96,40 @@ export const useStore = create(
       myMatches: [],
       setMyMatches: (matches) => set({ myMatches: matches }),
 
-      // Modal states
+      // Dating Modal states
       showLikesModal: false,
       showMatchModal: false,
       matchedUser: null,
-      showResponseModal: false,
+      showResponseModal: false, // Модалка для отклика на request
+      currentRequestForResponse: null, // Запрос на который откликаемся
+      
       setShowLikesModal: (show) => set({ showLikesModal: show }),
       setShowMatchModal: (show, user = null) => set({
         showMatchModal: show,
         matchedUser: user,
       }),
-      setShowResponseModal: (show) => set({ showResponseModal: show }),
+      setShowResponseModal: (show, request = null) => set({ 
+        showResponseModal: show,
+        currentRequestForResponse: request 
+      }),
 
       // Stats
       likesCount: 0,
+      matchesCount: 0,
       responsesCount: 0,
       updateDatingStats: (stats) => set({
         likesCount: stats.likes_count || 0,
+        matchesCount: stats.matches_count || 0,
         responsesCount: stats.responses_count || 0,
       }),
 
-
-      // Actions
+      // ===== ACTIONS =====
+      
       startRegistration: () => set({
         showAuthModal: false,
         onboardingStep: 1,
         onboardingData: {}
       }),
-
 
       finishRegistration: async (data) => {
         try {
@@ -128,10 +137,11 @@ export const useStore = create(
             ...useStore.getState().onboardingData,
             ...data
           };
+          
           console.log('📤 Отправляем данные:', fullData);
           const user = await registerUser(fullData);
           console.log('✅ Регистрация успешна:', user);
-          
+
           set({
             user: user,
             isRegistered: true,
@@ -145,6 +155,7 @@ export const useStore = create(
         }
       },
     }),
+
     {
       name: 'campus-storage',
       partialize: (state) => ({

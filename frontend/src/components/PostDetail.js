@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical, MapPin, Calendar, Clock } from 'lucide-react';
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment } from '../api';
 import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
@@ -290,25 +290,42 @@ function PostDetail() {
 
   const getCategoryColor = (category) => {
     const colors = {
-      'study': '#3b82f6',
-      'help': '#10b981',
-      'hangout': '#f59e0b',
-      'dating': '#ec4899',
+      'news': '#3b82f6',
+      'events': '#f59e0b',
+      'confessions': '#ec4899',
+      'lost_found': '#10b981',
     };
     return colors[category] || '#666';
   };
 
   const getCategoryLabel = (category) => {
     const labels = {
-      'study': 'Учёба',
-      'help': 'Помощь',
-      'hangout': 'Движ',
-      'dating': 'Знакомства',
+      'news': '📰 Новости',
+      'events': '🎉 События',
+      'confessions': '💭 Признания',
+      'lost_found': '🔍 Находки',
     };
     return labels[category] || category;
   };
 
+  const formatEventDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const options = { 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    return date.toLocaleDateString('ru-RU', options);
+  };
+
   const commentTree = buildCommentTree(comments);
+
+  // Проверка анонимности
+  const isAnonymous = post.is_anonymous === true;
+  const displayAuthorName = isAnonymous ? 'Аноним' : (typeof post.author === 'object' ? post.author.name : post.author);
 
   return (
     <div style={styles.container}>
@@ -324,16 +341,21 @@ function PostDetail() {
       <div style={styles.content}>
         {/* Author Section */}
         <div style={styles.authorSection}>
-          <div style={styles.avatar}>
-            {typeof post.author === 'object' ? post.author.name[0] : post.author?.[0] || '?'}
+          <div style={{
+            ...styles.avatar,
+            backgroundColor: isAnonymous ? '#666' : '#8774e1'
+          }}>
+            {isAnonymous ? '?' : (typeof post.author === 'object' ? post.author.name[0] : post.author?.[0] || '?')}
           </div>
           <div style={styles.authorInfo}>
             <div style={styles.authorName}>
-              {typeof post.author === 'object' ? post.author.name : post.author}
+              {displayAuthorName}
             </div>
-            <div style={styles.authorMeta}>
-              {post.university || post.uni} • {post.institute} • {post.course} курс
-            </div>
+            {!isAnonymous && (
+              <div style={styles.authorMeta}>
+                {post.university || post.uni} • {post.institute} • {post.course} курс
+              </div>
+            )}
             <div style={styles.time}>{post.time}</div>
           </div>
         </div>
@@ -347,11 +369,56 @@ function PostDetail() {
           }}
         >
           {getCategoryLabel(post.category)}
+          {post.category === 'news' && post.is_important && (
+            <span style={styles.importantBadge}>⭐ Важное</span>
+          )}
         </div>
 
         {/* Title & Body */}
         <h1 style={styles.title}>{post.title}</h1>
         <p style={styles.body}>{post.body}</p>
+
+        {/* LOST & FOUND дополнительные поля */}
+        {post.category === 'lost_found' && (
+          <div style={styles.additionalInfo}>
+            <div style={styles.infoRow}>
+              <span style={styles.infoLabel}>
+                {post.lost_or_found === 'lost' ? '😢 Потеряно' : '🎉 Найдено'}:
+              </span>
+              <span style={styles.infoValue}>{post.item_description}</span>
+            </div>
+            {post.location && (
+              <div style={styles.infoRow}>
+                <MapPin size={16} style={{ color: '#10b981' }} />
+                <span style={styles.infoValue}>{post.location}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* EVENTS дополнительные поля */}
+        {post.category === 'events' && (
+          <div style={styles.additionalInfo}>
+            {post.event_name && (
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>Событие:</span>
+                <span style={styles.infoValue}>{post.event_name}</span>
+              </div>
+            )}
+            {post.event_date && (
+              <div style={styles.infoRow}>
+                <Calendar size={16} style={{ color: '#f59e0b' }} />
+                <span style={styles.infoValue}>{formatEventDate(post.event_date)}</span>
+              </div>
+            )}
+            {post.event_location && (
+              <div style={styles.infoRow}>
+                <MapPin size={16} style={{ color: '#f59e0b' }} />
+                <span style={styles.infoValue}>{post.event_location}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tags */}
         {post.tags && post.tags.length > 0 && (
@@ -426,7 +493,7 @@ function PostDetail() {
         replyTo={replyTo}
         replyToName={replyToName}
         onCancelReply={() => setReplyTo(null)}
-        postAuthorName={typeof post.author === 'object' ? post.author.name : post.author || 'автора'}
+        postAuthorName={displayAuthorName}
       />
 
       {/* Report Modal */}
@@ -699,12 +766,21 @@ const styles = {
     marginTop: '4px',
   },
   category: {
-    display: 'inline-block',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
     padding: '6px 12px',
     borderRadius: '8px',
     fontSize: '13px',
     fontWeight: '600',
     marginBottom: '16px',
+  },
+  importantBadge: {
+    fontSize: '12px',
+    padding: '2px 8px',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    marginLeft: '4px',
   },
   title: {
     fontSize: '22px',
@@ -718,6 +794,29 @@ const styles = {
     color: '#ccc',
     lineHeight: 1.6,
     marginBottom: '16px',
+  },
+  additionalInfo: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: '12px',
+    padding: '12px 16px',
+    marginBottom: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  infoRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '14px',
+  },
+  infoLabel: {
+    color: '#999',
+    fontWeight: '600',
+  },
+  infoValue: {
+    color: '#fff',
+    fontWeight: '500',
   },
   tags: {
     display: 'flex',

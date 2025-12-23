@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Send, Check } from 'lucide-react';
 import { useStore } from '../../store';
-import { createResponse } from '../../api';
+import { respondToRequest } from '../../api';  // ← ИЗМЕНЕНО
 
 function ResponseModal({ profile }) {
   const { setShowResponseModal, removeCurrentProfile } = useStore();
@@ -17,7 +17,7 @@ function ResponseModal({ profile }) {
   };
 
   const handleSend = async () => {
-    if (!text.trim() || !profile?.active_post) return;
+    if (!text.trim() || !profile?.active_request) return;  // ← ИЗМЕНЕНО
 
     if (window.Telegram?.WebApp?.HapticFeedback) {
       window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
@@ -26,8 +26,8 @@ function ResponseModal({ profile }) {
     setIsSending(true);
 
     try {
-      // Отправляем отклик на пост
-      await createResponse(profile.active_post.id, text);
+      // Отправляем отклик на request
+      await respondToRequest(profile.active_request.id, text);  // ← ИЗМЕНЕНО
 
       // Показываем галочку
       setSent(true);
@@ -64,7 +64,7 @@ function ResponseModal({ profile }) {
         {/* Info */}
         <div style={styles.info}>
           <p style={styles.infoText}>
-            <strong>{profile.name}</strong> {profile.active_post?.title}
+            <strong>{profile.name}</strong> {profile.active_request?.title}  {/* ← ИЗМЕНЕНО */}
           </p>
         </div>
 
@@ -133,6 +133,10 @@ function ResponseModal({ profile }) {
           0% { transform: scale(0) rotate(-45deg); }
           50% { transform: scale(1.2) rotate(0deg); }
           100% { transform: scale(1) rotate(0deg); }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </>

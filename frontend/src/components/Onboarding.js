@@ -395,7 +395,7 @@ const styles = {
     position: 'fixed',
     inset: 0,
     backgroundColor: '#121212',
-    zIndex: 200,
+    zIndex: 3000,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

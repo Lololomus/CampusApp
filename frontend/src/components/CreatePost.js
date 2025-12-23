@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Hash, Plus, Check, AlertCircle } from 'lucide-react';
+import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar } from 'lucide-react';
 import { useStore } from '../store';
 import { createPost } from '../api';
 import { hapticFeedback } from '../utils/telegram';
@@ -8,7 +8,7 @@ function CreatePost() {
   const { setShowCreateModal, addNewPost } = useStore();
   
   // Состояние формы
-  const [category, setCategory] = useState('study');
+  const [category, setCategory] = useState('news');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [tagInput, setTagInput] = useState('');
@@ -21,6 +21,16 @@ function CreatePost() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [startDrawing, setStartDrawing] = useState(false);
   const [checkDrawn, setCheckDrawn] = useState(false);
+  
+  // Новые поля для категорий
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [lostOrFound, setLostOrFound] = useState('lost'); // 'lost' | 'found'
+  const [itemDescription, setItemDescription] = useState('');
+  const [location, setLocation] = useState('');
+  const [eventName, setEventName] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [isImportant, setIsImportant] = useState(false);
   
   // Refs
   const titleInputRef = useRef(null);
@@ -35,6 +45,21 @@ function CreatePost() {
     }
   }, []);
 
+  // Сброс доп. полей при смене категории
+  useEffect(() => {
+    setItemDescription('');
+    setLocation('');
+    setEventName('');
+    setEventDate('');
+    setEventLocation('');
+    setIsImportant(false);
+    
+    // Для confessions принудительная анонимность
+    if (category === 'confessions') {
+      setIsAnonymous(true);
+    }
+  }, [category]);
+
   // Проверка есть ли контент в форме
   const hasContent = () => {
     return title.trim().length >= 3 || body.trim().length >= 10;
@@ -42,7 +67,19 @@ function CreatePost() {
 
   // Валидация формы
   const isFormValid = () => {
-    return title.trim().length >= 3 && body.trim().length >= 10;
+    const basicValid = title.trim().length >= 3 && body.trim().length >= 10;
+    
+    // Доп. валидация для lost_found
+    if (category === 'lost_found') {
+      return basicValid && itemDescription.trim().length >= 5 && location.trim().length >= 3;
+    }
+    
+    // Доп. валидация для events
+    if (category === 'events') {
+      return basicValid && eventName.trim().length >= 3 && eventDate && eventLocation.trim().length >= 3;
+    }
+    
+    return basicValid;
   };
 
   // Обработка добавления тега
@@ -103,7 +140,14 @@ function CreatePost() {
     // Валидация
     if (!isFormValid()) {
       hapticFeedback('error');
-      setError('Заполните заголовок (мин. 3 символа) и описание (мин. 10 символов)');
+      
+      if (category === 'lost_found') {
+        setError('Заполните все поля: заголовок, описание, что потеряли/нашли, и где');
+      } else if (category === 'events') {
+        setError('Заполните все поля: заголовок, описание, название события, дату и место');
+      } else {
+        setError('Заполните заголовок (мин. 3 символа) и описание (мин. 10 символов)');
+      }
       return;
     }
 
@@ -111,12 +155,35 @@ function CreatePost() {
     setIsSubmitting(true);
 
     try {
-      const newPost = await createPost({
+      const postData = {
         category,
         title: title.trim(),
         body: body.trim(),
-        tags
-      });
+        tags,
+        is_anonymous: isAnonymous,
+        enable_anonymous_comments: false
+      };
+
+      // Доп. поля для lost_found
+      if (category === 'lost_found') {
+        postData.lost_or_found = lostOrFound;
+        postData.item_description = itemDescription.trim();
+        postData.location = location.trim();
+      }
+
+      // Доп. поля для events
+      if (category === 'events') {
+        postData.event_name = eventName.trim();
+        postData.event_date = new Date(eventDate).toISOString();
+        postData.event_location = eventLocation.trim();
+      }
+
+      // Доп. поля для news
+      if (category === 'news') {
+        postData.is_important = isImportant;
+      }
+
+      const newPost = await createPost(postData);
 
       addNewPost(newPost);
       hapticFeedback('success');
@@ -150,12 +217,12 @@ function CreatePost() {
     }
   };
 
-  // Категории
+  // Категории (ОБНОВЛЕНЫ)
   const categories = [
-    { value: 'study', label: '📚 Учёба', color: '#3b82f6' },
-    { value: 'help', label: '🤝 Помощь', color: '#10b981' },
-    { value: 'hangout', label: '🎉 Движ', color: '#f59e0b' },
-    { value: 'dating', label: '💕 Знакомства', color: '#ec4899' }
+    { value: 'news', label: '📰 Новости', color: '#3b82f6' },
+    { value: 'events', label: '🎉 События', color: '#f59e0b' },
+    { value: 'confessions', label: '💭 Признания', color: '#ec4899' },
+    { value: 'lost_found', label: '🔍 Находки', color: '#10b981' }
   ];
 
   // Проверка валидности полей
@@ -241,6 +308,32 @@ function CreatePost() {
               </div>
             </div>
 
+            {/* Чекбокс анонимности (кроме confessions) */}
+            {category !== 'confessions' && (
+              <div style={styles.section}>
+                <label style={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={isAnonymous}
+                    onChange={(e) => {
+                      setIsAnonymous(e.target.checked);
+                      hapticFeedback('light');
+                    }}
+                    style={styles.checkbox}
+                    disabled={isSubmitting}
+                  />
+                  <span style={styles.checkboxText}>Опубликовать анонимно</span>
+                </label>
+              </div>
+            )}
+
+            {/* Confessions hint */}
+            {category === 'confessions' && (
+              <div style={styles.infoBox}>
+                💭 Все признания публикуются анонимно
+              </div>
+            )}
+
             {/* Заголовок */}
             <div style={styles.section}>
               <label style={styles.label}>
@@ -299,6 +392,181 @@ function CreatePost() {
                 )}
               </div>
             </div>
+
+            {/* LOST & FOUND дополнительные поля */}
+            {category === 'lost_found' && (
+              <>
+                {/* Lost or Found toggle */}
+                <div style={styles.section}>
+                  <label style={styles.label}>Что случилось?</label>
+                  <div style={styles.toggleWrapper}>
+                    <button
+                      onClick={() => {
+                        setLostOrFound('lost');
+                        hapticFeedback('light');
+                      }}
+                      style={
+                        lostOrFound === 'lost'
+                          ? { ...styles.toggleButton, ...styles.toggleButtonActive }
+                          : styles.toggleButton
+                      }
+                      disabled={isSubmitting}
+                    >
+                      😢 Потерял
+                    </button>
+                    <button
+                      onClick={() => {
+                        setLostOrFound('found');
+                        hapticFeedback('light');
+                      }}
+                      style={
+                        lostOrFound === 'found'
+                          ? { ...styles.toggleButton, ...styles.toggleButtonActive }
+                          : styles.toggleButton
+                      }
+                      disabled={isSubmitting}
+                    >
+                      🎉 Нашёл
+                    </button>
+                  </div>
+                </div>
+
+                {/* Описание предмета */}
+                <div style={styles.section}>
+                  <label style={styles.label}>
+                    Что именно?*
+                    <span style={styles.charCount}>{itemDescription.length}/100</span>
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Например: Чёрный рюкзак Adidas"
+                    value={itemDescription}
+                    onChange={(e) => setItemDescription(e.target.value)}
+                    style={{
+                      ...styles.input,
+                      borderColor: attemptedSubmit && itemDescription.trim().length < 5 ? '#ef4444' : 
+                                   itemDescription.length > 0 ? '#667eea' : '#2a2a2a'
+                    }}
+                    maxLength={100}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {/* Локация */}
+                <div style={styles.section}>
+                  <label style={styles.label}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <MapPin size={14} />
+                      Где?*
+                    </span>
+                    <span style={styles.charCount}>{location.length}/100</span>
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Например: Главный корпус, 3 этаж"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    style={{
+                      ...styles.input,
+                      borderColor: attemptedSubmit && location.trim().length < 3 ? '#ef4444' : 
+                                   location.length > 0 ? '#667eea' : '#2a2a2a'
+                    }}
+                    maxLength={100}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* EVENTS дополнительные поля */}
+            {category === 'events' && (
+              <>
+                {/* Название события */}
+                <div style={styles.section}>
+                  <label style={styles.label}>
+                    Название события*
+                    <span style={styles.charCount}>{eventName.length}/100</span>
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Например: Хакатон StartupHub 2025"
+                    value={eventName}
+                    onChange={(e) => setEventName(e.target.value)}
+                    style={{
+                      ...styles.input,
+                      borderColor: attemptedSubmit && eventName.trim().length < 3 ? '#ef4444' : 
+                                   eventName.length > 0 ? '#667eea' : '#2a2a2a'
+                    }}
+                    maxLength={100}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {/* Дата */}
+                <div style={styles.section}>
+                  <label style={styles.label}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={14} />
+                      Дата и время*
+                    </span>
+                  </label>
+                  <input 
+                    type="datetime-local"
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                    style={{
+                      ...styles.input,
+                      borderColor: attemptedSubmit && !eventDate ? '#ef4444' : 
+                                   eventDate ? '#667eea' : '#2a2a2a'
+                    }}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {/* Место */}
+                <div style={styles.section}>
+                  <label style={styles.label}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <MapPin size={14} />
+                      Место проведения*
+                    </span>
+                    <span style={styles.charCount}>{eventLocation.length}/100</span>
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Например: Актовый зал, главный корпус"
+                    value={eventLocation}
+                    onChange={(e) => setEventLocation(e.target.value)}
+                    style={{
+                      ...styles.input,
+                      borderColor: attemptedSubmit && eventLocation.trim().length < 3 ? '#ef4444' : 
+                                   eventLocation.length > 0 ? '#667eea' : '#2a2a2a'
+                    }}
+                    maxLength={100}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* NEWS дополнительные поля */}
+            {category === 'news' && (
+              <div style={styles.section}>
+                <label style={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={isImportant}
+                    onChange={(e) => {
+                      setIsImportant(e.target.checked);
+                      hapticFeedback('light');
+                    }}
+                    style={styles.checkbox}
+                    disabled={isSubmitting}
+                  />
+                  <span style={styles.checkboxText}>⭐ Важная новость (будет закреплена)</span>
+                </label>
+              </div>
+            )}
 
             {/* Теги */}
             <div style={styles.section}>
@@ -574,7 +842,7 @@ const styles = {
   modal: {
     width: '100%',
     maxWidth: '100%',
-    height: '80vh',
+    height: '85vh',
     background: '#1a1a1a',
     borderRadius: '24px 24px 0 0',
     display: 'flex',
@@ -676,6 +944,54 @@ const styles = {
     transition: 'all 0.2s ease',
     whiteSpace: 'nowrap',
     flexShrink: 0
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    cursor: 'pointer'
+  },
+  checkbox: {
+    width: '20px',
+    height: '20px',
+    cursor: 'pointer',
+    accentColor: '#667eea'
+  },
+  checkboxText: {
+    fontSize: '15px',
+    color: '#fff',
+    fontWeight: '500'
+  },
+  infoBox: {
+    padding: '12px 16px',
+    borderRadius: '12px',
+    background: 'rgba(102, 126, 234, 0.1)',
+    border: '1px solid rgba(102, 126, 234, 0.3)',
+    color: '#a0a0a0',
+    fontSize: '14px',
+    marginBottom: '20px'
+  },
+  toggleWrapper: {
+    display: 'flex',
+    gap: '12px'
+  },
+  toggleButton: {
+    flex: 1,
+    padding: '12px 16px',
+    borderRadius: '12px',
+    border: '2px solid #2a2a2a',
+    background: '#252525',
+    color: '#999',
+    fontSize: '15px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease'
+  },
+  toggleButtonActive: {
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    color: '#fff',
+    border: 'none',
+    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)'
   },
   inputWrapper: {
     position: 'relative'

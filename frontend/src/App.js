@@ -31,26 +31,24 @@ function App() {
 
 
   const renderContent = () => {
-    // Если открыт детальный просмотр поста – он всегда главный
+    // Если открыт детальный просмотр поста
     if (viewPostId) {
       return <PostDetail />;
     }
-
 
     // Экран "Мои посты"
     if (showUserPosts) {
       return <UserPosts />;
     }
 
-
-    // Остальные экраны...
+    // Остальные экраны
     switch (activeTab) {
       case 'feed':
         return <Feed />;
       case 'search':
         return <Search />;
-      case 'people':           // ← ДОБАВИТЬ
-        return <DatingFeed />;  // ← ДОБАВИТЬ
+      case 'people':
+        return <DatingFeed />;
       case 'profile':
         return <Profile />;
       default:
@@ -58,7 +56,7 @@ function App() {
     }
   };
   
-  // если идёт онбординг - показываем только его
+  // Если идёт онбординг - показываем только его
   if (onboardingStep > 0) {
     return (
       <div style={styles.app}>
@@ -67,11 +65,10 @@ function App() {
     );
   }
 
-
   return (
     <div style={styles.app}>
       {renderContent()}
-      {!viewPostId && !showUserPosts && <Navigation />}
+      <Navigation />
       
       {/* Модальные окна */}
       {showCreateModal && <CreatePost />}

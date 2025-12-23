@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Heart, Settings } from 'lucide-react';
 import { useStore } from '../../store';
-import { getDatingFeed, getPeopleWithPosts, likeUser, getDatingStats } from '../../api';
+import { getDatingFeed, getPeopleWithRequests, likeUser, getDatingStats } from '../../api';
 import ModeSelector from './ModeSelector';
 import ProfileCard from './ProfileCard';
 import LikesListModal from './LikesListModal';
@@ -130,7 +130,7 @@ const MOCK_STUDY_PROFILES = [
     institute: 'МСА',
     course: 2,
     interests: ['python', 'react'],
-    active_post: {
+    active_request: {
       id: 101,
       title: 'Помощь с React Hooks',
       body: 'Не могу разобраться с useEffect и useCallback. Кто может объяснить простым языком?',
@@ -150,7 +150,7 @@ const MOCK_STUDY_PROFILES = [
     institute: 'ФизТех',
     course: 2,
     interests: ['ML', 'python'],
-    active_post: {
+    active_request: {
       id: 102,
       title: 'Подготовка к LeetCode',
       body: 'Готовлюсь к собеседованиям в FAANG. Ищу напарника для мотивации!',
@@ -170,7 +170,7 @@ const MOCK_STUDY_PROFILES = [
     institute: 'ФизТех',
     course: 3,
     interests: ['gamedev', 'python'],
-    active_post: {
+    active_request: {
       id: 103,
       title: 'Курсовая по ML',
       body: 'Делаю проект по распознаванию образов. Нужен сокомандник!',
@@ -193,7 +193,7 @@ const MOCK_HELP_PROFILES = [
     institute: 'МСА',
     course: 3,
     interests: ['design', 'фото'],
-    active_post: {
+    active_request: {
       id: 201,
       title: 'Дизайн для проекта',
       body: 'Сделаю дизайн для вашего проекта БЕСПЛАТНО (для портфолио). UI/UX, лендинги.',
@@ -213,7 +213,7 @@ const MOCK_HELP_PROFILES = [
     institute: 'МСА',
     course: 3,
     interests: ['react', 'frontend'],
-    active_post: {
+    active_request: {
       id: 202,
       title: 'Репетитор по программированию',
       body: 'Python/JS/React. Помогу разобраться с курсовыми и учебными проектами.',
@@ -236,7 +236,7 @@ const MOCK_HANGOUT_PROFILES = [
     institute: 'МСА',
     course: 2,
     interests: ['футбол', 'спорт'],
-    active_post: {
+    active_request: {
       id: 301,
       title: 'Футбол в воскресенье',
       body: 'Собираем команду на стадион МГУ. Нужно 4 человека! Уровень любой.',
@@ -256,7 +256,7 @@ const MOCK_HANGOUT_PROFILES = [
     institute: 'МСА',
     course: 2,
     interests: ['music', 'rock'],
-    active_post: {
+    active_request: {
       id: 302,
       title: 'Настолки: Манчкин',
       body: 'Играем в Манчкин сегодня вечером в общаге. Приходите, весело!',
@@ -276,7 +276,7 @@ const MOCK_HANGOUT_PROFILES = [
     institute: 'ФизТех',
     course: 4,
     interests: ['startup', 'бизнес'],
-    active_post: {
+    active_request: {
       id: 303,
       title: 'Стартап митап',
       body: 'Обсуждаем бизнес-идеи и ищем сооснователей. Zoom встреча в пятницу.',
@@ -345,6 +345,7 @@ function DatingFeed() {
 
         // Выбираем моки в зависимости от режима
         if (datingMode === 'dating') {
+          console.log('🎭 Загружаем MOCK_DATING_PROFILES:', MOCK_DATING_PROFILES);
           profiles = MOCK_DATING_PROFILES;
         } else if (datingMode === 'study') {
           profiles = MOCK_STUDY_PROFILES;
@@ -361,7 +362,7 @@ function DatingFeed() {
         if (datingMode === 'dating') {
           profiles = await getDatingFeed(10, offset.current);
         } else {
-          const response = await getPeopleWithPosts(datingMode, 10, offset.current);
+          const response = await getPeopleWithRequests(datingMode, 10, offset.current);
           profiles = response.items || [];
           setHasMore(response.has_more);
         }

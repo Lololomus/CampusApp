@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Heart, MessageCircle, Eye } from 'lucide-react';
+import { Heart, MessageCircle, Eye, MapPin, Calendar } from 'lucide-react';
 import { hapticFeedback } from '../utils/telegram';
 import { likePost } from '../api';
-
 
 function PostCard({ post, onClick }) {
   const [isLiked, setIsLiked] = useState(post.is_liked || false);
@@ -21,49 +20,67 @@ function PostCard({ post, onClick }) {
     }
   };
 
-
   const getCategoryColor = (category) => {
     const colors = {
-      study: '#3b82f6',
-      help: '#10b981',
-      hangout: '#f59e0b',
-      dating: '#ec4899',
+      news: '#3b82f6',
+      events: '#f59e0b',
+      confessions: '#ec4899',
+      lost_found: '#10b981',
     };
     return colors[category] || '#666';
   };
 
-
   const getCategoryLabel = (category) => {
     const labels = {
-      study: 'Учёба',
-      help: 'Помощь',
-      hangout: 'Движ',
-      dating: 'Знакомства',
+      news: '📰 Новости',
+      events: '🎉 События',
+      confessions: '💭 Признания',
+      lost_found: '🔍 Находки',
     };
     return labels[category] || category;
   };
 
+  const formatEventDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const options = { 
+      day: 'numeric', 
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    return date.toLocaleDateString('ru-RU', options);
+  };
+
+  // Проверка анонимности
+  const isAnonymous = post.is_anonymous === true;
+  const displayAuthorName = isAnonymous ? 'Аноним' : (typeof post.author === 'object' ? post.author.name : post.author);
+  const displayAuthorAvatar = isAnonymous ? '?' : (typeof post.author === 'object' ? post.author.name : post.author)?.[0] || '?';
 
   return (
     <div style={styles.card} onClick={onClick}>
       {/* Шапка поста */}
       <div style={styles.header}>
         <div style={styles.authorInfo}>
-          <div style={styles.avatar}>
-            {(typeof post.author === 'object' ? post.author.name : post.author)?.[0] || '?'}
+          <div style={{
+            ...styles.avatar,
+            backgroundColor: isAnonymous ? '#666' : '#8774e1'
+          }}>
+            {displayAuthorAvatar}
           </div>
           <div>
             <div style={styles.author}>
-              {typeof post.author === 'object' ? post.author.name : post.author}
+              {displayAuthorName}
             </div>
-            <div style={styles.meta}>
-              {post.university || post.uni} · {post.institute} · {post.course} курс
-            </div>
+            {!isAnonymous && (
+              <div style={styles.meta}>
+                {post.university || post.uni} · {post.institute} · {post.course} курс
+              </div>
+            )}
           </div>
         </div>
         <div style={styles.time}>{post.time}</div>
       </div>
-
 
       {/* Категория */}
       <div
@@ -74,13 +91,40 @@ function PostCard({ post, onClick }) {
         }}
       >
         {getCategoryLabel(post.category)}
+        {post.category === 'news' && post.is_important && (
+          <span style={styles.importantBadge}>⭐</span>
+        )}
       </div>
-
 
       {/* Заголовок и текст */}
       <h3 style={styles.title}>{post.title}</h3>
       <p style={styles.body}>{post.body}</p>
 
+      {/* LOST & FOUND компактная инфа */}
+      {post.category === 'lost_found' && post.item_description && (
+        <div style={styles.extraInfo}>
+          <span style={styles.extraLabel}>
+            {post.lost_or_found === 'lost' ? '😢' : '🎉'} {post.item_description}
+          </span>
+          {post.location && (
+            <span style={styles.extraDetail}>
+              <MapPin size={12} /> {post.location}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* EVENTS компактная инфа */}
+      {post.category === 'events' && post.event_name && (
+        <div style={styles.extraInfo}>
+          <span style={styles.extraLabel}>{post.event_name}</span>
+          {post.event_date && (
+            <span style={styles.extraDetail}>
+              <Calendar size={12} /> {formatEventDate(post.event_date)}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Теги */}
       {post.tags && post.tags.length > 0 && (
@@ -92,7 +136,6 @@ function PostCard({ post, onClick }) {
           ))}
         </div>
       )}
-
 
       {/* Футер с действиями */}
       <div style={styles.footer}>
@@ -118,7 +161,6 @@ function PostCard({ post, onClick }) {
     </div>
   );
 }
-
 
 const styles = {
   card: {
@@ -168,12 +210,18 @@ const styles = {
     color: '#666',
   },
   category: {
-    display: 'inline-block',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
     padding: '4px 10px',
     borderRadius: '6px',
     fontSize: '12px',
     fontWeight: '600',
     marginBottom: '12px',
+  },
+  importantBadge: {
+    fontSize: '11px',
+    marginLeft: '2px',
   },
   title: {
     fontSize: '17px',
@@ -187,6 +235,27 @@ const styles = {
     color: '#ccc',
     lineHeight: '1.5',
     marginBottom: '12px',
+  },
+  extraInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    padding: '8px 12px',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: '8px',
+    marginBottom: '12px',
+  },
+  extraLabel: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#fff',
+  },
+  extraDetail: {
+    fontSize: '12px',
+    color: '#999',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
   },
   tags: {
     display: 'flex',
@@ -227,6 +296,5 @@ const styles = {
     marginLeft: 'auto',
   },
 };
-
 
 export default PostCard;

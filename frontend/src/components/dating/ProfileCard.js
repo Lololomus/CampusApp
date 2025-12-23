@@ -1,10 +1,13 @@
 import React from 'react';
 import { MapPin, GraduationCap, Calendar, Tag } from 'lucide-react';
 
+
 function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirection }) {
   if (!profile) return null;
 
+
   const isDatingMode = mode === 'dating';
+
 
   // Динамическая анимация в зависимости от direction
   let animationStyle = 'slideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
@@ -17,10 +20,12 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
     }
   }
 
+
   const cardStyle = {
     ...styles.card,
     animation: animationStyle,
   };
+
 
   return (
     <>
@@ -37,6 +42,7 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
           )}
         </div>
 
+
         {/* Контент */}
         <div style={styles.content}>
           {/* Имя и возраст */}
@@ -44,6 +50,7 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
             {profile.name}
             {profile.age && <span style={styles.age}>, {profile.age}</span>}
           </h2>
+
 
           {/* Информация */}
           <div style={styles.infoSection}>
@@ -67,6 +74,7 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
             )}
           </div>
 
+
           {/* РЕЖИМ ЗНАКОМСТВА */}
           {isDatingMode && (
             <>
@@ -76,6 +84,7 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
                   <p style={styles.bioText}>{profile.bio}</p>
                 </div>
               )}
+
 
               {/* Интересы */}
               {profile.interests && profile.interests.length > 0 && (
@@ -93,8 +102,9 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
             </>
           )}
 
-          {/* РЕЖИМЫ С ПОСТАМИ */}
-          {!isDatingMode && profile.active_post && (
+
+          {/* РЕЖИМЫ С ЗАПРОСАМИ */}
+          {!isDatingMode && profile.active_request && (
             <>
               {/* Блок "Ищет помощь/команду" */}
               <div style={styles.postSection}>
@@ -104,13 +114,13 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
                   {mode === 'hangout' && '🎉 Ищет компанию'}
                 </h3>
                 <div style={styles.postCard}>
-                  <h4 style={styles.postTitle}>{profile.active_post.title}</h4>
-                  <p style={styles.postBody}>{profile.active_post.body}</p>
+                  <h4 style={styles.postTitle}>{profile.active_request.title}</h4>
+                  <p style={styles.postBody}>{profile.active_request.body}</p>
                   
-                  {/* Теги поста */}
-                  {profile.active_post.tags && profile.active_post.tags.length > 0 && (
+                  {/* Теги запроса */}
+                  {profile.active_request.tags && profile.active_request.tags.length > 0 && (
                     <div style={styles.tags}>
-                      {profile.active_post.tags.map((tag, idx) => (
+                      {profile.active_request.tags.map((tag, idx) => (
                         <span key={idx} style={styles.tagColored}>
                           #{tag}
                         </span>
@@ -119,6 +129,7 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
                   )}
                 </div>
               </div>
+
 
               {/* Блок "Может помочь" */}
               {profile.interests && profile.interests.length > 0 && (
@@ -141,6 +152,7 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
   );
 }
 
+
 const keyframes = `
   @keyframes slideIn {
     from {
@@ -153,12 +165,14 @@ const keyframes = `
     }
   }
 
+
   @keyframes swipeLeft {
     to {
       opacity: 0;
       transform: translateX(-120%) rotate(-15deg);
     }
   }
+
 
   @keyframes swipeRight {
     to {
@@ -167,11 +181,13 @@ const keyframes = `
     }
   }
 
+
   @keyframes bounce {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.1); }
   }
 `;
+
 
 const styles = {
   card: {
@@ -212,6 +228,7 @@ const styles = {
     textTransform: 'uppercase',
   },
 
+
   // Маленький аватар (study/help/hangout)
   avatarContainerSmall: {
     width: '100%',
@@ -238,11 +255,13 @@ const styles = {
     textTransform: 'uppercase',
   },
 
+
   avatarImage: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
   },
+
 
   content: {
     flex: 1,
@@ -252,6 +271,7 @@ const styles = {
     flexDirection: 'column',
     gap: '16px',
   },
+
 
   name: {
     fontSize: '28px',
@@ -268,6 +288,7 @@ const styles = {
     color: '#aaa',
   },
 
+
   infoSection: {
     display: 'flex',
     flexDirection: 'column',
@@ -281,6 +302,7 @@ const styles = {
     fontSize: '15px',
   },
 
+
   bioSection: {
     marginTop: '8px',
   },
@@ -290,6 +312,7 @@ const styles = {
     lineHeight: '1.5',
     margin: 0,
   },
+
 
   section: {
     marginTop: '8px',
@@ -301,7 +324,8 @@ const styles = {
     marginBottom: '12px',
   },
 
-  // Блок с постом
+
+  // Блок с запросом
   postSection: {
     marginTop: '12px',
   },
@@ -332,6 +356,7 @@ const styles = {
     margin: 0,
   },
 
+
   tags: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -347,7 +372,7 @@ const styles = {
     color: '#8774e1',
     fontWeight: '500',
   },
-  // Цветные теги для постов
+  // Цветные теги для запросов
   tagColored: {
     padding: '6px 12px',
     backgroundColor: 'rgba(100, 200, 255, 0.1)',
@@ -358,5 +383,6 @@ const styles = {
     fontWeight: '500',
   },
 };
+
 
 export default ProfileCard;

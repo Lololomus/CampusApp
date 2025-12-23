@@ -2,108 +2,84 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from app import models, schemas, crud
+from app.database import get_db, init_db
+import json
 
-from app import models, schemas, crud, auth
-from app.database import get_db, init_db, engine
-
-# Создаём FastAPI приложение
 app = FastAPI(
     title="Campus App API",
-    description="Backend для студенческой социальной сети",
-    version="1.0.0"
+    description="Backend для социальной платформы университета",
+    version="2.0.0"
 )
 
-# CORS - разрешаем фронтенду обращаться к API
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В production поставь конкретный домен
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Создаём таблицы при запуске
+# Startup
 @app.on_event("startup")
 def startup_event():
     print("🚀 Запуск сервера...")
     init_db()
     print("✅ База данных готова!")
 
-# ===== ПРОВЕРКА РАБОТЫ =====
-
 @app.get("/")
 def root():
-    """Главная страница - проверка что API работает"""
-    return {
-        "message": "Campus App API работает! 🎉",
-        "docs": "/docs",
-        "version": "1.0.0"
-    }
+    return {"message": "Campus App API работает!", "version": "2.0.0"}
 
 @app.get("/health")
 def health_check():
-    """Проверка здоровья сервера"""
     return {"status": "ok"}
 
-# ===== AUTH ENDPOINTS =====
 
-@app.post("/auth/telegram", response_model=schemas.User)
-def auth_telegram(
-    auth_data: schemas.TelegramAuth,
-    db: Session = Depends(get_db)
-):
-    """
-    Авторизация через Telegram
-    Если пользователь новый - возвращает None (нужна регистрация)
-    """
-    # Проверяем существует ли пользователь
-    user = crud.get_user_by_telegram_id(db, auth_data.telegram_id)
+# ==================== AUTH ENDPOINTS ====================
+
+@app.post("/auth/telegram", response_model=schemas.UserResponse)
+def auth_telegram(telegram_id: int = Query(...), db: Session = Depends(get_db)):
+    """Авторизация через Telegram"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="Пользователь не найден. Нужна регистрация."
-        )
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
     return user
 
-@app.post("/auth/register", response_model=schemas.User)
-def register_user(
-    user_data: schemas.UserCreate,
-    db: Session = Depends(get_db)
-):
+
+@app.post("/auth/register", response_model=schemas.UserResponse)
+def register_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
     """Регистрация нового пользователя"""
-    # Проверяем что пользователь не существует
     existing_user = crud.get_user_by_telegram_id(db, user_data.telegram_id)
     if existing_user:
-        raise HTTPException(status_code=400, detail="Пользователь уже зарегистрирован")
-    
-    # Создаём пользователя
+        raise HTTPException(status_code=400, detail="Пользователь уже существует")
     return crud.create_user(db, user_data)
 
-# ===== USER ENDPOINTS =====
 
-@app.get("/users/me", response_model=schemas.User)
-def get_current_user(
-    telegram_id: int,
-    db: Session = Depends(get_db)
-):
-    """Получить данные текущего пользователя"""
+# ==================== USER ENDPOINTS ====================
+
+@app.get("/users/me", response_model=schemas.UserResponse)
+def get_current_user(telegram_id: int = Query(...), db: Session = Depends(get_db)):
+    """Получить текущего пользователя"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     return user
 
-@app.patch("/users/me", response_model=schemas.User)
+
+@app.patch("/users/me", response_model=schemas.UserResponse)
 def update_current_user(
-    telegram_id: int,
-    user_update: schemas.UserUpdate,
+    telegram_id: int = Query(...),
+    user_update: schemas.UserUpdate = Body(...),
     db: Session = Depends(get_db)
 ):
-    """Обновить профиль текущего пользователя"""
+    """Обновить данные пользователя"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Проверяем РЕАЛЬНО ЛИ меняются критичные поля (university, institute, course)
+    # Проверка cooldown для критических полей
     update_data = user_update.model_dump(exclude_unset=True)
     critical_fields = ['university', 'institute', 'course']
     changing_critical = any(
@@ -112,28 +88,25 @@ def update_current_user(
     )
     
     if changing_critical:
-        # Проверяем cooldown (30 дней)
         if not crud.can_edit_critical_fields(db, user.id):
             days_left = crud.get_cooldown_days_left(db, user.id)
             raise HTTPException(
                 status_code=403,
-                detail=f"Изменить можно через {days_left} дней"
+                detail=f"Можно изменить через {days_left} дней (cooldown 30 дней)"
             )
-
-    # Обновляем профиль
+    
     updated_user = crud.update_user(db, user.id, user_update)
-
-    # Если меняли критичные поля - обновляем timestamp ПОСЛЕ успешного сохранения
+    
     if changing_critical:
         from datetime import datetime
         updated_user.last_profile_edit = datetime.utcnow()
         db.commit()
-        db.refresh(updated_user)  # обновляем объект из БД
-
+        db.refresh(updated_user)
+    
     return updated_user
 
 
-@app.get("/users/{user_id}/posts", response_model=List[schemas.Post])
+@app.get("/users/{user_id}/posts", response_model=List[schemas.PostResponse])
 def get_user_posts_endpoint(
     user_id: int,
     limit: int = Query(5, ge=1, le=50),
@@ -142,34 +115,62 @@ def get_user_posts_endpoint(
     db: Session = Depends(get_db)
 ):
     """Получить посты пользователя"""
-    # Проверяем что запрашивающий пользователь существует
     requesting_user = crud.get_user_by_telegram_id(db, telegram_id)
     if not requesting_user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="Вы не авторизованы")
     
-    # Проверяем что целевой пользователь существует
     target_user = crud.get_user_by_id(db, user_id)
     if not target_user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Получаем посты
     posts = crud.get_user_posts(db, user_id, limit, offset)
     
-    # Обогащаем данными
+    # Обрабатываем каждый пост
+    result = []
     for post in posts:
-        post.tags = post.get_tags_list()
-        post.author = target_user
-        post.is_liked = crud.is_post_liked_by_user(db, post.id, requesting_user.id)
-        post.comments_count = crud.count_post_comments(db, post.id)
+        # Парсим теги
+        tags = json.loads(post.tags) if post.tags else []
+        
+        # Обрабатываем анонимность
+        author_data = None
+        author_id_data = post.author_id
+        if post.is_anonymous:
+            author_data = {"name": "Аноним"}
+            author_id_data = None
+        else:
+            author_data = schemas.UserShort.from_orm(target_user)
+        
+        post_dict = {
+            "id": post.id,
+            "author_id": author_id_data,
+            "author": author_data,
+            "category": post.category,
+            "title": post.title,
+            "body": post.body,
+            "tags": tags,
+            "is_anonymous": post.is_anonymous,
+            "enable_anonymous_comments": post.enable_anonymous_comments,
+            "lost_or_found": post.lost_or_found,
+            "item_description": post.item_description,
+            "location": post.location,
+            "event_name": post.event_name,
+            "event_date": post.event_date,
+            "event_location": post.event_location,
+            "is_important": post.is_important,
+            "expires_at": post.expires_at,
+            "likes_count": post.likes_count,
+            "comments_count": post.comments_count,
+            "views_count": post.views_count,
+            "created_at": post.created_at,
+            "updated_at": post.updated_at
+        }
+        result.append(post_dict)
     
-    return posts
+    return result
 
 
 @app.get("/users/{user_id}/stats")
-def get_user_stats(
-    user_id: int,
-    db: Session = Depends(get_db)
-):
+def get_user_stats(user_id: int, db: Session = Depends(get_db)):
     """Получить статистику пользователя"""
     user = crud.get_user_by_id(db, user_id)
     if not user:
@@ -180,77 +181,75 @@ def get_user_stats(
         "comments_count": crud.count_user_comments(db, user_id)
     }
 
-# ===== POST ENDPOINTS =====
 
-@app.get("/posts", response_model=List[schemas.Post])
-def get_posts(
-    skip: int = 0,
-    limit: int = 20,
-    category: Optional[str] = None,
-    university: Optional[str] = None,
-    course: Optional[int] = None,
-    telegram_id: int = Query(None),
-    db: Session = Depends(get_db)
-):
-    """Получить список постов с фильтрами"""
-    posts = crud.get_posts(db, skip, limit, category, university, course)
-    
-    # Получаем user_id если telegram_id передан
-    user_id = None
-    if telegram_id:
-        user = crud.get_user_by_telegram_id(db, telegram_id)
-        if user:
-            user_id = user.id
-    
-    # Конвертируем теги и загружаем автора + проверяем лайк
-    for post in posts:
-        post.tags = post.get_tags_list()
-        post.author = crud.get_user_by_id(db, post.author_id)
-        
-        # Проверяем лайкнул ли текущий пользователь
-        if user_id:
-            post.is_liked = crud.is_post_liked_by_user(db, post.id, user_id)
-        else:
-            post.is_liked = False
-        
-        post.comments_count = crud.count_post_comments(db, post.id)
+# ==================== POST ENDPOINTS (ОБНОВЛЕНЫ) ====================
 
-    return posts
-
-@app.get("/posts/{post_id}", response_model=schemas.Post)
-def get_post(
-    post_id: int,
-    telegram_id: int = Query(None),
-    db: Session = Depends(get_db)
-):
-    """Получить конкретный пост"""
-    post = crud.get_post(db, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Пост не найден")
-
-    # Увеличиваем просмотры
-    crud.increment_post_views(db, post_id)
-
-    # Обогащаем данными
-    post.author = crud.get_user_by_id(db, post.author_id)
-    post.tags = post.get_tags_list()
-
-    # Лайк текущего пользователя
-    if telegram_id:
-        user = crud.get_user_by_telegram_id(db, telegram_id)
-        post.is_liked = crud.is_post_liked_by_user(db, post.id, user.id) if user else False
-    else:
-        post.is_liked = False
-
-    # КЛЮЧЕВОЕ: всегда считаем актуальный счетчик тут
-    post.comments_count = crud.count_post_comments(db, post_id)
-
-    return post
-
-@app.post("/posts", response_model=schemas.Post)
-def create_post(
-    post_data: schemas.PostCreate,
+@app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
+def get_posts_feed(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=50),
+    category: Optional[str] = Query(None),
     telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Получить ленту постов с фильтрами"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    posts = crud.get_posts(db, skip, limit, category=category)
+    
+    # Обрабатываем посты
+    result = []
+    for post in posts:
+        tags = json.loads(post.tags) if post.tags else []
+        
+        # Анонимность
+        author_data = None
+        author_id_data = post.author_id
+        if post.is_anonymous:
+            author_data = {"name": "Аноним"}
+            author_id_data = None
+        else:
+            author_data = schemas.UserShort.from_orm(post.author) if post.author else None
+        
+        post_dict = {
+            "id": post.id,
+            "author_id": author_id_data,
+            "author": author_data,
+            "category": post.category,
+            "title": post.title,
+            "body": post.body,
+            "tags": tags,
+            "is_anonymous": post.is_anonymous,
+            "enable_anonymous_comments": post.enable_anonymous_comments,
+            "lost_or_found": post.lost_or_found,
+            "item_description": post.item_description,
+            "location": post.location,
+            "event_name": post.event_name,
+            "event_date": post.event_date,
+            "event_location": post.event_location,
+            "is_important": post.is_important,
+            "expires_at": post.expires_at,
+            "likes_count": post.likes_count,
+            "comments_count": post.comments_count,
+            "views_count": post.views_count,
+            "created_at": post.created_at,
+            "updated_at": post.updated_at
+        }
+        result.append(post_dict)
+    
+    return {
+        "items": result,
+        "total": len(result),
+        "has_more": len(posts) == limit
+    }
+
+
+@app.post("/posts/create", response_model=schemas.PostResponse)
+def create_post_endpoint(
+    telegram_id: int = Query(...),
+    post_data: schemas.PostCreate = Body(...),
     db: Session = Depends(get_db)
 ):
     """Создать новый пост"""
@@ -258,18 +257,56 @@ def create_post(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    new_post = crud.create_post(db, post_data, user.id, user)
-    new_post.tags = new_post.get_tags_list()
-    return new_post
+    # Для confessions принудительная анонимность
+    if post_data.category == 'confessions':
+        post_data.is_anonymous = True
+    
+    post = crud.create_post(db, post_data, user.id)
+    
+    # Формируем ответ
+    tags = json.loads(post.tags) if post.tags else []
+    author_data = None
+    author_id_data = post.author_id
+    
+    if post.is_anonymous:
+        author_data = {"name": "Аноним"}
+        author_id_data = None
+    else:
+        author_data = schemas.UserShort.from_orm(user)
+    
+    return {
+        "id": post.id,
+        "author_id": author_id_data,
+        "author": author_data,
+        "category": post.category,
+        "title": post.title,
+        "body": post.body,
+        "tags": tags,
+        "is_anonymous": post.is_anonymous,
+        "enable_anonymous_comments": post.enable_anonymous_comments,
+        "lost_or_found": post.lost_or_found,
+        "item_description": post.item_description,
+        "location": post.location,
+        "event_name": post.event_name,
+        "event_date": post.event_date,
+        "event_location": post.event_location,
+        "is_important": post.is_important,
+        "expires_at": post.expires_at,
+        "likes_count": post.likes_count,
+        "comments_count": post.comments_count,
+        "views_count": post.views_count,
+        "created_at": post.created_at,
+        "updated_at": post.updated_at
+    }
 
-@app.patch("/posts/{post_id}", response_model=schemas.Post)
-def update_post_endpoint(
+
+@app.get("/posts/{post_id}", response_model=schemas.PostResponse)
+def get_post_endpoint(
     post_id: int,
-    post_update: schemas.PostUpdate,
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Обновить пост"""
+    """Получить пост по ID"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -278,184 +315,45 @@ def update_post_endpoint(
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
     
-    # Проверка прав (только автор может редактировать)
-    if post.author_id != user.id:
-        raise HTTPException(status_code=403, detail="Нет прав на редактирование")
+    # Увеличить просмотры
+    crud.increment_post_views(db, post_id)
     
-    # Обновляем пост
-    updated_post = crud.update_post(db, post_id, post_update)
-    if not updated_post:
-        raise HTTPException(status_code=500, detail="Не удалось обновить пост")
+    # Обработка
+    tags = json.loads(post.tags) if post.tags else []
+    author_data = None
+    author_id_data = post.author_id
     
-    # Обогащаем данными
-    updated_post.tags = updated_post.get_tags_list()
-    updated_post.author = user
-    updated_post.is_liked = crud.is_post_liked_by_user(db, post_id, user.id)
-    updated_post.comments_count = crud.count_post_comments(db, post_id)
+    if post.is_anonymous:
+        author_data = {"name": "Аноним"}
+        author_id_data = None
+    else:
+        author_data = schemas.UserShort.from_orm(post.author) if post.author else None
     
-    return updated_post
+    return {
+        "id": post.id,
+        "author_id": author_id_data,
+        "author": author_data,
+        "category": post.category,
+        "title": post.title,
+        "body": post.body,
+        "tags": tags,
+        "is_anonymous": post.is_anonymous,
+        "enable_anonymous_comments": post.enable_anonymous_comments,
+        "lost_or_found": post.lost_or_found,
+        "item_description": post.item_description,
+        "location": post.location,
+        "event_name": post.event_name,
+        "event_date": post.event_date,
+        "event_location": post.event_location,
+        "is_important": post.is_important,
+        "expires_at": post.expires_at,
+        "likes_count": post.likes_count,
+        "comments_count": post.comments_count,
+        "views_count": post.views_count,
+        "created_at": post.created_at,
+        "updated_at": post.updated_at
+    }
 
-@app.post("/posts/{post_id}/like")
-def toggle_like_post(
-    post_id: int,
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Toggle лайка поста"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    post = crud.get_post(db, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Пост не найден")
-    
-    result = crud.toggle_post_like(db, post_id, user.id)
-    return {"success": True, **result}
-
-# ===== COMMENT ENDPOINTS =====
-
-@app.get("/posts/{post_id}/comments", response_model=List[schemas.Comment])
-def get_post_comments(
-    post_id: int,
-    telegram_id: int = Query(None),
-    db: Session = Depends(get_db)
-):
-    """Получить комментарии к посту с авторами и лайками"""
-    post = crud.get_post(db, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Пост не найден")
-    
-    # Получаем user_id если telegram_id передан
-    user_id = None
-    if telegram_id:
-        user = crud.get_user_by_telegram_id(db, telegram_id)
-        if user:
-            user_id = user.id
-    
-    # Загружаем комментарии с авторами и проверкой лайков
-    comments = crud.get_post_comments(db, post_id, user_id)
-    
-    return comments
-
-@app.post("/comments", response_model=schemas.Comment)
-def create_comment(
-    comment_data: schemas.CommentCreate,
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Создать комментарий"""
-    # Проверяем что пользователь существует
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    # Проверяем что пост существует
-    post = crud.get_post(db, comment_data.post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Пост не найден")
-    
-    db_comment = crud.create_comment(db, comment_data, user.id)
-    
-    # Загружаем автора комментария
-    db_comment.author = user
-    db_comment.is_liked = False
-    
-    return db_comment
-
-@app.post("/comments/{comment_id}/like")
-def toggle_like_comment(
-    comment_id: int,
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Toggle лайка комментария"""
-    # Проверяем что пользователь существует
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    # Проверяем что комментарий существует
-    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
-    if not comment:
-        raise HTTPException(status_code=404, detail="Комментарий не найден")
-    
-    # Toggle лайка
-    result = crud.toggle_comment_like(db, comment_id, user.id)
-    return {"success": True, **result}
-
-@app.delete("/comments/{comment_id}")
-def delete_comment_endpoint(
-    comment_id: int,
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Удалить комментарий"""
-    # Проверяем что пользователь существует
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    # Удаляем комментарий
-    result = crud.delete_comment(db, comment_id, user.id)
-    
-    if not result["success"]:
-        raise HTTPException(status_code=403, detail=result["error"])
-    
-    return result
-
-@app.patch("/comments/{comment_id}", response_model=schemas.Comment)
-def update_comment_endpoint(
-    comment_id: int,
-    text: str = Query(..., min_length=1),
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Редактировать комментарий"""
-    # Проверяем что пользователь существует
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    # Обновляем комментарий
-    updated_comment = crud.update_comment(db, comment_id, text, user.id)
-    
-    if not updated_comment:
-        raise HTTPException(status_code=403, detail="Нет прав на редактирование или комментарий не найден")
-    
-    # Загружаем автора
-    updated_comment.author = crud.get_user_by_id(db, updated_comment.author_id)
-    updated_comment.is_liked = crud.is_comment_liked_by_user(db, comment_id, user.id)
-    
-    return updated_comment
-
-
-@app.post("/comments/{comment_id}/report", response_model=schemas.CommentReport)
-def report_comment(
-    comment_id: int,
-    report_data: schemas.CommentReportCreate,
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Пожаловаться на комментарий"""
-    # Проверяем что пользователь существует
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    # Создаём жалобу
-    report = crud.create_comment_report(
-        db, 
-        comment_id, 
-        user.id, 
-        report_data.reason, 
-        report_data.description
-    )
-    
-    if not report:
-        raise HTTPException(status_code=400, detail="Невозможно создать жалобу")
-    
-    return report
 
 @app.delete("/posts/{post_id}")
 def delete_post_endpoint(
@@ -472,19 +370,290 @@ def delete_post_endpoint(
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
     
-    # Проверка прав (только автор может удалить)
     if post.author_id != user.id:
         raise HTTPException(status_code=403, detail="Нет прав на удаление")
     
     success = crud.delete_post(db, post_id)
     if not success:
-        raise HTTPException(status_code=500, detail="Не удалось удалить пост")
+        raise HTTPException(status_code=500, detail="Ошибка удаления")
     
     return {"success": True}
 
-# ===== DATING ENDPOINTS =====
 
-@app.get("/dating/feed", response_model=List[schemas.DatingProfile])
+@app.post("/posts/{post_id}/like")
+def toggle_post_like_endpoint(
+    post_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Toggle лайка поста"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    result = crud.toggle_post_like(db, post_id, user.id)
+    return result
+
+
+# ==================== COMMENT ENDPOINTS (ОБНОВЛЕНЫ) ====================
+
+@app.get("/posts/{post_id}/comments", response_model=schemas.CommentsFeedResponse)
+def get_post_comments_endpoint(
+    post_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Получить комментарии к посту"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    comments = crud.get_post_comments(db, post_id, user.id)
+    
+    result = []
+    for comment in comments:
+        # Анонимность
+        author_data = None
+        author_id_data = comment.author_id
+        
+        if comment.is_anonymous:
+            author_data = {"name": f"Аноним{comment.anonymous_index}"}
+            author_id_data = None
+        else:
+            author_data = schemas.UserShort.from_orm(comment.author) if comment.author else None
+        
+        comment_dict = {
+            "id": comment.id,
+            "post_id": comment.post_id,
+            "author_id": author_id_data,
+            "author": author_data,
+            "body": comment.body,
+            "is_anonymous": comment.is_anonymous,
+            "anonymous_index": comment.anonymous_index,
+            "created_at": comment.created_at
+        }
+        result.append(comment_dict)
+    
+    return {
+        "items": result,
+        "total": len(result)
+    }
+
+
+@app.post("/posts/{post_id}/comments", response_model=schemas.CommentResponse)
+def create_comment_endpoint(
+    post_id: int,
+    telegram_id: int = Query(...),
+    comment_data: schemas.CommentCreate = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Создать комментарий"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    comment = crud.create_comment(db, comment_data, user.id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Пост не найден")
+    
+    # Формируем ответ
+    author_data = None
+    author_id_data = comment.author_id
+    
+    if comment.is_anonymous:
+        author_data = {"name": f"Аноним{comment.anonymous_index}"}
+        author_id_data = None
+    else:
+        author_data = schemas.UserShort.from_orm(user)
+    
+    return {
+        "id": comment.id,
+        "post_id": comment.post_id,
+        "author_id": author_id_data,
+        "author": author_data,
+        "body": comment.body,
+        "is_anonymous": comment.is_anonymous,
+        "anonymous_index": comment.anonymous_index,
+        "created_at": comment.created_at
+    }
+
+
+@app.delete("/comments/{comment_id}")
+def delete_comment_endpoint(
+    comment_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Удалить комментарий"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    result = crud.delete_comment(db, comment_id, user.id)
+    return result
+
+
+@app.post("/comments/{comment_id}/like")
+def toggle_comment_like_endpoint(
+    comment_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Toggle лайка комментария"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    result = crud.toggle_comment_like(db, comment_id, user.id)
+    return result
+
+
+# ==================== REQUEST ENDPOINTS (НОВЫЕ) ====================
+
+@app.post("/requests/create", response_model=schemas.RequestResponse)
+def create_request_endpoint(
+    telegram_id: int = Query(...),
+    request_data: schemas.RequestCreate = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Создать запрос (для карточек dating)"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    request = crud.create_request(db, request_data, user.id)
+    
+    tags = json.loads(request.tags) if request.tags else []
+    
+    return {
+        "id": request.id,
+        "author_id": request.author_id,
+        "author": schemas.UserShort.from_orm(user),
+        "category": request.category,
+        "title": request.title,
+        "body": request.body,
+        "tags": tags,
+        "expires_at": request.expires_at,
+        "max_responses": request.max_responses,
+        "responses_count": request.responses_count,
+        "views_count": request.views_count,
+        "status": request.status,
+        "created_at": request.created_at
+    }
+
+
+@app.get("/requests/feed", response_model=schemas.RequestsFeedResponse)
+def get_requests_feed(
+    category: str = Query(..., regex="^(study|help|hangout)$"),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """Получить ленту запросов категории"""
+    requests = crud.get_active_requests(db, category, limit, offset)
+    
+    result = []
+    for req in requests:
+        tags = json.loads(req.tags) if req.tags else []
+        
+        req_dict = {
+            "id": req.id,
+            "author_id": req.author_id,
+            "author": schemas.UserShort.from_orm(req.author) if req.author else None,
+            "category": req.category,
+            "title": req.title,
+            "body": req.body,
+            "tags": tags,
+            "expires_at": req.expires_at,
+            "max_responses": req.max_responses,
+            "responses_count": req.responses_count,
+            "views_count": req.views_count,
+            "status": req.status,
+            "created_at": req.created_at
+        }
+        result.append(req_dict)
+    
+    return {
+        "items": result,
+        "total": len(result),
+        "has_more": len(requests) == limit
+    }
+
+
+@app.get("/requests/my")
+def get_my_requests(
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Получить мои запросы"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    requests = crud.get_my_requests(db, user.id)
+    
+    result = []
+    for req in requests:
+        tags = json.loads(req.tags) if req.tags else []
+        
+        req_dict = {
+            "id": req.id,
+            "category": req.category,
+            "title": req.title,
+            "body": req.body,
+            "tags": tags,
+            "expires_at": req.expires_at,
+            "max_responses": req.max_responses,
+            "responses_count": req.responses_count,
+            "status": req.status,
+            "created_at": req.created_at
+        }
+        result.append(req_dict)
+    
+    return result
+
+
+@app.patch("/requests/{request_id}/close")
+def close_request_endpoint(
+    request_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Закрыть запрос"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    success = crud.close_request(db, request_id, user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Запрос не найден или нет прав")
+    
+    return {"success": True}
+
+
+@app.post("/requests/{request_id}/respond")
+def respond_to_request_endpoint(
+    request_id: int,
+    telegram_id: int = Query(...),
+    response_data: schemas.ResponseToRequestCreate = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Откликнуться на запрос"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    result = crud.respond_to_request(db, request_id, user.id, response_data.message)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    
+    return result
+
+
+# ==================== DATING ENDPOINTS ====================
+
+@app.get("/dating/feed", response_model=schemas.DatingFeedResponse)
 def get_dating_feed_endpoint(
     telegram_id: int = Query(...),
     limit: int = Query(20, le=50),
@@ -494,44 +663,44 @@ def get_dating_feed_endpoint(
     course: Optional[int] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Лента профилей для знакомств"""
+    """Получить ленту профилей для знакомств"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     users = crud.get_dating_feed(
         db, user.id, limit, offset,
-        university=university,
-        institute=institute,
-        course=course
+        university=university, institute=institute, course=course
     )
     
-    # Форматируем ответ
     result = []
     for u in users:
-        interests_list = u.interests.split(',') if u.interests else []
-        interests_list = [tag.strip() for tag in interests_list if tag.strip()]
+        interests_list = json.loads(u.interests) if u.interests else []
         
-        profile = schemas.DatingProfile(
-            id=u.id,
-            telegram_id=u.telegram_id,
-            name=u.name,
-            age=u.age,
-            bio=u.bio,
-            avatar=u.avatar,
-            university=u.university,
-            institute=u.institute,
-            course=None if u.hide_course_group else u.course,
-            group=None if u.hide_course_group else u.group,
-            interests=interests_list
-        )
+        profile = {
+            "id": u.id,
+            "telegram_id": u.telegram_id,
+            "name": u.name,
+            "age": u.age,
+            "bio": u.bio,
+            "university": u.university,
+            "institute": u.institute,
+            "course": None if u.hide_course_group else u.course,
+            "group": None if u.hide_course_group else u.group,
+            "interests": interests_list,
+            "active_request": None
+        }
         result.append(profile)
     
-    return result
+    return {
+        "items": result,
+        "total": len(result),
+        "has_more": len(users) == limit
+    }
 
 
-@app.get("/dating/people")
-def get_people_with_posts_endpoint(
+@app.get("/dating/people", response_model=schemas.DatingFeedResponse)
+def get_people_with_requests_endpoint(
     telegram_id: int = Query(...),
     category: str = Query(..., regex="^(study|help|hangout)$"),
     limit: int = Query(20, ge=1, le=50),
@@ -541,27 +710,26 @@ def get_people_with_posts_endpoint(
     db: Session = Depends(get_db)
 ):
     """
-    Получить людей с их активными постами категории X.
-    Для режимов: study, help, hangout
+    Получить людей с их активными ЗАПРОСАМИ категории X (для карточек).
+    ЭТО ОБНОВЛЁННАЯ ВЕРСИЯ - использует requests, не posts!
     """
-    # Проверяем что пользователь существует
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Получаем результаты из CRUD
-    result = crud.get_people_with_posts(
+    result = crud.get_people_with_requests(
         db, user.id, category, limit, offset,
-        university=university,
-        institute=institute
+        university=university, institute=institute
     )
     
-    # result уже содержит {items: [...], has_more: bool}
-    # Просто возвращаем как есть
-    return result
+    return {
+        "items": result["items"],
+        "total": len(result["items"]),
+        "has_more": result["has_more"]
+    }
 
 
-@app.post("/dating/like", response_model=schemas.LikeActionResponse)
+@app.post("/dating/like", response_model=schemas.LikeResult)
 def like_user_endpoint(
     telegram_id: int = Query(...),
     like_data: schemas.LikeCreate = Body(...),
@@ -574,21 +742,20 @@ def like_user_endpoint(
     
     result = crud.create_like(db, user.id, like_data.liked_id)
     
-    if not result['success']:
-        return schemas.LikeActionResponse(
-            success=False,
-            error=result.get('error')
-        )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error"))
     
-    response = schemas.LikeActionResponse(
-        success=True,
-        is_match=result.get('is_match', False)
-    )
+    response = {
+        "success": True,
+        "is_match": result.get("is_match", False),
+        "match_id": None,
+        "matched_user": None
+    }
     
-    if result.get('is_match'):
-        matched_user = result.get('matched_user')
-        response.match_id = result.get('match_id')
-        response.matched_user = schemas.UserPublic.from_orm(matched_user)
+    if result.get("is_match"):
+        matched_user = result.get("matched_user")
+        response["match_id"] = result.get("match_id")
+        response["matched_user"] = schemas.UserShort.from_orm(matched_user) if matched_user else None
     
     return response
 
@@ -600,7 +767,7 @@ def get_who_liked_me_endpoint(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
-    """Кто меня лайкнул (но я их ещё нет)"""
+    """Получить тех, кто меня лайкнул"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -609,22 +776,21 @@ def get_who_liked_me_endpoint(
     
     result = []
     for u in users:
-        interests_list = u.interests.split(',') if u.interests else []
-        interests_list = [tag.strip() for tag in interests_list if tag.strip()]
+        interests_list = json.loads(u.interests) if u.interests else []
         
-        profile = schemas.DatingProfile(
-            id=u.id,
-            telegram_id=u.telegram_id,
-            name=u.name,
-            age=u.age,
-            bio=u.bio,
-            avatar=u.avatar,
-            university=u.university,
-            institute=u.institute,
-            course=None if u.hide_course_group else u.course,
-            group=None if u.hide_course_group else u.group,
-            interests=interests_list
-        )
+        profile = {
+            "id": u.id,
+            "telegram_id": u.telegram_id,
+            "name": u.name,
+            "age": u.age,
+            "bio": u.bio,
+            "university": u.university,
+            "institute": u.institute,
+            "course": None if u.hide_course_group else u.course,
+            "group": None if u.hide_course_group else u.group,
+            "interests": interests_list,
+            "active_request": None
+        }
         result.append(profile)
     
     return result
@@ -637,7 +803,7 @@ def get_my_matches_endpoint(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
-    """Мои матчи"""
+    """Получить мои матчи"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -646,135 +812,76 @@ def get_my_matches_endpoint(
     
     result = []
     for match in matches:
-        result.append(schemas.MatchResponse(
-            id=match['id'],
-            matched_at=match['matched_at'],
-            matched_user=schemas.UserPublic.from_orm(match['matched_user'])
-        ))
+        result.append({
+            "id": match["id"],
+            "user_a_id": 0,  # не важно
+            "user_b_id": 0,  # не важно
+            "matched_at": match["matched_at"],
+            "matched_user": schemas.UserShort.from_orm(match["matched_user"])
+        })
     
     return result
 
 
-@app.get("/dating/stats", response_model=schemas.DatingStats)
+@app.get("/dating/stats", response_model=schemas.DatingStatsResponse)
 def get_dating_stats_endpoint(
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Статистика знакомств"""
+    """Получить статистику знакомств"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     stats = crud.get_dating_stats(db, user.id)
     
-    # Добавляем responses_count
-    responses_count = 0  # TODO: реализовать когда будет модель Response
-    
-    return schemas.DatingStats(
-        likes_count=stats['likes_count'],
-        matches_count=stats['matches_count'],
-        responses_count=responses_count
-    )
+    return {
+        "likes_count": stats["likes_count"],
+        "matches_count": stats["matches_count"],
+        "responses_count": stats["responses_count"]
+    }
 
 
-@app.patch("/me/dating-settings", response_model=schemas.UserPublic)
+@app.patch("/me/dating-settings", response_model=schemas.UserResponse)
 def update_dating_settings_endpoint(
     telegram_id: int = Query(...),
     settings: schemas.DatingSettings = Body(...),
     db: Session = Depends(get_db)
 ):
-    """Обновить настройки приватности для знакомств"""
+    """Обновить настройки приватности dating"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    settings_dict = settings.dict(exclude_unset=True)
+    settings_dict = settings.model_dump(exclude_unset=True)
     updated_user = crud.update_dating_settings(db, user.id, settings_dict)
     
-    return schemas.UserPublic.from_orm(updated_user)
+    return updated_user
 
 
-# ===== МОК ДАННЫЕ ДЛЯ ТЕСТИРОВАНИЯ =====
+# ==================== DEV ENDPOINTS ====================
+
 @app.post("/dev/generate-mock-dating-data")
 def generate_mock_dating_data(
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """
-    ТОЛЬКО ДЛЯ РАЗРАБОТКИ!
-    Создаёт тестовых пользователей для ленты знакомств.
-    """
+    """Генерация мок-данных для dating (только для разработки!)"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     mock_users = [
-        {
-            'telegram_id': 999000001,
-            'name': 'Анастасия',
-            'age': 19,
-            'bio': 'Люблю кофе и программирование ☕ Ищу компанию для хакатонов',
-            'university': user.university,
-            'institute': user.institute,
-            'course': 2,
-            'group': 'ИБ-23',
-            'interests': 'python,кофе,хакатоны,музыка',
-            'show_in_dating': True
-        },
-        {
-            'telegram_id': 999000002,
-            'name': 'Дмитрий',
-            'age': 21,
-            'bio': 'Спорт, музыка, программирование. Всегда на позитиве!',
-            'university': user.university,
-            'institute': user.institute,
-            'course': 3,
-            'group': 'ПИ-31',
-            'interests': 'спорт,музыка,программирование',
-            'show_in_dating': True
-        },
-        {
-            'telegram_id': 999000003,
-            'name': 'Мария',
-            'age': 20,
-            'bio': 'Дизайн, путешествия, фотография 📸',
-            'university': user.university,
-            'institute': user.institute,
-            'course': 2,
-            'group': 'ДИ-22',
-            'interests': 'дизайн,путешествия,фотография',
-            'show_in_dating': True
-        },
-        {
-            'telegram_id': 999000004,
-            'name': 'Алексей',
-            'age': 22,
-            'bio': 'Кино, книги, настолки. Давайте дружить!',
-            'university': user.university,
-            'institute': user.institute,
-            'course': 4,
-            'group': 'ФИ-41',
-            'interests': 'кино,книги,настолки',
-            'show_in_dating': True
-        },
-        {
-            'telegram_id': 999000005,
-            'name': 'София',
-            'age': 19,
-            'bio': 'Психология, саморазвитие, медитация 🧘‍♀️',
-            'university': user.university,
-            'institute': user.institute,
-            'course': 1,
-            'group': 'ПС-13',
-            'interests': 'психология,медитация,йога',
-            'show_in_dating': True
-        }
+        {"telegram_id": 999000001, "name": "Алексей", "age": 19, "bio": "Программист", "university": user.university, "institute": user.institute, "course": 2, "group": "ИВТ-23", "interests": '["python","музыка","спорт"]', "show_in_dating": True},
+        {"telegram_id": 999000002, "name": "Мария", "age": 21, "bio": "Дизайнер. Люблю рисовать и путешествовать!", "university": user.university, "institute": user.institute, "course": 3, "group": "ДИЗ-31", "interests": '["дизайн","арт","кофе"]', "show_in_dating": True},
+        {"telegram_id": 999000003, "name": "Дмитрий", "age": 20, "bio": "Увлекаюсь ML и AI", "university": user.university, "institute": user.institute, "course": 2, "group": "ИВТ-22", "interests": '["python","ML","AI"]', "show_in_dating": True},
+        {"telegram_id": 999000004, "name": "Анна", "age": 22, "bio": "Обожаю спорт и активный отдых. Давайте в зал!", "university": user.university, "institute": user.institute, "course": 4, "group": "ФК-41", "interests": '["спорт","фитнес","travel"]', "show_in_dating": True},
+        {"telegram_id": 999000005, "name": "Игорь", "age": 19, "bio": "Люблю читать книги", "university": user.university, "institute": user.institute, "course": 1, "group": "ФИЛ-13", "interests": '["книги","литература"]', "show_in_dating": True},
     ]
     
     created_users = []
     for mock_data in mock_users:
-        # Проверяем существует ли
-        existing = crud.get_user_by_telegram_id(db, mock_data['telegram_id'])
+        existing = crud.get_user_by_telegram_id(db, mock_data["telegram_id"])
         if not existing:
             new_user = models.User(**mock_data)
             db.add(new_user)
@@ -782,10 +889,10 @@ def generate_mock_dating_data(
             db.refresh(new_user)
             created_users.append(new_user.name)
         else:
-            created_users.append(f"{existing.name} (уже существует)")
+            created_users.append(f"{existing.name} (уже был)")
     
     return {
         "success": True,
-        "message": f"Создано {len(created_users)} тестовых пользователей",
+        "message": f"Создано/проверено {len(created_users)} пользователей",
         "users": created_users
     }

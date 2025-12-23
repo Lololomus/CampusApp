@@ -3,20 +3,25 @@ import { User } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
 
+
 function AuthModal() {
   const { showAuthModal, setShowAuthModal, startRegistration } = useStore();
 
+
   if (!showAuthModal) return null;
+
 
   const handleRegister = () => {
     hapticFeedback('medium');
     startRegistration();
   };
 
+
   const handleClose = () => {
     hapticFeedback('light');
     setShowAuthModal(false);
   };
+
 
   return (
     <div style={styles.overlay} onClick={handleClose}>
@@ -26,6 +31,7 @@ function AuthModal() {
           <User size={40} />
         </div>
 
+
         <h3 style={styles.title}>Нужна регистрация</h3>
         
         <p style={styles.message}>
@@ -33,9 +39,11 @@ function AuthModal() {
           нужно представиться. Это займет всего минуту!
         </p>
 
+
         <button onClick={handleRegister} style={styles.registerButton}>
           Зарегистрироваться
         </button>
+
 
         <button onClick={handleClose} style={styles.cancelButton}>
           Позже
@@ -45,13 +53,14 @@ function AuthModal() {
   );
 }
 
+
 const styles = {
   overlay: {
     position: 'fixed',
     inset: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
     backdropFilter: 'blur(4px)',
-    zIndex: 150,
+    zIndex: 2000,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -114,5 +123,6 @@ const styles = {
     cursor: 'pointer'
   }
 };
+
 
 export default AuthModal;
