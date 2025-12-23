@@ -1,8 +1,7 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
-from sqlalchemy import UniqueConstraint
 from datetime import datetime
 
 class User(Base):
@@ -24,6 +23,9 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
     last_profile_edit = Column(DateTime, nullable=True)
+    show_in_dating = Column(Boolean, default=True)
+    hide_course_group = Column(Boolean, default=False)
+    interests = Column(Text, default="")
     
     # Relationships (связи с другими таблицами)
     posts = relationship("Post", back_populates="author", cascade="all, delete-orphan")
@@ -123,4 +125,45 @@ class CommentLike(Base):
     # Уникальность: один пользователь = один лайк на комментарий
     __table_args__ = (
         UniqueConstraint('user_id', 'comment_id', name='unique_user_comment_like'),
+    )
+
+# ===== DATING MODELS =====
+
+class Like(Base):
+    """Лайки для знакомств"""
+    __tablename__ = "likes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    liker_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    liked_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    liker = relationship("User", foreign_keys=[liker_id], backref="given_likes")
+    liked = relationship("User", foreign_keys=[liked_id], backref="received_likes")
+    
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint('liker_id', 'liked_id', name='unique_user_like'),
+        CheckConstraint('liker_id != liked_id', name='check_no_self_like'),
+    )
+
+
+class Match(Base):
+    """Матчи (взаимные лайки)"""
+    __tablename__ = "matches"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_a_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_b_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    matched_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user_a = relationship("User", foreign_keys=[user_a_id])
+    user_b = relationship("User", foreign_keys=[user_b_id])
+    
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint('user_a_id', 'user_b_id', name='unique_match'),
+        CheckConstraint('user_a_id < user_b_id', name='check_user_order'),
     )

@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, or_, not_, func
 from app import models, schemas
-from typing import List, Optional
-
+from typing import Optional, List, Dict
+from datetime import datetime
 
 # ===== USER CRUD =====
 
@@ -370,3 +371,373 @@ def get_cooldown_days_left(db: Session, user_id: int) -> int:
     from datetime import datetime
     days_passed = (datetime.utcnow() - user.last_profile_edit).days
     return max(0, 30 - days_passed)
+
+# ===== DATING CRUD =====
+
+def get_dating_feed(
+    db: Session,
+    user_id: int,
+    limit: int = 20,
+    offset: int = 0,
+    university: Optional[str] = None,
+    institute: Optional[str] = None,
+    course: Optional[int] = None
+) -> List[models.User]:
+    """
+    Получить ленту профилей для знакомств.
+    Исключаем: себя, уже лайкнутых, заматченных, скрытых из dating.
+    """
+    current_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not current_user:
+        return []
+    
+    # Получаем ID уже лайкнутых пользователей
+    liked_ids = db.query(models.Like.liked_id).filter(
+        models.Like.liker_id == user_id
+    ).subquery()
+    
+    # Получаем ID заматченных пользователей
+    matched_ids_a = db.query(models.Match.user_b_id).filter(
+        models.Match.user_a_id == user_id
+    ).subquery()
+    
+    matched_ids_b = db.query(models.Match.user_a_id).filter(
+        models.Match.user_b_id == user_id
+    ).subquery()
+    
+    # Базовый запрос
+    query = db.query(models.User).filter(
+        models.User.id != user_id,
+        models.User.show_in_dating == True,
+        models.User.is_active == True,
+        ~models.User.id.in_(liked_ids),
+        ~models.User.id.in_(matched_ids_a),
+        ~models.User.id.in_(matched_ids_b)
+    )
+    
+    # Фильтры
+    target_university = university if university else current_user.university
+    query = query.filter(models.User.university == target_university)
+    
+    if institute:
+        query = query.filter(models.User.institute == institute)
+    
+    if course:
+        query = query.filter(models.User.course == course)
+    
+    # Сортировка: активные первые, потом новые
+    query = query.order_by(
+        models.User.created_at.desc()
+    )
+    
+    return query.offset(offset).limit(limit).all()
+
+
+def get_people_with_posts(
+    db: Session,
+    user_id: int,
+    category: str,
+    limit: int = 20,
+    offset: int = 0,
+    university: Optional[str] = None,
+    institute: Optional[str] = None
+) -> Dict:
+    """
+    Получить людей с их активными постами категории X (для режимов study/help/hangout).
+    Возвращает: {items: List[Dict], has_more: bool}
+    """
+    from sqlalchemy import func, desc
+    
+    # Подзапрос: последний пост каждого пользователя в этой категории
+    subquery = (
+        db.query(
+            models.Post.author_id,
+            func.max(models.Post.created_at).label('max_created')
+        )
+        .filter(models.Post.category == category)
+        .group_by(models.Post.author_id)
+        .subquery()
+    )
+    
+    # Основной запрос: JOIN users + posts
+    query = (
+        db.query(models.User, models.Post)
+        .join(
+            models.Post,
+            models.Post.author_id == models.User.id
+        )
+        .join(
+            subquery,
+            (models.Post.author_id == subquery.c.author_id) &
+            (models.Post.created_at == subquery.c.max_created)
+        )
+        .filter(
+            # models.User.id != user_id,  # ← ЗАКОММЕНТИРОВАНО
+            models.User.is_active == True,
+            models.Post.category == category
+        )
+    )
+    
+    # Фильтры (опционально)
+    if university:
+        query = query.filter(models.User.university == university)
+    if institute:
+        query = query.filter(models.User.institute == institute)
+    
+    # Сортировка по дате поста (новые первые)
+    query = query.order_by(desc(models.Post.created_at))
+    
+    # Pagination
+    total_query = query.limit(limit + 1).offset(offset)
+    results = total_query.all()
+    
+    # Проверка has_more
+    has_more = len(results) > limit
+    if has_more:
+        results = results[:limit]
+    
+    # Формируем список DatingProfile с active_post
+    items = []
+    for user, post in results:
+        # Конвертируем теги
+        post.tags = post.get_tags_list()
+        
+        # Парсим interests (если есть)
+        interests = user.interests.split(',') if user.interests else []
+        
+        profile_dict = {
+            'id': user.id,
+            'telegram_id': user.telegram_id,
+            'name': user.name,
+            'age': user.age,
+            'bio': user.bio,
+            'avatar': user.avatar,
+            'university': user.university,
+            'institute': user.institute,
+            'course': user.course if not user.hide_course_group else None,
+            'group': user.group if not user.hide_course_group else None,
+            'interests': interests,
+            'active_post': {
+                'id': post.id,
+                'title': post.title,
+                'body': post.body,
+                'category': post.category,
+                'tags': post.tags,
+                'created_at': post.created_at.isoformat() if post.created_at else None,
+                'likes': post.likes,
+                'views': post.views,
+            }
+        }
+        items.append(profile_dict)
+    
+    return {
+        'items': items,
+        'has_more': has_more
+    }
+
+
+def create_like(db: Session, liker_id: int, liked_id: int) -> Dict:
+    """
+    Создать лайк. Если взаимный → создаём матч.
+    """
+    # Проверки
+    if liker_id == liked_id:
+        return {"success": False, "error": "Нельзя лайкнуть себя"}
+    
+    liker = db.query(models.User).filter(models.User.id == liker_id).first()
+    liked = db.query(models.User).filter(models.User.id == liked_id).first()
+    
+    if not liker or not liked:
+        return {"success": False, "error": "Пользователь не найден"}
+    
+    # Проверяем что уже не лайкали
+    existing_like = db.query(models.Like).filter(
+        models.Like.liker_id == liker_id,
+        models.Like.liked_id == liked_id
+    ).first()
+    
+    if existing_like:
+        return {"success": False, "error": "Уже лайкнуто"}
+    
+    # Создаём лайк
+    new_like = models.Like(liker_id=liker_id, liked_id=liked_id)
+    db.add(new_like)
+    db.commit()
+    
+    # Проверяем обратный лайк (взаимность)
+    reverse_like = db.query(models.Like).filter(
+        models.Like.liker_id == liked_id,
+        models.Like.liked_id == liker_id
+    ).first()
+    
+    if reverse_like:
+        # МАТЧ! Создаём запись
+        user_a = min(liker_id, liked_id)
+        user_b = max(liker_id, liked_id)
+        
+        # Проверяем что матч еще не создан
+        existing_match = db.query(models.Match).filter(
+            models.Match.user_a_id == user_a,
+            models.Match.user_b_id == user_b
+        ).first()
+        
+        if not existing_match:
+            new_match = models.Match(user_a_id=user_a, user_b_id=user_b)
+            db.add(new_match)
+            db.commit()
+            db.refresh(new_match)
+            
+            return {
+                "success": True,
+                "is_match": True,
+                "match_id": new_match.id,
+                "matched_user": liked
+            }
+    
+    return {"success": True, "is_match": False}
+
+
+def get_who_liked_me(
+    db: Session,
+    user_id: int,
+    limit: int = 20,
+    offset: int = 0
+) -> List[models.User]:
+    """
+    Получить список людей, которые лайкнули меня, но я их ещё нет.
+    """
+    # Получаем ID тех, кого я уже лайкнул
+    my_likes_ids = db.query(models.Like.liked_id).filter(
+        models.Like.liker_id == user_id
+    ).subquery()
+    
+    # Получаем тех, кто лайкнул меня, но я их нет
+    likers = (
+        db.query(models.User)
+        .join(models.Like, models.Like.liker_id == models.User.id)
+        .filter(
+            models.Like.liked_id == user_id,
+            ~models.User.id.in_(my_likes_ids)
+        )
+        .order_by(models.Like.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    
+    return likers
+
+
+def get_my_matches(
+    db: Session,
+    user_id: int,
+    limit: int = 20,
+    offset: int = 0
+) -> List[Dict]:
+    """
+    Получить все матчи пользователя.
+    """
+    matches = (
+        db.query(models.Match)
+        .filter(
+            or_(
+                models.Match.user_a_id == user_id,
+                models.Match.user_b_id == user_id
+            )
+        )
+        .order_by(models.Match.matched_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    
+    result = []
+    for match in matches:
+        # Определяем кто matched_user
+        matched_user_id = match.user_b_id if match.user_a_id == user_id else match.user_a_id
+        matched_user = db.query(models.User).filter(models.User.id == matched_user_id).first()
+        
+        result.append({
+            'id': match.id,
+            'matched_at': match.matched_at,
+            'matched_user': matched_user
+        })
+    
+    return result
+
+
+def get_dating_stats(db: Session, user_id: int) -> Dict:
+    """
+    Получить статистику знакомств.
+    """
+    # Кол-во людей, которые лайкнули меня (но я их нет)
+    my_likes_ids = db.query(models.Like.liked_id).filter(
+        models.Like.liker_id == user_id
+    ).subquery()
+    
+    likes_count = (
+        db.query(func.count(models.Like.id))
+        .filter(
+            models.Like.liked_id == user_id,
+            ~models.Like.liker_id.in_(my_likes_ids)
+        )
+        .scalar()
+    ) or 0
+    
+    # Кол-во матчей
+    matches_count = (
+        db.query(func.count(models.Match.id))
+        .filter(
+            or_(
+                models.Match.user_a_id == user_id,
+                models.Match.user_b_id == user_id
+            )
+        )
+        .scalar()
+    ) or 0
+    
+    return {
+        'likes_count': likes_count,
+        'matches_count': matches_count
+    }
+
+
+# def get_responses_count(db: Session, user_id: int, category: Optional[str] = None) -> int:
+#     """
+#     Получить кол-во непрочитанных откликов на мои посты.
+#     """
+#     query = (
+#         db.query(func.count(models.Response.id))
+#         .join(models.Post, models.Response.request_id == models.Post.id)
+#         .filter(
+#             models.Post.author_id == user_id,
+#             models.Response.status == 'pending'
+#         )
+#     )
+    
+#     if category:
+#         query = query.filter(models.Post.category == category)
+    
+#     return query.scalar() or 0
+
+
+def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optional[models.User]:
+    """
+    Обновить настройки приватности для знакомств.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+    
+    if 'show_in_dating' in settings:
+        user.show_in_dating = settings['show_in_dating']
+    
+    if 'hide_course_group' in settings:
+        user.hide_course_group = settings['hide_course_group']
+    
+    if 'interests' in settings:
+        user.interests = settings['interests']
+    
+    db.commit()
+    db.refresh(user)
+    return user

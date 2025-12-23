@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -481,3 +481,311 @@ def delete_post_endpoint(
         raise HTTPException(status_code=500, detail="Не удалось удалить пост")
     
     return {"success": True}
+
+# ===== DATING ENDPOINTS =====
+
+@app.get("/dating/feed", response_model=List[schemas.DatingProfile])
+def get_dating_feed_endpoint(
+    telegram_id: int = Query(...),
+    limit: int = Query(20, le=50),
+    offset: int = Query(0, ge=0),
+    university: Optional[str] = Query(None),
+    institute: Optional[str] = Query(None),
+    course: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Лента профилей для знакомств"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    users = crud.get_dating_feed(
+        db, user.id, limit, offset,
+        university=university,
+        institute=institute,
+        course=course
+    )
+    
+    # Форматируем ответ
+    result = []
+    for u in users:
+        interests_list = u.interests.split(',') if u.interests else []
+        interests_list = [tag.strip() for tag in interests_list if tag.strip()]
+        
+        profile = schemas.DatingProfile(
+            id=u.id,
+            telegram_id=u.telegram_id,
+            name=u.name,
+            age=u.age,
+            bio=u.bio,
+            avatar=u.avatar,
+            university=u.university,
+            institute=u.institute,
+            course=None if u.hide_course_group else u.course,
+            group=None if u.hide_course_group else u.group,
+            interests=interests_list
+        )
+        result.append(profile)
+    
+    return result
+
+
+@app.get("/dating/people")
+def get_people_with_posts_endpoint(
+    telegram_id: int = Query(...),
+    category: str = Query(..., regex="^(study|help|hangout)$"),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    university: Optional[str] = Query(None),
+    institute: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Получить людей с их активными постами категории X.
+    Для режимов: study, help, hangout
+    """
+    # Проверяем что пользователь существует
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    # Получаем результаты из CRUD
+    result = crud.get_people_with_posts(
+        db, user.id, category, limit, offset,
+        university=university,
+        institute=institute
+    )
+    
+    # result уже содержит {items: [...], has_more: bool}
+    # Просто возвращаем как есть
+    return result
+
+
+@app.post("/dating/like", response_model=schemas.LikeActionResponse)
+def like_user_endpoint(
+    telegram_id: int = Query(...),
+    like_data: schemas.LikeCreate = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Лайкнуть пользователя"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    result = crud.create_like(db, user.id, like_data.liked_id)
+    
+    if not result['success']:
+        return schemas.LikeActionResponse(
+            success=False,
+            error=result.get('error')
+        )
+    
+    response = schemas.LikeActionResponse(
+        success=True,
+        is_match=result.get('is_match', False)
+    )
+    
+    if result.get('is_match'):
+        matched_user = result.get('matched_user')
+        response.match_id = result.get('match_id')
+        response.matched_user = schemas.UserPublic.from_orm(matched_user)
+    
+    return response
+
+
+@app.get("/dating/likes", response_model=List[schemas.DatingProfile])
+def get_who_liked_me_endpoint(
+    telegram_id: int = Query(...),
+    limit: int = Query(20, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """Кто меня лайкнул (но я их ещё нет)"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    users = crud.get_who_liked_me(db, user.id, limit, offset)
+    
+    result = []
+    for u in users:
+        interests_list = u.interests.split(',') if u.interests else []
+        interests_list = [tag.strip() for tag in interests_list if tag.strip()]
+        
+        profile = schemas.DatingProfile(
+            id=u.id,
+            telegram_id=u.telegram_id,
+            name=u.name,
+            age=u.age,
+            bio=u.bio,
+            avatar=u.avatar,
+            university=u.university,
+            institute=u.institute,
+            course=None if u.hide_course_group else u.course,
+            group=None if u.hide_course_group else u.group,
+            interests=interests_list
+        )
+        result.append(profile)
+    
+    return result
+
+
+@app.get("/dating/matches", response_model=List[schemas.MatchResponse])
+def get_my_matches_endpoint(
+    telegram_id: int = Query(...),
+    limit: int = Query(20, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """Мои матчи"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    matches = crud.get_my_matches(db, user.id, limit, offset)
+    
+    result = []
+    for match in matches:
+        result.append(schemas.MatchResponse(
+            id=match['id'],
+            matched_at=match['matched_at'],
+            matched_user=schemas.UserPublic.from_orm(match['matched_user'])
+        ))
+    
+    return result
+
+
+@app.get("/dating/stats", response_model=schemas.DatingStats)
+def get_dating_stats_endpoint(
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Статистика знакомств"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    stats = crud.get_dating_stats(db, user.id)
+    
+    # Добавляем responses_count
+    responses_count = 0  # TODO: реализовать когда будет модель Response
+    
+    return schemas.DatingStats(
+        likes_count=stats['likes_count'],
+        matches_count=stats['matches_count'],
+        responses_count=responses_count
+    )
+
+
+@app.patch("/me/dating-settings", response_model=schemas.UserPublic)
+def update_dating_settings_endpoint(
+    telegram_id: int = Query(...),
+    settings: schemas.DatingSettings = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Обновить настройки приватности для знакомств"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    settings_dict = settings.dict(exclude_unset=True)
+    updated_user = crud.update_dating_settings(db, user.id, settings_dict)
+    
+    return schemas.UserPublic.from_orm(updated_user)
+
+
+# ===== МОК ДАННЫЕ ДЛЯ ТЕСТИРОВАНИЯ =====
+@app.post("/dev/generate-mock-dating-data")
+def generate_mock_dating_data(
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    ТОЛЬКО ДЛЯ РАЗРАБОТКИ!
+    Создаёт тестовых пользователей для ленты знакомств.
+    """
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    mock_users = [
+        {
+            'telegram_id': 999000001,
+            'name': 'Анастасия',
+            'age': 19,
+            'bio': 'Люблю кофе и программирование ☕ Ищу компанию для хакатонов',
+            'university': user.university,
+            'institute': user.institute,
+            'course': 2,
+            'group': 'ИБ-23',
+            'interests': 'python,кофе,хакатоны,музыка',
+            'show_in_dating': True
+        },
+        {
+            'telegram_id': 999000002,
+            'name': 'Дмитрий',
+            'age': 21,
+            'bio': 'Спорт, музыка, программирование. Всегда на позитиве!',
+            'university': user.university,
+            'institute': user.institute,
+            'course': 3,
+            'group': 'ПИ-31',
+            'interests': 'спорт,музыка,программирование',
+            'show_in_dating': True
+        },
+        {
+            'telegram_id': 999000003,
+            'name': 'Мария',
+            'age': 20,
+            'bio': 'Дизайн, путешествия, фотография 📸',
+            'university': user.university,
+            'institute': user.institute,
+            'course': 2,
+            'group': 'ДИ-22',
+            'interests': 'дизайн,путешествия,фотография',
+            'show_in_dating': True
+        },
+        {
+            'telegram_id': 999000004,
+            'name': 'Алексей',
+            'age': 22,
+            'bio': 'Кино, книги, настолки. Давайте дружить!',
+            'university': user.university,
+            'institute': user.institute,
+            'course': 4,
+            'group': 'ФИ-41',
+            'interests': 'кино,книги,настолки',
+            'show_in_dating': True
+        },
+        {
+            'telegram_id': 999000005,
+            'name': 'София',
+            'age': 19,
+            'bio': 'Психология, саморазвитие, медитация 🧘‍♀️',
+            'university': user.university,
+            'institute': user.institute,
+            'course': 1,
+            'group': 'ПС-13',
+            'interests': 'психология,медитация,йога',
+            'show_in_dating': True
+        }
+    ]
+    
+    created_users = []
+    for mock_data in mock_users:
+        # Проверяем существует ли
+        existing = crud.get_user_by_telegram_id(db, mock_data['telegram_id'])
+        if not existing:
+            new_user = models.User(**mock_data)
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
+            created_users.append(new_user.name)
+        else:
+            created_users.append(f"{existing.name} (уже существует)")
+    
+    return {
+        "success": True,
+        "message": f"Создано {len(created_users)} тестовых пользователей",
+        "users": created_users
+    }

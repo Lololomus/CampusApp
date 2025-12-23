@@ -11,7 +11,9 @@ import EditProfile from './components/EditProfile';
 import Profile from './components/Profile';
 import Search from './components/Search';
 import UserPosts from './components/UserPosts';
+import DatingFeed from './components/dating/DatingFeed';
 import './App.css';
+
 
 function App() {
   const { 
@@ -22,9 +24,11 @@ function App() {
     showUserPosts
   } = useStore();
 
+
   useEffect(() => {
     initTelegramApp();
   }, []);
+
 
   const renderContent = () => {
     // Если открыт детальный просмотр поста – он всегда главный
@@ -32,10 +36,12 @@ function App() {
       return <PostDetail />;
     }
 
+
     // Экран "Мои посты"
     if (showUserPosts) {
       return <UserPosts />;
     }
+
 
     // Остальные экраны...
     switch (activeTab) {
@@ -43,6 +49,8 @@ function App() {
         return <Feed />;
       case 'search':
         return <Search />;
+      case 'people':           // ← ДОБАВИТЬ
+        return <DatingFeed />;  // ← ДОБАВИТЬ
       case 'profile':
         return <Profile />;
       default:
@@ -59,6 +67,7 @@ function App() {
     );
   }
 
+
   return (
     <div style={styles.app}>
       {renderContent()}
@@ -72,14 +81,6 @@ function App() {
   );
 }
 
-function PlaceholderScreen({ title }) {
-  return (
-    <div style={styles.placeholder}>
-      <h2>{title}</h2>
-      <p style={{ color: '#999' }}>В разработке...</p>
-    </div>
-  );
-}
 
 const styles = {
   app: {
@@ -87,15 +88,8 @@ const styles = {
     backgroundColor: '#121212',
     color: '#fff',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  },
-  placeholder: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh',
-    paddingBottom: '80px'
   }
 };
+
 
 export default App;

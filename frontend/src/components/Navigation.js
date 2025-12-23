@@ -1,17 +1,18 @@
 import React from 'react';
-import { Home, Search, MessageCircle, User, PlusSquare } from 'lucide-react';
+import { Home, Search, PlusCircle, User, Users } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
+import DatingFeed from './dating/DatingFeed';
 
 function Navigation() {
-  const { activeTab, setActiveTab, setShowCreateModal } = useStore(); // ИСПРАВЛЕНО: было setShowCreatePost
+  const { activeTab, setActiveTab, setShowCreateModal } = useStore();
   
   const tabs = [
-    { id: 'feed', icon: Home, label: 'Лента' },
+    { id: 'feed', icon: Home, label: 'Главная' },
     { id: 'search', icon: Search, label: 'Поиск' },
-    { id: 'create', icon: PlusSquare, label: null }, // Центральная кнопка
-    { id: 'messages', icon: MessageCircle, label: 'Чаты' },
-    { id: 'profile', icon: User, label: 'Профиль' }
+    { id: 'people', icon: Users, label: 'Люди' },  // ← НОВЫЙ ТАБ
+    { id: 'create', icon: PlusCircle, label: 'Создать' },
+    { id: 'profile', icon: User, label: 'Профиль' },
   ];
 
   const handleTabClick = (tabId) => {
@@ -79,7 +80,7 @@ const styles = {
     justifyContent: 'space-around',
     alignItems: 'center',
     paddingBottom: 'env(safe-area-inset-bottom)',
-    zIndex: 100
+    zIndex: 1
   },
   button: {
     display: 'flex',

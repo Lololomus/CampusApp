@@ -48,6 +48,21 @@ class User(BaseModel):
     class Config:
         from_attributes = True
 
+class UserPublic(BaseModel):
+    """Публичные данные пользователя (для dating)"""
+    id: int
+    telegram_id: int
+    name: str
+    age: Optional[int] = None
+    bio: Optional[str] = None
+    avatar: Optional[str] = None
+    university: str
+    institute: str
+    course: int
+    group: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 # ===== POST SCHEMAS =====
 
@@ -148,3 +163,80 @@ class Token(BaseModel):
     """JWT токен для авторизации"""
     access_token: str
     token_type: str = "bearer"
+
+# ===== DATING SCHEMAS =====
+
+class LikeCreate(BaseModel):
+    """Создание лайка"""
+    liked_id: int
+
+
+class LikeResponse(BaseModel):
+    """Ответ на лайк"""
+    id: int
+    liker_id: int
+    liked_id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class LikeActionResponse(BaseModel):
+    """Результат лайка (с проверкой на матч)"""
+    success: bool
+    is_match: bool = False
+    match_id: Optional[int] = None
+    matched_user: Optional['UserPublic'] = None
+    error: Optional[str] = None
+
+
+class MatchResponse(BaseModel):
+    """Матч"""
+    id: int
+    matched_at: datetime
+    matched_user: 'UserPublic'
+    
+    class Config:
+        from_attributes = True
+
+
+class DatingProfile(BaseModel):
+    """Профиль для ленты знакомств"""
+    id: int
+    telegram_id: int
+    name: str
+    age: Optional[int] = None
+    bio: Optional[str] = None
+    avatar: Optional[str] = None
+    university: str
+    institute: str
+    course: Optional[int] = None
+    group: Optional[str] = None
+    interests: List[str] = []
+    
+    # Для режимов study/help/hangout
+    active_post: Optional['Post'] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class DatingSettings(BaseModel):
+    """Настройки приватности для знакомств"""
+    show_in_dating: Optional[bool] = None
+    hide_course_group: Optional[bool] = None
+    interests: Optional[str] = None  # теги через запятую
+
+
+class DatingStats(BaseModel):
+    """Статистика знакомств"""
+    likes_count: int = 0  # кто меня лайкнул
+    matches_count: int = 0
+    responses_count: int = 0  # отклики на мои посты
+
+
+class PeopleWithPostsResponse(BaseModel):
+    """Список людей с их постами"""
+    items: List[DatingProfile]
+    has_more: bool

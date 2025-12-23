@@ -91,3 +91,30 @@ export const MOCK_COMMENTS = [
     replies: []
   }
 ];
+
+/**
+ * @typedef {'dating' | 'study' | 'help' | 'hangout'} DatingMode
+ */
+
+/**
+ * @typedef {Object} DatingProfile
+ * @property {number} id
+ * @property {number} telegram_id
+ * @property {string} name
+ * @property {number|null} age
+ * @property {string|null} bio
+ * @property {string|null} avatar
+ * @property {string} university
+ * @property {string} institute
+ * @property {number|null} course
+ * @property {string|null} group
+ * @property {string[]} interests
+ * @property {Post|null} active_post
+ */
+
+/**
+ * @typedef {Object} Match
+ * @property {number} id
+ * @property {string} matched_at
+ * @property {Object} matched_user
+ */

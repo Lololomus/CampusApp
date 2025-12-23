@@ -3,6 +3,7 @@ import axios from 'axios';
 
 // Базовый URL твоего backend сервера
 const API_BASE_URL = 'http://localhost:8000';
+const API_URL = API_BASE_URL;
 
 
 // Создаём экземпляр axios с настройками
@@ -185,9 +186,30 @@ export async function createComment(postId, text, parentId = null) {
   }
 }
 
+/**
+ * Создать отклик на пост (response)
+ */
+export async function createResponse(postId, text) {
+  const response = await fetch(`${API_URL}/comments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      post_id: postId,
+      text: text,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to create response');
+  }
+
+  const data = await response.json();
+  return data;
+}
 
 // ===== LIKES (Лайки) =====
-
 
 export async function likePost(postId) {
   try {
@@ -311,5 +333,120 @@ export async function updatePost(postId, postData) {
   }
 }
 
+// ===== DATING API =====
+
+/**
+ * Получить ленту профилей для знакомств
+ */
+export async function getDatingFeed(limit = 20, offset = 0, filters = {}) {
+  const params = new URLSearchParams({
+    telegram_id: getTelegramId(),
+    limit: limit.toString(),
+    offset: offset.toString(),
+  });
+
+  if (filters.university) params.append('university', filters.university);
+  if (filters.institute) params.append('institute', filters.institute);
+  if (filters.course) params.append('course', filters.course.toString());
+
+  const response = await fetch(`${API_URL}/dating/feed?${params}`);
+  if (!response.ok) throw new Error('Failed to fetch dating feed');
+  return response.json();
+}
+
+/**
+ * Получить людей с активными постами категории
+ */
+export async function getPeopleWithPosts(category, limit = 20, offset = 0, filters = {}) {
+  const params = new URLSearchParams({
+    telegram_id: getTelegramId(),
+    category,
+    limit: limit.toString(),
+    offset: offset.toString(),
+  });
+
+  if (filters.university) params.append('university', filters.university);
+  if (filters.institute) params.append('institute', filters.institute);
+
+  const response = await fetch(`${API_URL}/dating/people?${params}`);
+  if (!response.ok) throw new Error('Failed to fetch people with posts');
+  return response.json();
+}
+
+/**
+ * Лайкнуть пользователя
+ */
+export async function likeUser(userId) {
+  const response = await fetch(`${API_URL}/dating/like?telegram_id=${getTelegramId()}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ liked_id: userId }),
+  });
+  if (!response.ok) throw new Error('Failed to like user');
+  return response.json();
+}
+
+/**
+ * Получить список тех, кто лайкнул меня
+ */
+export async function getWhoLikedMe(limit = 20, offset = 0) {
+  const params = new URLSearchParams({
+    telegram_id: getTelegramId(),
+    limit: limit.toString(),
+    offset: offset.toString(),
+  });
+
+  const response = await fetch(`${API_URL}/dating/likes?${params}`);
+  if (!response.ok) throw new Error('Failed to fetch likes');
+  return response.json();
+}
+
+/**
+ * Получить мои матчи
+ */
+export async function getMyMatches(limit = 20, offset = 0) {
+  const params = new URLSearchParams({
+    telegram_id: getTelegramId(),
+    limit: limit.toString(),
+    offset: offset.toString(),
+  });
+
+  const response = await fetch(`${API_URL}/dating/matches?${params}`);
+  if (!response.ok) throw new Error('Failed to fetch matches');
+  return response.json();
+}
+
+/**
+ * Получить статистику знакомств
+ */
+export async function getDatingStats() {
+  const response = await fetch(`${API_URL}/dating/stats?telegram_id=${getTelegramId()}`);
+  if (!response.ok) throw new Error('Failed to fetch dating stats');
+  return response.json();
+}
+
+/**
+ * Обновить настройки приватности
+ */
+export async function updateDatingSettings(settings) {
+  const response = await fetch(`${API_URL}/me/dating-settings?telegram_id=${getTelegramId()}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) throw new Error('Failed to update dating settings');
+  return response.json();
+}
+
+/**
+ * ТОЛЬКО ДЛЯ РАЗРАБОТКИ: создать моковых пользователей
+ */
+export async function generateMockDatingData() {
+  const response = await fetch(`${API_URL}/dev/generate-mock-dating-data?telegram_id=${getTelegramId()}`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error('Failed to generate mock data');
+  return response.json();
+}
 
 export { api };

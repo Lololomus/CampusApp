@@ -297,16 +297,15 @@ const styles = {
   },
   fixedFooter: {
     position: 'fixed',
-    bottom: '60px',
+    bottom: '64px',
     left: 0,
     right: 0,
     display: 'flex',
     gap: '8px',
     padding: '12px 16px',
-    paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
     backgroundColor: '#121212',
     borderTop: '1px solid #333',
-    zIndex: 100,
+    zIndex: 50,
   },
   settingsButton: {
     flex: 1,
