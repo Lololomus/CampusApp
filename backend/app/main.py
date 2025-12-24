@@ -382,6 +382,68 @@ def delete_post_endpoint(
     
     return {"success": True}
 
+@app.patch("/posts/{post_id}", response_model=schemas.PostResponse)
+def update_post_endpoint(
+    post_id: int,
+    telegram_id: int = Query(...),
+    post_update: schemas.PostUpdate = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Обновление поста"""
+    # Проверка пользователя
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Получение поста
+    post = crud.get_post(db, post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Проверка прав (только автор может редактировать)
+    if post.author_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this post")
+    
+    # Обновление поста
+    updated_post = crud.update_post(db, post_id, post_update)
+    if not updated_post:
+        raise HTTPException(status_code=500, detail="Failed to update post")
+    
+    # Формирование ответа
+    tags = json.loads(updated_post.tags) if updated_post.tags else []
+    
+    author_data = None
+    author_id_data = updated_post.author_id
+    if updated_post.is_anonymous:
+        author_data = {"name": "Аноним"}
+        author_id_data = None
+    else:
+        author_data = schemas.UserShort.from_orm(user)
+    
+    return {
+        "id": updated_post.id,
+        "author_id": author_id_data,
+        "author": author_data,
+        "category": updated_post.category,
+        "title": updated_post.title,
+        "body": updated_post.body,
+        "tags": tags,
+        "is_anonymous": updated_post.is_anonymous,
+        "enable_anonymous_comments": updated_post.enable_anonymous_comments,
+        "lost_or_found": updated_post.lost_or_found,
+        "item_description": updated_post.item_description,
+        "location": updated_post.location,
+        "event_name": updated_post.event_name,
+        "event_date": updated_post.event_date,
+        "event_location": updated_post.event_location,
+        "is_important": updated_post.is_important,
+        "expires_at": updated_post.expires_at,
+        "likes_count": updated_post.likes_count,
+        "comments_count": updated_post.comments_count,
+        "views_count": updated_post.views_count,
+        "created_at": updated_post.created_at,
+        "updated_at": updated_post.updated_at
+    }
 
 @app.post("/posts/{post_id}/like")
 def toggle_post_like_endpoint(
@@ -400,9 +462,9 @@ def toggle_post_like_endpoint(
 
 # ==================== COMMENT ENDPOINTS (ОБНОВЛЕНЫ) ====================
 
-@app.get("/posts/{postid}/comments", response_model=schemas.CommentsFeedResponse)
+@app.get("/posts/{post_id}/comments", response_model=schemas.CommentsFeedResponse)
 def get_post_comments_endpoint(
-    postid: int,
+    post_id: int,
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
@@ -410,7 +472,7 @@ def get_post_comments_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    comments = crud.get_post_comments(db, postid, user.id)
+    comments = crud.get_post_comments(db, post_id, user.id)
     result = []
     
     for comment in comments:
@@ -418,8 +480,13 @@ def get_post_comments_endpoint(
         author_id_data = comment.author_id
         
         if comment.is_anonymous:
+            if comment.anonymous_index == 0 or comment.anonymous_index is None:
+                author_name = "Аноним"
+            else:
+                author_name = f"Аноним {comment.anonymous_index}"
+            
             author_data = {
-                "name": f"Аноним{comment.anonymous_index}",
+                "name": author_name,
                 "id": None,
                 "telegram_id": None,
                 "avatar": None,
@@ -427,7 +494,8 @@ def get_post_comments_endpoint(
                 "institute": None,
                 "course": None
             }
-            author_id_data = None
+            author_id_data = comment.author_id
+
         else:
             if comment.author:
                 author_data = {
@@ -449,6 +517,7 @@ def get_post_comments_endpoint(
             "parent_id": comment.parent_id,
             "is_anonymous": comment.is_anonymous,
             "anonymous_index": comment.anonymous_index,
+            "is_deleted": comment.is_deleted,
             "likes": comment.likes_count,
             "is_liked": comment.is_liked,   
             "created_at": comment.created_at
@@ -465,22 +534,23 @@ def create_comment_endpoint(
     comment_data: schemas.CommentCreate = Body(...),
     db: Session = Depends(get_db)
 ):
-    """Создать комментарий"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="User not found")
     
     comment = crud.create_comment(db, comment_data, user.id)
     if not comment:
-        raise HTTPException(status_code=404, detail="Пост не найден")
+        raise HTTPException(status_code=404, detail="Post not found")
     
-    # Формируем ответ
     author_data = None
     author_id_data = comment.author_id
-    
     if comment.is_anonymous:
-        author_data = {"name": f"Аноним{comment.anonymous_index}"}
-        author_id_data = None
+        if comment.anonymous_index == 0 or comment.anonymous_index is None:
+            author_name = "Аноним"
+        else:
+            author_name = f"Аноним {comment.anonymous_index}"
+        author_data = {"name": author_name}
+        author_id_data = comment.author_id
     else:
         author_data = schemas.UserShort.from_orm(user)
     
@@ -494,7 +564,7 @@ def create_comment_endpoint(
         "is_anonymous": comment.is_anonymous,
         "anonymous_index": comment.anonymous_index,
         "likes": 0,
-        "is_liked": False, 
+        "is_liked": False,
         "created_at": comment.created_at
     }
 
@@ -520,7 +590,6 @@ def update_comment_endpoint(
     comment_update: schemas.CommentUpdate = Body(...),
     db: Session = Depends(get_db)
 ):
-    """Редактировать комментарий"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -529,13 +598,15 @@ def update_comment_endpoint(
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found or permission denied")
     
-    # Формируем ответ
     author_data = None
     author_id_data = comment.author_id
-    
     if comment.is_anonymous:
-        author_data = {"name": f"Аноним{comment.anonymous_index}"}
-        author_id_data = None
+        if comment.anonymous_index == 0 or comment.anonymous_index is None:
+            author_name = "Аноним"
+        else:
+            author_name = f"Аноним {comment.anonymous_index}"
+        author_data = {"name": author_name}
+        author_id_data = comment.author_id
     else:
         author_data = schemas.UserShort.from_orm(comment.author) if comment.author else None
     

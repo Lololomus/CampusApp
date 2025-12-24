@@ -490,6 +490,7 @@ function PostDetail() {
         replyToName={replyToName}
         onCancelReply={() => setReplyTo(null)}
         postAuthorName={displayAuthorName}
+        isAnonymousPost={isAnonymous}
       />
 
       {reportingComment && (
@@ -515,65 +516,53 @@ function PostDetail() {
   );
 }
 
-function Comment({ 
-  comment, 
-  depth = 0, 
-  currentUser, 
-  commentLikes, 
-  onLike, 
-  onReply, 
-  onDelete,
-  onEdit,
-  onReport,
-  menuOpen, 
-  setMenuOpen,
-  editingComment,
-  editText,
-  setEditText,
-  onSaveEdit,
-  onCancelEdit
-}) {
+function Comment({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit }) {
   const likes = commentLikes[comment.id] || { isLiked: false, count: comment.likes || 0 };
   const maxDepth = 3;
   const isMyComment = currentUser && comment.author_id === currentUser.id;
   const isEditing = editingComment === comment.id;
+  
+  const isAnonymousComment = comment.is_anonymous || false;
+  const commentAuthorName = isAnonymousComment 
+    ? (comment.anonymous_index === 0 || !comment.anonymous_index ? "Аноним" : `Аноним ${comment.anonymous_index}`)
+    : (typeof comment.author === 'object' ? comment.author.name : comment.author);
+  const commentAuthorInitial = isAnonymousComment 
+    ? '?' 
+    : (typeof comment.author === 'object' ? comment.author.name[0] : comment.author?.[0] || '?');
 
   return (
     <div style={{ position: 'relative' }}>
       {comment.replies && comment.replies.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            left: 18,
-            top: 36,
-            bottom: 0,
-            width: 2,
-            backgroundColor: 'rgba(135, 116, 225, 0.25)',
-            zIndex: 0,
-          }}
-        />
+        <div style={{
+          position: 'absolute',
+          left: 18,
+          top: 36,
+          bottom: 0,
+          width: 2,
+          backgroundColor: 'rgba(135, 116, 225, 0.25)',
+          zIndex: 0,
+        }} />
       )}
-
+      
       <div style={styles.comment}>
-        <div style={styles.commentAvatar}>
-          {typeof comment.author === 'object' 
-            ? comment.author.name[0] 
-            : comment.author?.[0] || '?'}
+        <div style={{
+          ...styles.commentAvatar,
+          backgroundColor: isAnonymousComment ? theme.colors.textDisabled : theme.colors.primary
+        }}>
+          {commentAuthorInitial}
         </div>
         
         <div style={styles.commentContent}>
           <div style={styles.commentHeader}>
             <span style={styles.commentAuthor}>
-              {typeof comment.author === 'object' ? comment.author.name : comment.author}
+              {commentAuthorName}
             </span>
-            {!comment.is_anonymous && (comment.author?.university || comment.author?.course) && (
+            
+            {!isAnonymousComment && comment.author?.university && comment.author?.course && (
               <span style={styles.commentMeta}>
-                {[
-                  comment.author?.university,
-                  comment.author?.course ? `${comment.author.course} курс` : null
-                ]
+                {[comment.author?.university, comment.author?.course ? `${comment.author.course} курс` : null]
                   .filter(Boolean)
-                  .join(' · ')}
+                  .join(', ')}
               </span>
             )}
             
@@ -627,19 +616,17 @@ function Comment({
               </div>
             </div>
           ) : (
-            <>
-              <p style={{
-                ...styles.commentText,
-                fontStyle: comment.is_deleted ? 'italic' : 'normal',
-                color: comment.is_deleted ? theme.colors.textDisabled : theme.colors.textSecondary
-              }}>
-                {comment.body}
-              </p>
-              
-              {comment.is_edited && !comment.is_deleted && (
-                <span style={styles.editedLabel}>(отредактировано)</span>
-              )}
-            </>
+            <p style={{
+              ...styles.commentText,
+              fontStyle: comment.is_deleted ? 'italic' : 'normal',
+              color: comment.is_deleted ? theme.colors.textDisabled : theme.colors.textSecondary
+            }}>
+              {comment.body}
+            </p>
+          )}
+          
+          {comment.is_edited && !comment.is_deleted && (
+            <span style={styles.editedLabel}>(изменено)</span>
           )}
           
           {!comment.is_deleted && !isEditing && (
@@ -664,10 +651,10 @@ function Comment({
           )}
         </div>
       </div>
-
+      
       {comment.replies && comment.replies.length > 0 && (
         <div style={{ marginLeft: 30, marginTop: theme.spacing.md, position: 'relative', zIndex: 1 }}>
-          {comment.replies.map((reply) => (
+          {comment.replies.map(reply => (
             <Comment
               key={reply.id}
               comment={reply}

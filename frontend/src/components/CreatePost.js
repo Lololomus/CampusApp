@@ -3,11 +3,27 @@ import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar } from 'lucide-reac
 import { useStore } from '../store';
 import { createPost } from '../api';
 import { hapticFeedback } from '../utils/telegram';
+import theme from '../theme';
+import { Z_CREATE_POST } from '../constants/zIndex';
+
+// ===== КОНСТАНТЫ (DRY) =====
+const CATEGORIES = [
+  { value: 'news', label: 'Новости', icon: '📰', color: theme.colors.news },
+  { value: 'events', label: 'События', icon: '🎉', color: theme.colors.events },
+  { value: 'confessions', label: 'Признания', icon: '💭', color: theme.colors.confessions },
+  { value: 'lost_found', label: 'Находки', icon: '🔍', color: theme.colors.lostFound }
+];
+
+const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'сопромат'];
+
+const MAX_TITLE_LENGTH = 100;
+const MAX_BODY_LENGTH = 500;
+const MAX_TAGS = 5;
 
 function CreatePost() {
   const { setShowCreateModal, addNewPost } = useStore();
-  
-  // Состояние формы
+
+  // ===== STATE =====
   const [category, setCategory] = useState('news');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -21,31 +37,78 @@ function CreatePost() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [startDrawing, setStartDrawing] = useState(false);
   const [checkDrawn, setCheckDrawn] = useState(false);
-  
-  // Новые поля для категорий
+
+  // Специфичные поля
   const [isAnonymous, setIsAnonymous] = useState(false);
-  const [lostOrFound, setLostOrFound] = useState('lost'); // 'lost' | 'found'
+  const [lostOrFound, setLostOrFound] = useState('lost');
   const [itemDescription, setItemDescription] = useState('');
   const [location, setLocation] = useState('');
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventLocation, setEventLocation] = useState('');
   const [isImportant, setIsImportant] = useState(false);
-  
-  // Refs
+
   const titleInputRef = useRef(null);
+
+  // ===== EFFECTS =====
 
   // Монтирование с анимацией
   useEffect(() => {
-    setTimeout(() => setIsVisible(true), 10);
-    
-    // Автофокус на заголовок (desktop)
+    setTimeout(() => setIsVisible(true), 50);
     if (window.innerWidth >= 768 && titleInputRef.current) {
       setTimeout(() => titleInputRef.current.focus(), 300);
     }
   }, []);
 
-  // Сброс доп. полей при смене категории
+  // ===== АВТОСОХРАНЕНИЕ ЧЕРНОВИКА (каждые 3 секунды) =====
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (title.trim() || body.trim()) {
+        const draft = {
+          category, title, body, tags, isAnonymous,
+          lostOrFound, itemDescription, location,
+          eventName, eventDate, eventLocation, isImportant,
+          timestamp: Date.now()
+        };
+        localStorage.setItem('createPostDraft', JSON.stringify(draft));
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [category, title, body, tags, isAnonymous, lostOrFound, itemDescription, location, eventName, eventDate, eventLocation, isImportant]);
+
+  // Восстановление черновика при открытии
+  useEffect(() => {
+    const draft = localStorage.getItem('createPostDraft');
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        // Проверяем что черновик свежий (< 24 часов)
+        if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+          if (window.confirm('Восстановить несохранённый черновик?')) {
+            setCategory(parsed.category || 'news');
+            setTitle(parsed.title || '');
+            setBody(parsed.body || '');
+            setTags(parsed.tags || []);
+            setIsAnonymous(parsed.isAnonymous || false);
+            setLostOrFound(parsed.lostOrFound || 'lost');
+            setItemDescription(parsed.itemDescription || '');
+            setLocation(parsed.location || '');
+            setEventName(parsed.eventName || '');
+            setEventDate(parsed.eventDate || '');
+            setEventLocation(parsed.eventLocation || '');
+            setIsImportant(parsed.isImportant || false);
+            hapticFeedback('success');
+          } else {
+            localStorage.removeItem('createPostDraft');
+          }
+        }
+      } catch (e) {
+        console.error('Ошибка восстановления черновика:', e);
+      }
+    }
+  }, []);
+
+  // Сброс специфичных полей при смене категории
   useEffect(() => {
     setItemDescription('');
     setLocation('');
@@ -57,24 +120,85 @@ function CreatePost() {
     // Для confessions принудительная анонимность
     if (category === 'confessions') {
       setIsAnonymous(true);
+    } else {
+      setIsAnonymous(false);
     }
   }, [category]);
 
-  // Проверка есть ли контент в форме
+  // ===== SHARED UTILITIES =====
+
+  const TagBadge = ({ tag, onRemove }) => (
+    <span style={styles.tag}>
+      #{tag}
+      <button 
+        style={styles.tagRemove}
+        onClick={(e) => {
+          e.stopPropagation();
+          hapticFeedback('light');
+          onRemove(tag);
+        }}
+        disabled={isSubmitting}
+        aria-label={`Удалить тег ${tag}`}
+      >
+        <X size={14} />
+      </button>
+    </span>
+  );
+
+  const ErrorMessage = ({ message }) => message ? (
+    <div style={styles.errorAlert}>
+      <AlertCircle size={18} />
+      <span>{message}</span>
+    </div>
+  ) : null;
+
+  const CharCounter = ({ current, max, isValid }) => (
+    <span style={{
+      ...styles.charCount,
+      color: isValid ? theme.colors.textTertiary : theme.colors.error
+    }}>
+      {current}/{max}
+      {isValid && <Check size={14} style={styles.checkIcon} />}
+    </span>
+  );
+
+  // ===== ПРОГРЕСС-БАР ЗАПОЛНЕНИЯ =====
+  const calculateProgress = () => {
+    let totalFields = 2; // title + body
+    let filledFields = 0;
+
+    if (isTitleValid) filledFields++;
+    if (isBodyValid) filledFields++;
+
+    if (category === 'lost_found') {
+      totalFields += 2;
+      if (itemDescription.trim().length >= 5) filledFields++;
+      if (location.trim().length >= 3) filledFields++;
+    }
+
+    if (category === 'events') {
+      totalFields += 3;
+      if (eventName.trim().length >= 3) filledFields++;
+      if (eventDate) filledFields++;
+      if (eventLocation.trim().length >= 3) filledFields++;
+    }
+
+    return Math.round((filledFields / totalFields) * 100);
+  };
+
+  // ===== HANDLERS =====
+
   const hasContent = () => {
     return title.trim().length >= 3 || body.trim().length >= 10;
   };
 
-  // Валидация формы
   const isFormValid = () => {
     const basicValid = title.trim().length >= 3 && body.trim().length >= 10;
     
-    // Доп. валидация для lost_found
     if (category === 'lost_found') {
       return basicValid && itemDescription.trim().length >= 5 && location.trim().length >= 3;
     }
     
-    // Доп. валидация для events
     if (category === 'events') {
       return basicValid && eventName.trim().length >= 3 && eventDate && eventLocation.trim().length >= 3;
     }
@@ -82,24 +206,21 @@ function CreatePost() {
     return basicValid;
   };
 
-  // Обработка добавления тега
-  const handleAddTag = () => {
-    const trimmedTag = tagInput.trim().toLowerCase();
+  const handleAddTag = (tag = null) => {
+    const trimmedTag = (tag || tagInput).trim().toLowerCase();
     
-    if (trimmedTag && !tags.includes(trimmedTag) && tags.length < 5 && trimmedTag.length <= 20) {
+    if (trimmedTag && !tags.includes(trimmedTag) && tags.length < MAX_TAGS && trimmedTag.length <= 20) {
       hapticFeedback('light');
       setTags([...tags, trimmedTag]);
       setTagInput('');
     }
   };
 
-  // Удаление тега
   const handleRemoveTag = (tagToRemove) => {
     hapticFeedback('light');
     setTags(tags.filter(tag => tag !== tagToRemove));
   };
 
-  // Обработка Enter в поле тегов
   const handleTagKeyPress = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -107,7 +228,6 @@ function CreatePost() {
     }
   };
 
-  // Закрытие модального окна с подтверждением
   const handleClose = () => {
     if (hasContent() && !isSubmitting) {
       hapticFeedback('light');
@@ -117,27 +237,44 @@ function CreatePost() {
     }
   };
 
-  // Подтверждённое закрытие
   const confirmClose = () => {
     hapticFeedback('light');
     setIsVisible(false);
     setTimeout(() => {
       setShowCreateModal(false);
+      localStorage.removeItem('createPostDraft');
     }, 300);
   };
 
-  // Отмена закрытия
   const cancelClose = () => {
     hapticFeedback('light');
     setShowConfirmation(false);
   };
 
-  // Публикация поста
+  // ===== БЫСТРЫЕ КНОПКИ ДЛЯ ДАТЫ =====
+  const setQuickDate = (type) => {
+    hapticFeedback('light');
+    const now = new Date();
+    let targetDate = new Date();
+
+    if (type === 'today') {
+      targetDate.setHours(18, 0, 0, 0);
+    } else if (type === 'tomorrow') {
+      targetDate.setDate(now.getDate() + 1);
+      targetDate.setHours(18, 0, 0, 0);
+    } else if (type === 'week') {
+      targetDate.setDate(now.getDate() + 7);
+      targetDate.setHours(18, 0, 0, 0);
+    }
+
+    const formatted = targetDate.toISOString().slice(0, 16);
+    setEventDate(formatted);
+  };
+
   const handlePublish = async () => {
     setAttemptedSubmit(true);
     setError('');
 
-    // Валидация
     if (!isFormValid()) {
       hapticFeedback('error');
       
@@ -161,50 +298,40 @@ function CreatePost() {
         body: body.trim(),
         tags,
         is_anonymous: isAnonymous,
-        enable_anonymous_comments: false
+        enable_anonymous_comments: category === 'confessions' ? true : isAnonymous
       };
 
-      // Доп. поля для lost_found
       if (category === 'lost_found') {
         postData.lost_or_found = lostOrFound;
         postData.item_description = itemDescription.trim();
         postData.location = location.trim();
       }
 
-      // Доп. поля для events
       if (category === 'events') {
         postData.event_name = eventName.trim();
         postData.event_date = new Date(eventDate).toISOString();
         postData.event_location = eventLocation.trim();
       }
 
-      // Доп. поля для news
       if (category === 'news') {
         postData.is_important = isImportant;
       }
 
       const newPost = await createPost(postData);
-
       addNewPost(newPost);
+      
+      localStorage.removeItem('createPostDraft');
+      
       hapticFeedback('success');
       
-      // Показываем SUCCESS анимацию
       setShowSuccess(true);
-      
-      // Запускаем прорисовку галочки
       setTimeout(() => setStartDrawing(true), 100);
-      
-      // После прорисовки — БОЛЬШОЙ pulse
       setTimeout(() => setCheckDrawn(true), 1000);
-
-      // Начинаем fade-out через 2.0s (дольше держим галочку)
       setTimeout(() => {
         setShowSuccess(false);
         setStartDrawing(false);
         setCheckDrawn(false);
       }, 2000);
-
-      // Полное закрытие через 2.05s
       setTimeout(() => {
         confirmClose();
       }, 2050);
@@ -217,21 +344,15 @@ function CreatePost() {
     }
   };
 
-  // Категории (ОБНОВЛЕНЫ)
-  const categories = [
-    { value: 'news', label: '📰 Новости', color: '#3b82f6' },
-    { value: 'events', label: '🎉 События', color: '#f59e0b' },
-    { value: 'confessions', label: '💭 Признания', color: '#ec4899' },
-    { value: 'lost_found', label: '🔍 Находки', color: '#10b981' }
-  ];
-
-  // Проверка валидности полей
+  // ===== ВАЛИДАЦИЯ =====
   const isTitleValid = title.trim().length >= 3;
   const isBodyValid = body.trim().length >= 10;
   const canAddTag = tagInput.trim().length > 0 && 
-                    tags.length < 5 && 
+                    tags.length < MAX_TAGS && 
                     !tags.includes(tagInput.trim().toLowerCase()) &&
                     tagInput.trim().length <= 20;
+
+  const progress = calculateProgress();
 
   return (
     <>
@@ -275,14 +396,34 @@ function CreatePost() {
             <div style={{ width: 40 }} />
           </div>
 
+          {/* ===== ПРОГРЕСС-БАР (STICKY) ===== */}
+          <div style={styles.progressBarContainer}>
+            <div style={styles.progressBarWrapper}>
+              <div 
+                style={{
+                  ...styles.progressBarFill,
+                  width: `${progress}%`,
+                  background: progress === 100 
+                    ? `linear-gradient(90deg, ${theme.colors.success} 0%, ${theme.colors.primary} 100%)`
+                    : `linear-gradient(90deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
+                }}
+              />
+            </div>
+            <span style={styles.progressText}>
+              {progress === 100 ? '✓ Готово!' : `${progress}% заполнено`}
+            </span>
+          </div>
+
           {/* Content */}
           <div style={styles.content}>
             
-            {/* Категории (горизонтальные чипы) */}
+            {/* ===== КАТЕГОРИИ 2×2 GRID ===== */}
             <div style={styles.section}>
               <label style={styles.label}>Категория</label>
-              <div style={styles.categoriesWrapper}>
-                {categories.map(cat => (
+              
+              {/* Grid 2x2 */}
+              <div style={styles.categoriesGrid}>
+                {CATEGORIES.map(cat => (
                   <button
                     key={cat.value}
                     onClick={() => {
@@ -292,26 +433,25 @@ function CreatePost() {
                     style={
                       category === cat.value
                         ? {
-                            ...styles.categoryChip,
+                            ...styles.categoryButton,
                             background: `linear-gradient(135deg, ${cat.color} 0%, ${cat.color}dd 100%)`,
                             color: '#fff',
                             border: 'none',
                             boxShadow: `0 4px 12px ${cat.color}40`
                           }
-                        : styles.categoryChip
+                        : styles.categoryButton
                     }
                     disabled={isSubmitting}
                   >
-                    {cat.label}
+                    <span style={styles.categoryIcon}>{cat.icon}</span>
+                    <span style={styles.categoryLabel}>{cat.label}</span>
                   </button>
                 ))}
               </div>
-            </div>
-
-            {/* Чекбокс анонимности (кроме confessions) */}
-            {category !== 'confessions' && (
-              <div style={styles.section}>
-                <label style={styles.checkboxLabel}>
+              
+              {/* Checkbox анонимности ОТДЕЛЬНО под grid */}
+              {category !== 'confessions' && (
+                <label style={styles.anonymousCheckbox}>
                   <input
                     type="checkbox"
                     checked={isAnonymous}
@@ -324,24 +464,21 @@ function CreatePost() {
                   />
                   <span style={styles.checkboxText}>Опубликовать анонимно</span>
                 </label>
-              </div>
-            )}
-
-            {/* Confessions hint */}
-            {category === 'confessions' && (
-              <div style={styles.infoBox}>
-                💭 Все признания публикуются анонимно
-              </div>
-            )}
+              )}
+              
+              {/* Hint для confessions */}
+              {category === 'confessions' && (
+                <div style={styles.confessionHint}>
+                  💭 Все признания публикуются анонимно
+                </div>
+              )}
+            </div>
 
             {/* Заголовок */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Заголовок*
-                <span style={styles.charCount}>
-                  {title.length}/100
-                  {isTitleValid && <Check size={14} style={styles.checkIcon} />}
-                </span>
+                <CharCounter current={title.length} max={MAX_TITLE_LENGTH} isValid={isTitleValid} />
               </label>
               <div style={styles.inputWrapper}>
                 <input 
@@ -352,10 +489,10 @@ function CreatePost() {
                   onChange={(e) => setTitle(e.target.value)}
                   style={{
                     ...styles.input,
-                    borderColor: attemptedSubmit && !isTitleValid ? '#ef4444' : 
-                                 title.length > 0 ? '#667eea' : '#2a2a2a'
+                    borderColor: attemptedSubmit && !isTitleValid ? theme.colors.error : 
+                                 title.length > 0 ? theme.colors.primary : theme.colors.border
                   }}
-                  maxLength={100}
+                  maxLength={MAX_TITLE_LENGTH}
                   disabled={isSubmitting}
                 />
                 {isTitleValid && (
@@ -368,10 +505,7 @@ function CreatePost() {
             <div style={styles.section}>
               <label style={styles.label}>
                 Описание*
-                <span style={styles.charCount}>
-                  {body.length}/500
-                  {isBodyValid && <Check size={14} style={styles.checkIcon} />}
-                </span>
+                <CharCounter current={body.length} max={MAX_BODY_LENGTH} isValid={isBodyValid} />
               </label>
               <div style={styles.inputWrapper}>
                 <textarea 
@@ -380,11 +514,11 @@ function CreatePost() {
                   onChange={(e) => setBody(e.target.value)}
                   style={{
                     ...styles.textarea,
-                    borderColor: attemptedSubmit && !isBodyValid ? '#ef4444' : 
-                                 body.length > 0 ? '#667eea' : '#2a2a2a'
+                    borderColor: attemptedSubmit && !isBodyValid ? theme.colors.error : 
+                                 body.length > 0 ? theme.colors.primary : theme.colors.border
                   }}
                   rows={6}
-                  maxLength={500}
+                  maxLength={MAX_BODY_LENGTH}
                   disabled={isSubmitting}
                 />
                 {isBodyValid && (
@@ -396,7 +530,6 @@ function CreatePost() {
             {/* LOST & FOUND дополнительные поля */}
             {category === 'lost_found' && (
               <>
-                {/* Lost or Found toggle */}
                 <div style={styles.section}>
                   <label style={styles.label}>Что случилось?</label>
                   <div style={styles.toggleWrapper}>
@@ -431,7 +564,6 @@ function CreatePost() {
                   </div>
                 </div>
 
-                {/* Описание предмета */}
                 <div style={styles.section}>
                   <label style={styles.label}>
                     Что именно?*
@@ -444,15 +576,14 @@ function CreatePost() {
                     onChange={(e) => setItemDescription(e.target.value)}
                     style={{
                       ...styles.input,
-                      borderColor: attemptedSubmit && itemDescription.trim().length < 5 ? '#ef4444' : 
-                                   itemDescription.length > 0 ? '#667eea' : '#2a2a2a'
+                      borderColor: attemptedSubmit && itemDescription.trim().length < 5 ? theme.colors.error : 
+                                   itemDescription.length > 0 ? theme.colors.primary : theme.colors.border
                     }}
                     maxLength={100}
                     disabled={isSubmitting}
                   />
                 </div>
 
-                {/* Локация */}
                 <div style={styles.section}>
                   <label style={styles.label}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -468,8 +599,8 @@ function CreatePost() {
                     onChange={(e) => setLocation(e.target.value)}
                     style={{
                       ...styles.input,
-                      borderColor: attemptedSubmit && location.trim().length < 3 ? '#ef4444' : 
-                                   location.length > 0 ? '#667eea' : '#2a2a2a'
+                      borderColor: attemptedSubmit && location.trim().length < 3 ? theme.colors.error : 
+                                   location.length > 0 ? theme.colors.primary : theme.colors.border
                     }}
                     maxLength={100}
                     disabled={isSubmitting}
@@ -481,7 +612,6 @@ function CreatePost() {
             {/* EVENTS дополнительные поля */}
             {category === 'events' && (
               <>
-                {/* Название события */}
                 <div style={styles.section}>
                   <label style={styles.label}>
                     Название события*
@@ -494,15 +624,14 @@ function CreatePost() {
                     onChange={(e) => setEventName(e.target.value)}
                     style={{
                       ...styles.input,
-                      borderColor: attemptedSubmit && eventName.trim().length < 3 ? '#ef4444' : 
-                                   eventName.length > 0 ? '#667eea' : '#2a2a2a'
+                      borderColor: attemptedSubmit && eventName.trim().length < 3 ? theme.colors.error : 
+                                   eventName.length > 0 ? theme.colors.primary : theme.colors.border
                     }}
                     maxLength={100}
                     disabled={isSubmitting}
                   />
                 </div>
 
-                {/* Дата */}
                 <div style={styles.section}>
                   <label style={styles.label}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -510,20 +639,49 @@ function CreatePost() {
                       Дата и время*
                     </span>
                   </label>
+                  
+                  {/* Быстрые кнопки выбора даты */}
+                  <div style={styles.quickDateButtons}>
+                    <button 
+                      onClick={() => setQuickDate('today')} 
+                      style={styles.quickDateBtn}
+                      disabled={isSubmitting}
+                      type="button"
+                    >
+                      Сегодня
+                    </button>
+                    <button 
+                      onClick={() => setQuickDate('tomorrow')} 
+                      style={styles.quickDateBtn}
+                      disabled={isSubmitting}
+                      type="button"
+                    >
+                      Завтра
+                    </button>
+                    <button 
+                      onClick={() => setQuickDate('week')} 
+                      style={styles.quickDateBtn}
+                      disabled={isSubmitting}
+                      type="button"
+                    >
+                      Через неделю
+                    </button>
+                  </div>
+                  
                   <input 
                     type="datetime-local"
                     value={eventDate}
                     onChange={(e) => setEventDate(e.target.value)}
                     style={{
                       ...styles.input,
-                      borderColor: attemptedSubmit && !eventDate ? '#ef4444' : 
-                                   eventDate ? '#667eea' : '#2a2a2a'
+                      marginTop: theme.spacing.sm,
+                      borderColor: attemptedSubmit && !eventDate ? theme.colors.error : 
+                                   eventDate ? theme.colors.primary : theme.colors.border
                     }}
                     disabled={isSubmitting}
                   />
                 </div>
 
-                {/* Место */}
                 <div style={styles.section}>
                   <label style={styles.label}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -539,8 +697,8 @@ function CreatePost() {
                     onChange={(e) => setEventLocation(e.target.value)}
                     style={{
                       ...styles.input,
-                      borderColor: attemptedSubmit && eventLocation.trim().length < 3 ? '#ef4444' : 
-                                   eventLocation.length > 0 ? '#667eea' : '#2a2a2a'
+                      borderColor: attemptedSubmit && eventLocation.trim().length < 3 ? theme.colors.error : 
+                                   eventLocation.length > 0 ? theme.colors.primary : theme.colors.border
                     }}
                     maxLength={100}
                     disabled={isSubmitting}
@@ -568,26 +726,27 @@ function CreatePost() {
               </div>
             )}
 
-            {/* Теги */}
+            {/* ===== ТЕГИ С ПОПУЛЯРНЫМИ ===== */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Теги (опционально)
-                <span style={styles.charCount}>{tags.length}/5</span>
+                <span style={styles.charCount}>{tags.length}/{MAX_TAGS}</span>
               </label>
+              
               <div style={styles.tagInputWrapper}>
-                <Hash size={18} style={{ color: '#667eea', flexShrink: 0 }} />
+                <Hash size={18} style={{ color: theme.colors.primary, flexShrink: 0 }} />
                 <input 
                   type="text"
-                  placeholder="сопромат, помощь, срочно"
+                  placeholder="python, react, помощь..."
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyPress={handleTagKeyPress}
                   style={styles.tagInput}
-                  disabled={isSubmitting || tags.length >= 5}
+                  disabled={isSubmitting || tags.length >= MAX_TAGS}
                   maxLength={20}
                 />
                 <button
-                  onClick={handleAddTag}
+                  onClick={() => handleAddTag()}
                   disabled={!canAddTag || isSubmitting}
                   style={
                     canAddTag
@@ -595,7 +754,7 @@ function CreatePost() {
                           ...styles.addTagButton,
                           opacity: 1,
                           cursor: 'pointer',
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                          background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
                         }
                       : {
                           ...styles.addTagButton,
@@ -603,33 +762,38 @@ function CreatePost() {
                           cursor: 'not-allowed'
                         }
                   }
+                  type="button"
                   aria-label="Добавить тег"
                 >
                   <Plus size={18} />
                 </button>
               </div>
               
-              {/* Список тегов */}
+              {/* Популярные теги */}
+              {tags.length < MAX_TAGS && (
+                <div style={styles.popularTagsSection}>
+                  <span style={styles.popularLabel}>Популярные:</span>
+                  <div style={styles.popularTags}>
+                    {POPULAR_TAGS.filter(tag => !tags.includes(tag)).map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => handleAddTag(tag)}
+                        style={styles.popularTag}
+                        disabled={isSubmitting || tags.length >= MAX_TAGS}
+                        type="button"
+                      >
+                        #{tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Список добавленных тегов */}
               {tags.length > 0 && (
                 <div style={styles.tagsList}>
                   {tags.map((tag, index) => (
-                    <span 
-                      key={tag} 
-                      style={{
-                        ...styles.tag,
-                        animationDelay: `${index * 50}ms`
-                      }}
-                    >
-                      #{tag}
-                      <button 
-                        onClick={() => handleRemoveTag(tag)}
-                        style={styles.tagRemove}
-                        disabled={isSubmitting}
-                        aria-label={`Удалить тег ${tag}`}
-                      >
-                        <X size={14} />
-                      </button>
-                    </span>
+                    <TagBadge key={tag} tag={tag} onRemove={handleRemoveTag} />
                   ))}
                 </div>
               )}
@@ -645,14 +809,9 @@ function CreatePost() {
           </div>
 
           {/* Error Alert */}
-          {error && (
-            <div style={styles.errorAlert}>
-              <AlertCircle size={18} />
-              <span>{error}</span>
-            </div>
-          )}
+          <ErrorMessage message={error} />
 
-          {/* Sticky Footer с кнопкой */}
+          {/* ===== УЛУЧШЕННЫЙ STICKY FOOTER ===== */}
           <div style={styles.footer}>
             <button
               onClick={handlePublish}
@@ -663,12 +822,15 @@ function CreatePost() {
                       ...styles.publishButton,
                       opacity: 1,
                       cursor: 'pointer',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                      background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
+                      border: `2px solid ${theme.colors.primary}`
                     }
                   : {
                       ...styles.publishButton,
-                      opacity: 0.5,
-                      cursor: 'not-allowed'
+                      opacity: 0.6,
+                      cursor: 'not-allowed',
+                      background: `rgba(${parseInt(theme.colors.primary.slice(1,3), 16)}, ${parseInt(theme.colors.primary.slice(3,5), 16)}, ${parseInt(theme.colors.primary.slice(5,7), 16)}, 0.2)`,
+                      border: `2px dashed ${theme.colors.textDisabled}`
                     }
               }
             >
@@ -678,7 +840,9 @@ function CreatePost() {
                   Публикация...
                 </>
               ) : !isFormValid() ? (
-                'Заполните форму'
+                <>
+                  Заполните все поля ⬆️
+                </>
               ) : (
                 'Опубликовать'
               )}
@@ -687,20 +851,18 @@ function CreatePost() {
         </div>
       </div>
 
-      {/* Success Toast with Animated Checkmark */}
+      {/* Success Toast */}
       {showSuccess && (
         <div style={{
           ...styles.successOverlay,
           opacity: showSuccess ? 1 : 0
         }}>
-          {/* Success Card */}
           <div style={styles.successCard}>
-            {/* SVG Checkmark с прорисовкой и БОЛЬШИМ ПУЛЬСОМ */}
-              <div style={{
-                ...styles.successIconWrapper,
-                transform: checkDrawn ? 'scale(1.0)' : 'scale(0.8)',
-                animation: checkDrawn ? 'bigPulse 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'none'
-              }}>
+            <div style={{
+              ...styles.successIconWrapper,
+              transform: checkDrawn ? 'scale(1.0)' : 'scale(0.8)',
+              animation: checkDrawn ? 'bigPulse 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'none'
+            }}>
               <svg 
                 width="120" 
                 height="120" 
@@ -708,7 +870,6 @@ function CreatePost() {
                 fill="none"
                 style={styles.checkmarkSvg}
               >
-                {/* Галочка */}
                 <path
                   d="M 25 60 L 50 85 L 95 35"
                   stroke="url(#gradient)"
@@ -722,12 +883,10 @@ function CreatePost() {
                     transition: 'stroke-dashoffset 0.6s cubic-bezier(0.65, 0, 0.35, 1)'
                   }}
                 />
-                
-                {/* Gradient definition */}
                 <defs>
                   <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#667eea" />
-                    <stop offset="100%" stopColor="#764ba2" />
+                    <stop offset="0%" stopColor={theme.colors.primary} />
+                    <stop offset="100%" stopColor={theme.colors.primaryHover} />
                   </linearGradient>
                 </defs>
               </svg>
@@ -833,7 +992,7 @@ const styles = {
     inset: 0,
     background: 'rgba(0, 0, 0, 0.75)',
     backdropFilter: 'blur(4px)',
-    zIndex: 1000,
+    zIndex: Z_CREATE_POST,
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: 'center',
@@ -843,432 +1002,523 @@ const styles = {
     width: '100%',
     maxWidth: '100%',
     height: '85vh',
-    background: '#1a1a1a',
+    background: theme.colors.bg,
     borderRadius: '24px 24px 0 0',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.5)',
+    boxShadow: theme.shadows.lg,
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     overflow: 'hidden'
   },
   swipeIndicator: {
-    padding: '12px 0 8px',
+    padding: `${theme.spacing.md}px 0 ${theme.spacing.sm}px`,
     display: 'flex',
     justifyContent: 'center',
     flexShrink: 0
   },
   swipeBar: {
-    width: '40px',
-    height: '4px',
-    borderRadius: '2px',
-    background: '#404040'
+    width: 40,
+    height: 4,
+    borderRadius: theme.radius.sm,
+    background: theme.colors.border
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '16px 20px',
-    borderBottom: '1px solid #2a2a2a',
+    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
+    borderBottom: `1px solid ${theme.colors.border}`,
     flexShrink: 0
   },
   closeButton: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '12px',
+    width: 40,
+    height: 40,
+    borderRadius: theme.radius.md,
     border: 'none',
-    background: '#252525',
-    color: '#999',
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textTertiary,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    transition: 'all 0.2s ease'
+    transition: theme.transitions.normal
   },
   title: {
-    fontSize: '18px',
-    fontWeight: '700',
-    color: '#fff',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
     margin: 0,
     letterSpacing: '-0.3px'
+  },
+  // ===== ПРОГРЕСС-БАР (STICKY) =====
+  progressBarContainer: {
+    padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
+    borderBottom: `1px solid ${theme.colors.border}`,
+    background: theme.colors.bg,
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    flexShrink: 0
+  },
+  progressBarWrapper: {
+    flex: 1,
+    height: 6,
+    borderRadius: theme.radius.full,
+    background: theme.colors.border,
+    overflow: 'hidden'
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: theme.radius.full,
+    transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease'
+  },
+  progressText: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.textSecondary,
+    whiteSpace: 'nowrap',
+    minWidth: 90
   },
   content: {
     flex: 1,
     overflowY: 'auto',
     overflowX: 'hidden',
-    padding: '20px 20px 0',
+    padding: `${theme.spacing.xl}px ${theme.spacing.xl}px 0`,
     WebkitOverflowScrolling: 'touch'
   },
   section: {
-    marginBottom: '24px'
+    marginBottom: theme.spacing.xxl
   },
   label: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#a0a0a0',
-    marginBottom: '10px',
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
     letterSpacing: '0.3px'
   },
   charCount: {
-    fontSize: '12px',
-    color: '#666',
-    fontWeight: '500',
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textDisabled,
+    fontWeight: theme.fontWeight.medium,
     display: 'flex',
     alignItems: 'center',
-    gap: '6px'
+    gap: theme.spacing.xs
   },
   checkIcon: {
-    color: '#10b981',
-    marginLeft: '4px'
+    color: theme.colors.success,
+    marginLeft: theme.spacing.xs
   },
-  categoriesWrapper: {
-    display: 'flex',
-    gap: '8px',
-    overflowX: 'auto',
-    paddingBottom: '4px',
-    WebkitOverflowScrolling: 'touch',
-    scrollbarWidth: 'none',
-    msOverflowStyle: 'none'
+  // ===== КАТЕГОРИИ 2×2 GRID =====
+  categoriesGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.md
   },
-  categoryChip: {
-    padding: '10px 18px',
-    borderRadius: '12px',
-    border: '2px solid #2a2a2a',
-    background: '#252525',
-    color: '#999',
-    fontSize: '15px',
-    fontWeight: '600',
+  categoryButton: {
+    padding: `${theme.spacing.lg}px ${theme.spacing.md}px`,
+    borderRadius: theme.radius.md,
+    border: `2px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    whiteSpace: 'nowrap',
-    flexShrink: 0
+    transition: theme.transitions.normal,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.xs,
+    minHeight: 64,
+    textAlign: 'center'
+  },
+  categoryIcon: {
+    fontSize: '24px',
+    lineHeight: 1
+  },
+  categoryLabel: {
+    fontSize: theme.fontSize.sm,
+    lineHeight: 1.2
+  },
+  anonymousCheckbox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    cursor: 'pointer'
+  },
+  confessionHint: {
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+    borderRadius: theme.radius.sm,
+    background: `${theme.colors.confessions}15`,
+    border: `1px solid ${theme.colors.confessions}30`,
+    color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.sm
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    cursor: 'pointer',
+    accentColor: theme.colors.primary
+  },
+  checkboxText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    fontWeight: theme.fontWeight.medium
   },
   checkboxLabel: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: theme.spacing.md,
     cursor: 'pointer'
-  },
-  checkbox: {
-    width: '20px',
-    height: '20px',
-    cursor: 'pointer',
-    accentColor: '#667eea'
-  },
-  checkboxText: {
-    fontSize: '15px',
-    color: '#fff',
-    fontWeight: '500'
-  },
-  infoBox: {
-    padding: '12px 16px',
-    borderRadius: '12px',
-    background: 'rgba(102, 126, 234, 0.1)',
-    border: '1px solid rgba(102, 126, 234, 0.3)',
-    color: '#a0a0a0',
-    fontSize: '14px',
-    marginBottom: '20px'
   },
   toggleWrapper: {
     display: 'flex',
-    gap: '12px'
+    gap: theme.spacing.md
   },
   toggleButton: {
     flex: 1,
-    padding: '12px 16px',
-    borderRadius: '12px',
-    border: '2px solid #2a2a2a',
-    background: '#252525',
-    color: '#999',
-    fontSize: '15px',
-    fontWeight: '600',
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    borderRadius: theme.radius.md,
+    border: `2px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
-    transition: 'all 0.2s ease'
+    transition: theme.transitions.normal
   },
   toggleButtonActive: {
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    color: '#fff',
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
+    color: theme.colors.text,
     border: 'none',
-    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)'
+    boxShadow: `0 4px 12px ${theme.colors.primary}40`
   },
   inputWrapper: {
     position: 'relative'
   },
   input: {
     width: '100%',
-    padding: '14px 16px',
-    paddingRight: '40px',
-    borderRadius: '16px',
-    border: '2px solid #2a2a2a',
-    background: '#252525',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: '500',
+    padding: `${theme.spacing.lg}px ${theme.spacing.lg}px`,
+    paddingRight: 40,
+    borderRadius: theme.radius.lg,
+    border: `2px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.medium,
     outline: 'none',
     boxSizing: 'border-box',
-    transition: 'all 0.2s ease'
+    transition: theme.transitions.normal
   },
   textarea: {
     width: '100%',
-    padding: '14px 16px',
-    paddingRight: '40px',
-    borderRadius: '16px',
-    border: '2px solid #2a2a2a',
-    background: '#252525',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: '500',
+    padding: `${theme.spacing.lg}px ${theme.spacing.lg}px`,
+    paddingRight: 40,
+    borderRadius: theme.radius.lg,
+    border: `2px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.medium,
     outline: 'none',
     resize: 'none',
-    lineHeight: '1.6',
+    lineHeight: 1.6,
     boxSizing: 'border-box',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    transition: 'all 0.2s ease'
+    transition: theme.transitions.normal
   },
   inputCheckIcon: {
     position: 'absolute',
-    right: '14px',
-    top: '14px',
-    color: '#10b981'
+    right: theme.spacing.lg,
+    top: theme.spacing.lg,
+    color: theme.colors.success
   },
   textareaCheckIcon: {
     position: 'absolute',
-    right: '14px',
-    top: '14px',
-    color: '#10b981'
+    right: theme.spacing.lg,
+    top: theme.spacing.lg,
+    color: theme.colors.success
+  },
+  quickDateButtons: {
+    display: 'flex',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm
+  },
+  quickDateBtn: {
+    flex: 1,
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+    borderRadius: theme.radius.sm,
+    border: `1px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    cursor: 'pointer',
+    transition: theme.transitions.fast
   },
   tagInputWrapper: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
-    padding: '12px 16px',
-    borderRadius: '16px',
-    border: '2px solid #2a2a2a',
-    background: '#252525',
-    transition: 'all 0.2s ease'
+    gap: theme.spacing.md,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    borderRadius: theme.radius.lg,
+    border: `2px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    transition: theme.transitions.normal
   },
   tagInput: {
     flex: 1,
     background: 'transparent',
     border: 'none',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: '500',
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.medium,
     outline: 'none'
   },
   addTagButton: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '10px',
+    width: 32,
+    height: 32,
+    borderRadius: theme.radius.md,
     border: 'none',
-    background: '#333',
-    color: '#fff',
+    background: theme.colors.border,
+    color: theme.colors.text,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    transition: 'all 0.2s ease'
+    transition: theme.transitions.normal
+  },
+  popularTagsSection: {
+    marginTop: theme.spacing.md,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing.sm
+  },
+  popularLabel: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textTertiary,
+    fontWeight: theme.fontWeight.medium
+  },
+  popularTags: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm
+  },
+  popularTag: {
+    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+    borderRadius: theme.radius.sm,
+    border: `1px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    cursor: 'pointer',
+    transition: theme.transitions.fast
   },
   tagsList: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '8px',
-    marginTop: '12px'
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.md
   },
   tag: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '8px',
-    padding: '8px 14px',
-    borderRadius: '12px',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    color: '#fff',
-    fontSize: '14px',
-    fontWeight: '600',
-    boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
-    animation: 'tagAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+    gap: theme.spacing.sm,
+    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+    borderRadius: theme.radius.md,
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+    boxShadow: `0 2px 8px ${theme.colors.primary}30`,
+    animation: 'tagAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    cursor: 'pointer'
   },
   tagRemove: {
     background: 'rgba(255, 255, 255, 0.2)',
     border: 'none',
-    borderRadius: '6px',
-    width: '20px',
-    height: '20px',
-    color: '#fff',
+    borderRadius: theme.radius.sm,
+    width: 20,
+    height: 20,
+    color: theme.colors.text,
     cursor: 'pointer',
     padding: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all 0.2s ease'
+    transition: theme.transitions.fast
   },
   hint: {
-    fontSize: '12px',
-    color: '#666',
-    marginTop: '10px',
-    lineHeight: '1.5'
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textDisabled,
+    marginTop: theme.spacing.md,
+    lineHeight: 1.5
   },
   errorAlert: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
-    padding: '12px 20px',
-    background: '#ef444420',
-    borderTop: '2px solid #ef4444',
-    color: '#ef4444',
-    fontSize: '14px',
-    fontWeight: '500',
+    gap: theme.spacing.md,
+    padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
+    background: `${theme.colors.error}20`,
+    borderTop: `2px solid ${theme.colors.error}`,
+    color: theme.colors.error,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
     animation: 'shake 0.5s ease'
   },
   footer: {
-    padding: '16px 20px',
-    paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
-    borderTop: '1px solid #2a2a2a',
-    background: '#1a1a1a',
+    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
+    paddingBottom: `max(${theme.spacing.lg}px, env(safe-area-inset-bottom))`,
+    borderTop: `1px solid ${theme.colors.border}`,
+    background: theme.colors.bg,
     flexShrink: 0
   },
   publishButton: {
     width: '100%',
-    padding: '16px',
-    borderRadius: '16px',
+    padding: theme.spacing.lg,
+    borderRadius: theme.radius.lg,
     border: 'none',
-    background: '#333',
-    color: '#fff',
-    fontSize: '16px',
-    fontWeight: '700',
+    background: theme.colors.border,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.bold,
     cursor: 'pointer',
-    transition: 'all 0.2s ease',
+    transition: theme.transitions.normal,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '10px',
-    boxShadow: '0 4px 16px rgba(102, 126, 234, 0.4)',
+    gap: theme.spacing.md,
+    boxShadow: `0 4px 16px ${theme.colors.primary}40`,
     letterSpacing: '0.3px'
   },
   spinner: {
-    width: '16px',
-    height: '16px',
+    width: 16,
+    height: 16,
     border: '2px solid rgba(255, 255, 255, 0.3)',
-    borderTopColor: '#fff',
-    borderRadius: '50%',
+    borderTopColor: theme.colors.text,
+    borderRadius: theme.radius.full,
     animation: 'spin 0.6s linear infinite'
   },
-  // SUCCESS TOAST STYLES
   successOverlay: {
     position: 'fixed',
     inset: 0,
     background: 'rgba(0, 0, 0, 0.85)',
     backdropFilter: 'blur(8px)',
-    zIndex: 2000,
+    zIndex: Z_CREATE_POST + 3, // ← ФИКС: выше всех
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '20px',
+    padding: theme.spacing.xl,
     transition: 'opacity 0.5s ease'
   },
   successCard: {
-    background: 'linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%)',
-    borderRadius: '24px',
-    padding: '40px 32px',
-    maxWidth: '340px',
+    background: `linear-gradient(135deg, ${theme.colors.bg} 0%, ${theme.colors.bgSecondary} 100%)`,
+    borderRadius: theme.radius.xl,
+    padding: `${theme.spacing.xxxl}px ${theme.spacing.xxxl}px`,
+    maxWidth: 340,
     width: '100%',
-    border: '2px solid #667eea',
-    boxShadow: '0 20px 60px rgba(102, 126, 234, 0.4)',
+    border: `2px solid ${theme.colors.primary}`,
+    boxShadow: `0 20px 60px ${theme.colors.primary}40`,
     textAlign: 'center',
     animation: 'successPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
     position: 'relative'
   },
   successIconWrapper: {
-    width: '120px',
-    height: '120px',
-    margin: '0 auto 24px',
+    width: 120,
+    height: 120,
+    margin: `0 auto ${theme.spacing.xxl}px`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
   },
   checkmarkSvg: {
-    filter: 'drop-shadow(0 0 20px rgba(102, 126, 234, 0.8))'
+    filter: `drop-shadow(0 0 20px ${theme.colors.primary}80)`
   },
   successTitle: {
-    fontSize: '22px',
-    fontWeight: '700',
-    color: '#fff',
-    margin: '0 0 12px',
+    fontSize: theme.fontSize.xxl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    margin: `0 0 ${theme.spacing.md}px`,
     letterSpacing: '-0.3px'
   },
   successText: {
-    fontSize: '15px',
-    color: '#a0a0a0',
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textSecondary,
     margin: 0,
-    lineHeight: '1.5'
+    lineHeight: 1.5
   },
-  // CONFIRMATION DIALOG
   confirmationOverlay: {
     position: 'fixed',
     inset: 0,
     background: 'rgba(0, 0, 0, 0.85)',
     backdropFilter: 'blur(8px)',
-    zIndex: 1001,
+    zIndex: Z_CREATE_POST + 2, // ← ФИКС: выше модалки, ниже success
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '20px',
+    padding: theme.spacing.xl,
     animation: 'fadeIn 0.2s ease'
   },
   confirmationDialog: {
-    background: '#1a1a1a',
-    borderRadius: '20px',
-    padding: '24px',
-    maxWidth: '340px',
+    background: theme.colors.bg,
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.xxl,
+    maxWidth: 340,
     width: '100%',
-    border: '1px solid #2a2a2a',
+    border: `1px solid ${theme.colors.border}`,
     boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8)',
     animation: 'successPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
   },
   confirmationTitle: {
-    fontSize: '18px',
-    fontWeight: '700',
-    color: '#fff',
-    margin: '0 0 12px',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    margin: `0 0 ${theme.spacing.md}px`,
     textAlign: 'center'
   },
   confirmationText: {
-    fontSize: '14px',
-    color: '#999',
-    margin: '0 0 24px',
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textTertiary,
+    margin: `0 0 ${theme.spacing.xxl}px`,
     textAlign: 'center',
-    lineHeight: '1.5'
+    lineHeight: 1.5
   },
   confirmationButtons: {
     display: 'flex',
-    gap: '12px'
+    gap: theme.spacing.md
   },
   confirmationCancel: {
     flex: 1,
-    padding: '12px',
-    borderRadius: '12px',
-    border: '2px solid #2a2a2a',
-    background: '#252525',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: '600',
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    border: `2px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
-    transition: 'all 0.2s ease'
+    transition: theme.transitions.normal
   },
   confirmationConfirm: {
     flex: 1,
-    padding: '12px',
-    borderRadius: '12px',
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
     border: 'none',
-    background: '#ef4444',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: '600',
+    background: theme.colors.error,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
-    transition: 'all 0.2s ease'
+    transition: theme.transitions.normal
   }
 };
 

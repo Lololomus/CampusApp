@@ -159,6 +159,30 @@ def delete_post(db: Session, post_id: int) -> bool:
     db.commit()
     return True
 
+def update_post(db: Session, post_id: int, post_update):
+    """Обновление поста"""
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    if not post:
+        return None
+    
+    # Обновляем только переданные поля
+    update_data = post_update.model_dump(exclude_unset=True)
+    
+    # Обработка тегов (конвертация в JSON)
+    if "tags" in update_data:
+        update_data["tags"] = json.dumps(update_data["tags"])
+    
+    # Применяем обновления
+    for key, value in update_data.items():
+        setattr(post, key, value)
+    
+    # Обновляем время изменения
+    from datetime import datetime
+    post.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(post)
+    return post
 
 def increment_post_views(db: Session, post_id: int):
     """Увеличить счётчик просмотров"""
@@ -229,9 +253,8 @@ def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) 
     return comments
 
 
-def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int) -> models.Comment:
-    """Создать комментарий с поддержкой анонимности"""
-    # Получаем пост
+def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
+    """Создание комментария с логикой анонимности"""
     post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
     if not post:
         return None
@@ -239,44 +262,44 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int) 
     # Определяем анонимность
     is_anonymous = comment.is_anonymous
     if post.enable_anonymous_comments:
-        is_anonymous = True  # Принудительная анонимность
+        is_anonymous = True
     
-    # Определяем anonymous_index (если анонимный)
     anonymous_index = None
     if is_anonymous:
-        # Получаем уникальных анонимных комментаторов
-        existing_anon_comments = (
-            db.query(models.Comment)
-            .filter(
-                models.Comment.post_id == comment.post_id,
-                models.Comment.is_anonymous == True
-            )
-            .all()
-        )
-        
-        # Проверяем был ли этот автор уже анонимным комментатором
-        for existing in existing_anon_comments:
-            if existing.author_id == author_id:
-                anonymous_index = existing.anonymous_index
-                break
-        
-        # Если нет — присваиваем новый индекс
-        if anonymous_index is None:
-            max_index = max([c.anonymous_index for c in existing_anon_comments if c.anonymous_index], default=0)
-            anonymous_index = max_index + 1
+        # ЕСЛИ КОММЕНТАТОР = АВТОР АНОНИМНОГО ПОСТА -> индекс 0 ("Аноним" без цифры)
+        if post.is_anonymous and post.author_id == author_id:
+            anonymous_index = 0
+        else:
+            # Проверка существующих анонимных комментариев от этого автора
+            existing_anon_comments = db.query(models.Comment)\
+                .filter(
+                    models.Comment.post_id == comment.post_id,
+                    models.Comment.is_anonymous == True
+                ).all()
+            
+            # Проверяем, комментировал ли этот пользователь уже
+            for existing in existing_anon_comments:
+                if existing.author_id == author_id:
+                    anonymous_index = existing.anonymous_index
+                    break
+            
+            # Если это новый анонимный комментатор
+            if anonymous_index is None:
+                # Находим максимальный индекс (исключая 0 - автора поста)
+                max_index = max([c.anonymous_index for c in existing_anon_comments if c.anonymous_index and c.anonymous_index > 0], default=0)
+                anonymous_index = max_index + 1
     
+    # Создаем комментарий
     db_comment = models.Comment(
         post_id=comment.post_id,
         author_id=author_id,
-        parent_id=comment.parent_id,
         body=comment.body,
+        parent_id=comment.parent_id,
         is_anonymous=is_anonymous,
         anonymous_index=anonymous_index
     )
     
-    # Увеличиваем счётчик комментариев
     post.comments_count += 1
-    
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
@@ -371,51 +394,6 @@ def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Opt
     db.commit()
     db.refresh(comment)
     return comment
-
-
-def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int) -> models.Comment:
-    """Создать комментарий"""
-    post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
-    if not post:
-        return None
-    
-    # Анонимность
-    is_anonymous = comment.is_anonymous
-    if post.enable_anonymous_comments:
-        is_anonymous = True
-    
-    # Генерация anonymous_index
-    anonymous_index = None
-    if is_anonymous:
-        existing_anon_comments = db.query(models.Comment)\
-            .filter(
-                models.Comment.post_id == comment.post_id,
-                models.Comment.is_anonymous == True
-            ).all()
-        
-        for existing in existing_anon_comments:
-            if existing.author_id == author_id:
-                anonymous_index = existing.anonymous_index
-                break
-        
-        if anonymous_index is None:
-            max_index = max([c.anonymous_index for c in existing_anon_comments if c.anonymous_index], default=0)
-            anonymous_index = max_index + 1
-    
-    db_comment = models.Comment(
-        post_id=comment.post_id,
-        author_id=author_id,
-        body=comment.body,
-        parent_id=comment.parent_id,
-        is_anonymous=is_anonymous,
-        anonymous_index=anonymous_index
-    )
-    
-    post.comments_count += 1
-    db.add(db_comment)
-    db.commit()
-    db.refresh(db_comment)
-    return db_comment
 
 
 def count_post_comments(db: Session, post_id: int) -> int:

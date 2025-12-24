@@ -130,6 +130,22 @@ class PostCreate(BaseModel):
     is_important: bool = False
 
 class PostUpdate(BaseModel):
+    """Схема для обновления поста"""
+    title: Optional[str] = None
+    body: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_anonymous: Optional[bool] = None
+    
+    # Специфичные поля
+    lost_or_found: Optional[str] = None
+    item_description: Optional[str] = None
+    location: Optional[str] = None
+    event_name: Optional[str] = None
+    event_date: Optional[datetime] = None
+    event_location: Optional[str] = None
+    is_important: Optional[bool] = None
+
+class PostUpdate(BaseModel):
     """Обновление поста"""
     title: Optional[str] = None
     body: Optional[str] = None

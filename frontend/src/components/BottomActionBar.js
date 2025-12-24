@@ -11,6 +11,7 @@ function BottomActionBar({
   replyToName = '',
   onCancelReply = null,
   postAuthorName = 'автора',
+  isAnonymousPost = false,
 }) {
   const [mode, setMode] = useState('default');
   const [commentText, setCommentText] = useState('');
@@ -134,7 +135,9 @@ function BottomActionBar({
                   <X size={16} color={theme.colors.textTertiary} />
                 </button>
                 <span style={styles.contextLabel}>
-                  Ответить @{postAuthorName}
+                  {replyToName && replyToName.startsWith('Аноним') 
+                    ? 'Ответить @аноним'
+                    : `Ответить @${replyToName}`}
                 </span>
               </div>
             )}
@@ -153,7 +156,13 @@ function BottomActionBar({
                     sendComment();
                   }
                 }}
-                placeholder="Напишите комментарий..."
+                placeholder={
+                  replyTo && replyToName
+                    ? (replyToName.startsWith('Аноним') 
+                        ? 'Ответить @аноним...' 
+                        : `Ответить @${replyToName}...`)
+                    : 'Напишите комментарий...'
+                }
                 style={styles.textarea}
                 rows={1}
                 maxLength={2000}
@@ -198,8 +207,10 @@ function BottomActionBar({
           flex: mode === 'direct' ? 6 : 1,
           backgroundColor: mode === 'direct' ? styles.bgActive : styles.bgIdle,
           border: mode === 'direct' ? `1px solid ${theme.colors.primary}` : '1px solid transparent',
+          opacity: isAnonymousPost ? 0.4 : 1,
+          cursor: isAnonymousPost ? 'not-allowed' : 'pointer',
         }}
-        onClick={() => mode !== 'direct' && switchMode('direct')}
+        onClick={() => !isAnonymousPost && mode !== 'direct' && switchMode('direct')}
       >
         {mode === 'direct' ? (
           <div style={styles.inputWrap}>
@@ -264,8 +275,11 @@ function BottomActionBar({
           </div>
         ) : (
           <div className="button-content" style={styles.buttonContent}>
-            <Mail size={20} color={theme.colors.text} style={{ flexShrink: 0 }} />
-            <span className="button-label" style={styles.buttonLabel}>
+            <Mail size={20} color={isAnonymousPost ? theme.colors.textDisabled : theme.colors.text} style={{ flexShrink: 0 }} />
+            <span className="button-label" style={{
+              ...styles.buttonLabel,
+              color: isAnonymousPost ? theme.colors.textDisabled : theme.colors.text
+            }}>
               Лично
             </span>
           </div>
