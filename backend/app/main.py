@@ -193,19 +193,18 @@ def get_posts_feed(
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Получить ленту постов с фильтрами"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="User not found")
     
     posts = crud.get_posts(db, skip, limit, category=category)
     
-    # Обрабатываем посты
     result = []
     for post in posts:
         tags = json.loads(post.tags) if post.tags else []
         
-        # Анонимность
+        is_liked = crud.is_post_liked_by_user(db, post.id, user.id)
+        
         author_data = None
         author_id_data = post.author_id
         if post.is_anonymous:
@@ -235,8 +234,9 @@ def get_posts_feed(
             "likes_count": post.likes_count,
             "comments_count": post.comments_count,
             "views_count": post.views_count,
+            "is_liked": is_liked,
             "created_at": post.created_at,
-            "updated_at": post.updated_at
+            "updated_at": post.updated_at,
         }
         result.append(post_dict)
     
@@ -303,10 +303,11 @@ def create_post_endpoint(
 
 @app.get("/posts/{postid}", response_model=schemas.PostResponse)
 def get_post_endpoint(
-    postid: int,
-    telegram_id: int = Query(...),
+    postid: int, 
+    telegram_id: int = Query(...), 
     db: Session = Depends(get_db)
 ):
+    # ID поста
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -315,14 +316,15 @@ def get_post_endpoint(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
+    # Увеличиваем просмотры
     crud.increment_post_views(db, postid)
     
-    db.refresh(post)
+    is_liked = crud.is_post_liked_by_user(db, postid, user.id)
     
     tags = json.loads(post.tags) if post.tags else []
+    
     author_data = None
     author_id_data = post.author_id
-    
     if post.is_anonymous:
         author_data = {"name": "Аноним"}
         author_id_data = None
@@ -350,8 +352,9 @@ def get_post_endpoint(
         "likes_count": post.likes_count,
         "comments_count": post.comments_count,
         "views_count": post.views_count,
+        "is_liked": is_liked,
         "created_at": post.created_at,
-        "updated_at": post.updated_at
+        "updated_at": post.updated_at,
     }
 
 

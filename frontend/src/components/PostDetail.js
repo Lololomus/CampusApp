@@ -7,12 +7,12 @@ import BottomActionBar from './BottomActionBar';
 import { Z_MODAL_FORMS } from '../constants/zIndex';
 
 function PostDetail() {
-  const { viewPostId, setViewPostId, user, updatePost, setUpdatedPost } = useStore();
+  const { viewPostId, setViewPostId, user, updatePost, setUpdatedPost, likedPosts, setPostLiked } = useStore();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isLiked, setIsLiked] = useState(false);
   const [commentLikes, setCommentLikes] = useState({});
+  const isLiked = likedPosts[viewPostId] ?? post?.is_liked ?? false;
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
   
@@ -36,11 +36,9 @@ function PostDetail() {
     try {
       const data = await getPost(viewPostId);
       setPost(data);
-      setIsLiked(data.is_liked || false);
 
     try {
       const commentsData = await getPostComments(viewPostId);
-      console.log('📦 Комментарии с сервера:', commentsData);
       
       // Проверяем что это массив
       const commentsArray = Array.isArray(commentsData) ? commentsData : [];
@@ -69,11 +67,7 @@ function PostDetail() {
 
   const refreshPost = async () => {
     try {
-      console.log('🔄 Запрашиваю свежий пост с сервера...');
       const fresh = await getPost(viewPostId);
-      console.log('✅ Получил с сервера comments_count:', fresh.comments_count);
-      console.log('📦 Полный объект поста:', fresh);
-      
       setPost(fresh);
       
     if (setUpdatedPost && viewPostId) {
@@ -95,9 +89,6 @@ function PostDetail() {
 
   const handleSendComment = async (text) => {
     if (!text || !text.trim()) return;
-    
-    console.log('💬 Отправляем комментарий:', text);
-
     try {
       const comment = await createComment(viewPostId, text.trim(), replyTo);
       setComments([...comments, comment]);
@@ -115,7 +106,6 @@ function PostDetail() {
   };
 
   const handleDirectSend = async (text) => {
-    console.log('✉️ Личное сообщение автору:', text);
     hapticFeedback('success');
     
     // Mock отправка (пока нет backend API)
@@ -133,12 +123,36 @@ function PostDetail() {
 
   const handleLike = async () => {
     hapticFeedback('light');
+    
+    const wasLiked = isLiked;
+    const prevCount = post.likes_count || 0;
+    const newIsLiked = !isLiked;
+    
+    setPostLiked(viewPostId, newIsLiked);
+    setPost({ ...post, likes_count: newIsLiked ? prevCount + 1 : prevCount - 1 });
+    
     try {
       const result = await likePost(post.id);
-      setPost({ ...post, likes_count: result.likes });
-      setIsLiked(result.is_liked);
+      
+      setPostLiked(viewPostId, result.is_liked);
+      setPost({ 
+        ...post, 
+        likes_count: result.likes,
+        is_liked: result.is_liked
+      });
+      
+      if (setUpdatedPost && viewPostId) {
+        setUpdatedPost(viewPostId, { 
+          comments_count: post.comments_count,
+          likes_count: result.likes,
+          views_count: post.views_count,
+          is_liked: result.is_liked
+        });
+      }
     } catch (error) {
       console.error('Ошибка лайка:', error);
+      setPostLiked(viewPostId, wasLiked);
+      setPost({ ...post, likes_count: prevCount });
     }
   };
 

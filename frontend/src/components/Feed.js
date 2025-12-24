@@ -11,6 +11,16 @@ function Feed() {
   const [activeCategory, setActiveCategory] = useState('all');
   const { feedMode, setViewPostId, viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost } = useStore();
 
+  const handleLikeUpdate = useCallback((postId, updates) => {
+    
+    setPosts(prevPosts => {
+      const updated = prevPosts.map(post =>
+        post.id === postId ? { ...post, ...updates } : post
+      );
+            
+      return updated;
+    });
+  }, []);
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
@@ -125,10 +135,11 @@ function Feed() {
 
         {/* Посты */}
         {!loading && posts.length > 0 && posts.map((post) => (
-          <PostCard
-            key={post.id}
-            post={post}
-            onClick={() => handlePostClick(post.id)}
+          <PostCard 
+            key={`${post.id}-${post.is_liked}-${post.likes_count}`}
+            post={post} 
+            onClick={handlePostClick}
+            onLikeUpdate={handleLikeUpdate}
           />
         ))}
       </div>

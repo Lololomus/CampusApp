@@ -161,6 +161,18 @@ export const useStore = create(
       }),
 
 
+      // ===== LIKES STATE =====
+      likedPosts: {},  // { 1: true, 5: true, 10: false }
+      
+      setPostLiked: (postId, isLiked) => set((state) => ({
+        likedPosts: { ...state.likedPosts, [postId]: isLiked }
+      })),
+      
+      isPostLikedInStore: (postId) => {
+        const state = get();
+        return state.likedPosts[postId];
+      },
+
       // ===== ACTIONS =====
       
       startRegistration: () => set({
@@ -205,7 +217,7 @@ export const useStore = create(
         activeTab: state.activeTab,
         feedMode: state.feedMode,
         datingMode: state.datingMode,
-        // ⚠️ НЕ сохраняем updatedPostId и updatedPostData в localStorage!
+        likedPosts: state.likedPosts,
       }),
     }
   )

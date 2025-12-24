@@ -4,35 +4,32 @@ import { hapticFeedback } from '../utils/telegram';
 import { likePost } from '../api';
 import { useStore } from '../store';
 
-function PostCard({ post, onClick }) {
-  const { updatePost } = useStore();
-  const [isLiked, setIsLiked] = useState(post.is_liked || false);
-  const [likesCount, setLikesCount] = useState(post.likes_count || post.likes || 0);
-
-  // ✅ Синхронизация с пропсами при обновлении
-  React.useEffect(() => {
-    setIsLiked(post.is_liked || false);
-    setLikesCount(post.likes_count || post.likes || 0);
-  }, [post.is_liked, post.likes_count, post.likes]);
-
+function PostCard({ post, onClick, onLikeUpdate }) {
+  const { likedPosts, setPostLiked } = useStore();
+  const isLiked = likedPosts[post.id] ?? post.is_liked ?? false;
+  const likesCount = post.likes_count || post.likes || 0;
+  
   const handleLike = async (e) => {
     e.stopPropagation();
     hapticFeedback('light');
     
+    const newIsLiked = !isLiked;
+    setPostLiked(post.id, newIsLiked);
+    
     try {
       const result = await likePost(post.id);
-      setIsLiked(result.is_liked);
-      setLikesCount(result.likes);
       
-      // ✅ Обновляем пост в store (для Feed)
-      if (updatePost) {
-        updatePost(post.id, { 
-          is_liked: result.is_liked, 
-          likes_count: result.likes 
+      setPostLiked(post.id, result.is_liked);
+      
+      if (onLikeUpdate) {
+        onLikeUpdate(post.id, {
+          is_liked: result.is_liked,
+          likes_count: result.likes
         });
       }
     } catch (error) {
       console.error('Ошибка лайка:', error);
+      setPostLiked(post.id, isLiked);
     }
   };
 
@@ -79,7 +76,7 @@ function PostCard({ post, onClick }) {
 
 
   return (
-    <div style={styles.card} onClick={onClick}>
+    <div style={styles.card} onClick={() => onClick(post.id)}>
       {/* Шапка поста */}
       <div style={styles.header}>
         <div style={styles.authorInfo}>
