@@ -2,7 +2,7 @@ import React from 'react';
 import { Home, Search, PlusCircle, User, Users } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
-import DatingFeed from './dating/DatingFeed';
+import theme from '../theme';
 import { Z_NAVIGATION } from '../constants/zIndex';
 
 function Navigation() {
@@ -16,17 +16,14 @@ function Navigation() {
     { id: 'profile', icon: User, label: 'Профиль' },
   ];
 
-
   const handleTabClick = (tabId) => {
     hapticFeedback('light');
     
-    // Проверка регистрации для защищенных разделов
     if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people')) {
       setShowAuthModal(true);
       return;
     }
     
-    // Если кликнули на "создать" - открываем модалку
     if (tabId === 'create') {
       setShowCreateModal(true);
       return;
@@ -35,7 +32,6 @@ function Navigation() {
     setActiveTab(tabId);
   };
 
-
   return (
     <nav style={styles.nav}>
       {tabs.map((tab) => {
@@ -43,8 +39,6 @@ function Navigation() {
         const isActive = activeTab === tab.id;
         const isCreateButton = tab.id === 'create';
 
-
-        // Центральная кнопка создания
         if (isCreateButton) {
           return (
             <div key={tab.id} style={styles.createButtonWrapper}>
@@ -58,15 +52,13 @@ function Navigation() {
           );
         }
 
-
-        // Обычные кнопки навигации
         return (
           <button
             key={tab.id}
             onClick={() => handleTabClick(tab.id)}
             style={{
               ...styles.button,
-              color: isActive ? '#8774e1' : '#666'
+              color: isActive ? theme.colors.primary : theme.colors.textDisabled
             }}
           >
             <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
@@ -78,16 +70,15 @@ function Navigation() {
   );
 }
 
-
 const styles = {
   nav: {
     position: 'fixed',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '64px',
-    backgroundColor: '#1a1a1a',
-    borderTop: '1px solid #333',
+    height: 64,
+    backgroundColor: theme.colors.bgSecondary,
+    borderTop: `1px solid ${theme.colors.border}`,
     display: 'flex',
     justifyContent: 'space-around',
     alignItems: 'center',
@@ -98,40 +89,39 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '4px',
+    gap: theme.spacing.xs,
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    padding: '8px 12px',
-    transition: 'color 0.2s',
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+    transition: theme.transitions.normal,
     flex: 1
   },
   label: {
-    fontSize: '11px',
-    fontWeight: '500'
+    fontSize: 11,
+    fontWeight: theme.fontWeight.medium
   },
   createButtonWrapper: {
     position: 'relative',
-    top: '-20px',
+    top: -20,
     flex: 1,
     display: 'flex',
     justifyContent: 'center'
   },
   createButton: {
-    width: '56px',
-    height: '56px',
-    borderRadius: '50%',
-    background: 'linear-gradient(135deg, #8774e1 0%, #6b5dd3 100%)',
-    border: '4px solid #1a1a1a',
-    color: '#fff',
+    width: 56,
+    height: 56,
+    borderRadius: theme.radius.full,
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
+    border: `4px solid ${theme.colors.bgSecondary}`,
+    color: theme.colors.text,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    boxShadow: '0 8px 24px rgba(135, 116, 225, 0.4)',
-    transition: 'transform 0.2s'
+    boxShadow: `0 8px 24px rgba(135, 116, 225, 0.4)`,
+    transition: theme.transitions.normal
   }
 };
-
 
 export default Navigation;

@@ -5,6 +5,7 @@ import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
 import BottomActionBar from './BottomActionBar';
 import { Z_MODAL_FORMS } from '../constants/zIndex';
+import theme from '../theme';
 
 function PostDetail() {
   const { viewPostId, setViewPostId, user, updatePost, setUpdatedPost, likedPosts, setPostLiked } = useStore();
@@ -15,13 +16,10 @@ function PostDetail() {
   const isLiked = likedPosts[viewPostId] ?? post?.is_liked ?? false;
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
-  
-  // состояние для редактирования
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
-  
-  // состояние для жалоб
   const [reportingComment, setReportingComment] = useState(null);
+  const [replyToName, setReplyToName] = useState('');
 
   useEffect(() => {
     if (viewPostId) {
@@ -37,27 +35,23 @@ function PostDetail() {
       const data = await getPost(viewPostId);
       setPost(data);
 
-    try {
-      const commentsData = await getPostComments(viewPostId);
-      
-      // Проверяем что это массив
-      const commentsArray = Array.isArray(commentsData) ? commentsData : [];
-      
-      setComments(commentsArray);
-      
-      const initialLikes = {};
-      commentsArray.forEach(comment => {
-        initialLikes[comment.id] = {
-          isLiked: comment.is_liked || false,
-          count: comment.likes || 0
-        };
-      });
-      setCommentLikes(initialLikes);
-    } catch (error) {
-      console.error('❌ Ошибка загрузки комментариев:', error);
-      console.log('Детали ошибки:', error.response?.data);
-      setComments([]);
-    }
+      try {
+        const commentsData = await getPostComments(viewPostId);
+        const commentsArray = Array.isArray(commentsData) ? commentsData : [];
+        setComments(commentsArray);
+        
+        const initialLikes = {};
+        commentsArray.forEach(comment => {
+          initialLikes[comment.id] = {
+            isLiked: comment.is_liked || false,
+            count: comment.likes || 0
+          };
+        });
+        setCommentLikes(initialLikes);
+      } catch (error) {
+        console.error('❌ Ошибка загрузки комментариев:', error);
+        setComments([]);
+      }
     } catch (error) {
       console.error('Error loading post:', error);
     } finally {
@@ -70,13 +64,13 @@ function PostDetail() {
       const fresh = await getPost(viewPostId);
       setPost(fresh);
       
-    if (setUpdatedPost && viewPostId) {
-      setUpdatedPost(viewPostId, { 
-        comments_count: fresh.comments_count, 
-        likes_count: fresh.likes_count, 
-        views_count: fresh.views_count 
-      });
-    }
+      if (setUpdatedPost && viewPostId) {
+        setUpdatedPost(viewPostId, { 
+          comments_count: fresh.comments_count, 
+          likes_count: fresh.likes_count, 
+          views_count: fresh.views_count 
+        });
+      }
     } catch (e) {
       console.error('❌ Не удалось обновить пост:', e);
     }
@@ -97,7 +91,6 @@ function PostDetail() {
         [comment.id]: { isLiked: false, count: 0 }
       });
       setReplyTo(null);
-
       await refreshPost();
     } catch (error) {
       console.error('Ошибка создания комментария:', error);
@@ -107,18 +100,7 @@ function PostDetail() {
 
   const handleDirectSend = async (text) => {
     hapticFeedback('success');
-    
-    // Mock отправка (пока нет backend API)
     alert(`Отклик отправлен автору!\n\n"${text}"`);
-    
-    // TODO: После создания backend раскомментируй:
-    // try {
-    //   await createResponse(viewPostId, text);
-    //   alert('Отклик успешно отправлен!');
-    // } catch (error) {
-    //   console.error('Ошибка отправки отклика:', error);
-    //   alert('Не удалось отправить отклик');
-    // }
   };
 
   const handleLike = async () => {
@@ -133,7 +115,6 @@ function PostDetail() {
     
     try {
       const result = await likePost(post.id);
-      
       setPostLiked(viewPostId, result.is_liked);
       setPost({ 
         ...post, 
@@ -180,8 +161,6 @@ function PostDetail() {
     setMenuOpen(null);
   };
 
-  const [replyToName, setReplyToName] = useState('');
-
   const handleDeleteComment = async (commentId) => {
     if (!window.confirm('Удалить комментарий?')) return;
 
@@ -192,10 +171,8 @@ function PostDetail() {
       const result = await deleteComment(commentId);
 
       if (result.type === 'hard_delete') {
-        // HARD DELETE: полностью убираем из массива
         setComments(comments.filter(c => c.id !== commentId));
       } else {
-        // SOFT DELETE: оставляем, но меняем текст и is_deleted = true
         setComments(comments.map(c =>
           c.id === commentId
             ? { ...c, body: 'Комментарий удалён', is_deleted: true }
@@ -203,7 +180,6 @@ function PostDetail() {
         ));
       }
 
-      // берем свежий счётчик с сервера (для обоих случаев)
       await refreshPost();
       hapticFeedback('success');
     } catch (error) {
@@ -212,7 +188,6 @@ function PostDetail() {
     }
   };
 
-  //  редактирование комментария
   const handleEditComment = (comment) => {
     hapticFeedback('light');
     setEditingComment(comment.id);
@@ -251,7 +226,6 @@ function PostDetail() {
     setEditText('');
   };
 
-  // НОВОЕ: жалоба на комментарий
   const handleReportComment = (commentId) => {
     hapticFeedback('light');
     setReportingComment(commentId);
@@ -318,12 +292,12 @@ function PostDetail() {
 
   const getCategoryColor = (category) => {
     const colors = {
-      'news': '#3b82f6',
-      'events': '#f59e0b',
-      'confessions': '#ec4899',
-      'lost_found': '#10b981',
+      'news': theme.colors.news,
+      'events': theme.colors.events,
+      'confessions': theme.colors.confessions,
+      'lost_found': theme.colors.lostFound,
     };
-    return colors[category] || '#666';
+    return colors[category] || theme.colors.textDisabled;
   };
 
   const getCategoryLabel = (category) => {
@@ -350,14 +324,11 @@ function PostDetail() {
   };
 
   const commentTree = buildCommentTree(comments);
-
-  // Проверка анонимности
   const isAnonymous = post.is_anonymous === true;
   const displayAuthorName = isAnonymous ? 'Аноним' : (typeof post.author === 'object' ? post.author.name : post.author);
 
   return (
     <div style={styles.container}>
-      {/* Header */}
       <div style={styles.header}>
         <button onClick={handleBack} style={styles.backButton}>
           <ArrowLeft size={24} />
@@ -365,13 +336,11 @@ function PostDetail() {
         <span style={styles.headerTitle}>Пост</span>
       </div>
 
-      {/* Content */}
       <div style={styles.content}>
-        {/* Author Section */}
         <div style={styles.authorSection}>
           <div style={{
             ...styles.avatar,
-            backgroundColor: isAnonymous ? '#666' : '#8774e1'
+            backgroundColor: isAnonymous ? theme.colors.textDisabled : theme.colors.primary
           }}>
             {isAnonymous ? '?' : (typeof post.author === 'object' ? post.author.name[0] : post.author?.[0] || '?')}
           </div>
@@ -394,7 +363,6 @@ function PostDetail() {
           </div>
         </div>
 
-        {/* Category Badge */}
         <div
           style={{
             ...styles.category,
@@ -408,11 +376,9 @@ function PostDetail() {
           )}
         </div>
 
-        {/* Title & Body */}
         <h1 style={styles.title}>{post.title}</h1>
         <p style={styles.body}>{post.body}</p>
 
-        {/* LOST & FOUND дополнительные поля */}
         {post.category === 'lost_found' && (
           <div style={styles.additionalInfo}>
             <div style={styles.infoRow}>
@@ -423,14 +389,13 @@ function PostDetail() {
             </div>
             {post.location && (
               <div style={styles.infoRow}>
-                <MapPin size={16} style={{ color: '#10b981' }} />
+                <MapPin size={16} style={{ color: theme.colors.lostFound }} />
                 <span style={styles.infoValue}>{post.location}</span>
               </div>
             )}
           </div>
         )}
 
-        {/* EVENTS дополнительные поля */}
         {post.category === 'events' && (
           <div style={styles.additionalInfo}>
             {post.event_name && (
@@ -441,20 +406,19 @@ function PostDetail() {
             )}
             {post.event_date && (
               <div style={styles.infoRow}>
-                <Calendar size={16} style={{ color: '#f59e0b' }} />
+                <Calendar size={16} style={{ color: theme.colors.events }} />
                 <span style={styles.infoValue}>{formatEventDate(post.event_date)}</span>
               </div>
             )}
             {post.event_location && (
               <div style={styles.infoRow}>
-                <MapPin size={16} style={{ color: '#f59e0b' }} />
+                <MapPin size={16} style={{ color: theme.colors.events }} />
                 <span style={styles.infoValue}>{post.event_location}</span>
               </div>
             )}
           </div>
         )}
 
-        {/* Tags */}
         {post.tags && post.tags.length > 0 && (
           <div style={styles.tags}>
             {post.tags.map((tag, index) => (
@@ -463,16 +427,15 @@ function PostDetail() {
           </div>
         )}
 
-        {/* Stats */}
         <div style={styles.stats}>
           <button
             style={{
               ...styles.statButton,
-              color: isLiked ? '#ff3b5c' : '#999'
+              color: isLiked ? theme.colors.accent : theme.colors.textTertiary
             }}
             onClick={handleLike}
           >
-            <Heart size={20} fill={isLiked ? '#ff3b5c' : 'none'} />
+            <Heart size={20} fill={isLiked ? theme.colors.accent : 'none'} />
             <span>{post.likes_count || 0}</span>
           </button>
           <div style={styles.statItem}>
@@ -485,7 +448,6 @@ function PostDetail() {
           </div>
         </div>
 
-        {/* Comments Section */}
         <div style={styles.commentsSection}>
           <h3 style={styles.commentsTitle}>Комментарии ({comments.length})</h3>
 
@@ -530,7 +492,6 @@ function PostDetail() {
         postAuthorName={displayAuthorName}
       />
 
-      {/* Report Modal */}
       {reportingComment && (
         <div style={styles.modalOverlay} onClick={() => setReportingComment(null)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
@@ -579,15 +540,14 @@ function Comment({
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* Вертикальная линия на всю высоту ветки */}
       {comment.replies && comment.replies.length > 0 && (
         <div
           style={{
             position: 'absolute',
-            left: '18px',
-            top: '36px',
-            bottom: '0',
-            width: '2px',
+            left: 18,
+            top: 36,
+            bottom: 0,
+            width: 2,
             backgroundColor: 'rgba(135, 116, 225, 0.25)',
             zIndex: 0,
           }}
@@ -671,7 +631,7 @@ function Comment({
               <p style={{
                 ...styles.commentText,
                 fontStyle: comment.is_deleted ? 'italic' : 'normal',
-                color: comment.is_deleted ? '#666' : '#ccc'
+                color: comment.is_deleted ? theme.colors.textDisabled : theme.colors.textSecondary
               }}>
                 {comment.body}
               </p>
@@ -687,11 +647,11 @@ function Comment({
               <button
                 style={{
                   ...styles.commentAction,
-                  color: likes.isLiked ? '#ff3b5c' : '#999'
+                  color: likes.isLiked ? theme.colors.accent : theme.colors.textTertiary
                 }}
                 onClick={() => onLike(comment.id)}
               >
-                <Heart size={14} fill={likes.isLiked ? '#ff3b5c' : 'none'} />
+                <Heart size={14} fill={likes.isLiked ? theme.colors.accent : 'none'} />
                 <span>{likes.count}</span>
               </button>
               
@@ -705,9 +665,8 @@ function Comment({
         </div>
       </div>
 
-      {/* Replies */}
       {comment.replies && comment.replies.length > 0 && (
-        <div style={{ marginLeft: '30px', marginTop: '12px', position: 'relative', zIndex: 1 }}>
+        <div style={{ marginLeft: 30, marginTop: theme.spacing.md, position: 'relative', zIndex: 1 }}>
           {comment.replies.map((reply) => (
             <Comment
               key={reply.id}
@@ -742,10 +701,10 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: Z_MODAL_FORMS, // 1500
-    backgroundColor: '#121212',
+    zIndex: Z_MODAL_FORMS,
+    backgroundColor: theme.colors.bg,
     minHeight: '100vh',
-    paddingBottom: '72px',
+    paddingBottom: 72,
     overflowY: 'auto',
   },
   header: {
@@ -753,194 +712,192 @@ const styles = {
     top: 0,
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
-    padding: '12px 16px',
-    backgroundColor: '#1a1a1a',
-    borderBottom: '1px solid #333',
+    gap: theme.spacing.md,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    backgroundColor: theme.colors.bgSecondary,
+    borderBottom: `1px solid ${theme.colors.border}`,
     zIndex: 10,
   },
   backButton: {
     background: 'none',
     border: 'none',
-    color: '#fff',
+    color: theme.colors.text,
     cursor: 'pointer',
-    padding: '8px',
+    padding: theme.spacing.sm,
     display: 'flex',
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
   },
   content: {
-    padding: '16px',
+    padding: theme.spacing.lg,
   },
   authorSection: {
     display: 'flex',
-    gap: '12px',
-    marginBottom: '16px',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
   },
   avatar: {
-    width: '48px',
-    height: '48px',
-    borderRadius: '50%',
-    backgroundColor: '#8774e1',
+    width: 48,
+    height: 48,
+    borderRadius: theme.radius.full,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
     flexShrink: 0,
   },
   authorInfo: {
     flex: 1,
   },
   authorName: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
   },
   authorMeta: {
-    fontSize: '13px',
-    color: '#999',
-    marginTop: '2px',
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textTertiary,
+    marginTop: 2,
   },
   time: {
-    fontSize: '12px',
-    color: '#666',
-    marginTop: '4px',
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textDisabled,
+    marginTop: theme.spacing.xs,
   },
   category: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '8px',
-    padding: '6px 12px',
-    borderRadius: '8px',
-    fontSize: '13px',
-    fontWeight: '600',
-    marginBottom: '16px',
+    gap: theme.spacing.sm,
+    padding: `6px ${theme.spacing.md}px`,
+    borderRadius: theme.radius.sm,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+    marginBottom: theme.spacing.lg,
   },
   importantBadge: {
-    fontSize: '12px',
-    padding: '2px 8px',
-    borderRadius: '6px',
+    fontSize: theme.fontSize.xs,
+    padding: `2px ${theme.spacing.sm}px`,
+    borderRadius: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    marginLeft: '4px',
+    marginLeft: theme.spacing.xs,
   },
   title: {
-    fontSize: '22px',
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: '12px',
+    fontSize: theme.fontSize.xxl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
     lineHeight: 1.4,
   },
   body: {
-    fontSize: '16px',
-    color: '#ccc',
+    fontSize: theme.fontSize.lg,
+    color: theme.colors.textSecondary,
     lineHeight: 1.6,
-    marginBottom: '16px',
+    marginBottom: theme.spacing.lg,
   },
   additionalInfo: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '12px',
-    padding: '12px 16px',
-    marginBottom: '16px',
+    borderRadius: theme.radius.md,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    marginBottom: theme.spacing.lg,
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px',
+    gap: theme.spacing.sm,
   },
   infoRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    fontSize: '14px',
+    gap: theme.spacing.sm,
+    fontSize: theme.fontSize.base,
   },
   infoLabel: {
-    color: '#999',
-    fontWeight: '600',
+    color: theme.colors.textTertiary,
+    fontWeight: theme.fontWeight.semibold,
   },
   infoValue: {
-    color: '#fff',
-    fontWeight: '500',
+    color: theme.colors.text,
+    fontWeight: theme.fontWeight.medium,
   },
   tags: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '8px',
-    marginBottom: '16px',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.lg,
   },
   tag: {
-    fontSize: '14px',
-    color: '#8774e1',
-    fontWeight: '500',
+    fontSize: theme.fontSize.base,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.medium,
   },
   stats: {
     display: 'flex',
-    gap: '20px',
-    paddingTop: '16px',
-    paddingBottom: '16px',
-    borderTop: '1px solid #333',
-    borderBottom: '1px solid #333',
+    gap: theme.spacing.xl,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: theme.spacing.lg,
+    borderTop: `1px solid ${theme.colors.border}`,
+    borderBottom: `1px solid ${theme.colors.border}`,
   },
   statButton: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: theme.spacing.sm,
     background: 'none',
     border: 'none',
-    color: '#999',
     cursor: 'pointer',
-    fontSize: '15px',
-    padding: '4px',
+    fontSize: theme.fontSize.md,
+    padding: theme.spacing.xs,
   },
   statItem: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    color: '#666',
-    fontSize: '15px',
+    gap: theme.spacing.sm,
+    color: theme.colors.textDisabled,
+    fontSize: theme.fontSize.md,
   },
   commentsSection: {
-    marginTop: '24px',
+    marginTop: theme.spacing.xxl,
   },
   commentsTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: '16px',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.lg,
   },
   noComments: {
     textAlign: 'center',
-    color: '#999',
-    padding: '40px 20px',
+    color: theme.colors.textTertiary,
+    padding: `40px ${theme.spacing.xl}px`,
   },
   noCommentsHint: {
-    fontSize: '14px',
-    color: '#666',
-    marginTop: '8px',
+    fontSize: theme.fontSize.base,
+    color: theme.colors.textDisabled,
+    marginTop: theme.spacing.sm,
   },
   commentsList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '16px',
+    gap: theme.spacing.lg,
   },
   comment: {
     display: 'flex',
-    gap: '12px',
+    gap: theme.spacing.md,
   },
   commentAvatar: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '50%',
-    backgroundColor: '#444',
+    width: 36,
+    height: 36,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.textDisabled,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '14px',
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
     flexShrink: 0,
   },
   commentContent: {
@@ -949,109 +906,108 @@ const styles = {
   commentHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    marginBottom: '4px',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
     flexWrap: 'wrap',
   },
   commentAuthor: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
   },
   commentMeta: {
-    fontSize: '12px',
-    color: '#666',
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textDisabled,
   },
   commentText: {
-    fontSize: '15px',
-    color: '#ccc',
+    fontSize: theme.fontSize.md,
     lineHeight: 1.5,
-    marginBottom: '8px',
+    marginBottom: theme.spacing.sm,
     wordBreak: 'break-word',
     overflowWrap: 'break-word',
   },
   commentActions: {
     display: 'flex',
-    gap: '16px',
+    gap: theme.spacing.lg,
   },
   commentAction: {
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: theme.spacing.xs,
     background: 'none',
     border: 'none',
-    color: '#999',
-    fontSize: '13px',
+    color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.sm,
     cursor: 'pointer',
-    padding: '8px 12px',
-    minHeight: '44px',
-    minWidth: '44px',
-    borderRadius: '8px',
-    transition: 'background 0.2s',
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+    minHeight: 44,
+    minWidth: 44,
+    borderRadius: theme.radius.sm,
+    transition: theme.transitions.normal,
   },
   menuButton: {
     background: 'none',
     border: 'none',
-    color: '#999',
+    color: theme.colors.textTertiary,
     cursor: 'pointer',
-    padding: '8px',
+    padding: theme.spacing.sm,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '50%',
-    minWidth: '32px',
-    minHeight: '32px',
-    transition: 'background 0.2s',
+    borderRadius: theme.radius.full,
+    minWidth: 32,
+    minHeight: 32,
+    transition: theme.transitions.normal,
   },
   menu: {
     position: 'absolute',
     top: '100%',
     right: 0,
-    marginTop: '4px',
-    backgroundColor: '#2a2a2a',
-    borderRadius: '8px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+    marginTop: theme.spacing.xs,
+    backgroundColor: theme.colors.cardHover,
+    borderRadius: theme.radius.sm,
+    boxShadow: theme.shadows.lg,
     overflow: 'hidden',
     zIndex: 100,
-    minWidth: '140px',
+    minWidth: 140,
   },
   menuItem: {
     width: '100%',
-    padding: '12px 16px',
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     background: 'none',
     border: 'none',
-    color: '#fff',
-    fontSize: '14px',
+    color: theme.colors.text,
+    fontSize: theme.fontSize.base,
     cursor: 'pointer',
     textAlign: 'left',
-    transition: 'background 0.2s',
+    transition: theme.transitions.normal,
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: theme.spacing.sm,
   },
   loading: {
     textAlign: 'center',
-    color: '#999',
-    padding: '40px',
-    fontSize: '16px',
+    color: theme.colors.textTertiary,
+    padding: 40,
+    fontSize: theme.fontSize.lg,
   },
   editForm: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px',
-    marginBottom: '8px',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
     maxWidth: '100%',
     boxSizing: 'border-box',
   },
   editTextarea: {
     width: '100%',
     maxWidth: '100%',
-    padding: '12px',
-    borderRadius: '8px',
-    border: '1px solid #333',
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    fontSize: '15px',
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.sm,
+    border: `1px solid ${theme.colors.border}`,
+    backgroundColor: theme.colors.card,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
     fontFamily: 'inherit',
     resize: 'vertical',
     outline: 'none',
@@ -1059,81 +1015,81 @@ const styles = {
   },
   editButtons: {
     display: 'flex',
-    gap: '8px',
+    gap: theme.spacing.sm,
     justifyContent: 'flex-end'
   },
   saveButton: {
-    padding: '8px 16px',
-    borderRadius: '8px',
+    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+    borderRadius: theme.radius.sm,
     border: 'none',
-    backgroundColor: '#8774e1',
-    color: '#fff',
-    fontSize: '14px',
-    fontWeight: '600',
+    backgroundColor: theme.colors.primary,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer'
   },
   cancelEditButton: {
-    padding: '8px 16px',
-    borderRadius: '8px',
-    border: '1px solid #333',
+    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+    borderRadius: theme.radius.sm,
+    border: `1px solid ${theme.colors.border}`,
     backgroundColor: 'transparent',
-    color: '#999',
-    fontSize: '14px',
-    fontWeight: '600',
+    color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer'
   },
   editedLabel: {
-    fontSize: '12px',
-    color: '#666',
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textDisabled,
     fontStyle: 'italic',
-    marginTop: '4px',
+    marginTop: theme.spacing.xs,
     display: 'block'
   },
   modalOverlay: {
     position: 'fixed',
     inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: theme.colors.overlay,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000
   },
   modalContent: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: '16px',
-    padding: '24px',
+    backgroundColor: theme.colors.bgSecondary,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.xxl,
     width: '90%',
-    maxWidth: '400px',
+    maxWidth: 400,
     display: 'flex',
     flexDirection: 'column',
-    gap: '12px'
+    gap: theme.spacing.md
   },
   modalTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: '8px'
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm
   },
   reportButton: {
-    padding: '14px',
-    borderRadius: '12px',
+    padding: 14,
+    borderRadius: theme.radius.md,
     border: 'none',
-    backgroundColor: '#2a2a2a',
-    color: '#fff',
-    fontSize: '15px',
+    backgroundColor: theme.colors.cardHover,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
     cursor: 'pointer',
     textAlign: 'left',
-    transition: 'background 0.2s'
+    transition: theme.transitions.normal
   },
   cancelButtonModal: {
-    padding: '14px',
-    borderRadius: '12px',
-    border: '1px solid #333',
+    padding: 14,
+    borderRadius: theme.radius.md,
+    border: `1px solid ${theme.colors.border}`,
     backgroundColor: 'transparent',
-    color: '#999',
-    fontSize: '15px',
+    color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.md,
     cursor: 'pointer',
-    marginTop: '8px'
+    marginTop: theme.spacing.sm
   }
 };
 

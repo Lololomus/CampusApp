@@ -8,9 +8,10 @@ import LikesListModal from './LikesListModal';
 import MatchModal from './MatchModal';
 import ResponseModal from './ResponseModal';
 import ProfileCardSkeleton from './ProfileCardSkeleton';
+import theme from '../../theme';
 
 // ===== 🎭 MOCK DATA ДЛЯ РАЗРАБОТКИ =====
-const USE_MOCK_DATA = true; // ← Поставь false когда backend заработает
+const USE_MOCK_DATA = true;
 
 const MOCK_DATING_PROFILES = [
   {
@@ -322,7 +323,6 @@ function DatingFeed() {
   const isLoadingRef = useRef(false);
   const offset = useRef(0);
 
-  // Загрузка профилей
   const loadProfiles = async (reset = false) => {
     if (isLoadingRef.current) return;
 
@@ -336,14 +336,10 @@ function DatingFeed() {
 
       let profiles = [];
 
-      // ===== 🎭 МОК РЕЖИМ =====
       if (USE_MOCK_DATA) {
         console.log('🎭 Используем MOCK данные');
-        
-        // Задержка для имитации загрузки
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Выбираем моки в зависимости от режима
         if (datingMode === 'dating') {
           console.log('🎭 Загружаем MOCK_DATING_PROFILES:', MOCK_DATING_PROFILES);
           profiles = MOCK_DATING_PROFILES;
@@ -355,10 +351,8 @@ function DatingFeed() {
           profiles = MOCK_HANGOUT_PROFILES;
         }
 
-        setHasMore(false); // Моковые данные статичны
-      } 
-      // ===== 🌐 РЕАЛЬНЫЙ API =====
-      else {
+        setHasMore(false);
+      } else {
         if (datingMode === 'dating') {
           profiles = await getDatingFeed(10, offset.current);
         } else {
@@ -394,7 +388,6 @@ function DatingFeed() {
     }
   };
 
-  // Загрузка статистики
   const loadStats = async () => {
     try {
       if (USE_MOCK_DATA) {
@@ -410,7 +403,6 @@ function DatingFeed() {
     }
   };
 
-  // При монтировании и смене режима
   useEffect(() => {
     clearProfilesQueue();
     setCurrentProfile(null);
@@ -424,7 +416,6 @@ function DatingFeed() {
     };
   }, [datingMode]);
 
-  // Prefetch когда очередь мала
   useEffect(() => {
     if (
       profilesQueue.length < 3 &&
@@ -438,7 +429,6 @@ function DatingFeed() {
     }
   }, [profilesQueue.length]);
 
-  // Обработка Skip
   const handleSkip = () => {
     if (isAnimating) return;
 
@@ -456,7 +446,6 @@ function DatingFeed() {
     }, 400);
   };
 
-  // Обработка Action
   const handleAction = async () => {
     if (!currentProfile || isAnimating) return;
 
@@ -469,14 +458,9 @@ function DatingFeed() {
         setSwipeDirection('right');
         setIsAnimating(true);
 
-        // ===== 🎭 МОК РЕЖИМ =====
         if (USE_MOCK_DATA) {
           console.log('🎭 Моковый лайк:', currentProfile.name);
-          
-          // Имитация задержки API
           await new Promise(resolve => setTimeout(resolve, 300));
-
-          // Случайный матч (20% шанс)
           const isMatch = Math.random() < 0.2;
 
           setTimeout(() => {
@@ -491,9 +475,7 @@ function DatingFeed() {
               setShowMatchModal(true, currentProfile);
             }
           }, 400);
-        } 
-        // ===== 🌐 РЕАЛЬНЫЙ API =====
-        else {
+        } else {
           const result = await likeUser(currentProfile.id);
 
           setTimeout(() => {
@@ -519,7 +501,6 @@ function DatingFeed() {
     }
   };
 
-  // Рендер Header (унифицированный)
   const renderHeader = () => (
     <div style={styles.header}>
       <button onClick={() => setShowLikesModal(true)} style={styles.headerButton}>
@@ -530,7 +511,7 @@ function DatingFeed() {
           </>
         ) : (
           <>
-            <span style={{ fontSize: '20px' }}>📬</span>
+            <span style={{ fontSize: 20 }}>📬</span>
             {responsesCount > 0 && <span style={styles.badge}>{responsesCount}</span>}
           </>
         )}
@@ -542,7 +523,6 @@ function DatingFeed() {
     </div>
   );
 
-  // Loading state
   if (loading && !currentProfile) {
     return (
       <div style={styles.container}>
@@ -554,7 +534,6 @@ function DatingFeed() {
     );
   }
 
-  // Empty state
   if (!currentProfile && !hasMore) {
     return (
       <div style={styles.container}>
@@ -572,7 +551,6 @@ function DatingFeed() {
     );
   }
 
-  // Normal state
   return (
     <div style={styles.container}>
       {renderHeader()}
@@ -595,7 +573,7 @@ function DatingFeed() {
           onClick={handleSkip}
           style={{
             ...styles.actionButton,
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: `linear-gradient(135deg, ${theme.colors.gradientStart} 0%, ${theme.colors.gradientEnd} 100%)`,
           }}
           disabled={isAnimating}
           onMouseEnter={(e) => {
@@ -639,10 +617,10 @@ function DatingFeed() {
 const styles = {
   container: {
     height: '100vh',
-    backgroundColor: '#0a0a0a',
+    backgroundColor: theme.colors.bg,
     display: 'flex',
     flexDirection: 'column',
-    paddingBottom: '64px',
+    paddingBottom: 64,
   },
   header: {
     position: 'sticky',
@@ -651,19 +629,19 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px 16px',
-    borderBottom: '1px solid #1a1a1a',
-    backgroundColor: '#0a0a0a',
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    borderBottom: `1px solid ${theme.colors.bgSecondary}`,
+    backgroundColor: theme.colors.bg,
     flexShrink: 0,
   },
   headerButton: {
     position: 'relative',
-    width: '48px',
-    height: '48px',
-    borderRadius: '12px',
+    width: 48,
+    height: 48,
+    borderRadius: theme.radius.md,
     border: 'none',
-    backgroundColor: '#1a1a1a',
-    color: '#fff',
+    backgroundColor: theme.colors.bgSecondary,
+    color: theme.colors.text,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -671,75 +649,75 @@ const styles = {
   },
   badge: {
     position: 'absolute',
-    top: '-4px',
-    right: '-4px',
-    backgroundColor: '#8774e1',
-    color: '#fff',
-    fontSize: '11px',
-    fontWeight: 'bold',
-    padding: '2px 6px',
-    borderRadius: '12px',
-    minWidth: '20px',
+    top: -4,
+    right: -4,
+    backgroundColor: theme.colors.primary,
+    color: theme.colors.text,
+    fontSize: 11,
+    fontWeight: theme.fontWeight.bold,
+    padding: `2px 6px`,
+    borderRadius: theme.radius.md,
+    minWidth: 20,
     textAlign: 'center',
   },
   cardContainer: {
     flex: 1,
-    padding: '12px 16px',
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     position: 'relative',
     overflow: 'hidden',
   },
   actionsContainer: {
     position: 'fixed',
-    bottom: '80px',
-    left: '0',
-    right: '0',
+    bottom: 80,
+    left: 0,
+    right: 0,
     display: 'flex',
     justifyContent: 'center',
-    gap: '24px',
-    padding: '0 16px',
+    gap: theme.spacing.xxl,
+    padding: `0 ${theme.spacing.lg}px`,
     zIndex: 5,
   },
   actionButton: {
-    width: '70px',
-    height: '70px',
-    borderRadius: '50%',
+    width: 70,
+    height: 70,
+    borderRadius: theme.radius.full,
     border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+    boxShadow: theme.shadows.lg,
     opacity: 0.95,
-    transition: 'opacity 0.2s, transform 0.2s',
+    transition: theme.transitions.normal,
   },
   actionIcon: {
-    fontSize: '32px',
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: theme.fontWeight.bold,
   },
   content: {
     flex: 1,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '16px',
+    padding: theme.spacing.lg,
   },
   emptyState: {
     textAlign: 'center',
-    padding: '32px',
+    padding: theme.spacing.xxxl,
   },
   emptyEmoji: {
-    fontSize: '64px',
-    marginBottom: '16px',
+    fontSize: 64,
+    marginBottom: theme.spacing.lg,
   },
   emptyTitle: {
-    color: '#fff',
-    fontSize: '18px',
-    fontWeight: '600',
-    marginBottom: '8px',
+    color: theme.colors.text,
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    marginBottom: theme.spacing.sm,
   },
   emptySubtitle: {
-    color: '#888',
-    fontSize: '14px',
+    color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.base,
   },
 };
 

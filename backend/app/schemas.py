@@ -65,8 +65,8 @@ class UserResponse(BaseModel):
 
 class UserShort(BaseModel):
     """Краткие данные пользователя"""
-    id: int
-    telegram_id: int
+    id: Optional[int] = None           # ОПЦИОНАЛЬНО для анонимов
+    telegram_id: Optional[int] = None  # ОПЦИОНАЛЬНО для анонимов
     name: str
     avatar: Optional[str] = None
     university: Optional[str] = None

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Heart, MessageCircle, Eye, MapPin, Calendar } from 'lucide-react';
 import { hapticFeedback } from '../utils/telegram';
 import { likePost } from '../api';
 import { useStore } from '../store';
+import theme from '../theme';
 
 function PostCard({ post, onClick, onLikeUpdate }) {
   const { likedPosts, setPostLiked } = useStore();
@@ -18,7 +19,6 @@ function PostCard({ post, onClick, onLikeUpdate }) {
     
     try {
       const result = await likePost(post.id);
-      
       setPostLiked(post.id, result.is_liked);
       
       if (onLikeUpdate) {
@@ -33,17 +33,15 @@ function PostCard({ post, onClick, onLikeUpdate }) {
     }
   };
 
-
   const getCategoryColor = (category) => {
     const colors = {
-      news: '#3b82f6',
-      events: '#f59e0b',
-      confessions: '#ec4899',
-      lost_found: '#10b981',
+      news: theme.colors.news,
+      events: theme.colors.events,
+      confessions: theme.colors.confessions,
+      lost_found: theme.colors.lostFound,
     };
-    return colors[category] || '#666';
+    return colors[category] || theme.colors.textDisabled;
   };
-
 
   const getCategoryLabel = (category) => {
     const labels = {
@@ -54,7 +52,6 @@ function PostCard({ post, onClick, onLikeUpdate }) {
     };
     return labels[category] || category;
   };
-
 
   const formatEventDate = (dateString) => {
     if (!dateString) return '';
@@ -68,21 +65,18 @@ function PostCard({ post, onClick, onLikeUpdate }) {
     return date.toLocaleDateString('ru-RU', options);
   };
 
-
-  // Проверка анонимности
   const isAnonymous = post.is_anonymous === true;
   const displayAuthorName = isAnonymous ? 'Аноним' : (typeof post.author === 'object' ? post.author.name : post.author);
   const displayAuthorAvatar = isAnonymous ? '?' : (typeof post.author === 'object' ? post.author.name : post.author)?.[0] || '?';
 
-
   return (
     <div style={styles.card} onClick={() => onClick(post.id)}>
-      {/* Шапка поста */}
+      {/* Шапка */}
       <div style={styles.header}>
         <div style={styles.authorInfo}>
           <div style={{
             ...styles.avatar,
-            backgroundColor: isAnonymous ? '#666' : '#8774e1'
+            backgroundColor: isAnonymous ? theme.colors.textDisabled : theme.colors.primary
           }}>
             {displayAuthorAvatar}
           </div>
@@ -106,12 +100,11 @@ function PostCard({ post, onClick, onLikeUpdate }) {
         <div style={styles.time}>{post.time}</div>
       </div>
 
-
       {/* Категория */}
       <div
         style={{
           ...styles.category,
-          backgroundColor: getCategoryColor(post.category) + '20',
+          backgroundColor: `${getCategoryColor(post.category)}20`,
           color: getCategoryColor(post.category),
         }}
       >
@@ -121,13 +114,11 @@ function PostCard({ post, onClick, onLikeUpdate }) {
         )}
       </div>
 
-
-      {/* Заголовок и текст */}
+      {/* Контент */}
       <h3 style={styles.title}>{post.title}</h3>
       <p style={styles.body}>{post.body}</p>
 
-
-      {/* LOST & FOUND компактная инфа */}
+      {/* LOST & FOUND */}
       {post.category === 'lost_found' && post.item_description && (
         <div style={styles.extraInfo}>
           <span style={styles.extraLabel}>
@@ -141,8 +132,7 @@ function PostCard({ post, onClick, onLikeUpdate }) {
         </div>
       )}
 
-
-      {/* EVENTS компактная инфа */}
+      {/* EVENTS */}
       {post.category === 'events' && post.event_name && (
         <div style={styles.extraInfo}>
           <span style={styles.extraLabel}>{post.event_name}</span>
@@ -153,7 +143,6 @@ function PostCard({ post, onClick, onLikeUpdate }) {
           )}
         </div>
       )}
-
 
       {/* Теги */}
       {post.tags && post.tags.length > 0 && (
@@ -166,167 +155,163 @@ function PostCard({ post, onClick, onLikeUpdate }) {
         </div>
       )}
 
-
-      {/* Футер с действиями */}
+      {/* Футер */}
       <div style={styles.footer}>
         <button 
           style={{
             ...styles.actionButton,
-            color: isLiked ? '#ff3b5c' : '#999'
+            color: isLiked ? theme.colors.accent : theme.colors.textTertiary
           }}
           onClick={handleLike}
         >
-          <Heart size={18} fill={isLiked ? '#ff3b5c' : 'none'} />
-          <span>{likesCount}</span> {/* ✅ УЖЕ ПРАВИЛЬНО */}
+          <Heart size={18} fill={isLiked ? theme.colors.accent : 'none'} />
+          <span>{likesCount}</span>
         </button>
         <button style={styles.actionButton}>
           <MessageCircle size={18} />
-          <span>{post.commentsCount || post.comments_count || 0}</span> {/* ✅ УЖЕ ПРАВИЛЬНО */}
+          <span>{post.commentsCount || post.comments_count || 0}</span>
         </button>
         <div style={styles.views}>
           <Eye size={18} />
-          <span>{post.views_count || post.views || 0}</span> {/* ✅ ИСПРАВЛЕНО */}
+          <span>{post.views_count || post.views || 0}</span>
         </div>
       </div>
     </div>
   );
 }
 
-
 const styles = {
   card: {
-    backgroundColor: '#1e1e1e',
-    borderRadius: '12px',
-    padding: '16px',
-    marginBottom: '12px',
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
     cursor: 'pointer',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-    border: '1px solid #333',
+    transition: theme.transitions.normal,
+    border: `1px solid ${theme.colors.border}`,
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: '12px',
+    marginBottom: theme.spacing.md,
   },
   authorInfo: {
     display: 'flex',
-    gap: '12px',
+    gap: theme.spacing.md,
     alignItems: 'center',
   },
   avatar: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
-    backgroundColor: '#8774e1',
+    width: 40,
+    height: 40,
+    borderRadius: theme.radius.full,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
   },
   author: {
-    fontSize: '15px',
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
   },
   meta: {
-    fontSize: '12px',
-    color: '#999',
-    marginTop: '2px',
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textTertiary,
+    marginTop: 2,
   },
   time: {
-    fontSize: '12px',
-    color: '#666',
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textDisabled,
   },
   category: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '4px',
-    padding: '4px 10px',
-    borderRadius: '6px',
-    fontSize: '12px',
-    fontWeight: '600',
-    marginBottom: '12px',
+    gap: theme.spacing.xs,
+    padding: `${theme.spacing.xs}px 10px`,
+    borderRadius: 6,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+    marginBottom: theme.spacing.md,
   },
   importantBadge: {
-    fontSize: '11px',
-    marginLeft: '2px',
+    fontSize: 11,
+    marginLeft: 2,
   },
   title: {
-    fontSize: '17px',
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: '8px',
-    lineHeight: '1.4',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 1.4,
   },
   body: {
-    fontSize: '15px',
-    color: '#ccc',
-    lineHeight: '1.5',
-    marginBottom: '12px',
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textSecondary,
+    lineHeight: 1.5,
+    marginBottom: theme.spacing.md,
   },
   extraInfo: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px',
-    padding: '8px 12px',
+    gap: theme.spacing.xs,
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '8px',
-    marginBottom: '12px',
+    borderRadius: theme.radius.sm,
+    marginBottom: theme.spacing.md,
   },
   extraLabel: {
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
   },
   extraDetail: {
-    fontSize: '12px',
-    color: '#999',
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textTertiary,
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: theme.spacing.xs,
   },
   tags: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '8px',
-    marginBottom: '12px',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
   },
   tag: {
-    fontSize: '13px',
-    color: '#8774e1',
-    fontWeight: '500',
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.medium,
   },
   footer: {
     display: 'flex',
-    gap: '16px',
+    gap: theme.spacing.lg,
     alignItems: 'center',
-    paddingTop: '12px',
-    borderTop: '1px solid #333',
+    paddingTop: theme.spacing.md,
+    borderTop: `1px solid ${theme.colors.border}`,
   },
   actionButton: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: 6,
     background: 'none',
     border: 'none',
-    color: '#999',
+    color: theme.colors.textTertiary,
     cursor: 'pointer',
-    padding: '4px',
-    fontSize: '14px',
-    transition: 'color 0.2s',
+    padding: theme.spacing.xs,
+    fontSize: theme.fontSize.base,
+    transition: theme.transitions.normal,
   },
   views: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    color: '#666',
-    fontSize: '14px',
+    gap: 6,
+    color: theme.colors.textDisabled,
+    fontSize: theme.fontSize.base,
     marginLeft: 'auto',
   },
 };
-
 
 export default PostCard;

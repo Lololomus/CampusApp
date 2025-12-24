@@ -1,15 +1,12 @@
 import React from 'react';
-import { MapPin, GraduationCap, Calendar, Tag } from 'lucide-react';
-
+import { MapPin, GraduationCap, Calendar } from 'lucide-react';
+import theme from '../../theme';
 
 function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirection }) {
   if (!profile) return null;
 
-
   const isDatingMode = mode === 'dating';
 
-
-  // Динамическая анимация в зависимости от direction
   let animationStyle = 'slideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
   
   if (isAnimating) {
@@ -20,18 +17,16 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
     }
   }
 
-
   const cardStyle = {
     ...styles.card,
     animation: animationStyle,
   };
 
-
   return (
     <>
       <style>{keyframes}</style>
       <div style={cardStyle}>
-        {/* Аватар - БОЛЬШОЙ для dating, маленький для остальных */}
+        {/* Аватар */}
         <div style={isDatingMode ? styles.avatarContainerLarge : styles.avatarContainerSmall}>
           {profile.avatar ? (
             <img src={profile.avatar} alt={profile.name} style={styles.avatarImage} />
@@ -42,7 +37,6 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
           )}
         </div>
 
-
         {/* Контент */}
         <div style={styles.content}>
           {/* Имя и возраст */}
@@ -51,42 +45,37 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
             {profile.age && <span style={styles.age}>, {profile.age}</span>}
           </h2>
 
-
           {/* Информация */}
           <div style={styles.infoSection}>
             {profile.university && (
               <div style={styles.infoItem}>
-                <GraduationCap size={16} color="#888" />
+                <GraduationCap size={16} color={theme.colors.textTertiary} />
                 <span>{profile.university}</span>
               </div>
             )}
             {profile.institute && (
               <div style={styles.infoItem}>
-                <MapPin size={16} color="#888" />
+                <MapPin size={16} color={theme.colors.textTertiary} />
                 <span>{profile.institute}</span>
               </div>
             )}
             {!profile.hide_course_group && profile.course && (
               <div style={styles.infoItem}>
-                <Calendar size={16} color="#888" />
+                <Calendar size={16} color={theme.colors.textTertiary} />
                 <span>{profile.course} курс{profile.group ? ` · ${profile.group}` : ''}</span>
               </div>
             )}
           </div>
 
-
           {/* РЕЖИМ ЗНАКОМСТВА */}
           {isDatingMode && (
             <>
-              {/* Био */}
               {profile.bio && (
                 <div style={styles.bioSection}>
                   <p style={styles.bioText}>{profile.bio}</p>
                 </div>
               )}
 
-
-              {/* Интересы */}
               {profile.interests && profile.interests.length > 0 && (
                 <div style={styles.section}>
                   <h3 style={styles.sectionTitle}>Интересы</h3>
@@ -102,11 +91,9 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
             </>
           )}
 
-
           {/* РЕЖИМЫ С ЗАПРОСАМИ */}
           {!isDatingMode && profile.active_request && (
             <>
-              {/* Блок "Ищет помощь/команду" */}
               <div style={styles.postSection}>
                 <h3 style={styles.postSectionTitle}>
                   {mode === 'study' && '📚 Ищет помощь'}
@@ -117,7 +104,6 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
                   <h4 style={styles.postTitle}>{profile.active_request.title}</h4>
                   <p style={styles.postBody}>{profile.active_request.body}</p>
                   
-                  {/* Теги запроса */}
                   {profile.active_request.tags && profile.active_request.tags.length > 0 && (
                     <div style={styles.tags}>
                       {profile.active_request.tags.map((tag, idx) => (
@@ -130,8 +116,6 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
                 </div>
               </div>
 
-
-              {/* Блок "Может помочь" */}
               {profile.interests && profile.interests.length > 0 && (
                 <div style={styles.section}>
                   <h3 style={styles.sectionTitle}>💡 Может помочь с</h3>
@@ -152,7 +136,6 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
   );
 }
 
-
 const keyframes = `
   @keyframes slideIn {
     from {
@@ -165,7 +148,6 @@ const keyframes = `
     }
   }
 
-
   @keyframes swipeLeft {
     to {
       opacity: 0;
@@ -173,40 +155,31 @@ const keyframes = `
     }
   }
 
-
   @keyframes swipeRight {
     to {
       opacity: 0;
       transform: translateX(120%) rotate(15deg);
     }
   }
-
-
-  @keyframes bounce {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-  }
 `;
-
 
 const styles = {
   card: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '24px',
+    backgroundColor: theme.colors.bgSecondary,
+    borderRadius: theme.radius.xl,
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5), 0 0 80px rgba(135, 116, 225, 0.15)',
+    boxShadow: `0 20px 60px ${theme.colors.overlay}, 0 0 80px rgba(135, 116, 225, 0.15)`,
     position: 'relative',
   },
   
-  // Большой аватар (dating)
   avatarContainerLarge: {
     width: '100%',
-    height: '320px',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    height: 320,
+    background: `linear-gradient(135deg, ${theme.colors.gradientStart} 0%, ${theme.colors.gradientEnd} 100%)`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -214,26 +187,24 @@ const styles = {
     flexShrink: 0,
   },
   avatarPlaceholderLarge: {
-    width: '180px',
-    height: '180px',
-    borderRadius: '50%',
+    width: 180,
+    height: 180,
+    borderRadius: theme.radius.full,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     border: '4px solid rgba(255, 255, 255, 0.3)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '72px',
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 72,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
     textTransform: 'uppercase',
   },
 
-
-  // Маленький аватар (study/help/hangout)
   avatarContainerSmall: {
     width: '100%',
-    height: '180px',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    height: 180,
+    background: `linear-gradient(135deg, ${theme.colors.gradientStart} 0%, ${theme.colors.gradientEnd} 100%)`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -241,20 +212,19 @@ const styles = {
     flexShrink: 0,
   },
   avatarPlaceholderSmall: {
-    width: '100px',
-    height: '100px',
-    borderRadius: '50%',
+    width: 100,
+    height: 100,
+    borderRadius: theme.radius.full,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     border: '3px solid rgba(255, 255, 255, 0.3)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '42px',
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 42,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
     textTransform: 'uppercase',
   },
-
 
   avatarImage: {
     width: '100%',
@@ -262,127 +232,117 @@ const styles = {
     objectFit: 'cover',
   },
 
-
   content: {
     flex: 1,
-    padding: '24px',
+    padding: theme.spacing.xxl,
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
-    gap: '16px',
+    gap: theme.spacing.lg,
   },
 
-
   name: {
-    fontSize: '28px',
-    fontWeight: '700',
-    color: '#fff',
+    fontSize: theme.fontSize.xxxl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
     margin: 0,
     display: 'flex',
     alignItems: 'baseline',
-    gap: '8px',
+    gap: theme.spacing.sm,
   },
   age: {
-    fontSize: '24px',
-    fontWeight: '400',
-    color: '#aaa',
+    fontSize: theme.fontSize.xxl,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.textTertiary,
   },
-
 
   infoSection: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px',
+    gap: theme.spacing.sm,
   },
   infoItem: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    color: '#aaa',
-    fontSize: '15px',
+    gap: theme.spacing.sm,
+    color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.md,
   },
-
 
   bioSection: {
-    marginTop: '8px',
+    marginTop: theme.spacing.sm,
   },
   bioText: {
-    color: '#ccc',
-    fontSize: '16px',
-    lineHeight: '1.5',
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.lg,
+    lineHeight: 1.5,
     margin: 0,
   },
 
-
   section: {
-    marginTop: '8px',
+    marginTop: theme.spacing.sm,
   },
   sectionTitle: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: '12px',
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
   },
 
-
-  // Блок с запросом
   postSection: {
-    marginTop: '12px',
+    marginTop: theme.spacing.md,
   },
   postSectionTitle: {
-    fontSize: '17px',
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: '12px',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
   },
   postCard: {
-    backgroundColor: '#252525',
-    borderRadius: '16px',
-    padding: '16px',
-    border: '1px solid #333',
+    backgroundColor: theme.colors.cardHover,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+    border: `1px solid ${theme.colors.border}`,
   },
   postTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: '8px',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
     margin: 0,
   },
   postBody: {
-    fontSize: '15px',
-    color: '#bbb',
-    lineHeight: '1.5',
-    marginBottom: '12px',
+    fontSize: theme.fontSize.md,
+    color: theme.colors.textSecondary,
+    lineHeight: 1.5,
+    marginBottom: theme.spacing.md,
     margin: 0,
   },
-
 
   tags: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '8px',
-    marginTop: '12px',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.md,
   },
   tag: {
-    padding: '6px 12px',
+    padding: `6px ${theme.spacing.md}px`,
     backgroundColor: 'rgba(135, 116, 225, 0.1)',
-    border: '1px solid rgba(135, 116, 225, 0.3)',
-    borderRadius: '12px',
-    fontSize: '14px',
-    color: '#8774e1',
-    fontWeight: '500',
+    border: `1px solid rgba(135, 116, 225, 0.3)`,
+    borderRadius: theme.radius.md,
+    fontSize: theme.fontSize.base,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.medium,
   },
-  // Цветные теги для запросов
   tagColored: {
-    padding: '6px 12px',
+    padding: `6px ${theme.spacing.md}px`,
     backgroundColor: 'rgba(100, 200, 255, 0.1)',
-    border: '1.5px solid rgba(100, 200, 255, 0.5)',
-    borderRadius: '12px',
-    fontSize: '14px',
-    color: '#64c8ff',
-    fontWeight: '500',
+    border: `1.5px solid rgba(100, 200, 255, 0.5)`,
+    borderRadius: theme.radius.md,
+    fontSize: theme.fontSize.base,
+    color: theme.colors.info,
+    fontWeight: theme.fontWeight.medium,
   },
 };
-
 
 export default ProfileCard;

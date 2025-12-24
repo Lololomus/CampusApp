@@ -3,7 +3,7 @@ import PostCard from './PostCard';
 import { getPosts } from '../api';
 import { useStore } from '../store';
 import PostCardSkeleton from './PostCardSkeleton';
-
+import theme from '../theme';
 
 function Feed() {
   const [posts, setPosts] = useState([]);
@@ -12,12 +12,10 @@ function Feed() {
   const { feedMode, setViewPostId, viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost } = useStore();
 
   const handleLikeUpdate = useCallback((postId, updates) => {
-    
     setPosts(prevPosts => {
       const updated = prevPosts.map(post =>
         post.id === postId ? { ...post, ...updates } : post
       );
-            
       return updated;
     });
   }, []);
@@ -37,13 +35,10 @@ function Feed() {
     }
   }, [activeCategory]);
 
-
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
 
-
-  // ✅ НОВОЕ: Когда закрываем PostDetail и есть обновлённый пост - обновляем только его
   useEffect(() => {
     if (!viewPostId && updatedPostId) {
       const updates = getUpdatedPost(updatedPostId);
@@ -55,21 +50,18 @@ function Feed() {
               : post
           )
         );
-        clearUpdatedPost(); // Очищаем после применения
+        clearUpdatedPost();
       }
     }
   }, [viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost]);
-
 
   const handlePostClick = (postId) => {
     setViewPostId(postId);
   };
 
-
   const handleCategoryChange = (category) => {
     setActiveCategory(category);
   };
-
 
   return (
     <div style={styles.container}>
@@ -78,7 +70,6 @@ function Feed() {
         <h1 style={styles.title}>🎓 Campus</h1>
         <p style={styles.subtitle}>Студенческая соцсеть</p>
       </div>
-
 
       {/* Табы категорий */}
       <div style={styles.tabs}>
@@ -109,10 +100,8 @@ function Feed() {
         />
       </div>
 
-
       {/* Список постов */}
       <div style={styles.posts}>
-        {/* SKELETON при загрузке */}
         {loading && (
           <>
             <PostCardSkeleton />
@@ -123,8 +112,6 @@ function Feed() {
           </>
         )}
 
-
-        {/* Empty state */}
         {!loading && posts.length === 0 && (
           <div style={styles.empty}>
             <p>Пока нет постов</p>
@@ -132,8 +119,6 @@ function Feed() {
           </div>
         )}
 
-
-        {/* Посты */}
         {!loading && posts.length > 0 && posts.map((post) => (
           <PostCard 
             key={`${post.id}-${post.is_liked}-${post.likes_count}`}
@@ -147,15 +132,14 @@ function Feed() {
   );
 }
 
-
 function Tab({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
         ...styles.tab,
-        backgroundColor: active ? '#8774e1' : 'transparent',
-        color: active ? '#fff' : '#999',
+        backgroundColor: active ? theme.colors.primary : 'transparent',
+        color: active ? theme.colors.text : theme.colors.textTertiary,
       }}
     >
       {label}
@@ -163,60 +147,58 @@ function Tab({ label, active, onClick }) {
   );
 }
 
-
 const styles = {
   container: {
     flex: 1,
-    backgroundColor: '#121212',
-    paddingBottom: '80px',
+    backgroundColor: theme.colors.bg,
+    paddingBottom: 80,
     minHeight: '100vh',
   },
   header: {
-    padding: '20px 16px 12px',
-    borderBottom: '1px solid #333',
+    padding: `${theme.spacing.xl}px ${theme.spacing.lg}px ${theme.spacing.md}px`,
+    borderBottom: `1px solid ${theme.colors.border}`,
   },
   title: {
-    fontSize: '28px',
-    fontWeight: '700',
-    color: '#fff',
+    fontSize: theme.fontSize.xxxl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
     margin: 0,
   },
   subtitle: {
-    fontSize: '14px',
-    color: '#999',
-    margin: '4px 0 0',
+    fontSize: theme.fontSize.base,
+    color: theme.colors.textTertiary,
+    margin: `${theme.spacing.xs}px 0 0`,
   },
   tabs: {
     display: 'flex',
-    gap: '8px',
-    padding: '12px 16px',
+    gap: theme.spacing.sm,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     overflowX: 'auto',
-    borderBottom: '1px solid #333',
+    borderBottom: `1px solid ${theme.colors.border}`,
   },
   tab: {
-    padding: '8px 16px',
-    borderRadius: '20px',
+    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
+    borderRadius: theme.radius.xl,
     border: 'none',
-    fontSize: '14px',
-    fontWeight: '600',
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
     whiteSpace: 'nowrap',
-    transition: 'all 0.2s',
+    transition: theme.transitions.normal,
   },
   posts: {
-    padding: '16px',
+    padding: theme.spacing.lg,
   },
   empty: {
     textAlign: 'center',
-    color: '#999',
-    padding: '60px 20px',
+    color: theme.colors.textTertiary,
+    padding: `60px ${theme.spacing.xl}px`,
   },
   emptyHint: {
-    fontSize: '14px',
-    color: '#666',
-    marginTop: '8px',
+    fontSize: theme.fontSize.base,
+    color: theme.colors.textDisabled,
+    marginTop: theme.spacing.sm,
   },
 };
-
 
 export default Feed;

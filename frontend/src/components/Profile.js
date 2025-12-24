@@ -5,6 +5,7 @@ import { hapticFeedback } from '../utils/telegram';
 import { getUserPosts, getUserStats, getMyRequests } from '../api';
 import PostCard from './PostCard';
 import ProfileMenuModal from './ProfileMenuModal';
+import theme from '../theme';
 
 function Profile() {
   const { 
@@ -117,7 +118,6 @@ function Profile() {
 
   return (
     <div style={styles.container}>
-      {/* HEADER */}
       <div style={styles.header}>
         <div 
           style={styles.avatarContainer}
@@ -179,7 +179,6 @@ function Profile() {
         </button>
       </div>
 
-      {/* СТАТИСТИКА — 3 карточки */}
       <div style={styles.stats}>
         <div style={{...styles.statCard, animationDelay: '0s'}}>
           <div style={styles.statIcon}>📝</div>
@@ -200,7 +199,6 @@ function Profile() {
         </div>
       </div>
 
-      {/* ТАБЫ */}
       <div style={styles.tabsContainer}>
         <button
           onClick={() => handleTabChange('posts')}
@@ -225,7 +223,6 @@ function Profile() {
         </button>
       </div>
 
-      {/* КНОПКА "ВСЕ..." СВЕРХУ */}
       {activeTab === 'posts' && stats.posts_count > 0 && (
         <button 
           onClick={handleShowAllPosts}
@@ -260,7 +257,6 @@ function Profile() {
         </button>
       )}
 
-      {/* КОНТЕНТ */}
       <div style={styles.content}>
         {activeTab === 'posts' && (
           <>
@@ -343,7 +339,6 @@ function Profile() {
         )}
       </div>
 
-      {/* МОДАЛКА НАСТРОЕК */}
       {showProfileMenu && (
         <ProfileMenuModal 
           onClose={() => setShowProfileMenu(false)}
@@ -352,7 +347,6 @@ function Profile() {
         />
       )}
 
-      {/* CSS АНИМАЦИИ (БЕЗ slideIn!) */}
       <style>{`
         @keyframes fadeInUp {
           from {
@@ -381,306 +375,299 @@ function Profile() {
 
 const styles = {
   container: {
-    paddingBottom: '80px',
+    paddingBottom: 80,
     minHeight: '100vh',
-    background: '#0a0a0a',
+    background: theme.colors.bg,
   },
   
-  // HEADER
   header: {
-    padding: '24px 16px',
+    padding: `${theme.spacing.xxl}px ${theme.spacing.lg}px`,
     textAlign: 'center',
-    borderBottom: '1px solid #1a1a1a',
+    borderBottom: `1px solid ${theme.colors.bgSecondary}`,
   },
   avatarContainer: {
     position: 'relative',
     display: 'inline-block',
     cursor: 'pointer',
-    transition: 'transform 0.3s ease',
+    transition: theme.transitions.slow,
   },
   avatar: {
-    width: '80px',
-    height: '80px',
-    borderRadius: '50%',
-    background: 'linear-gradient(135deg, #8774e1 0%, #b19ef5 100%)',
+    width: 80,
+    height: 80,
+    borderRadius: theme.radius.full,
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, #b19ef5 100%)`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '32px',
-    fontWeight: 'bold',
-    color: '#fff',
-    margin: '0 auto 16px',
+    fontSize: theme.fontSize.xxxl + 4,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    margin: `0 auto ${theme.spacing.lg}px`,
     boxShadow: '0 4px 16px rgba(135, 116, 225, 0.4)',
-    transition: 'all 0.3s ease',
+    transition: theme.transitions.slow,
   },
   settingsHint: {
     position: 'absolute',
     top: 0,
-    right: '-8px',
-    fontSize: '20px',
-    background: '#1a1a1a',
-    borderRadius: '50%',
-    width: '32px',
-    height: '32px',
+    right: -8,
+    fontSize: theme.fontSize.xl,
+    background: theme.colors.bgSecondary,
+    borderRadius: theme.radius.full,
+    width: 32,
+    height: 32,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    border: '2px solid #8774e1',
+    border: `2px solid ${theme.colors.primary}`,
     animation: 'pulse 2s ease infinite',
   },
   name: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#fff',
-    margin: '8px 0',
+    fontSize: theme.fontSize.xxl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    margin: `${theme.spacing.sm}px 0`,
   },
   university: {
-    fontSize: '14px',
-    color: '#888',
-    margin: '4px 0',
+    fontSize: theme.fontSize.base,
+    color: theme.colors.textTertiary,
+    margin: `${theme.spacing.xs}px 0`,
   },
   bio: {
-    fontSize: '14px',
-    color: '#ccc',
+    fontSize: theme.fontSize.base,
+    color: theme.colors.textSecondary,
     fontStyle: 'italic',
-    margin: '12px 0',
-    padding: '0 24px',
-    lineHeight: '1.5',
+    margin: `${theme.spacing.md}px 0`,
+    padding: `0 ${theme.spacing.xxl}px`,
+    lineHeight: 1.5,
   },
   interests: {
     display: 'flex',
-    gap: '8px',
+    gap: theme.spacing.sm,
     justifyContent: 'center',
     flexWrap: 'wrap',
-    margin: '12px 16px 0',
+    margin: `${theme.spacing.md}px ${theme.spacing.lg}px 0`,
   },
   interestTag: {
     background: 'rgba(135, 116, 225, 0.15)',
     border: '1px solid rgba(135, 116, 225, 0.3)',
-    borderRadius: '20px',
-    padding: '6px 12px',
-    fontSize: '12px',
+    borderRadius: theme.radius.xl,
+    padding: `6px ${theme.spacing.md}px`,
+    fontSize: theme.fontSize.xs,
     color: '#b19ef5',
-    fontWeight: '500',
+    fontWeight: theme.fontWeight.medium,
     animation: 'fadeInUp 0.5s ease both',
   },
   editButton: {
-    marginTop: '16px',
-    padding: '12px 24px',
+    marginTop: theme.spacing.lg,
+    padding: `${theme.spacing.md}px ${theme.spacing.xxl}px`,
     background: 'transparent',
-    border: '1px solid #8774e1',
-    borderRadius: '12px',
-    color: '#8774e1',
-    fontSize: '14px',
-    fontWeight: '600',
+    border: `1px solid ${theme.colors.primary}`,
+    borderRadius: theme.radius.md,
+    color: theme.colors.primary,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '8px',
-    margin: '16px auto 0',
-    transition: 'all 0.3s ease',
+    gap: theme.spacing.sm,
+    margin: `${theme.spacing.lg}px auto 0`,
+    transition: theme.transitions.slow,
   },
 
-  // СТАТИСТИКА
   stats: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '12px',
-    padding: '16px',
+    gap: theme.spacing.md,
+    padding: theme.spacing.lg,
   },
   statCard: {
-    background: '#1a1a1a',
-    borderRadius: '12px',
-    padding: '16px 8px',
+    background: theme.colors.bgSecondary,
+    borderRadius: theme.radius.md,
+    padding: `${theme.spacing.lg}px ${theme.spacing.sm}px`,
     textAlign: 'center',
-    border: '1px solid #2a2a2a',
-    transition: 'all 0.3s ease',
+    border: `1px solid ${theme.colors.cardHover}`,
+    transition: theme.transitions.slow,
     animation: 'fadeInUp 0.5s ease both',
   },
   statIcon: {
-    fontSize: '24px',
-    marginBottom: '8px',
+    fontSize: theme.fontSize.xxl,
+    marginBottom: theme.spacing.sm,
   },
   statValue: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: '4px',
+    fontSize: theme.fontSize.xxl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   statLabel: {
-    fontSize: '10px',
-    color: '#888',
+    fontSize: 10,
+    color: theme.colors.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
   },
 
-  // ТАБЫ
   tabsContainer: {
     display: 'flex',
-    gap: '8px',
-    padding: '16px',
-    borderBottom: '1px solid #2a2a2a',
+    gap: theme.spacing.sm,
+    padding: theme.spacing.lg,
+    borderBottom: `1px solid ${theme.colors.cardHover}`,
     position: 'sticky',
     top: 0,
-    background: '#0a0a0a',
+    background: theme.colors.bg,
     zIndex: 10,
   },
   tab: {
     flex: 1,
-    padding: '12px',
-    borderRadius: '12px',
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
     border: 'none',
-    fontSize: '15px',
-    fontWeight: '600',
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
     transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
     position: 'relative',
   },
   tabActive: {
-    background: 'linear-gradient(135deg, #8774e1 0%, #b19ef5 100%)',
-    color: '#fff',
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, #b19ef5 100%)`,
+    color: theme.colors.text,
     boxShadow: '0 4px 12px rgba(135, 116, 225, 0.4)',
     transform: 'translateY(-2px)',
   },
   tabInactive: {
-    background: '#1a1a1a',
-    color: '#888',
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textTertiary,
   },
   tabBadge: {
     position: 'absolute',
-    top: '-4px',
-    right: '-4px',
+    top: -4,
+    right: -4,
     background: '#ff6b9d',
-    color: '#fff',
-    fontSize: '10px',
-    fontWeight: 'bold',
-    padding: '2px 6px',
-    borderRadius: '10px',
-    minWidth: '18px',
+    color: theme.colors.text,
+    fontSize: 10,
+    fontWeight: theme.fontWeight.bold,
+    padding: `2px 6px`,
+    borderRadius: 10,
+    minWidth: 18,
     textAlign: 'center',
     animation: 'bounce 1s ease infinite',
   },
 
-  // КНОПКА СВЕРХУ
   showAllButtonTop: {
     width: 'calc(100% - 32px)',
-    margin: '16px',
-    padding: '14px 24px',
-    background: 'linear-gradient(135deg, #8774e1 0%, #b19ef5 100%)',
+    margin: theme.spacing.lg,
+    padding: `14px ${theme.spacing.xxl}px`,
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, #b19ef5 100%)`,
     border: '1px solid rgba(135, 116, 225, 0.3)',
-    borderRadius: '16px',
-    fontSize: '15px',
-    fontWeight: '600',
-    color: '#fff',
+    borderRadius: theme.radius.lg,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
     cursor: 'pointer',
     boxShadow: '0 4px 16px rgba(135, 116, 225, 0.4)',
     textAlign: 'center',
-    transition: 'all 0.3s ease',
+    transition: theme.transitions.slow,
   },
 
-  // КОНТЕНТ
   content: {
-    padding: '0 16px 16px',
+    padding: `0 ${theme.spacing.lg}px ${theme.spacing.lg}px`,
   },
   emptyState: {
     textAlign: 'center',
-    padding: '48px 24px',
+    padding: `48px ${theme.spacing.xxl}px`,
     animation: 'fadeInUp 0.5s ease',
   },
   emptyEmoji: {
-    fontSize: '64px',
-    marginBottom: '16px',
+    fontSize: 64,
+    marginBottom: theme.spacing.lg,
   },
   emptyTitle: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: '8px',
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
   emptySubtitle: {
-    fontSize: '14px',
-    color: '#888',
-    lineHeight: '1.5',
+    fontSize: theme.fontSize.base,
+    color: theme.colors.textTertiary,
+    lineHeight: 1.5,
   },
 
-  // КАРТОЧКА ЗАПРОСА
   requestCard: {
-    background: '#1a1a1a',
-    borderRadius: '12px',
-    padding: '16px',
-    marginBottom: '12px',
-    border: '1px solid #2a2a2a',
+    background: theme.colors.bgSecondary,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+    border: `1px solid ${theme.colors.cardHover}`,
     cursor: 'pointer',
-    transition: 'all 0.3s ease',
+    transition: theme.transitions.slow,
   },
   requestHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '8px',
+    marginBottom: theme.spacing.sm,
   },
   requestCategory: {
-    fontSize: '12px',
-    color: '#8774e1',
-    fontWeight: '600',
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.semibold,
   },
   requestStatus: {
-    fontSize: '11px',
-    color: '#888',
+    fontSize: 11,
+    color: theme.colors.textTertiary,
   },
   requestTitle: {
-    fontSize: '16px',
-    fontWeight: 'bold',
-    color: '#fff',
-    margin: '8px 0',
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    margin: `${theme.spacing.sm}px 0`,
   },
   requestBody: {
-    fontSize: '14px',
-    color: '#ccc',
-    lineHeight: '1.5',
-    marginBottom: '12px',
+    fontSize: theme.fontSize.base,
+    color: theme.colors.textSecondary,
+    lineHeight: 1.5,
+    marginBottom: theme.spacing.md,
   },
   requestFooter: {
     display: 'flex',
-    gap: '16px',
-    fontSize: '12px',
-    color: '#888',
+    gap: theme.spacing.lg,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textTertiary,
   },
 
-  // NOT REGISTERED
   notRegistered: {
-    padding: '48px 24px',
+    padding: `48px ${theme.spacing.xxl}px`,
     textAlign: 'center',
   },
   notRegisteredEmoji: {
-    fontSize: '64px',
-    marginBottom: '24px',
+    fontSize: 64,
+    marginBottom: theme.spacing.xxl,
     animation: 'bounce 2s ease infinite',
   },
   notRegisteredTitle: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: '12px',
+    fontSize: theme.fontSize.xxl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
   },
   notRegisteredText: {
-    fontSize: '16px',
-    color: '#888',
-    lineHeight: '1.5',
-    marginBottom: '32px',
+    fontSize: theme.fontSize.lg,
+    color: theme.colors.textTertiary,
+    lineHeight: 1.5,
+    marginBottom: theme.spacing.xxxl,
   },
   registerButton: {
-    padding: '14px 32px',
-    background: 'linear-gradient(135deg, #8774e1 0%, #b19ef5 100%)',
+    padding: `14px ${theme.spacing.xxxl}px`,
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, #b19ef5 100%)`,
     border: 'none',
-    borderRadius: '12px',
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#fff',
+    borderRadius: theme.radius.md,
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
     cursor: 'pointer',
     boxShadow: '0 4px 16px rgba(135, 116, 225, 0.4)',
-    transition: 'all 0.3s ease',
+    transition: theme.transitions.slow,
   },
 };
 

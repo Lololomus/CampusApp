@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, Send, Mail, X, Check } from 'lucide-react';
 import { hapticFeedback } from '../utils/telegram';
+import theme from '../theme';
 
 function BottomActionBar({
   onCommentSend,
@@ -112,7 +113,7 @@ function BottomActionBar({
           ...styles.button,
           flex: mode === 'comment' ? 6 : 1,
           backgroundColor: mode === 'comment' ? styles.bgActive : styles.bgIdle,
-          border: mode === 'comment' ? `1px solid ${styles.accent}` : '1px solid transparent',
+          border: mode === 'comment' ? `1px solid ${theme.colors.primary}` : '1px solid transparent',
         }}
         onClick={() => mode !== 'comment' && switchMode('comment')}
       >
@@ -130,7 +131,7 @@ function BottomActionBar({
                   style={styles.closeBtn}
                   aria-label="Отменить ответ"
                 >
-                  <X size={16} color="#8e8e93" />
+                  <X size={16} color={theme.colors.textTertiary} />
                 </button>
                 <span style={styles.contextLabel}>
                   Ответить @{postAuthorName}
@@ -166,8 +167,8 @@ function BottomActionBar({
                   style={{
                     ...styles.sendFab,
                     background: isSuccess
-                      ? '#34c759'
-                      : 'linear-gradient(135deg, #8774e1 0%, #6b5dd3 100%)',
+                      ? theme.colors.success
+                      : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
                     transform: isSuccess
                       ? 'translateY(-50%) scale(1.1)'
                       : 'translateY(-50%) scale(1)',
@@ -181,7 +182,7 @@ function BottomActionBar({
           </div>
         ) : (
           <div className="button-content" style={styles.buttonContent}>
-            <MessageCircle size={20} color="#fff" style={{ flexShrink: 0 }} />
+            <MessageCircle size={20} color={theme.colors.text} style={{ flexShrink: 0 }} />
             <span className="button-label" style={styles.buttonLabel}>
               Комментарий
             </span>
@@ -196,13 +197,12 @@ function BottomActionBar({
           ...styles.button,
           flex: mode === 'direct' ? 6 : 1,
           backgroundColor: mode === 'direct' ? styles.bgActive : styles.bgIdle,
-          border: mode === 'direct' ? `1px solid ${styles.accent}` : '1px solid transparent',
+          border: mode === 'direct' ? `1px solid ${theme.colors.primary}` : '1px solid transparent',
         }}
         onClick={() => mode !== 'direct' && switchMode('direct')}
       >
         {mode === 'direct' ? (
           <div style={styles.inputWrap}>
-            {/* Крестик для закрытия панели Direct */}
             <div style={styles.contextRow}>
               <button
                 type="button"
@@ -214,7 +214,7 @@ function BottomActionBar({
                 style={styles.closeBtn}
                 aria-label="Закрыть"
               >
-                <X size={16} color="#8e8e93" />
+                <X size={16} color={theme.colors.textTertiary} />
               </button>
               <span style={styles.contextLabel}>
                 ЛС для @{replyToName || 'автора'}
@@ -249,8 +249,8 @@ function BottomActionBar({
                   style={{
                     ...styles.sendFab,
                     background: isSuccess
-                      ? '#34c759'
-                      : 'linear-gradient(135deg, #8774e1 0%, #6b5dd3 100%)',
+                      ? theme.colors.success
+                      : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
                     transform: isSuccess
                       ? 'translateY(-50%) scale(1.1)'
                       : 'translateY(-50%) scale(1)',
@@ -264,7 +264,7 @@ function BottomActionBar({
           </div>
         ) : (
           <div className="button-content" style={styles.buttonContent}>
-            <Mail size={20} color="#fff" style={{ flexShrink: 0 }} />
+            <Mail size={20} color={theme.colors.text} style={{ flexShrink: 0 }} />
             <span className="button-label" style={styles.buttonLabel}>
               Лично
             </span>
@@ -281,12 +281,12 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    padding: 8,
-    paddingBottom: 'calc(8px + env(safe-area-inset-bottom))',
+    padding: theme.spacing.sm,
+    paddingBottom: `calc(${theme.spacing.sm}px + env(safe-area-inset-bottom))`,
     display: 'flex',
-    gap: 8,
-    backgroundColor: '#1a1a1a',
-    borderTop: '1px solid #333',
+    gap: theme.spacing.sm,
+    backgroundColor: theme.colors.bgSecondary,
+    borderTop: `1px solid ${theme.colors.border}`,
     zIndex: 100,
     transition: 'transform .25s ease',
   },
@@ -301,9 +301,8 @@ const styles = {
     transition: 'flex .25s cubic-bezier(.4,0,.2,1), background-color .18s ease, border .18s ease, height .25s ease',
     position: 'relative',
   },
-  bgIdle: '#2a2a2a',
-  bgActive: '#333',
-  accent: '#8774e1',
+  bgIdle: theme.colors.cardHover,
+  bgActive: theme.colors.border,
 
   buttonContent: {
     width: '100%',
@@ -311,13 +310,13 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    padding: '0 16px',
+    gap: theme.spacing.sm,
+    padding: `0 ${theme.spacing.lg}px`,
   },
   buttonLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#fff',
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.text,
     whiteSpace: 'nowrap',
     transition: 'opacity .25s ease, width .25s ease',
   },
@@ -325,9 +324,9 @@ const styles = {
   inputWrap: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 4,
+    gap: theme.spacing.xs,
     width: '100%',
-    padding: '8px 12px',
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
   },
 
   contextRow: {
@@ -339,18 +338,18 @@ const styles = {
   closeBtn: {
     background: 'none',
     border: 'none',
-    padding: 4,
+    padding: theme.spacing.xs,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    transition: 'transform .1s ease',
+    transition: theme.transitions.fast,
   },
   contextLabel: {
     fontSize: 11,
-    color: '#8774e1',
-    fontWeight: '600',
+    color: theme.colors.primary,
+    fontWeight: theme.fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: '0.3px',
   },
@@ -367,8 +366,8 @@ const styles = {
     border: 'none',
     outline: 'none',
     backgroundColor: 'transparent',
-    color: '#f9fafb',
-    fontSize: 15,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     resize: 'none',
     minHeight: 24,
@@ -387,12 +386,12 @@ const styles = {
     height: 36,
     minWidth: 36,
     minHeight: 36,
-    borderRadius: '50%',
+    borderRadius: theme.radius.full,
     border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#fff',
+    color: theme.colors.text,
     boxShadow: '0 4px 14px rgba(135,116,225,0.4)',
     cursor: 'pointer',
     transition: 'all .3s cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -461,11 +460,11 @@ styleTag.textContent = `
     background: transparent;
   }
   .bottom-action-bar textarea::-webkit-scrollbar-thumb {
-    background: #444;
+    background: ${theme.colors.textDisabled};
     border-radius: 2px;
   }
   .bottom-action-bar textarea::placeholder {
-    color: #999;
+    color: ${theme.colors.textTertiary};
     opacity: 1;
   }
 `;
