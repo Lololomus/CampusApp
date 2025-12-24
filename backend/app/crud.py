@@ -268,6 +268,7 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int) 
     db_comment = models.Comment(
         post_id=comment.post_id,
         author_id=author_id,
+        parent_id=comment.parent_id,
         body=comment.body,
         is_anonymous=is_anonymous,
         anonymous_index=anonymous_index
@@ -307,44 +308,45 @@ def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
     if like:
         # Убираем лайк
         db.delete(like)
-        comment.likes = max(0, comment.likes - 1)
+        comment.likes_count = max(0, comment.likes_count - 1)
         db.commit()
-        return {"is_liked": False, "likes": comment.likes}
+        return {"is_liked": False, "likes": comment.likes_count}
     else:
         # Добавляем лайк
         new_like = models.CommentLike(user_id=user_id, comment_id=comment_id)
         db.add(new_like)
-        comment.likes += 1
+        comment.likes_count += 1
         db.commit()
-        return {"is_liked": True, "likes": comment.likes}
+        return {"is_liked": True, "likes": comment.likes_count}
 
 
 def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
-    """
-    Удалить комментарий (hard delete если нет ответов, soft delete если есть)
-    """
+    """Удалить комментарий (hard delete если нет ответов, soft delete если есть)"""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not comment:
         return {"success": False, "error": "Комментарий не найден"}
     
-    # Проверка прав (только автор может удалить)
     if comment.author_id != user_id:
-        return {"success": False, "error": "Нет прав на удаление"}
+        return {"success": False, "error": "Нет прав"}
     
-    # Проверяем есть ли ответы на этот комментарий
+    # Получаем пост для обновления счётчика
+    post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
+    
     has_replies = db.query(models.Comment).filter(
         models.Comment.parent_id == comment_id
     ).count() > 0
     
     if has_replies:
-        # Soft delete: помечаем как удалённый
+        # Soft delete - НЕ уменьшаем счётчик (комментарий остаётся)
         comment.is_deleted = True
         comment.body = "Комментарий удалён"
         db.commit()
         return {"success": True, "type": "soft_delete"}
     else:
-        # Hard delete: удаляем полностью
+        # Hard delete - УМЕНЬШАЕМ счётчик
         db.delete(comment)
+        if post:
+            post.comments_count = max(0, post.comments_count - 1)
         db.commit()
         return {"success": True, "type": "hard_delete"}
 
@@ -371,40 +373,49 @@ def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Opt
     return comment
 
 
-def create_comment_report(db: Session, comment_id: int, reporter_id: int, reason: str, description: Optional[str] = None):
-    """Создать жалобу на комментарий"""
-    from app.models import CommentReport
-    
-    # Проверяем что комментарий существует
-    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
-    if not comment:
+def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int) -> models.Comment:
+    """Создать комментарий"""
+    post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
+    if not post:
         return None
     
-    # Проверяем что пользователь не жалуется на свой комментарий
-    if comment.author_id == reporter_id:
-        return None
+    # Анонимность
+    is_anonymous = comment.is_anonymous
+    if post.enable_anonymous_comments:
+        is_anonymous = True
     
-    # Проверяем что жалоба ещё не была подана
-    existing_report = db.query(CommentReport).filter(
-        CommentReport.comment_id == comment_id,
-        CommentReport.reporter_id == reporter_id
-    ).first()
+    # Генерация anonymous_index
+    anonymous_index = None
+    if is_anonymous:
+        existing_anon_comments = db.query(models.Comment)\
+            .filter(
+                models.Comment.post_id == comment.post_id,
+                models.Comment.is_anonymous == True
+            ).all()
+        
+        for existing in existing_anon_comments:
+            if existing.author_id == author_id:
+                anonymous_index = existing.anonymous_index
+                break
+        
+        if anonymous_index is None:
+            max_index = max([c.anonymous_index for c in existing_anon_comments if c.anonymous_index], default=0)
+            anonymous_index = max_index + 1
     
-    if existing_report:
-        return existing_report  # Уже жаловались
-    
-    # Создаём жалобу
-    report = CommentReport(
-        comment_id=comment_id,
-        reporter_id=reporter_id,
-        reason=reason,
-        description=description
+    db_comment = models.Comment(
+        post_id=comment.post_id,
+        author_id=author_id,
+        body=comment.body,
+        parent_id=comment.parent_id,
+        is_anonymous=is_anonymous,
+        anonymous_index=anonymous_index
     )
     
-    db.add(report)
+    post.comments_count += 1
+    db.add(db_comment)
     db.commit()
-    db.refresh(report)
-    return report
+    db.refresh(db_comment)
+    return db_comment
 
 
 def count_post_comments(db: Session, post_id: int) -> int:

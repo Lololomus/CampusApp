@@ -69,7 +69,10 @@ class UserShort(BaseModel):
     telegram_id: int
     name: str
     avatar: Optional[str] = None
-
+    university: Optional[str] = None
+    institute: Optional[str] = None
+    course: Optional[int] = None
+    
     class Config:
         from_attributes = True
 
@@ -180,6 +183,7 @@ class CommentCreate(BaseModel):
     """Создание комментария"""
     post_id: int
     body: str = Field(..., min_length=1)
+    parent_id: Optional[int] = None
     is_anonymous: bool = False
 
 class CommentUpdate(BaseModel):
@@ -193,6 +197,7 @@ class CommentResponse(BaseModel):
     author_id: Optional[int] = None
     author: Optional[UserShort] = None
     body: str
+    parent_id: Optional[int] = None
     is_anonymous: bool = False
     anonymous_index: Optional[int] = None
     likes: int = 0

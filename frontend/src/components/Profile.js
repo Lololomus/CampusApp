@@ -1,15 +1,32 @@
 import React, { useEffect, useState } from 'react';
-import { Settings, LogOut, Edit } from 'lucide-react';
+import { Edit } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
-import { getUserPosts, getUserStats } from '../api';
+import { getUserPosts, getUserStats, getMyRequests } from '../api';
 import PostCard from './PostCard';
+import ProfileMenuModal from './ProfileMenuModal';
 
 function Profile() {
-  const { isRegistered, user, logout, startRegistration, setViewPostId, setShowUserPosts, setShowEditModal } = useStore();
+  const { 
+    isRegistered, 
+    user, 
+    logout, 
+    startRegistration, 
+    setViewPostId, 
+    setShowUserPosts, 
+    setShowEditModal 
+  } = useStore();
+  
   const [userPosts, setUserPosts] = useState([]);
-  const [stats, setStats] = useState({ posts_count: 0, comments_count: 0 });
+  const [userRequests, setUserRequests] = useState([]);
+  const [stats, setStats] = useState({ 
+    posts_count: 0, 
+    comments_count: 0, 
+    requests_count: 0 
+  });
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('posts');
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   useEffect(() => {
     if (isRegistered && user.id) {
@@ -20,11 +37,17 @@ function Profile() {
   const loadUserData = async () => {
     setLoading(true);
     try {
-      // Загружаем последние 3 постов
       const posts = await getUserPosts(user.id, 3);
       setUserPosts(posts);
 
-      // Загружаем статистику
+      try {
+        const requests = await getMyRequests(3, 0);
+        setUserRequests(requests);
+      } catch (err) {
+        console.log('Запросы пока не загружены');
+        setUserRequests([]);
+      }
+
       const statsData = await getUserStats(user.id);
       setStats(statsData);
     } catch (error) {
@@ -34,11 +57,9 @@ function Profile() {
     }
   };
 
-  const handleLogout = () => {
-    hapticFeedback('medium');
-    if (window.confirm('Вы уверены, что хотите выйти?')) {
-      logout();
-    }
+  const handleAvatarClick = () => {
+    hapticFeedback('light');
+    setShowProfileMenu(true);
   };
 
   const handleEdit = () => {
@@ -56,18 +77,38 @@ function Profile() {
     setShowUserPosts(true);
   };
 
-  // Если пользователь не зарегистрирован
+  const handleTabChange = (tab) => {
+    if (tab === activeTab) return;
+    hapticFeedback('light');
+    setActiveTab(tab);
+  };
+
+  const handleRequestClick = (requestId) => {
+    hapticFeedback('light');
+    console.log('Request clicked:', requestId);
+  };
+
+  const handleShowAllRequests = () => {
+    hapticFeedback('light');
+    console.log('Show all requests');
+  };
+
   if (!isRegistered) {
     return (
       <div style={styles.container}>
-        <div style={styles.emptyState}>
-          <div style={styles.emptyIcon}>👤</div>
-          <h2 style={styles.emptyTitle}>Добро пожаловать!</h2>
-          <p style={styles.emptyText}>
+        <div style={styles.notRegistered}>
+          <div style={styles.notRegisteredEmoji}>👋</div>
+          <h3 style={styles.notRegisteredTitle}>Добро пожаловать!</h3>
+          <p style={styles.notRegisteredText}>
             Зарегистрируйтесь, чтобы создать свой профиль и начать общаться
           </p>
-          <button onClick={startRegistration} style={styles.registerButton}>
-            Начать регистрацию
+          <button 
+            onClick={startRegistration} 
+            style={styles.registerButton}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            ✨ Зарегистрироваться
           </button>
         </div>
       </div>
@@ -76,105 +117,292 @@ function Profile() {
 
   return (
     <div style={styles.container}>
-      {/* Шапка профиля */}
+      {/* HEADER */}
       <div style={styles.header}>
-        <div style={styles.avatar}>
-          {user.name?.[0] || '?'}
+        <div 
+          style={styles.avatarContainer}
+          onClick={handleAvatarClick}
+        >
+          <div style={styles.avatar}>
+            {user.name ? user.name[0].toUpperCase() : 'П'}
+          </div>
+          <div style={styles.settingsHint}>⚙️</div>
         </div>
+
         <h2 style={styles.name}>
           {user.name}{user.age ? `, ${user.age}` : ''}
         </h2>
+        
         <p style={styles.university}>
           {user.university} • {user.institute} • {user.course} курс
         </p>
+
         {user.bio && (
           <p style={styles.bio}>"{user.bio}"</p>
         )}
-        <button onClick={handleEdit} style={styles.editButton}>
+
+        {user.interests && user.interests.length > 0 && (
+          <div style={styles.interests}>
+            {user.interests.slice(0, 3).map((interest, idx) => (
+              <span 
+                key={interest} 
+                style={{
+                  ...styles.interestTag,
+                  animationDelay: `${idx * 0.1}s`
+                }}
+              >
+                {interest}
+              </span>
+            ))}
+            {user.interests.length > 3 && (
+              <span style={styles.interestTag}>
+                +{user.interests.length - 3}
+              </span>
+            )}
+          </div>
+        )}
+
+        <button 
+          onClick={handleEdit} 
+          style={styles.editButton}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(135, 116, 225, 0.1)';
+            e.currentTarget.style.transform = 'translateY(-2px)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+        >
           <Edit size={16} />
-          <span>Редактировать профиль</span>
+          Редактировать профиль
         </button>
       </div>
 
-      {/* Счётчики */}
-      <div style={styles.statsContainer}>
-        <div style={styles.statCard}>
+      {/* СТАТИСТИКА — 3 карточки */}
+      <div style={styles.stats}>
+        <div style={{...styles.statCard, animationDelay: '0s'}}>
           <div style={styles.statIcon}>📝</div>
-          <div style={styles.statNumber}>{stats.posts_count}</div>
-          <div style={styles.statLabel}>Постов</div>
+          <div style={styles.statValue}>{stats.posts_count}</div>
+          <div style={styles.statLabel}>ПОСТОВ</div>
         </div>
-        
-        <div style={styles.statCard}>
+
+        <div style={{...styles.statCard, animationDelay: '0.1s'}}>
           <div style={styles.statIcon}>💬</div>
-          <div style={styles.statNumber}>{stats.comments_count}</div>
-          <div style={styles.statLabel}>Комментариев</div>
+          <div style={styles.statValue}>{stats.comments_count}</div>
+          <div style={styles.statLabel}>КОММЕНТАРИЕВ</div>
+        </div>
+
+        <div style={{...styles.statCard, animationDelay: '0.2s'}}>
+          <div style={styles.statIcon}>📬</div>
+          <div style={styles.statValue}>{stats.requests_count}</div>
+          <div style={styles.statLabel}>ЗАПРОСОВ</div>
         </div>
       </div>
 
-      {/* Мои посты */}
-      <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>📝 МОИ ПОСТЫ</h3>
-        
-        {loading ? (
-          <div style={styles.loading}>Загрузка...</div>
-        ) : userPosts.length > 0 ? (
+      {/* ТАБЫ */}
+      <div style={styles.tabsContainer}>
+        <button
+          onClick={() => handleTabChange('posts')}
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'posts' ? styles.tabActive : styles.tabInactive)
+          }}
+        >
+          📝 Посты
+          <span style={styles.tabBadge}>{stats.posts_count}</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('requests')}
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'requests' ? styles.tabActive : styles.tabInactive)
+          }}
+        >
+          📬 Запросы
+          <span style={styles.tabBadge}>{stats.requests_count}</span>
+        </button>
+      </div>
+
+      {/* КНОПКА "ВСЕ..." СВЕРХУ */}
+      {activeTab === 'posts' && stats.posts_count > 0 && (
+        <button 
+          onClick={handleShowAllPosts}
+          style={styles.showAllButtonTop}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 6px 24px rgba(135, 116, 225, 0.6)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 4px 16px rgba(135, 116, 225, 0.4)';
+          }}
+        >
+          📂 Все мои посты ({stats.posts_count}) →
+        </button>
+      )}
+
+      {activeTab === 'requests' && stats.requests_count > 0 && (
+        <button 
+          onClick={handleShowAllRequests}
+          style={styles.showAllButtonTop}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 6px 24px rgba(135, 116, 225, 0.6)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 4px 16px rgba(135, 116, 225, 0.4)';
+          }}
+        >
+          📬 Все мои запросы ({stats.requests_count}) →
+        </button>
+      )}
+
+      {/* КОНТЕНТ */}
+      <div style={styles.content}>
+        {activeTab === 'posts' && (
           <>
-            {userPosts.map(post => (
-              <PostCard
-                key={post.id}
-                post={post}
-                onClick={() => handlePostClick(post.id)}
-              />
-            ))}
-            
-            {stats.posts_count > 3 && (
-              <button onClick={handleShowAllPosts} style={styles.showAllButton}>
-                📂 Показать все посты ({stats.posts_count})
-              </button>
+            {!loading && userPosts.length === 0 && (
+              <div style={styles.emptyState}>
+                <div style={styles.emptyEmoji}>📝</div>
+                <div style={styles.emptyTitle}>У вас пока нет постов</div>
+                <div style={styles.emptySubtitle}>
+                  Нажмите кнопку "+" внизу экрана, чтобы создать первый пост
+                </div>
+              </div>
             )}
+
+            {userPosts.slice(0, 3).map((post, idx) => (
+              <div 
+                key={post.id} 
+                onClick={() => handlePostClick(post.id)}
+                style={{
+                  animation: `fadeInUp 0.4s ease ${idx * 0.1}s both`
+                }}
+              >
+                <PostCard post={post} />
+              </div>
+            ))}
           </>
-        ) : (
-          <div style={styles.emptyPosts}>
-            <p style={styles.emptyPostsText}>У вас пока нет постов</p>
-            <p style={styles.emptyPostsHint}>
-              Нажмите кнопку "+" внизу экрана, чтобы создать первый пост
-            </p>
-          </div>
+        )}
+
+        {activeTab === 'requests' && (
+          <>
+            {!loading && userRequests.length === 0 && (
+              <div style={styles.emptyState}>
+                <div style={styles.emptyEmoji}>📭</div>
+                <div style={styles.emptyTitle}>У вас пока нет запросов</div>
+                <div style={styles.emptySubtitle}>
+                  Создайте запрос, чтобы найти помощь, команду или компанию
+                </div>
+              </div>
+            )}
+
+            {userRequests.slice(0, 3).map((request, idx) => (
+              <div 
+                key={request.id} 
+                style={{
+                  ...styles.requestCard,
+                  animation: `fadeInUp 0.4s ease ${idx * 0.1}s both`
+                }}
+                onClick={() => handleRequestClick(request.id)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(135, 116, 225, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <div style={styles.requestHeader}>
+                  <span style={styles.requestCategory}>
+                    {request.category === 'study' && '📚 Учёба'}
+                    {request.category === 'help' && '🤝 Помощь'}
+                    {request.category === 'hangout' && '🎉 Движ'}
+                  </span>
+                  <span style={styles.requestStatus}>
+                    {request.status === 'active' ? '🟢 Активен' : '⚫ Закрыт'}
+                  </span>
+                </div>
+                <h4 style={styles.requestTitle}>{request.title}</h4>
+                <p style={styles.requestBody}>
+                  {request.body.length > 100 
+                    ? request.body.substring(0, 100) + '...' 
+                    : request.body}
+                </p>
+                <div style={styles.requestFooter}>
+                  <span>👥 {request.responses_count} откликов</span>
+                  <span>👁 {request.views_count} просмотров</span>
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
 
-      {/* Настройки закрепленные кнопки внизу*/}
-      <div style={styles.fixedFooter}>
-        <button style={styles.settingsButton}>
-          <Settings size={20} />
-          <span>Настройки</span>
-        </button>
-        <button onClick={handleLogout} style={styles.logoutButton}>
-          <LogOut size={20} />
-          <span>Выход</span>
-        </button>
-      </div>
+      {/* МОДАЛКА НАСТРОЕК */}
+      {showProfileMenu && (
+        <ProfileMenuModal 
+          onClose={() => setShowProfileMenu(false)}
+          onEdit={handleEdit}
+          onLogout={logout}
+        />
+      )}
+
+      {/* CSS АНИМАЦИИ (БЕЗ slideIn!) */}
+      <style>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+        
+        @keyframes bounce {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
+      `}</style>
     </div>
   );
 }
 
 const styles = {
   container: {
-    flex: 1,
-    backgroundColor: '#121212',
-    minHeight: '100vh',
     paddingBottom: '80px',
+    minHeight: '100vh',
+    background: '#0a0a0a',
   },
+  
+  // HEADER
   header: {
     padding: '24px 16px',
     textAlign: 'center',
-    borderBottom: '1px solid #333',
+    borderBottom: '1px solid #1a1a1a',
+  },
+  avatarContainer: {
+    position: 'relative',
+    display: 'inline-block',
+    cursor: 'pointer',
+    transition: 'transform 0.3s ease',
   },
   avatar: {
     width: '80px',
     height: '80px',
     borderRadius: '50%',
-    backgroundColor: '#8774e1',
+    background: 'linear-gradient(135deg, #8774e1 0%, #b19ef5 100%)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -182,199 +410,277 @@ const styles = {
     fontWeight: 'bold',
     color: '#fff',
     margin: '0 auto 16px',
+    boxShadow: '0 4px 16px rgba(135, 116, 225, 0.4)',
+    transition: 'all 0.3s ease',
+  },
+  settingsHint: {
+    position: 'absolute',
+    top: 0,
+    right: '-8px',
+    fontSize: '20px',
+    background: '#1a1a1a',
+    borderRadius: '50%',
+    width: '32px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '2px solid #8774e1',
+    animation: 'pulse 2s ease infinite',
   },
   name: {
     fontSize: '24px',
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#fff',
-    margin: '0 0 8px 0',
+    margin: '8px 0',
   },
   university: {
     fontSize: '14px',
-    color: '#999',
-    marginBottom: '12px',
+    color: '#888',
+    margin: '4px 0',
   },
   bio: {
-    fontSize: '15px',
+    fontSize: '14px',
     color: '#ccc',
     fontStyle: 'italic',
-    marginBottom: '16px',
+    margin: '12px 0',
+    padding: '0 24px',
+    lineHeight: '1.5',
+  },
+  interests: {
+    display: 'flex',
+    gap: '8px',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    margin: '12px 16px 0',
+  },
+  interestTag: {
+    background: 'rgba(135, 116, 225, 0.15)',
+    border: '1px solid rgba(135, 116, 225, 0.3)',
+    borderRadius: '20px',
+    padding: '6px 12px',
+    fontSize: '12px',
+    color: '#b19ef5',
+    fontWeight: '500',
+    animation: 'fadeInUp 0.5s ease both',
   },
   editButton: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    padding: '10px 20px',
-    borderRadius: '8px',
+    marginTop: '16px',
+    padding: '12px 24px',
+    background: 'transparent',
     border: '1px solid #8774e1',
-    backgroundColor: 'transparent',
+    borderRadius: '12px',
     color: '#8774e1',
     fontSize: '14px',
     fontWeight: '600',
     cursor: 'pointer',
-    margin: '0 auto',
-  },
-  statsContainer: {
     display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: '8px',
-    padding: '12px 16px',
+    margin: '16px auto 0',
+    transition: 'all 0.3s ease',
+  },
+
+  // СТАТИСТИКА
+  stats: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '12px',
+    padding: '16px',
   },
   statCard: {
-    flex: 1,
-    backgroundColor: '#1e1e1e',
+    background: '#1a1a1a',
     borderRadius: '12px',
-    padding: '14px 12px',
+    padding: '16px 8px',
     textAlign: 'center',
-    border: '1px solid #333',
+    border: '1px solid #2a2a2a',
+    transition: 'all 0.3s ease',
+    animation: 'fadeInUp 0.5s ease both',
   },
   statIcon: {
-    fontSize: '20px',
-    marginBottom: '4px',
-    opacity: 0.8,
+    fontSize: '24px',
+    marginBottom: '8px',
   },
-  statNumber: {
-    fontSize: '26px',
-    fontWeight: '700',
-    color: '#8774e1',
-    marginBottom: '2px',
+  statValue: {
+    fontSize: '24px',
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: '4px',
   },
   statLabel: {
-    fontSize: '11px',
-    color: '#999',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: '0.3px',
-  },
-  section: {
-    padding: '20px 16px',
-    borderBottom: '1px solid #333',
-    marginBottom: '80px',
-  },
-  sectionTitle: {
-    fontSize: '16px',
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: '16px',
+    fontSize: '10px',
+    color: '#888',
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
   },
-  loading: {
-    textAlign: 'center',
-    color: '#999',
-    padding: '20px',
+
+  // ТАБЫ
+  tabsContainer: {
+    display: 'flex',
+    gap: '8px',
+    padding: '16px',
+    borderBottom: '1px solid #2a2a2a',
+    position: 'sticky',
+    top: 0,
+    background: '#0a0a0a',
+    zIndex: 10,
   },
-  emptyPosts: {
-    textAlign: 'center',
-    padding: '40px 20px',
-  },
-  emptyPostsText: {
-    fontSize: '16px',
-    color: '#999',
-    marginBottom: '8px',
-  },
-  emptyPostsHint: {
-    fontSize: '14px',
-    color: '#666',
-    lineHeight: '1.5',
-  },
-  showAllButton: {
-    width: '100%',
-    padding: '14px',
-    marginTop: '12px',
+  tab: {
+    flex: 1,
+    padding: '12px',
     borderRadius: '12px',
-    border: '1px solid #8774e1',
-    backgroundColor: '#8774e120',
-    color: '#8774e1',
+    border: 'none',
     fontSize: '15px',
     fontWeight: '600',
     cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    transition: 'background 0.2s',
+    transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    position: 'relative',
   },
-  fixedFooter: {
-    position: 'fixed',
-    bottom: '64px',
-    left: 0,
-    right: 0,
-    display: 'flex',
-    gap: '8px',
-    padding: '12px 16px',
-    backgroundColor: '#121212',
-    borderTop: '1px solid #333',
-    zIndex: 50,
-  },
-  settingsButton: {
-    flex: 1,
-    padding: '12px 16px',
-    borderRadius: '12px',
-    border: '1px solid #333',
-    backgroundColor: '#1e1e1e',
+  tabActive: {
+    background: 'linear-gradient(135deg, #8774e1 0%, #b19ef5 100%)',
     color: '#fff',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    transition: 'background 0.2s',
+    boxShadow: '0 4px 12px rgba(135, 116, 225, 0.4)',
+    transform: 'translateY(-2px)',
   },
-  logoutButton: {
-    flex: 1,
-    padding: '12px 16px',
-    borderRadius: '12px',
-    border: '1px solid #ff4444',
-    backgroundColor: 'transparent',
-    color: '#ff4444',
-    fontSize: '14px',
+  tabInactive: {
+    background: '#1a1a1a',
+    color: '#888',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: '-4px',
+    right: '-4px',
+    background: '#ff6b9d',
+    color: '#fff',
+    fontSize: '10px',
+    fontWeight: 'bold',
+    padding: '2px 6px',
+    borderRadius: '10px',
+    minWidth: '18px',
+    textAlign: 'center',
+    animation: 'bounce 1s ease infinite',
+  },
+
+  // КНОПКА СВЕРХУ
+  showAllButtonTop: {
+    width: 'calc(100% - 32px)',
+    margin: '16px',
+    padding: '14px 24px',
+    background: 'linear-gradient(135deg, #8774e1 0%, #b19ef5 100%)',
+    border: '1px solid rgba(135, 116, 225, 0.3)',
+    borderRadius: '16px',
+    fontSize: '15px',
     fontWeight: '600',
+    color: '#fff',
     cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    transition: 'background 0.2s',
+    boxShadow: '0 4px 16px rgba(135, 116, 225, 0.4)',
+    textAlign: 'center',
+    transition: 'all 0.3s ease',
+  },
+
+  // КОНТЕНТ
+  content: {
+    padding: '0 16px 16px',
   },
   emptyState: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '60vh',
-    padding: '40px 20px',
     textAlign: 'center',
+    padding: '48px 24px',
+    animation: 'fadeInUp 0.5s ease',
   },
-  emptyIcon: {
+  emptyEmoji: {
     fontSize: '64px',
-    marginBottom: '20px',
-    opacity: 0.5,
+    marginBottom: '16px',
   },
   emptyTitle: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: '8px',
+  },
+  emptySubtitle: {
+    fontSize: '14px',
+    color: '#888',
+    lineHeight: '1.5',
+  },
+
+  // КАРТОЧКА ЗАПРОСА
+  requestCard: {
+    background: '#1a1a1a',
+    borderRadius: '12px',
+    padding: '16px',
+    marginBottom: '12px',
+    border: '1px solid #2a2a2a',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+  },
+  requestHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '8px',
+  },
+  requestCategory: {
+    fontSize: '12px',
+    color: '#8774e1',
+    fontWeight: '600',
+  },
+  requestStatus: {
+    fontSize: '11px',
+    color: '#888',
+  },
+  requestTitle: {
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#fff',
+    margin: '8px 0',
+  },
+  requestBody: {
+    fontSize: '14px',
+    color: '#ccc',
+    lineHeight: '1.5',
+    marginBottom: '12px',
+  },
+  requestFooter: {
+    display: 'flex',
+    gap: '16px',
+    fontSize: '12px',
+    color: '#888',
+  },
+
+  // NOT REGISTERED
+  notRegistered: {
+    padding: '48px 24px',
+    textAlign: 'center',
+  },
+  notRegisteredEmoji: {
+    fontSize: '64px',
+    marginBottom: '24px',
+    animation: 'bounce 2s ease infinite',
+  },
+  notRegisteredTitle: {
     fontSize: '24px',
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#fff',
     marginBottom: '12px',
   },
-  emptyText: {
+  notRegisteredText: {
     fontSize: '16px',
-    color: '#999',
+    color: '#888',
     lineHeight: '1.5',
-    marginBottom: '24px',
-    maxWidth: '320px',
+    marginBottom: '32px',
   },
   registerButton: {
     padding: '14px 32px',
-    borderRadius: '12px',
+    background: 'linear-gradient(135deg, #8774e1 0%, #b19ef5 100%)',
     border: 'none',
-    backgroundColor: '#8774e1',
-    color: '#fff',
+    borderRadius: '12px',
     fontSize: '16px',
     fontWeight: '600',
+    color: '#fff',
     cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(135, 116, 225, 0.4)',
+    transition: 'all 0.3s ease',
   },
 };
 

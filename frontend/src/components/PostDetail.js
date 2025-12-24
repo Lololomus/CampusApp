@@ -4,9 +4,10 @@ import { getPost, getPostComments, createComment, likePost, likeComment, deleteC
 import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
 import BottomActionBar from './BottomActionBar';
+import { Z_MODAL_FORMS } from '../constants/zIndex';
 
 function PostDetail() {
-  const { viewPostId, setViewPostId, user, updatePost } = useStore();
+  const { viewPostId, setViewPostId, user, updatePost, setUpdatedPost } = useStore();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,21 +38,28 @@ function PostDetail() {
       setPost(data);
       setIsLiked(data.is_liked || false);
 
-      try {
-        const commentsData = await getPostComments(viewPostId);
-        setComments(commentsData);
-        const initialLikes = {};
-        commentsData.forEach(comment => {
-          initialLikes[comment.id] = {
-            isLiked: comment.is_liked || false,
-            count: comment.likes || 0
-          };
-        });
-        setCommentLikes(initialLikes);
-      } catch (error) {
-        console.error('Ошибка загрузки комментариев:', error);
-        setComments([]);
-      }
+    try {
+      const commentsData = await getPostComments(viewPostId);
+      console.log('📦 Комментарии с сервера:', commentsData);
+      
+      // Проверяем что это массив
+      const commentsArray = Array.isArray(commentsData) ? commentsData : [];
+      
+      setComments(commentsArray);
+      
+      const initialLikes = {};
+      commentsArray.forEach(comment => {
+        initialLikes[comment.id] = {
+          isLiked: comment.is_liked || false,
+          count: comment.likes || 0
+        };
+      });
+      setCommentLikes(initialLikes);
+    } catch (error) {
+      console.error('❌ Ошибка загрузки комментариев:', error);
+      console.log('Детали ошибки:', error.response?.data);
+      setComments([]);
+    }
     } catch (error) {
       console.error('Error loading post:', error);
     } finally {
@@ -68,9 +76,13 @@ function PostDetail() {
       
       setPost(fresh);
       
-      if (updatePost && viewPostId) {
-        updatePost(viewPostId, { comments_count: fresh.comments_count, likes: fresh.likes, views: fresh.views });
-      }
+    if (setUpdatedPost && viewPostId) {
+      setUpdatedPost(viewPostId, { 
+        comments_count: fresh.comments_count, 
+        likes_count: fresh.likes_count, 
+        views_count: fresh.views_count 
+      });
+    }
     } catch (e) {
       console.error('❌ Не удалось обновить пост:', e);
     }
@@ -84,6 +96,8 @@ function PostDetail() {
   const handleSendComment = async (text) => {
     if (!text || !text.trim()) return;
     
+    console.log('💬 Отправляем комментарий:', text);
+
     try {
       const comment = await createComment(viewPostId, text.trim(), replyTo);
       setComments([...comments, comment]);
@@ -121,7 +135,7 @@ function PostDetail() {
     hapticFeedback('light');
     try {
       const result = await likePost(post.id);
-      setPost({ ...post, likes: result.likes });
+      setPost({ ...post, likes_count: result.likes });
       setIsLiked(result.is_liked);
     } catch (error) {
       console.error('Ошибка лайка:', error);
@@ -170,7 +184,7 @@ function PostDetail() {
         // SOFT DELETE: оставляем, но меняем текст и is_deleted = true
         setComments(comments.map(c =>
           c.id === commentId
-            ? { ...c, text: 'Комментарий удалён', is_deleted: true }
+            ? { ...c, body: 'Комментарий удалён', is_deleted: true }
             : c
         ));
       }
@@ -184,11 +198,11 @@ function PostDetail() {
     }
   };
 
-  // НОВОЕ: редактирование комментария
+  //  редактирование комментария
   const handleEditComment = (comment) => {
     hapticFeedback('light');
     setEditingComment(comment.id);
-    setEditText(comment.text);
+    setEditText(comment.body);
     setMenuOpen(null);
   };
 
@@ -202,7 +216,7 @@ function PostDetail() {
       setComments(comments.map(c => 
         c.id === commentId ? { 
           ...c, 
-          text: updated.text, 
+          body: updated.body,
           is_edited: true, 
           updated_at: updated.updated_at 
         } : c
@@ -351,9 +365,15 @@ function PostDetail() {
             <div style={styles.authorName}>
               {displayAuthorName}
             </div>
-            {!isAnonymous && (
+            {!isAnonymous && (post.author?.university || post.author?.institute || post.author?.course) && (
               <div style={styles.authorMeta}>
-                {post.university || post.uni} • {post.institute} • {post.course} курс
+                {[
+                  post.author?.university,
+                  post.author?.institute,
+                  post.author?.course ? `${post.author.course} курс` : null
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </div>
             )}
             <div style={styles.time}>{post.time}</div>
@@ -439,21 +459,21 @@ function PostDetail() {
             onClick={handleLike}
           >
             <Heart size={20} fill={isLiked ? '#ff3b5c' : 'none'} />
-            <span>{post.likes}</span>
+            <span>{post.likes_count || 0}</span>
           </button>
           <div style={styles.statItem}>
             <MessageCircle size={20} />
-            <span>{post.comments_count || comments.length}</span>
+            <span>{comments.length}</span>
           </div>
           <div style={styles.statItem}>
             <Eye size={20} />
-            <span>{post.views}</span>
+            <span>{post.views_count || 0}</span>
           </div>
         </div>
 
         {/* Comments Section */}
         <div style={styles.commentsSection}>
-          <h3 style={styles.commentsTitle}>Комментарии ({post.comments_count || comments.length})</h3>
+          <h3 style={styles.commentsTitle}>Комментарии ({comments.length})</h3>
 
           {commentTree.length === 0 ? (
             <div style={styles.noComments}>
@@ -572,9 +592,16 @@ function Comment({
             <span style={styles.commentAuthor}>
               {typeof comment.author === 'object' ? comment.author.name : comment.author}
             </span>
-            <span style={styles.commentMeta}>
-              {comment.author?.university} • {comment.author?.course} курс
-            </span>
+            {!comment.is_anonymous && (comment.author?.university || comment.author?.course) && (
+              <span style={styles.commentMeta}>
+                {[
+                  comment.author?.university,
+                  comment.author?.course ? `${comment.author.course} курс` : null
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            )}
             
             {!comment.is_deleted && (
               <div style={{ marginLeft: 'auto', position: 'relative' }}>
@@ -632,7 +659,7 @@ function Comment({
                 fontStyle: comment.is_deleted ? 'italic' : 'normal',
                 color: comment.is_deleted ? '#666' : '#ccc'
               }}>
-                {comment.text}
+                {comment.body}
               </p>
               
               {comment.is_edited && !comment.is_deleted && (
@@ -696,10 +723,16 @@ function Comment({
 
 const styles = {
   container: {
-    flex: 1,
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: Z_MODAL_FORMS, // 1500
     backgroundColor: '#121212',
     minHeight: '100vh',
     paddingBottom: '72px',
+    overflowY: 'auto',
   },
   header: {
     position: 'sticky',

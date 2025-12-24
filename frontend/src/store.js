@@ -2,22 +2,26 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { registerUser } from './api';
 
+
 const API_URL = 'http://localhost:8000';
+
 
 export const useStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       // ===== AUTH STATE =====
       isRegistered: false,
       user: {},
       setUser: (user) => set({ user, isRegistered: true }),
       logout: () => set({ user: {}, isRegistered: false }),
 
+
       // ===== NAVIGATION STATE =====
       activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile'
       feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
+
 
       // ===== MODAL STATES =====
       showAuthModal: false,
@@ -29,9 +33,11 @@ export const useStore = create(
       setViewPostId: (id) => set({ viewPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
+
       // My posts screen
       showUserPosts: false,
       setShowUserPosts: (show) => set({ showUserPosts: show }),
+
 
       // ===== ONBOARDING STATE =====
       onboardingStep: 0,
@@ -40,6 +46,7 @@ export const useStore = create(
       setOnboardingData: (data) => set((state) => ({
         onboardingData: { ...state.onboardingData, ...data }
       })),
+
 
       // ===== POSTS STATE (НЕ СОХРАНЯЕМ В LOCALSTORAGE!) =====
       posts: [],
@@ -53,6 +60,31 @@ export const useStore = create(
         )
       })),
 
+
+      // ✅ НОВОЕ: Синхронизация между PostDetail и Feed
+      updatedPostId: null,
+      updatedPostData: {},
+      
+      setUpdatedPost: (postId, updates) => {
+        set({ 
+          updatedPostId: postId,
+          updatedPostData: updates 
+        });
+      },
+      
+      getUpdatedPost: (postId) => {
+        const state = get();
+        return state.updatedPostId === postId ? state.updatedPostData : null;
+      },
+      
+      clearUpdatedPost: () => {
+        set({ 
+          updatedPostId: null,
+          updatedPostData: {} 
+        });
+      },
+
+
       // ===== REQUESTS STATE (НОВОЕ) =====
       myRequests: [],
       setMyRequests: (requests) => set({ myRequests: requests }),
@@ -63,9 +95,11 @@ export const useStore = create(
         myRequests: state.myRequests.filter(r => r.id !== requestId)
       })),
 
+
       // ===== DATING STATE =====
       datingMode: 'dating', // 'dating' | 'study' | 'help' | 'hangout'
       setDatingMode: (mode) => set({ datingMode: mode }),
+
 
       // Профили (карточки)
       currentProfile: null,
@@ -90,11 +124,13 @@ export const useStore = create(
       }),
       clearProfilesQueue: () => set({ profilesQueue: [], currentProfile: null }),
 
+
       // Likes & Matches
       whoLikedMe: [],
       setWhoLikedMe: (users) => set({ whoLikedMe: users }),
       myMatches: [],
       setMyMatches: (matches) => set({ myMatches: matches }),
+
 
       // Dating Modal states
       showLikesModal: false,
@@ -113,6 +149,7 @@ export const useStore = create(
         currentRequestForResponse: request 
       }),
 
+
       // Stats
       likesCount: 0,
       matchesCount: 0,
@@ -123,6 +160,7 @@ export const useStore = create(
         responsesCount: stats.responses_count || 0,
       }),
 
+
       // ===== ACTIONS =====
       
       startRegistration: () => set({
@@ -130,6 +168,7 @@ export const useStore = create(
         onboardingStep: 1,
         onboardingData: {}
       }),
+
 
       finishRegistration: async (data) => {
         try {
@@ -141,6 +180,7 @@ export const useStore = create(
           console.log('📤 Отправляем данные:', fullData);
           const user = await registerUser(fullData);
           console.log('✅ Регистрация успешна:', user);
+
 
           set({
             user: user,
@@ -156,6 +196,7 @@ export const useStore = create(
       },
     }),
 
+
     {
       name: 'campus-storage',
       partialize: (state) => ({
@@ -163,10 +204,12 @@ export const useStore = create(
         user: state.user,
         activeTab: state.activeTab,
         feedMode: state.feedMode,
-        datingMode: state.datingMode, // ← сохраняем выбранный режим
+        datingMode: state.datingMode,
+        // ⚠️ НЕ сохраняем updatedPostId и updatedPostData в localStorage!
       }),
     }
   )
 );
+
 
 export default useStore;

@@ -203,26 +203,42 @@ export async function getPostComments(postId) {
     const response = await api.get(`/posts/${postId}/comments`, {
       params: { telegram_id }
     });
-    return response.data; // Возвращает { items: [], total }
+    // ✅ Возвращаем только массив items
+    return response.data.items || []; 
   } catch (error) {
     console.error('Ошибка получения комментариев:', error);
-    return { items: [], total: 0 };
+    return []; // ✅ Пустой массив при ошибке
   }
 }
 
-export async function createComment(postId, body, isAnonymous = false) {
+export async function createComment(postId, body, parentId = null) {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.post(`/posts/${postId}/comments`, {
+    console.log('createComment вызван:', postId, body, parentId);
+    
+    if (!body || body.trim().length === 0) {
+      console.error('Body пустой!', body);
+      throw new Error('Тело комментария обязательно');
+    }
+    
+    const payload = {
       post_id: postId,
-      body: body,
-      is_anonymous: isAnonymous
-    }, {
+      body: body.trim(),
+      is_anonymous: false,
+      parent_id: parentId
+    };
+    
+    console.log('payload:', payload);
+    
+    const response = await api.post(`/posts/${postId}/comments`, payload, {
       params: { telegram_id },
     });
+    
+    console.log('Ответ сервера:', response.data);
     return response.data;
   } catch (error) {
     console.error('Ошибка создания комментария:', error);
+    console.error('Детали:', error.response?.data);
     throw error;
   }
 }
@@ -256,19 +272,17 @@ export async function deleteComment(commentId) {
 export async function updateComment(commentId, text) {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.patch(`/comments/${commentId}`, null, {
-      params: {
-        telegram_id,
-        text
-      }
-    });
+    const response = await api.patch(
+      `comments/${commentId}`,
+      { body: text },
+      { params: { telegram_id } }
+    );
     return response.data;
   } catch (error) {
-    console.error('Ошибка обновления комментария:', error);
+    console.error('Ошибка редактирования:', error);
     throw error;
   }
 }
-
 export async function reportComment(commentId, reason, description = null) {
   try {
     const telegram_id = getTelegramId();

@@ -5,6 +5,8 @@ import { getUserPosts, deletePost } from '../api';
 import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
 import PostCard from './PostCard';
+import { Z_USER_POSTS } from '../constants/zIndex';
+import PostCardSkeleton from './PostCardSkeleton';
 
 function UserPosts() {
   const { user, setViewPostId, setShowUserPosts, viewPostId, showUserPosts } = useStore();
@@ -57,7 +59,6 @@ function UserPosts() {
 
   const handlePostClick = (postId) => {
     hapticFeedback('light');
-    setShowUserPosts(false);
     setViewPostId(postId);
   };
 
@@ -158,7 +159,11 @@ function UserPosts() {
         )}
 
         {loading && (
-          <div style={styles.loading}>Загрузка...</div>
+          <>
+            <PostCardSkeleton />
+            <PostCardSkeleton />
+            <PostCardSkeleton />
+          </>
         )}
 
         {!hasMore && posts.length > 0 && (
@@ -184,7 +189,7 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 1000,
+    zIndex: Z_USER_POSTS,
     backgroundColor: '#121212',
     overflowY: 'auto',
     paddingBottom: '20px',
@@ -265,12 +270,6 @@ const styles = {
     alignItems: 'center',
     gap: '12px',
     transition: 'background 0.2s',
-  },
-  loading: {
-    textAlign: 'center',
-    color: '#999',
-    padding: '20px',
-    fontSize: '14px',
   },
   empty: {
     textAlign: 'center',

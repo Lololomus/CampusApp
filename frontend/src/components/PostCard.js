@@ -2,10 +2,18 @@ import React, { useState } from 'react';
 import { Heart, MessageCircle, Eye, MapPin, Calendar } from 'lucide-react';
 import { hapticFeedback } from '../utils/telegram';
 import { likePost } from '../api';
+import { useStore } from '../store';
 
 function PostCard({ post, onClick }) {
+  const { updatePost } = useStore();
   const [isLiked, setIsLiked] = useState(post.is_liked || false);
-  const [likesCount, setLikesCount] = useState(post.likes || 0);
+  const [likesCount, setLikesCount] = useState(post.likes_count || post.likes || 0);
+
+  // ✅ Синхронизация с пропсами при обновлении
+  React.useEffect(() => {
+    setIsLiked(post.is_liked || false);
+    setLikesCount(post.likes_count || post.likes || 0);
+  }, [post.is_liked, post.likes_count, post.likes]);
 
   const handleLike = async (e) => {
     e.stopPropagation();
@@ -15,10 +23,19 @@ function PostCard({ post, onClick }) {
       const result = await likePost(post.id);
       setIsLiked(result.is_liked);
       setLikesCount(result.likes);
+      
+      // ✅ Обновляем пост в store (для Feed)
+      if (updatePost) {
+        updatePost(post.id, { 
+          is_liked: result.is_liked, 
+          likes_count: result.likes 
+        });
+      }
     } catch (error) {
       console.error('Ошибка лайка:', error);
     }
   };
+
 
   const getCategoryColor = (category) => {
     const colors = {
@@ -30,6 +47,7 @@ function PostCard({ post, onClick }) {
     return colors[category] || '#666';
   };
 
+
   const getCategoryLabel = (category) => {
     const labels = {
       news: '📰 Новости',
@@ -39,6 +57,7 @@ function PostCard({ post, onClick }) {
     };
     return labels[category] || category;
   };
+
 
   const formatEventDate = (dateString) => {
     if (!dateString) return '';
@@ -52,10 +71,12 @@ function PostCard({ post, onClick }) {
     return date.toLocaleDateString('ru-RU', options);
   };
 
+
   // Проверка анонимности
   const isAnonymous = post.is_anonymous === true;
   const displayAuthorName = isAnonymous ? 'Аноним' : (typeof post.author === 'object' ? post.author.name : post.author);
   const displayAuthorAvatar = isAnonymous ? '?' : (typeof post.author === 'object' ? post.author.name : post.author)?.[0] || '?';
+
 
   return (
     <div style={styles.card} onClick={onClick}>
@@ -72,15 +93,22 @@ function PostCard({ post, onClick }) {
             <div style={styles.author}>
               {displayAuthorName}
             </div>
-            {!isAnonymous && (
+            {!isAnonymous && (post.author?.university || post.author?.institute || post.author?.course) && (
               <div style={styles.meta}>
-                {post.university || post.uni} · {post.institute} · {post.course} курс
+                {[
+                  post.author?.university, 
+                  post.author?.institute, 
+                  post.author?.course ? `${post.author.course} курс` : null
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </div>
             )}
           </div>
         </div>
         <div style={styles.time}>{post.time}</div>
       </div>
+
 
       {/* Категория */}
       <div
@@ -96,9 +124,11 @@ function PostCard({ post, onClick }) {
         )}
       </div>
 
+
       {/* Заголовок и текст */}
       <h3 style={styles.title}>{post.title}</h3>
       <p style={styles.body}>{post.body}</p>
+
 
       {/* LOST & FOUND компактная инфа */}
       {post.category === 'lost_found' && post.item_description && (
@@ -114,6 +144,7 @@ function PostCard({ post, onClick }) {
         </div>
       )}
 
+
       {/* EVENTS компактная инфа */}
       {post.category === 'events' && post.event_name && (
         <div style={styles.extraInfo}>
@@ -126,6 +157,7 @@ function PostCard({ post, onClick }) {
         </div>
       )}
 
+
       {/* Теги */}
       {post.tags && post.tags.length > 0 && (
         <div style={styles.tags}>
@@ -137,6 +169,7 @@ function PostCard({ post, onClick }) {
         </div>
       )}
 
+
       {/* Футер с действиями */}
       <div style={styles.footer}>
         <button 
@@ -147,20 +180,21 @@ function PostCard({ post, onClick }) {
           onClick={handleLike}
         >
           <Heart size={18} fill={isLiked ? '#ff3b5c' : 'none'} />
-          <span>{likesCount}</span>
+          <span>{likesCount}</span> {/* ✅ УЖЕ ПРАВИЛЬНО */}
         </button>
         <button style={styles.actionButton}>
           <MessageCircle size={18} />
-          <span>{post.commentsCount || post.comments_count || 0}</span>
+          <span>{post.commentsCount || post.comments_count || 0}</span> {/* ✅ УЖЕ ПРАВИЛЬНО */}
         </button>
         <div style={styles.views}>
           <Eye size={18} />
-          <span>{post.views}</span>
+          <span>{post.views_count || post.views || 0}</span> {/* ✅ ИСПРАВЛЕНО */}
         </div>
       </div>
     </div>
   );
 }
+
 
 const styles = {
   card: {
@@ -296,5 +330,6 @@ const styles = {
     marginLeft: 'auto',
   },
 };
+
 
 export default PostCard;

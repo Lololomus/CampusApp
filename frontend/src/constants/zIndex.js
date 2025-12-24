@@ -37,6 +37,7 @@ export const Z_EDIT_POST = 1500;
 
 // Модальные окна (аутентификация)
 export const Z_AUTH_MODAL = 2000;
+export const Z_USER_POSTS = 1100;
 
 // Модальные окна (dating)
 export const Z_DATING_MODALS = 2500;

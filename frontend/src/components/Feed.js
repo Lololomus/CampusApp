@@ -2,12 +2,15 @@ import React, { useEffect, useState, useCallback } from 'react';
 import PostCard from './PostCard';
 import { getPosts } from '../api';
 import { useStore } from '../store';
+import PostCardSkeleton from './PostCardSkeleton';
+
 
 function Feed() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState('all'); // 'all' | 'news' | 'events' | 'confessions' | 'lost_found'
-  const { feedMode, setViewPostId, viewPostId } = useStore();
+  const [activeCategory, setActiveCategory] = useState('all');
+  const { feedMode, setViewPostId, viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost } = useStore();
+
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
@@ -24,32 +27,39 @@ function Feed() {
     }
   }, [activeCategory]);
 
+
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
 
-  // Когда закрываем PostDetail, обновляем ленту свежими данными с сервера
+
+  // ✅ НОВОЕ: Когда закрываем PostDetail и есть обновлённый пост - обновляем только его
   useEffect(() => {
-    if (!viewPostId) {
-      loadPosts();
+    if (!viewPostId && updatedPostId) {
+      const updates = getUpdatedPost(updatedPostId);
+      if (updates) {
+        setPosts(prevPosts => 
+          prevPosts.map(post => 
+            post.id === updatedPostId 
+              ? { ...post, ...updates }
+              : post
+          )
+        );
+        clearUpdatedPost(); // Очищаем после применения
+      }
     }
-  }, [viewPostId, loadPosts]);
+  }, [viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost]);
+
 
   const handlePostClick = (postId) => {
     setViewPostId(postId);
   };
 
+
   const handleCategoryChange = (category) => {
     setActiveCategory(category);
   };
 
-  if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loading}>Загрузка...</div>
-      </div>
-    );
-  }
 
   return (
     <div style={styles.container}>
@@ -58,6 +68,7 @@ function Feed() {
         <h1 style={styles.title}>🎓 Campus</h1>
         <p style={styles.subtitle}>Студенческая соцсеть</p>
       </div>
+
 
       {/* Табы категорий */}
       <div style={styles.tabs}>
@@ -88,26 +99,43 @@ function Feed() {
         />
       </div>
 
+
       {/* Список постов */}
       <div style={styles.posts}>
-        {posts.length === 0 ? (
+        {/* SKELETON при загрузке */}
+        {loading && (
+          <>
+            <PostCardSkeleton />
+            <PostCardSkeleton />
+            <PostCardSkeleton />
+            <PostCardSkeleton />
+            <PostCardSkeleton />
+          </>
+        )}
+
+
+        {/* Empty state */}
+        {!loading && posts.length === 0 && (
           <div style={styles.empty}>
             <p>Пока нет постов</p>
             <p style={styles.emptyHint}>Будь первым!</p>
           </div>
-        ) : (
-          posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              onClick={() => handlePostClick(post.id)}
-            />
-          ))
         )}
+
+
+        {/* Посты */}
+        {!loading && posts.length > 0 && posts.map((post) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            onClick={() => handlePostClick(post.id)}
+          />
+        ))}
       </div>
     </div>
   );
 }
+
 
 function Tab({ label, active, onClick }) {
   return (
@@ -123,6 +151,7 @@ function Tab({ label, active, onClick }) {
     </button>
   );
 }
+
 
 const styles = {
   container: {
@@ -166,12 +195,6 @@ const styles = {
   posts: {
     padding: '16px',
   },
-  loading: {
-    textAlign: 'center',
-    color: '#999',
-    padding: '40px',
-    fontSize: '16px',
-  },
   empty: {
     textAlign: 'center',
     color: '#999',
@@ -183,5 +206,6 @@ const styles = {
     marginTop: '8px',
   },
 };
+
 
 export default Feed;

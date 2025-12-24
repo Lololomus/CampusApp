@@ -9,6 +9,7 @@ function BottomActionBar({
   replyTo = null,
   replyToName = '',
   onCancelReply = null,
+  postAuthorName = 'автора',
 }) {
   const [mode, setMode] = useState('default');
   const [commentText, setCommentText] = useState('');
@@ -131,7 +132,9 @@ function BottomActionBar({
                 >
                   <X size={16} color="#8e8e93" />
                 </button>
-                <span style={styles.contextLabel}>Ответ для @{replyToName}</span>
+                <span style={styles.contextLabel}>
+                  Ответить @{postAuthorName}
+                </span>
               </div>
             )}
 

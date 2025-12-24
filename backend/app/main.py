@@ -19,6 +19,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Startup
@@ -300,25 +301,24 @@ def create_post_endpoint(
     }
 
 
-@app.get("/posts/{post_id}", response_model=schemas.PostResponse)
+@app.get("/posts/{postid}", response_model=schemas.PostResponse)
 def get_post_endpoint(
-    post_id: int,
+    postid: int,
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Получить пост по ID"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="User not found")
     
-    post = crud.get_post(db, post_id)
+    post = crud.get_post(db, postid)
     if not post:
-        raise HTTPException(status_code=404, detail="Пост не найден")
+        raise HTTPException(status_code=404, detail="Post not found")
     
-    # Увеличить просмотры
-    crud.increment_post_views(db, post_id)
+    crud.increment_post_views(db, postid)
     
-    # Обработка
+    db.refresh(post)
+    
     tags = json.loads(post.tags) if post.tags else []
     author_data = None
     author_id_data = post.author_id
@@ -397,30 +397,45 @@ def toggle_post_like_endpoint(
 
 # ==================== COMMENT ENDPOINTS (ОБНОВЛЕНЫ) ====================
 
-@app.get("/posts/{post_id}/comments", response_model=schemas.CommentsFeedResponse)
+@app.get("/posts/{postid}/comments", response_model=schemas.CommentsFeedResponse)
 def get_post_comments_endpoint(
-    post_id: int,
+    postid: int,
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Получить комментарии к посту"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="User not found")
     
-    comments = crud.get_post_comments(db, post_id, user.id)
-    
+    comments = crud.get_post_comments(db, postid, user.id)
     result = []
+    
     for comment in comments:
-        # Анонимность
         author_data = None
         author_id_data = comment.author_id
         
         if comment.is_anonymous:
-            author_data = {"name": f"Аноним{comment.anonymous_index}"}
+            author_data = {
+                "name": f"Аноним{comment.anonymous_index}",
+                "id": None,
+                "telegram_id": None,
+                "avatar": None,
+                "university": None,
+                "institute": None,
+                "course": None
+            }
             author_id_data = None
         else:
-            author_data = schemas.UserShort.from_orm(comment.author) if comment.author else None
+            if comment.author:
+                author_data = {
+                    "id": comment.author.id,
+                    "telegram_id": comment.author.telegram_id,
+                    "name": comment.author.name,
+                    "avatar": comment.author.avatar,
+                    "university": comment.author.university,
+                    "institute": comment.author.institute,
+                    "course": comment.author.course
+                }
         
         comment_dict = {
             "id": comment.id,
@@ -428,16 +443,16 @@ def get_post_comments_endpoint(
             "author_id": author_id_data,
             "author": author_data,
             "body": comment.body,
+            "parent_id": comment.parent_id,
             "is_anonymous": comment.is_anonymous,
             "anonymous_index": comment.anonymous_index,
+            "likes": comment.likes_count,
+            "is_liked": comment.is_liked,   
             "created_at": comment.created_at
         }
         result.append(comment_dict)
     
-    return {
-        "items": result,
-        "total": len(result)
-    }
+    return {"items": result, "total": len(result)}
 
 
 @app.post("/posts/{post_id}/comments", response_model=schemas.CommentResponse)
@@ -472,8 +487,11 @@ def create_comment_endpoint(
         "author_id": author_id_data,
         "author": author_data,
         "body": comment.body,
+        "parent_id": comment.parent_id,
         "is_anonymous": comment.is_anonymous,
         "anonymous_index": comment.anonymous_index,
+        "likes": 0,
+        "is_liked": False, 
         "created_at": comment.created_at
     }
 
@@ -492,6 +510,46 @@ def delete_comment_endpoint(
     result = crud.delete_comment(db, comment_id, user.id)
     return result
 
+@app.patch("/comments/{comment_id}", response_model=schemas.CommentResponse)
+def update_comment_endpoint(
+    comment_id: int,
+    telegram_id: int = Query(...),
+    comment_update: schemas.CommentUpdate = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Редактировать комментарий"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    comment = crud.update_comment(db, comment_id, comment_update.body, user.id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found or permission denied")
+    
+    # Формируем ответ
+    author_data = None
+    author_id_data = comment.author_id
+    
+    if comment.is_anonymous:
+        author_data = {"name": f"Аноним{comment.anonymous_index}"}
+        author_id_data = None
+    else:
+        author_data = schemas.UserShort.from_orm(comment.author) if comment.author else None
+    
+    return {
+        "id": comment.id,
+        "post_id": comment.post_id,
+        "author_id": author_id_data,
+        "author": author_data,
+        "body": comment.body,
+        "parent_id": comment.parent_id,
+        "is_anonymous": comment.is_anonymous,
+        "anonymous_index": comment.anonymous_index,
+        "is_edited": comment.is_edited,
+        "likes": comment.likes_count,
+        "is_liked": getattr(comment, 'is_liked', False),
+        "created_at": comment.created_at
+    }
 
 @app.post("/comments/{comment_id}/like")
 def toggle_comment_like_endpoint(

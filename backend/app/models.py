@@ -13,6 +13,7 @@ class User(Base):
     name = Column(String(255), nullable=False)
     age = Column(Integer, nullable=True)
     bio = Column(Text, nullable=True)
+    avatar = Column(String(500), nullable=True)
     
     # Академическая инфа
     university = Column(String(255), nullable=False)
@@ -86,6 +87,21 @@ class Post(Base):
     author = relationship('User', back_populates='posts')
     comments = relationship('Comment', back_populates='post', cascade='all, delete-orphan')
 
+class PostLike(Base):
+    """
+    Лайки для постов
+    """
+    __tablename__ = 'post_likes'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Ограничения
+    __table_args__ = (
+        UniqueConstraint('post_id', 'user_id', name='unique_post_like'),
+    )
 
 class Request(Base):
     """
@@ -134,21 +150,42 @@ class Comment(Base):
     id = Column(Integer, primary_key=True, index=True)
     post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False)
     author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    parent_id = Column(Integer, ForeignKey('comments.id', ondelete='CASCADE'), nullable=True)
     body = Column(Text, nullable=False)
     
-    # АНОНИМНОСТЬ (НОВОЕ)
+    # АНОНИМНОСТЬ
     is_anonymous = Column(Boolean, default=False)
-    anonymous_index = Column(Integer, nullable=True)  # Аноним1, Аноним2...
+    anonymous_index = Column(Integer, nullable=True)
+    
+    # СТАТУС
     is_deleted = Column(Boolean, default=False)
     is_edited = Column(Boolean, default=False)
-    updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
     
+    # ЛАЙКИ
+    likes_count = Column(Integer, default=0)
+    
+    updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
     # Отношения
     post = relationship('Post', back_populates='comments')
     author = relationship('User', back_populates='comments')
 
+class CommentLike(Base):
+    """
+    Лайки для комментариев
+    """
+    __tablename__ = 'comment_likes'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    comment_id = Column(Integer, ForeignKey('comments.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Ограничения
+    __table_args__ = (
+        UniqueConstraint('comment_id', 'user_id', name='unique_comment_like'),
+    )
 
 class Like(Base):
     """
