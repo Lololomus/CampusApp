@@ -1,3 +1,5 @@
+// ===== App.js =====
+
 import React, { useEffect } from 'react';
 import { useStore } from './store';
 import { initTelegramApp } from './utils/telegram';
@@ -5,6 +7,7 @@ import Navigation from './components/Navigation';
 import Feed from './components/Feed';
 import PostDetail from './components/PostDetail';
 import CreatePost from './components/CreatePost';
+import CreateRequestModal from './components/requests/CreateRequestModal';
 import Onboarding from './components/Onboarding';
 import AuthModal from './components/AuthModal';
 import EditProfile from './components/EditProfile';
@@ -14,21 +17,19 @@ import UserPosts from './components/UserPosts';
 import DatingFeed from './components/dating/DatingFeed';
 import './App.css';
 
-
 function App() {
   const { 
     activeTab, 
     viewPostId, 
     showCreateModal,
+    showCreateRequestModal,
     onboardingStep,
     showUserPosts
   } = useStore();
 
-
   useEffect(() => {
     initTelegramApp();
   }, []);
-
 
   const renderContent = () => {
     // Если открыт детальный просмотр поста
@@ -72,12 +73,16 @@ function App() {
       
       {/* Модальные окна */}
       {showCreateModal && <CreatePost />}
+      {showCreateRequestModal && (
+        <CreateRequestModal 
+          onClose={() => useStore.getState().setShowCreateRequestModal(false)} 
+        />
+      )}
       <AuthModal />
       <EditProfile />
     </div>
   );
 }
-
 
 const styles = {
   app: {
@@ -87,6 +92,5 @@ const styles = {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
   }
 };
-
 
 export default App;

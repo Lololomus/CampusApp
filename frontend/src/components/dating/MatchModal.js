@@ -3,6 +3,7 @@ import { X, MessageCircle } from 'lucide-react';
 import { useStore } from '../../store';
 import confetti from 'canvas-confetti';
 
+
 function MatchModal() {
   const { showMatchModal, setShowMatchModal, matchedUser } = useStore();
 
@@ -69,7 +70,7 @@ function MatchModal() {
           <div style={styles.emoji}>🎉</div>
 
           {/* Заголовок */}
-          <h2 style={styles.title}>Это матч!</h2>
+          <h2 style={styles.title}>Это мэтч!</h2>
           <p style={styles.subtitle}>
             Вы с <strong>{matchedUser.name}</strong> лайкнули друг друга
           </p>
@@ -96,6 +97,7 @@ function MatchModal() {
   );
 }
 
+
 const keyframes = `
   @keyframes modalSlideUp {
     from {
@@ -113,6 +115,7 @@ const keyframes = `
     50% { transform: scale(1.1); }
   }
 `;
+
 
 const styles = {
   overlay: {
@@ -213,5 +216,6 @@ const styles = {
     boxShadow: '0 4px 16px rgba(135, 116, 225, 0.4)',
   },
 };
+
 
 export default MatchModal;

@@ -2,7 +2,9 @@ from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional, List
 
+
 # ===== USER SCHEMAS =====
+
 
 class UserBase(BaseModel):
     """Базовые поля пользователя"""
@@ -11,6 +13,7 @@ class UserBase(BaseModel):
     institute: str
     course: int
 
+
 class UserCreate(UserBase):
     """Создание нового пользователя"""
     telegram_id: int
@@ -18,6 +21,7 @@ class UserCreate(UserBase):
     age: Optional[int] = None
     group: Optional[str] = None
     bio: Optional[str] = None
+
 
 class UserUpdate(BaseModel):
     """Обновление профиля"""
@@ -30,6 +34,7 @@ class UserUpdate(BaseModel):
     course: Optional[int] = None
     group: Optional[str] = None
     interests: Optional[List[str]] = None
+
 
 class UserResponse(BaseModel):
     """Ответ с данными пользователя"""
@@ -50,6 +55,7 @@ class UserResponse(BaseModel):
     updated_at: Optional[datetime] = None
     last_profile_edit: Optional[datetime] = None
 
+
     @field_validator('interests', mode='before')
     @classmethod
     def parse_interests(cls, v):
@@ -60,8 +66,10 @@ class UserResponse(BaseModel):
             return json.loads(v) if v else []
         return v
 
+
     class Config:
         from_attributes = True
+
 
 class UserShort(BaseModel):
     """Краткие данные пользователя"""
@@ -75,6 +83,7 @@ class UserShort(BaseModel):
     
     class Config:
         from_attributes = True
+
 
 class UserPublic(BaseModel):
     """Публичные данные пользователя (для dating)"""
@@ -90,6 +99,7 @@ class UserPublic(BaseModel):
     group: Optional[str] = None
     interests: List[str] = []
 
+
     @field_validator('interests', mode='before')
     @classmethod
     def parse_interests(cls, v):
@@ -100,10 +110,13 @@ class UserPublic(BaseModel):
             return json.loads(v) if v else []
         return v
 
+
     class Config:
         from_attributes = True
 
+
 # ===== POST SCHEMAS (ОБНОВЛЕНЫ) =====
+
 
 class PostCreate(BaseModel):
     """Создание поста"""
@@ -129,6 +142,7 @@ class PostCreate(BaseModel):
     # News
     is_important: bool = False
 
+
 class PostUpdate(BaseModel):
     """Схема для обновления поста"""
     title: Optional[str] = None
@@ -145,11 +159,6 @@ class PostUpdate(BaseModel):
     event_location: Optional[str] = None
     is_important: Optional[bool] = None
 
-class PostUpdate(BaseModel):
-    """Обновление поста"""
-    title: Optional[str] = None
-    body: Optional[str] = None
-    tags: Optional[List[str]] = None
 
 class PostResponse(BaseModel):
     """Ответ с данными поста"""
@@ -187,13 +196,16 @@ class PostResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
+
 class PostsFeedResponse(BaseModel):
     """Лента постов"""
     items: List[PostResponse]
     total: int
     has_more: bool
 
+
 # ===== COMMENT SCHEMAS (ОБНОВЛЕНЫ) =====
+
 
 class CommentCreate(BaseModel):
     """Создание комментария"""
@@ -202,9 +214,11 @@ class CommentCreate(BaseModel):
     parent_id: Optional[int] = None
     is_anonymous: bool = False
 
+
 class CommentUpdate(BaseModel):
     """Обновление комментария"""
     body: str = Field(..., min_length=1)
+
 
 class CommentResponse(BaseModel):
     """Ответ с данными комментария"""
@@ -223,40 +237,87 @@ class CommentResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
+
     class Config:
         from_attributes = True
+
 
 class CommentsFeedResponse(BaseModel):
     """Лента комментариев"""
     items: List[CommentResponse]
     total: int
 
-# ===== REQUEST SCHEMAS (НОВОЕ) =====
+
+# ===== REQUEST SCHEMAS (ОБНОВЛЕНО) =====
+
 
 class RequestCreate(BaseModel):
     """Создание запроса"""
-    category: str  # 'study' | 'help' | 'hangout'
-    title: str = Field(..., min_length=1, max_length=255)
-    body: str = Field(..., min_length=1)
-    tags: List[str] = []
+    category: str = Field(..., pattern="^(study|help|hangout)$")
+    title: str = Field(..., min_length=10, max_length=100)
+    body: str = Field(..., min_length=20, max_length=500)
+    tags: List[str] = Field(default=[], max_length=5)
     expires_at: datetime
-    max_responses: int = 10
+    max_responses: Optional[int] = Field(default=5, ge=1, le=20)
+    
+    @field_validator('tags')
+    @classmethod
+    def validate_tags(cls, v):
+        if len(v) > 5:
+            raise ValueError('Максимум 5 тегов')
+        return [tag[:20] for tag in v]  # макс 20 символов на тег
+
+
+class RequestUpdate(BaseModel):
+    """Обновление запроса"""
+    title: Optional[str] = Field(None, min_length=10, max_length=100)
+    body: Optional[str] = Field(None, min_length=20, max_length=500)
+    tags: Optional[List[str]] = None
+    is_closed: Optional[bool] = None
+
+
+class RequestAuthor(BaseModel):
+    """Автор запроса (краткие данные)"""
+    id: int
+    name: str
+    course: Optional[int] = None
+    university: str
+    institute: str
+    username: Optional[str] = None  # telegram username для контакта
+    
+    class Config:
+        from_attributes = True
+
 
 class RequestResponse(BaseModel):
     """Ответ с данными запроса"""
     id: int
-    author_id: int
-    author: Optional[UserShort] = None
     category: str
     title: str
     body: str
     tags: List[str] = []
     expires_at: datetime
-    max_responses: int
-    responses_count: int = 0
-    views_count: int = 0
     status: str  # 'active' | 'closed' | 'expired'
+    views_count: int = 0
+    responses_count: int = 0
     created_at: datetime
+    author: RequestAuthor
+    is_author: bool = False  # вычисляется на бэкенде
+    has_responded: bool = False  # вычисляется на бэкенде
+    
+    @field_validator('tags', mode='before')
+    @classmethod
+    def parse_tags(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            import json
+            return json.loads(v) if v else []
+        return v
+    
+    class Config:
+        from_attributes = True
+
 
 class RequestsFeedResponse(BaseModel):
     """Лента запросов"""
@@ -264,16 +325,46 @@ class RequestsFeedResponse(BaseModel):
     total: int
     has_more: bool
 
-class ResponseToRequestCreate(BaseModel):
+
+# ===== RESPONSE SCHEMAS (ОТКЛИКИ НА ЗАПРОСЫ) =====
+
+
+class ResponseCreate(BaseModel):
+    """Создание отклика на запрос"""
+    message: Optional[str] = Field(None, max_length=500)
+    telegram_contact: Optional[str] = None
+
+
+class ResponseAuthor(BaseModel):
+    """Автор отклика"""
+    id: int
+    name: str
+    username: Optional[str] = None  # telegram username
+    
+    class Config:
+        from_attributes = True
+
+
+class ResponseItem(BaseModel):
     """Отклик на запрос"""
-    message: str = Field(..., min_length=1, max_length=500)
+    id: int
+    message: Optional[str] = None
+    telegram_contact: Optional[str] = None
+    created_at: datetime
+    author: ResponseAuthor
+    
+    class Config:
+        from_attributes = True
+
 
 # ===== REPORT SCHEMAS =====
+
 
 class CommentReportCreate(BaseModel):
     """Создание жалобы на комментарий"""
     reason: str = Field(..., pattern="^(spam|abuse|inappropriate)$")
     description: Optional[str] = None
+
 
 class CommentReport(BaseModel):
     """Информация о жалобе"""
@@ -284,10 +375,13 @@ class CommentReport(BaseModel):
     description: Optional[str]
     created_at: datetime
 
+
     class Config:
         from_attributes = True
 
+
 # ===== AUTH SCHEMAS =====
+
 
 class TelegramAuth(BaseModel):
     """Данные для авторизации через Telegram"""
@@ -296,16 +390,20 @@ class TelegramAuth(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
 
+
 class Token(BaseModel):
     """JWT токен для авторизации"""
     access_token: str
     token_type: str = "bearer"
 
+
 # ===== DATING SCHEMAS =====
+
 
 class LikeCreate(BaseModel):
     """Создание лайка"""
     liked_id: int
+
 
 class LikeResult(BaseModel):
     """Результат лайка (с проверкой на матч)"""
@@ -313,6 +411,7 @@ class LikeResult(BaseModel):
     is_match: bool = False
     match_id: Optional[int] = None
     matched_user: Optional[UserShort] = None
+
 
 class MatchResponse(BaseModel):
     """Матч"""
@@ -322,8 +421,10 @@ class MatchResponse(BaseModel):
     matched_at: datetime
     matched_user: UserShort
 
+
     class Config:
         from_attributes = True
+
 
 class DatingProfile(BaseModel):
     """Профиль для ленты знакомств"""
@@ -338,9 +439,7 @@ class DatingProfile(BaseModel):
     course: Optional[int] = None
     group: Optional[str] = None
     interests: List[str] = []
-    
-    # Для режимов study/help/hangout - активный REQUEST
-    active_request: Optional[dict] = None
+
 
     @field_validator('interests', mode='before')
     @classmethod
@@ -352,8 +451,10 @@ class DatingProfile(BaseModel):
             return json.loads(v) if v else []
         return v
 
+
     class Config:
         from_attributes = True
+
 
 class DatingFeedResponse(BaseModel):
     """Лента профилей"""
@@ -361,14 +462,15 @@ class DatingFeedResponse(BaseModel):
     total: int
     has_more: bool
 
+
 class DatingSettings(BaseModel):
     """Настройки приватности для знакомств"""
     show_in_dating: Optional[bool] = None
     hide_course_group: Optional[bool] = None
     interests: Optional[List[str]] = None
 
+
 class DatingStatsResponse(BaseModel):
     """Статистика знакомств"""
     likes_count: int = 0
     matches_count: int = 0
-    responses_count: int = 0

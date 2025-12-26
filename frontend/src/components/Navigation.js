@@ -1,3 +1,5 @@
+// ===== Navigation.js =====
+
 import React from 'react';
 import { Home, Search, PlusCircle, User, Users } from 'lucide-react';
 import { useStore } from '../store';
@@ -6,7 +8,15 @@ import theme from '../theme';
 import { Z_NAVIGATION } from '../constants/zIndex';
 
 function Navigation() {
-  const { activeTab, setActiveTab, setShowCreateModal, isRegistered, setShowAuthModal } = useStore();
+  const { 
+    activeTab, 
+    setActiveTab, 
+    setShowCreateModal, 
+    setShowCreateRequestModal,
+    feedSubTab,
+    isRegistered, 
+    setShowAuthModal 
+  } = useStore();
   
   const tabs = [
     { id: 'feed', icon: Home, label: 'Главная' },
@@ -25,7 +35,11 @@ function Navigation() {
     }
     
     if (tabId === 'create') {
-      setShowCreateModal(true);
+      if (feedSubTab === 'requests') {
+        setShowCreateRequestModal(true);
+      } else {
+        setShowCreateModal(true);
+      }
       return;
     }
     

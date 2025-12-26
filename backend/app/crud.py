@@ -1,21 +1,25 @@
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, not_, func
+from sqlalchemy import and_, or_, not_, func, case
 from app import models, schemas
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 import json
 
 
+
 # ===== USER CRUD =====
+
 
 def get_user_by_telegram_id(db: Session, telegram_id: int) -> Optional[models.User]:
     """Найти пользователя по Telegram ID"""
     return db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
 
 
+
 def get_user_by_id(db: Session, user_id: int) -> Optional[models.User]:
     """Найти пользователя по ID"""
     return db.query(models.User).filter(models.User.id == user_id).first()
+
 
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
@@ -25,6 +29,7 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db.commit()
     db.refresh(db_user)
     return db_user
+
 
 
 def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> Optional[models.User]:
@@ -48,7 +53,9 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> O
     return db_user
 
 
+
 # ===== POST CRUD =====
+
 
 def get_posts(
     db: Session,
@@ -84,9 +91,11 @@ def get_posts(
     ).offset(skip).limit(limit).all()
 
 
+
 def get_post(db: Session, post_id: int) -> Optional[models.Post]:
     """Получить пост по ID"""
     return db.query(models.Post).filter(models.Post.id == post_id).first()
+
 
 
 def create_post(db: Session, post: schemas.PostCreate, author_id: int) -> models.Post:
@@ -128,6 +137,7 @@ def create_post(db: Session, post: schemas.PostCreate, author_id: int) -> models
     return db_post
 
 
+
 def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate) -> Optional[models.Post]:
     """Обновить пост"""
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
@@ -144,9 +154,12 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate) -> O
     for key, value in update_data.items():
         setattr(db_post, key, value)
     
+    db_post.updated_at = datetime.utcnow()
+    
     db.commit()
     db.refresh(db_post)
     return db_post
+
 
 
 def delete_post(db: Session, post_id: int) -> bool:
@@ -159,30 +172,7 @@ def delete_post(db: Session, post_id: int) -> bool:
     db.commit()
     return True
 
-def update_post(db: Session, post_id: int, post_update):
-    """Обновление поста"""
-    post = db.query(models.Post).filter(models.Post.id == post_id).first()
-    if not post:
-        return None
-    
-    # Обновляем только переданные поля
-    update_data = post_update.model_dump(exclude_unset=True)
-    
-    # Обработка тегов (конвертация в JSON)
-    if "tags" in update_data:
-        update_data["tags"] = json.dumps(update_data["tags"])
-    
-    # Применяем обновления
-    for key, value in update_data.items():
-        setattr(post, key, value)
-    
-    # Обновляем время изменения
-    from datetime import datetime
-    post.updated_at = datetime.utcnow()
-    
-    db.commit()
-    db.refresh(post)
-    return post
+
 
 def increment_post_views(db: Session, post_id: int):
     """Увеличить счётчик просмотров"""
@@ -192,7 +182,9 @@ def increment_post_views(db: Session, post_id: int):
         db.commit()
 
 
+
 # ===== POST LIKES (Лайки постов) =====
+
 
 def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
     """Проверить лайкнул ли пользователь пост"""
@@ -201,6 +193,7 @@ def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
         models.PostLike.user_id == user_id
     ).first()
     return like is not None
+
 
 
 def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
@@ -229,7 +222,9 @@ def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
         return {"is_liked": True, "likes": post.likes_count}
 
 
+
 # ===== COMMENT CRUD =====
+
 
 def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) -> List[models.Comment]:
     """
@@ -251,6 +246,7 @@ def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) 
             comment.is_liked = False
     
     return comments
+
 
 
 def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
@@ -306,7 +302,9 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
     return db_comment
 
 
+
 # ===== COMMENT LIKES (Лайки комментариев) =====
+
 
 def is_comment_liked_by_user(db: Session, comment_id: int, user_id: int) -> bool:
     """Проверить лайкнул ли пользователь комментарий"""
@@ -315,6 +313,7 @@ def is_comment_liked_by_user(db: Session, comment_id: int, user_id: int) -> bool
         models.CommentLike.user_id == user_id
     ).first()
     return like is not None
+
 
 
 def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
@@ -341,6 +340,7 @@ def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
         comment.likes_count += 1
         db.commit()
         return {"is_liked": True, "likes": comment.likes_count}
+
 
 
 def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
@@ -374,6 +374,7 @@ def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
         return {"success": True, "type": "hard_delete"}
 
 
+
 def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Optional[models.Comment]:
     """Обновить текст комментария"""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
@@ -396,12 +397,14 @@ def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Opt
     return comment
 
 
+
 def count_post_comments(db: Session, post_id: int) -> int:
     """Посчитать количество НЕудалённых комментариев к посту (включая ответы)."""
     return db.query(models.Comment).filter(
         models.Comment.post_id == post_id,
         models.Comment.is_deleted == False
     ).count()
+
 
 
 def get_user_posts(db: Session, user_id: int, limit: int = 5, offset: int = 0) -> List[models.Post]:
@@ -414,11 +417,13 @@ def get_user_posts(db: Session, user_id: int, limit: int = 5, offset: int = 0) -
         .all()
 
 
+
 def count_user_posts(db: Session, user_id: int) -> int:
     """Посчитать количество постов пользователя"""
     return db.query(models.Post)\
         .filter(models.Post.author_id == user_id)\
         .count()
+
 
 
 def count_user_comments(db: Session, user_id: int) -> int:
@@ -431,7 +436,9 @@ def count_user_comments(db: Session, user_id: int) -> int:
         .count()
 
 
+
 # ===== COOLDOWN для критичных полей =====
+
 
 def can_edit_critical_fields(db: Session, user_id: int) -> bool:
     """Проверка можно ли редактировать критичные поля (cooldown 30 дней)"""
@@ -441,6 +448,7 @@ def can_edit_critical_fields(db: Session, user_id: int) -> bool:
     
     days_passed = (datetime.utcnow() - user.last_profile_edit).days
     return days_passed >= 30
+
 
 
 def get_cooldown_days_left(db: Session, user_id: int) -> int:
@@ -453,10 +461,23 @@ def get_cooldown_days_left(db: Session, user_id: int) -> int:
     return max(0, 30 - days_passed)
 
 
-# ===== REQUEST CRUD (НОВОЕ) =====
+
+# ===== REQUEST CRUD (ОБНОВЛЕНО) =====
+
 
 def create_request(db: Session, request: schemas.RequestCreate, author_id: int) -> models.Request:
-    """Создать запрос (для карточек dating)"""
+    """Создать запрос с проверкой лимита (макс 3 активных на категорию)"""
+    # Проверка лимита
+    active_count = db.query(models.Request).filter(
+        models.Request.author_id == author_id,
+        models.Request.category == request.category,
+        models.Request.status == 'active',
+        models.Request.expires_at > datetime.utcnow()
+    ).count()
+    
+    if active_count >= 3:
+        raise ValueError(f"Максимум 3 активных запроса в категории {request.category}")
+    
     db_request = models.Request(
         author_id=author_id,
         category=request.category,
@@ -474,198 +495,283 @@ def create_request(db: Session, request: schemas.RequestCreate, author_id: int) 
     return db_request
 
 
-def get_active_requests(
-    db: Session,
-    category: str,
-    limit: int = 20,
-    offset: int = 0
-) -> List[models.Request]:
-    """Получить активные запросы категории"""
-    return (
-        db.query(models.Request)
-        .options(joinedload(models.Request.author))
-        .filter(
-            models.Request.category == category,
-            models.Request.status == 'active',
-            models.Request.expires_at > datetime.utcnow()
-        )
-        .order_by(models.Request.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
 
-
-def get_people_with_requests(
+def get_requests_feed(
     db: Session,
-    user_id: int,
-    category: str,
+    category: Optional[str] = None,
     limit: int = 20,
     offset: int = 0,
-    university: Optional[str] = None,
-    institute: Optional[str] = None
+    current_user_id: Optional[int] = None
 ) -> Dict:
     """
-    Получить людей с их активными ЗАПРОСАМИ категории X (для карточек).
-    Возвращает: {items: List[DatingProfile], has_more: bool}
+    Получить ленту запросов с умной сортировкой.
+    Срочные (< 3 часов) сверху, остальные по новизне.
     """
-    # Подзапрос: последний request каждого пользователя в этой категории
-    subquery = (
-        db.query(
-            models.Request.author_id,
-            func.max(models.Request.created_at).label('max_created')
-        )
-        .filter(
-            models.Request.category == category,
-            models.Request.status == 'active',
-            models.Request.expires_at > datetime.utcnow()
-        )
-        .group_by(models.Request.author_id)
-        .subquery()
+    now = datetime.utcnow()
+    urgent_threshold = now + timedelta(hours=3)
+    
+    # Базовый запрос
+    query = db.query(models.Request).options(joinedload(models.Request.author)).filter(
+        models.Request.status == 'active',
+        models.Request.expires_at > now
     )
     
-    # Основной запрос: JOIN users + requests
-    query = (
-        db.query(models.User, models.Request)
-        .join(
-            models.Request,
-            models.Request.author_id == models.User.id
-        )
-        .join(
-            subquery,
-            and_(
-                models.Request.author_id == subquery.c.author_id,
-                models.Request.created_at == subquery.c.max_created
-            )
-        )
-        .filter(
-            models.User.id != user_id,  # Исключаем себя
-            models.Request.category == category,
-            models.Request.status == 'active'
-        )
+    # Фильтр по категории
+    if category and category != 'all':
+        query = query.filter(models.Request.category == category)
+    
+    # Считаем total
+    total = query.count()
+    
+    # Умная сортировка
+    query = query.order_by(
+        # Срочные сначала (0 = срочные, 1 = несрочные)
+        case(
+            (models.Request.expires_at < urgent_threshold, 0),
+            else_=1
+        ),
+        # Для срочных: по возрастанию времени до истечения
+        case(
+            (models.Request.expires_at < urgent_threshold, models.Request.expires_at),
+            else_=None
+        ),
+        # Для несрочных: новые сверху
+        models.Request.created_at.desc()
     )
     
-    # Фильтры (опционально)
-    if university:
-        query = query.filter(models.User.university == university)
-    if institute:
-        query = query.filter(models.User.institute == institute)
+    requests = query.offset(offset).limit(limit).all()
     
-    # Сортировка по дате запроса (новые первые)
-    query = query.order_by(models.Request.created_at.desc())
-    
-    # Pagination
-    total_query = query.limit(limit + 1).offset(offset)
-    results = total_query.all()
-    
-    # Проверка has_more
-    has_more = len(results) > limit
-    if has_more:
-        results = results[:limit]
-    
-    # Формируем список DatingProfile с active_request
-    items = []
-    for user, request in results:
-        # Парсим tags
-        tags = json.loads(request.tags) if request.tags else []
+    # Добавляем вычисляемые поля
+    result = []
+    for req in requests:
+        # Парсим теги
+        tags = json.loads(req.tags) if req.tags else []
         
-        # Парсим interests
-        interests = json.loads(user.interests) if user.interests else []
-        
-        profile_dict = {
-            'id': user.id,
-            'telegram_id': user.telegram_id,
-            'name': user.name,
-            'age': user.age,
-            'bio': user.bio,
-            'university': user.university,
-            'institute': user.institute,
-            'course': user.course if not user.hide_course_group else None,
-            'group': user.group if not user.hide_course_group else None,
-            'interests': interests,
-            'active_request': {
-                'id': request.id,
-                'author_id': request.author_id,
-                'title': request.title,
-                'body': request.body,
-                'category': request.category,
-                'tags': tags,
-                'expires_at': request.expires_at.isoformat() if request.expires_at else None,
-                'max_responses': request.max_responses,
-                'responses_count': request.responses_count,
-                'status': request.status,
-                'created_at': request.created_at.isoformat() if request.created_at else None,
-            }
+        req_dict = {
+            'id': req.id,
+            'category': req.category,
+            'title': req.title,
+            'body': req.body,
+            'tags': tags,
+            'expires_at': req.expires_at,
+            'status': req.status,
+            'views_count': req.views_count,
+            'responses_count': len(req.responses) if req.responses else 0,
+            'created_at': req.created_at,
+            'author': req.author,
+            'is_author': req.author_id == current_user_id if current_user_id else False,
+            'has_responded': any(r.user_id == current_user_id for r in req.responses) if current_user_id and req.responses else False
         }
-        items.append(profile_dict)
+        result.append(req_dict)
     
     return {
-        'items': items,
-        'has_more': has_more
+        'items': result,
+        'total': total,
+        'has_more': offset + limit < total
     }
 
 
-def get_my_requests(db: Session, user_id: int) -> List[models.Request]:
-    """Получить мои запросы"""
-    return (
-        db.query(models.Request)
-        .filter(models.Request.author_id == user_id)
-        .order_by(models.Request.created_at.desc())
-        .all()
-    )
+
+def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[int] = None) -> Optional[Dict]:
+    """Получить запрос по ID (с увеличением views_count)"""
+    request = db.query(models.Request).options(
+        joinedload(models.Request.author),
+        joinedload(models.Request.responses)
+    ).filter(models.Request.id == request_id).first()
+    
+    if not request:
+        return None
+    
+    # Увеличить views_count
+    request.views_count += 1
+    db.commit()
+    
+    # Парсим теги
+    tags = json.loads(request.tags) if request.tags else []
+    
+    # Формируем ответ
+    request_dict = {
+        'id': request.id,
+        'category': request.category,
+        'title': request.title,
+        'body': request.body,
+        'tags': tags,
+        'expires_at': request.expires_at,
+        'status': request.status,
+        'views_count': request.views_count,
+        'responses_count': len(request.responses) if request.responses else 0,
+        'created_at': request.created_at,
+        'author': request.author,
+        'is_author': request.author_id == current_user_id if current_user_id else False,
+        'has_responded': any(r.user_id == current_user_id for r in request.responses) if current_user_id and request.responses else False
+    }
+    
+    return request_dict
 
 
-def close_request(db: Session, request_id: int, user_id: int) -> bool:
-    """Закрыть запрос (только автор)"""
+
+def update_request(db: Session, request_id: int, user_id: int, data: schemas.RequestUpdate) -> Optional[models.Request]:
+    """Обновить запрос (только автор)"""
     request = db.query(models.Request).filter(
         models.Request.id == request_id,
         models.Request.author_id == user_id
     ).first()
     
     if not request:
-        return False
+        raise ValueError("Запрос не найден или нет прав")
     
-    request.status = 'closed'
+    update_data = data.model_dump(exclude_unset=True)
+    
+    # Обрабатываем теги
+    if 'tags' in update_data:
+        update_data['tags'] = json.dumps(update_data['tags'])
+    
+    for key, value in update_data.items():
+        setattr(request, key, value)
+    
+    request.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+
+def delete_request(db: Session, request_id: int, user_id: int) -> bool:
+    """Удалить запрос (только автор)"""
+    request = db.query(models.Request).filter(
+        models.Request.id == request_id,
+        models.Request.author_id == user_id
+    ).first()
+    
+    if not request:
+        raise ValueError("Запрос не найден или нет прав")
+    
+    db.delete(request)
     db.commit()
     return True
 
 
-def respond_to_request(db: Session, request_id: int, responder_id: int, message: str) -> Dict:
-    """
-    Откликнуться на запрос.
-    Создаёт уведомление + увеличивает счётчик.
-    """
+
+def get_my_requests(db: Session, user_id: int) -> List[Dict]:
+    """Получить мои запросы"""
+    requests = db.query(models.Request).options(
+        joinedload(models.Request.responses)
+    ).filter(
+        models.Request.author_id == user_id
+    ).order_by(models.Request.created_at.desc()).all()
+    
+    result = []
+    for req in requests:
+        tags = json.loads(req.tags) if req.tags else []
+        req_dict = {
+            'id': req.id,
+            'category': req.category,
+            'title': req.title,
+            'body': req.body,
+            'tags': tags,
+            'expires_at': req.expires_at,
+            'status': req.status,
+            'views_count': req.views_count,
+            'responses_count': len(req.responses) if req.responses else 0,
+            'created_at': req.created_at,
+            'is_expired': req.expires_at < datetime.utcnow()
+        }
+        result.append(req_dict)
+    
+    return result
+
+
+
+# ===== RESPONSES (ОТКЛИКИ НА ЗАПРОСЫ) =====
+
+
+def create_response(db: Session, request_id: int, user_id: int, data: schemas.ResponseCreate) -> models.RequestResponse:
+    """Откликнуться на запрос"""
+    # Проверка существования запроса
     request = db.query(models.Request).filter(models.Request.id == request_id).first()
-    
     if not request:
-        return {"success": False, "error": "Запрос не найден"}
+        raise ValueError("Запрос не найден")
     
-    if request.status != 'active':
-        return {"success": False, "error": "Запрос неактивен"}
+    if request.status != 'active' or request.expires_at < datetime.utcnow():
+        raise ValueError("Запрос закрыт или истёк")
     
-    if request.expires_at <= datetime.utcnow():
-        return {"success": False, "error": "Запрос истёк"}
+    if request.author_id == user_id:
+        raise ValueError("Нельзя откликнуться на свой запрос")
     
-    if responder_id == request.author_id:
-        return {"success": False, "error": "Нельзя откликаться на свой запрос"}
+    # Проверка дубликата
+    existing = db.query(models.RequestResponse).filter(
+        models.RequestResponse.request_id == request_id,
+        models.RequestResponse.user_id == user_id
+    ).first()
     
-    # Увеличиваем счётчик откликов
+    if existing:
+        raise ValueError("Вы уже откликнулись на этот запрос")
+    
+    # Получить telegram из профиля
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    telegram = data.telegram_contact or user.username
+    
+    # Создать отклик
+    response = models.RequestResponse(
+        request_id=request_id,
+        user_id=user_id,
+        message=data.message,
+        telegram_contact=telegram
+    )
+    db.add(response)
+    
+    # Увеличить счётчик
     request.responses_count += 1
     
-    # Если достигнут лимит — закрываем запрос
-    if request.responses_count >= request.max_responses:
-        request.status = 'closed'
-    
     db.commit()
+    db.refresh(response)
     
-    # TODO: Здесь можно создать уведомление для автора запроса
-    # или отправить сообщение в Telegram с контактом responder
+    # TODO: Отправить уведомление автору запроса (post-MVP)
     
-    return {
-        "success": True,
-        "message": "Отклик отправлен! Автор получил уведомление.",
-        "request_status": request.status
-    }
+    return response
+
+
+
+def get_request_responses(db: Session, request_id: int, user_id: int) -> List[models.RequestResponse]:
+    """Получить отклики на мой запрос"""
+    request = db.query(models.Request).filter(
+        models.Request.id == request_id,
+        models.Request.author_id == user_id
+    ).first()
+    
+    if not request:
+        raise ValueError("Запрос не найден или нет прав")
+    
+    responses = db.query(models.RequestResponse).options(
+        joinedload(models.RequestResponse.author)
+    ).filter(
+        models.RequestResponse.request_id == request_id
+    ).order_by(models.RequestResponse.created_at.desc()).all()
+    
+    return responses
+
+
+
+def delete_response(db: Session, response_id: int, user_id: int) -> bool:
+    """Удалить отклик (только автор отклика)"""
+    response = db.query(models.RequestResponse).filter(
+        models.RequestResponse.id == response_id,
+        models.RequestResponse.user_id == user_id
+    ).first()
+    
+    if not response:
+        raise ValueError("Отклик не найден или нет прав")
+    
+    # Уменьшить счётчик в запросе
+    request = db.query(models.Request).filter(models.Request.id == response.request_id).first()
+    if request:
+        request.responses_count = max(0, request.responses_count - 1)
+    
+    db.delete(response)
+    db.commit()
+    return True
+
 
 
 def auto_expire_requests(db: Session):
@@ -682,6 +788,7 @@ def auto_expire_requests(db: Session):
     return len(expired)
 
 
+
 def auto_delete_expired_posts(db: Session):
     """Cron job: удалить истёкшие посты (lost_found)"""
     expired = db.query(models.Post).filter(
@@ -694,6 +801,7 @@ def auto_delete_expired_posts(db: Session):
     
     db.commit()
     return len(expired)
+
 
 
 def get_responses_count(db: Session, user_id: int, category: Optional[str] = None) -> int:
@@ -712,7 +820,9 @@ def get_responses_count(db: Session, user_id: int, category: Optional[str] = Non
     return result if result else 0
 
 
+
 # ===== DATING CRUD =====
+
 
 def get_dating_feed(
     db: Session,
@@ -770,6 +880,29 @@ def get_dating_feed(
     )
     
     return query.offset(offset).limit(limit).all()
+
+
+
+def get_active_requests(
+    db: Session,
+    category: str,
+    limit: int = 20,
+    offset: int = 0
+) -> List[models.Request]:
+    """Получить активные запросы категории"""
+    return (
+        db.query(models.Request)
+        .options(joinedload(models.Request.author))
+        .filter(
+            models.Request.category == category,
+            models.Request.status == 'active',
+            models.Request.expires_at > datetime.utcnow()
+        )
+        .order_by(models.Request.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
 
 def create_like(db: Session, liker_id: int, liked_id: int) -> Dict:
@@ -833,6 +966,7 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> Dict:
     return {"success": True, "is_match": False}
 
 
+
 def get_who_liked_me(
     db: Session,
     user_id: int,
@@ -862,6 +996,7 @@ def get_who_liked_me(
     )
     
     return likers
+
 
 
 def get_my_matches(
@@ -902,6 +1037,7 @@ def get_my_matches(
     return result
 
 
+
 def get_dating_stats(db: Session, user_id: int) -> Dict:
     """
     Получить статистику знакомств.
@@ -932,14 +1068,11 @@ def get_dating_stats(db: Session, user_id: int) -> Dict:
         .scalar()
     ) or 0
     
-    # Кол-во откликов на мои requests
-    responses_count = get_responses_count(db, user_id)
-    
     return {
         'likes_count': likes_count,
-        'matches_count': matches_count,
-        'responses_count': responses_count
+        'matches_count': matches_count
     }
+
 
 
 def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optional[models.User]:

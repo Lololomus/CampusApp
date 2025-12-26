@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import PostCard from './PostCard';
+import RequestsFeed from './requests/RequestsFeed';
 import { getPosts } from '../api';
 import { useStore } from '../store';
 import PostCardSkeleton from './PostCardSkeleton';
@@ -9,7 +10,17 @@ function Feed() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('all');
-  const { feedMode, setViewPostId, viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost } = useStore();
+  
+  const { 
+    feedMode, 
+    feedSubTab, 
+    setFeedSubTab,
+    setViewPostId, 
+    viewPostId, 
+    updatedPostId, 
+    getUpdatedPost, 
+    clearUpdatedPost
+  } = useStore();
 
   const handleLikeUpdate = useCallback((postId, updates) => {
     setPosts(prevPosts => {
@@ -35,9 +46,12 @@ function Feed() {
     }
   }, [activeCategory]);
 
+  // Загружаем посты только для таба "Посты"
   useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+    if (feedSubTab === 'posts') {
+      loadPosts();
+    }
+  }, [feedSubTab, loadPosts]);
 
   useEffect(() => {
     if (!viewPostId && updatedPostId) {
@@ -63,6 +77,15 @@ function Feed() {
     setActiveCategory(category);
   };
 
+  // Категории для постов
+  const postCategories = [
+    { id: 'all', label: 'Все', emoji: '' },
+    { id: 'news', label: 'Новости', emoji: '📰' },
+    { id: 'events', label: 'События', emoji: '🎉' },
+    { id: 'confessions', label: 'Признания', emoji: '💭' },
+    { id: 'lost_found', label: 'Находки', emoji: '🔍' },
+  ];
+
   return (
     <div style={styles.container}>
       {/* Заголовок */}
@@ -71,64 +94,84 @@ function Feed() {
         <p style={styles.subtitle}>Студенческая соцсеть</p>
       </div>
 
-      {/* Табы категорий */}
-      <div style={styles.tabs}>
-        <Tab 
-          label="Все" 
-          active={activeCategory === 'all'}
-          onClick={() => handleCategoryChange('all')}
+      {/* Табы Посты/Запросы */}
+      <div style={styles.mainTabs}>
+        <MainTab 
+          label="Посты" 
+          active={feedSubTab === 'posts'}
+          onClick={() => setFeedSubTab('posts')}
         />
-        <Tab 
-          label="📰 Новости" 
-          active={activeCategory === 'news'}
-          onClick={() => handleCategoryChange('news')}
-        />
-        <Tab 
-          label="🎉 События" 
-          active={activeCategory === 'events'}
-          onClick={() => handleCategoryChange('events')}
-        />
-        <Tab 
-          label="💭 Признания" 
-          active={activeCategory === 'confessions'}
-          onClick={() => handleCategoryChange('confessions')}
-        />
-        <Tab 
-          label="🔍 Находки" 
-          active={activeCategory === 'lost_found'}
-          onClick={() => handleCategoryChange('lost_found')}
+        <MainTab 
+          label="Запросы" 
+          active={feedSubTab === 'requests'}
+          onClick={() => setFeedSubTab('requests')}
         />
       </div>
 
-      {/* Список постов */}
+      {/* Табы категорий (только для постов) */}
+      {feedSubTab === 'posts' && (
+        <div style={styles.tabs}>
+          {postCategories.map(cat => (
+            <Tab 
+              key={cat.id}
+              label={`${cat.emoji} ${cat.label}`.trim()} 
+              active={activeCategory === cat.id}
+              onClick={() => handleCategoryChange(cat.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Список постов/запросов */}
       <div style={styles.posts}>
-        {loading && (
+        {feedSubTab === 'posts' ? (
           <>
-            <PostCardSkeleton />
-            <PostCardSkeleton />
-            <PostCardSkeleton />
-            <PostCardSkeleton />
-            <PostCardSkeleton />
+            {loading && (
+              <>
+                <PostCardSkeleton />
+                <PostCardSkeleton />
+                <PostCardSkeleton />
+                <PostCardSkeleton />
+                <PostCardSkeleton />
+              </>
+            )}
+
+            {!loading && posts.length === 0 && (
+              <div style={styles.empty}>
+                <p>Пока нет постов</p>
+                <p style={styles.emptyHint}>Будь первым!</p>
+              </div>
+            )}
+
+            {!loading && posts.length > 0 && posts.map((post) => (
+              <PostCard 
+                key={`${post.id}-${post.is_liked}-${post.likes_count}`}
+                post={post} 
+                onClick={handlePostClick}
+                onLikeUpdate={handleLikeUpdate}
+              />
+            ))}
           </>
+        ) : (
+          <RequestsFeed />
         )}
-
-        {!loading && posts.length === 0 && (
-          <div style={styles.empty}>
-            <p>Пока нет постов</p>
-            <p style={styles.emptyHint}>Будь первым!</p>
-          </div>
-        )}
-
-        {!loading && posts.length > 0 && posts.map((post) => (
-          <PostCard 
-            key={`${post.id}-${post.is_liked}-${post.likes_count}`}
-            post={post} 
-            onClick={handlePostClick}
-            onLikeUpdate={handleLikeUpdate}
-          />
-        ))}
       </div>
     </div>
+  );
+}
+
+function MainTab({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...styles.mainTab,
+        borderBottom: active ? `2px solid ${theme.colors.primary}` : '2px solid transparent',
+        color: active ? theme.colors.primary : theme.colors.textTertiary,
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -168,6 +211,20 @@ const styles = {
     fontSize: theme.fontSize.base,
     color: theme.colors.textTertiary,
     margin: `${theme.spacing.xs}px 0 0`,
+  },
+  mainTabs: {
+    display: 'flex',
+    borderBottom: `1px solid ${theme.colors.border}`,
+  },
+  mainTab: {
+    flex: 1,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    border: 'none',
+    background: 'transparent',
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.semibold,
+    cursor: 'pointer',
+    transition: theme.transitions.normal,
   },
   tabs: {
     display: 'flex',

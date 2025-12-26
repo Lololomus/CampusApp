@@ -1,17 +1,17 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Heart, Settings } from 'lucide-react';
 import { useStore } from '../../store';
-import { getDatingFeed, getPeopleWithRequests, likeUser, getDatingStats } from '../../api';
-import ModeSelector from './ModeSelector';
+import { getDatingFeed, likeUser, getDatingStats } from '../../api';
 import ProfileCard from './ProfileCard';
 import LikesListModal from './LikesListModal';
 import MatchModal from './MatchModal';
-import ResponseModal from './ResponseModal';
 import ProfileCardSkeleton from './ProfileCardSkeleton';
 import theme from '../../theme';
 
+
 // ===== 🎭 MOCK DATA ДЛЯ РАЗРАБОТКИ =====
 const USE_MOCK_DATA = true;
+
 
 const MOCK_DATING_PROFILES = [
   {
@@ -120,184 +120,15 @@ const MOCK_DATING_PROFILES = [
   }
 ];
 
-const MOCK_STUDY_PROFILES = [
-  {
-    id: 1,
-    telegram_id: 111111,
-    name: 'Алексей',
-    age: 22,
-    bio: 'Футбол и программирование ⚽',
-    university: 'МГУ',
-    institute: 'МСА',
-    course: 2,
-    interests: ['python', 'react'],
-    active_request: {
-      id: 101,
-      title: 'Помощь с React Hooks',
-      body: 'Не могу разобраться с useEffect и useCallback. Кто может объяснить простым языком?',
-      category: 'study',
-      tags: ['react', 'hooks', 'javascript'],
-      likes: 5,
-      views: 23
-    }
-  },
-  {
-    id: 2,
-    telegram_id: 333333,
-    name: 'Иван',
-    age: 23,
-    bio: 'Machine Learning энтузиаст 🤖',
-    university: 'МГУ',
-    institute: 'ФизТех',
-    course: 2,
-    interests: ['ML', 'python'],
-    active_request: {
-      id: 102,
-      title: 'Подготовка к LeetCode',
-      body: 'Готовлюсь к собеседованиям в FAANG. Ищу напарника для мотивации!',
-      category: 'study',
-      tags: ['leetcode', 'python', 'algorithms'],
-      likes: 12,
-      views: 45
-    }
-  },
-  {
-    id: 3,
-    telegram_id: 666666,
-    name: 'Елена',
-    age: 22,
-    bio: 'Аниме и разработка игр 🎮',
-    university: 'МГУ',
-    institute: 'ФизТех',
-    course: 3,
-    interests: ['gamedev', 'python'],
-    active_request: {
-      id: 103,
-      title: 'Курсовая по ML',
-      body: 'Делаю проект по распознаванию образов. Нужен сокомандник!',
-      category: 'study',
-      tags: ['ML', 'python', 'нейросети'],
-      likes: 8,
-      views: 34
-    }
-  }
-];
-
-const MOCK_HELP_PROFILES = [
-  {
-    id: 2,
-    telegram_id: 222222,
-    name: 'Мария',
-    age: 21,
-    bio: 'Дизайн и фотография 📸',
-    university: 'МГУ',
-    institute: 'МСА',
-    course: 3,
-    interests: ['design', 'фото'],
-    active_request: {
-      id: 201,
-      title: 'Дизайн для проекта',
-      body: 'Сделаю дизайн для вашего проекта БЕСПЛАТНО (для портфолио). UI/UX, лендинги.',
-      category: 'help',
-      tags: ['дизайн', 'UI/UX', 'бесплатно'],
-      likes: 15,
-      views: 67
-    }
-  },
-  {
-    id: 4,
-    telegram_id: 999991,
-    name: 'Дмитрий',
-    age: 22,
-    bio: 'React разработчик ⚛️',
-    university: 'МГУ',
-    institute: 'МСА',
-    course: 3,
-    interests: ['react', 'frontend'],
-    active_request: {
-      id: 202,
-      title: 'Репетитор по программированию',
-      body: 'Python/JS/React. Помогу разобраться с курсовыми и учебными проектами.',
-      category: 'help',
-      tags: ['python', 'react', 'репетитор'],
-      likes: 9,
-      views: 38
-    }
-  }
-];
-
-const MOCK_HANGOUT_PROFILES = [
-  {
-    id: 1,
-    telegram_id: 111111,
-    name: 'Алексей',
-    age: 22,
-    bio: 'Футбол и программирование ⚽',
-    university: 'МГУ',
-    institute: 'МСА',
-    course: 2,
-    interests: ['футбол', 'спорт'],
-    active_request: {
-      id: 301,
-      title: 'Футбол в воскресенье',
-      body: 'Собираем команду на стадион МГУ. Нужно 4 человека! Уровень любой.',
-      category: 'hangout',
-      tags: ['футбол', 'спорт'],
-      likes: 18,
-      views: 89
-    }
-  },
-  {
-    id: 7,
-    telegram_id: 777777,
-    name: 'Максим',
-    age: 21,
-    bio: 'Рок-музыкант и программист 🎸',
-    university: 'МГУ',
-    institute: 'МСА',
-    course: 2,
-    interests: ['music', 'rock'],
-    active_request: {
-      id: 302,
-      title: 'Настолки: Манчкин',
-      body: 'Играем в Манчкин сегодня вечером в общаге. Приходите, весело!',
-      category: 'hangout',
-      tags: ['настолки', 'игры'],
-      likes: 7,
-      views: 42
-    }
-  },
-  {
-    id: 8,
-    telegram_id: 888888,
-    name: 'София',
-    age: 23,
-    bio: 'Стартапер и бизнес-леди 💼',
-    university: 'МГУ',
-    institute: 'ФизТех',
-    course: 4,
-    interests: ['startup', 'бизнес'],
-    active_request: {
-      id: 303,
-      title: 'Стартап митап',
-      body: 'Обсуждаем бизнес-идеи и ищем сооснователей. Zoom встреча в пятницу.',
-      category: 'hangout',
-      tags: ['стартап', 'бизнес'],
-      likes: 24,
-      views: 102
-    }
-  }
-];
 
 const MOCK_STATS = {
   likes_count: 3,
-  matches_count: 1,
-  responses_count: 2
+  matches_count: 1
 };
+
 
 function DatingFeed() {
   const {
-    datingMode,
     currentProfile,
     profilesQueue,
     setCurrentProfile,
@@ -305,15 +136,13 @@ function DatingFeed() {
     removeCurrentProfile,
     clearProfilesQueue,
     likesCount,
-    responsesCount,
     updateDatingStats,
     setShowLikesModal,
     setShowMatchModal,
-    setShowResponseModal,
     showLikesModal,
     showMatchModal,
-    showResponseModal,
   } = useStore();
+
 
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -322,6 +151,7 @@ function DatingFeed() {
   
   const isLoadingRef = useRef(false);
   const offset = useRef(0);
+
 
   const loadProfiles = async (reset = false) => {
     if (isLoadingRef.current) return;
@@ -340,26 +170,11 @@ function DatingFeed() {
         console.log('🎭 Используем MOCK данные');
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        if (datingMode === 'dating') {
-          console.log('🎭 Загружаем MOCK_DATING_PROFILES:', MOCK_DATING_PROFILES);
-          profiles = MOCK_DATING_PROFILES;
-        } else if (datingMode === 'study') {
-          profiles = MOCK_STUDY_PROFILES;
-        } else if (datingMode === 'help') {
-          profiles = MOCK_HELP_PROFILES;
-        } else if (datingMode === 'hangout') {
-          profiles = MOCK_HANGOUT_PROFILES;
-        }
-
+        console.log('🎭 Загружаем MOCK_DATING_PROFILES:', MOCK_DATING_PROFILES);
+        profiles = MOCK_DATING_PROFILES;
         setHasMore(false);
       } else {
-        if (datingMode === 'dating') {
-          profiles = await getDatingFeed(10, offset.current);
-        } else {
-          const response = await getPeopleWithRequests(datingMode, 10, offset.current);
-          profiles = response.items || [];
-          setHasMore(response.has_more);
-        }
+        profiles = await getDatingFeed(10, offset.current);
       }
 
       console.log('✅ Загружено профилей:', profiles.length);
@@ -388,6 +203,7 @@ function DatingFeed() {
     }
   };
 
+
   const loadStats = async () => {
     try {
       if (USE_MOCK_DATA) {
@@ -403,6 +219,7 @@ function DatingFeed() {
     }
   };
 
+
   useEffect(() => {
     clearProfilesQueue();
     setCurrentProfile(null);
@@ -414,7 +231,8 @@ function DatingFeed() {
     return () => {
       isLoadingRef.current = false;
     };
-  }, [datingMode]);
+  }, []);
+
 
   useEffect(() => {
     if (
@@ -428,6 +246,7 @@ function DatingFeed() {
       loadProfiles();
     }
   }, [profilesQueue.length]);
+
 
   const handleSkip = () => {
     if (isAnimating) return;
@@ -446,93 +265,84 @@ function DatingFeed() {
     }, 400);
   };
 
-  const handleAction = async () => {
+
+  const handleLike = async () => {
     if (!currentProfile || isAnimating) return;
 
     if (window.Telegram?.WebApp?.HapticFeedback) {
       window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
     }
 
-    if (datingMode === 'dating') {
-      try {
-        setSwipeDirection('right');
-        setIsAnimating(true);
+    try {
+      setSwipeDirection('right');
+      setIsAnimating(true);
 
-        if (USE_MOCK_DATA) {
-          console.log('🎭 Моковый лайк:', currentProfile.name);
-          await new Promise(resolve => setTimeout(resolve, 300));
-          const isMatch = Math.random() < 0.2;
+      if (USE_MOCK_DATA) {
+        console.log('🎭 Моковый лайк:', currentProfile.name);
+        await new Promise(resolve => setTimeout(resolve, 300));
+        const isMatch = Math.random() < 0.2;
 
-          setTimeout(() => {
-            removeCurrentProfile();
-            setIsAnimating(false);
-            setSwipeDirection(null);
+        setTimeout(() => {
+          removeCurrentProfile();
+          setIsAnimating(false);
+          setSwipeDirection(null);
 
-            if (isMatch) {
-              if (window.Telegram?.WebApp?.HapticFeedback) {
-                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-              }
-              setShowMatchModal(true, currentProfile);
+          if (isMatch) {
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+              window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
             }
-          }, 400);
-        } else {
-          const result = await likeUser(currentProfile.id);
+            setShowMatchModal(true, currentProfile);
+          }
+        }, 400);
+      } else {
+        const result = await likeUser(currentProfile.id);
 
-          setTimeout(() => {
-            removeCurrentProfile();
-            setIsAnimating(false);
-            setSwipeDirection(null);
+        setTimeout(() => {
+          removeCurrentProfile();
+          setIsAnimating(false);
+          setSwipeDirection(null);
 
-            if (result.is_match) {
-              if (window.Telegram?.WebApp?.HapticFeedback) {
-                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-              }
-              setShowMatchModal(true, result.matched_user);
+          if (result.is_match) {
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+              window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
             }
-          }, 400);
-        }
-      } catch (error) {
-        console.error('Ошибка лайка:', error);
-        setIsAnimating(false);
-        setSwipeDirection(null);
+            setShowMatchModal(true, result.matched_user);
+          }
+        }, 400);
       }
-    } else {
-      setShowResponseModal(true);
+    } catch (error) {
+      console.error('Ошибка лайка:', error);
+      setIsAnimating(false);
+      setSwipeDirection(null);
     }
   };
+
 
   const renderHeader = () => (
     <div style={styles.header}>
       <button onClick={() => setShowLikesModal(true)} style={styles.headerButton}>
-        {datingMode === 'dating' ? (
-          <>
-            <Heart size={20} />
-            {likesCount > 0 && <span style={styles.badge}>{likesCount}</span>}
-          </>
-        ) : (
-          <>
-            <span style={{ fontSize: 20 }}>📬</span>
-            {responsesCount > 0 && <span style={styles.badge}>{responsesCount}</span>}
-          </>
-        )}
+        <Heart size={20} />
+        {likesCount > 0 && <span style={styles.badge}>{likesCount}</span>}
       </button>
-      <ModeSelector />
+      <h1 style={styles.headerTitle}>Знакомства</h1>
       <button style={styles.headerButton} onClick={() => console.log('Открыть фильтры')}>
         <Settings size={20} />
       </button>
     </div>
   );
 
+
   if (loading && !currentProfile) {
     return (
       <div style={styles.container}>
         {renderHeader()}
         <div style={styles.cardContainer}>
-          <ProfileCardSkeleton mode={datingMode} />
+          <ProfileCardSkeleton />
         </div>
       </div>
     );
   }
+
 
   if (!currentProfile && !hasMore) {
     return (
@@ -541,15 +351,14 @@ function DatingFeed() {
         <div style={styles.content}>
           <div style={styles.emptyState}>
             <div style={styles.emptyEmoji}>😴</div>
-            <div style={styles.emptyTitle}>
-              {datingMode === 'dating' ? 'Ты посмотрел всех' : 'Нет запросов'}
-            </div>
+            <div style={styles.emptyTitle}>Ты посмотрел всех</div>
             <div style={styles.emptySubtitle}>Заходи позже!</div>
           </div>
         </div>
       </div>
     );
   }
+
 
   return (
     <div style={styles.container}>
@@ -559,9 +368,8 @@ function DatingFeed() {
         {currentProfile && (
           <ProfileCard
             profile={currentProfile}
-            mode={datingMode}
             onSkip={handleSkip}
-            onAction={handleAction}
+            onAction={handleLike}
             isAnimating={isAnimating}
             swipeDirection={swipeDirection}
           />
@@ -588,7 +396,7 @@ function DatingFeed() {
           <span style={styles.actionIcon}>✕</span>
         </button>
         <button
-          onClick={handleAction}
+          onClick={handleLike}
           style={{
             ...styles.actionButton,
             background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -603,16 +411,16 @@ function DatingFeed() {
             e.currentTarget.style.transform = 'scale(1)';
           }}
         >
-          <span style={styles.actionIcon}>{datingMode === 'dating' ? '💜' : '📝'}</span>
+          <span style={styles.actionIcon}>💜</span>
         </button>
       </div>
 
       {showLikesModal && <LikesListModal />}
       {showMatchModal && <MatchModal />}
-      {showResponseModal && <ResponseModal profile={currentProfile} />}
     </div>
   );
 }
+
 
 const styles = {
   container: {
@@ -646,6 +454,12 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
+  },
+  headerTitle: {
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    margin: 0,
   },
   badge: {
     position: 'absolute',
@@ -720,5 +534,6 @@ const styles = {
     fontSize: theme.fontSize.base,
   },
 };
+
 
 export default DatingFeed;

@@ -283,6 +283,7 @@ export async function updateComment(commentId, text) {
     throw error;
   }
 }
+
 export async function reportComment(commentId, reason, description = null) {
   try {
     const telegram_id = getTelegramId();
@@ -300,15 +301,15 @@ export async function reportComment(commentId, reason, description = null) {
   }
 }
 
-// ===== REQUESTS (НОВОЕ) =====
+// ===== REQUESTS (ОБНОВЛЕНО) =====
 
 /**
- * Создать запрос (для карточек dating)
+ * Создать запрос
  */
 export async function createRequest(requestData) {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.post('/requests/create', requestData, {
+    const response = await api.post('/api/requests/create', requestData, {
       params: { telegram_id }
     });
     return response.data;
@@ -319,17 +320,75 @@ export async function createRequest(requestData) {
 }
 
 /**
- * Получить ленту запросов категории
+ * Получить ленту запросов (с умной сортировкой)
+ * category: 'study' | 'help' | 'hangout' | 'all' | null
  */
-export async function getActiveRequests(category, limit = 20, offset = 0) {
+export async function getRequestsFeed(category = null, limit = 20, offset = 0) {
   try {
-    const response = await api.get('/requests/feed', {
-      params: { category, limit, offset }
-    });
+    const telegram_id = getTelegramId();
+    const params = { limit, offset };
+    
+    if (telegram_id) {
+      params.telegram_id = telegram_id;
+    }
+    
+    if (category && category !== 'all') {
+      params.category = category;
+    }
+    
+    const response = await api.get('/api/requests/feed', { params });
     return response.data; // { items: [], total, has_more }
   } catch (error) {
     console.error('Ошибка получения запросов:', error);
     return { items: [], total: 0, has_more: false };
+  }
+}
+
+/**
+ * Получить запрос по ID
+ */
+export async function getRequestById(requestId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get(`/api/requests/${requestId}`, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения запроса:', error);
+    throw error;
+  }
+}
+
+/**
+ * Обновить запрос
+ */
+export async function updateRequest(requestId, data) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.put(`/api/requests/${requestId}`, data, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка обновления запроса:', error);
+    throw error;
+  }
+}
+
+/**
+ * Удалить запрос
+ */
+export async function deleteRequest(requestId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.delete(`/api/requests/${requestId}`, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка удаления запроса:', error);
+    throw error;
   }
 }
 
@@ -339,7 +398,7 @@ export async function getActiveRequests(category, limit = 20, offset = 0) {
 export async function getMyRequests() {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.get('/requests/my', {
+    const response = await api.get('/api/requests/my/list', {
       params: { telegram_id }
     });
     return response.data;
@@ -350,35 +409,52 @@ export async function getMyRequests() {
 }
 
 /**
- * Закрыть запрос
- */
-export async function closeRequest(requestId) {
-  try {
-    const telegram_id = getTelegramId();
-    const response = await api.patch(`/requests/${requestId}/close`, null, {
-      params: { telegram_id }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Ошибка закрытия запроса:', error);
-    throw error;
-  }
-}
-
-/**
  * Откликнуться на запрос
  */
-export async function respondToRequest(requestId, message) {
+export async function respondToRequest(requestId, message = null, telegram_contact = null) {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.post(`/requests/${requestId}/respond`, {
-      message: message
+    const response = await api.post(`/api/requests/${requestId}/respond`, {
+      message: message,
+      telegram_contact: telegram_contact
     }, {
       params: { telegram_id }
     });
     return response.data;
   } catch (error) {
     console.error('Ошибка отклика на запрос:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получить отклики на мой запрос (только для автора)
+ */
+export async function getRequestResponses(requestId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get(`/api/requests/${requestId}/responses`, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения откликов:', error);
+    throw error;
+  }
+}
+
+/**
+ * Удалить отклик (только свой)
+ */
+export async function deleteResponse(responseId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.delete(`/api/responses/${responseId}`, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка удаления отклика:', error);
     throw error;
   }
 }
@@ -401,25 +477,6 @@ export async function getDatingFeed(limit = 20, offset = 0, filters = {}) {
 
   const response = await fetch(`${API_URL}/dating/feed?${params}`);
   if (!response.ok) throw new Error('Failed to fetch dating feed');
-  return response.json();
-}
-
-/**
- * Получить людей с активными ЗАПРОСАМИ категории (ОБНОВЛЕНО!)
- */
-export async function getPeopleWithRequests(category, limit = 20, offset = 0, filters = {}) {
-  const params = new URLSearchParams({
-    telegram_id: getTelegramId(),
-    category,
-    limit: limit.toString(),
-    offset: offset.toString(),
-  });
-  
-  if (filters.university) params.append('university', filters.university);
-  if (filters.institute) params.append('institute', filters.institute);
-
-  const response = await fetch(`${API_URL}/dating/people?${params}`);
-  if (!response.ok) throw new Error('Failed to fetch people with requests');
   return response.json();
 }
 
@@ -452,7 +509,7 @@ export async function getWhoLikedMe(limit = 20, offset = 0) {
 }
 
 /**
- * Получить мои матчи
+ * Получить мои мэтчи
  */
 export async function getMyMatches(limit = 20, offset = 0) {
   const params = new URLSearchParams({

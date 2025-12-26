@@ -6,11 +6,13 @@ from app import models, schemas, crud
 from app.database import get_db, init_db
 import json
 
+
 app = FastAPI(
     title="Campus App API",
     description="Backend для социальной платформы университета",
     version="2.0.0"
 )
+
 
 # CORS
 app.add_middleware(
@@ -22,6 +24,7 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+
 # Startup
 @app.on_event("startup")
 def startup_event():
@@ -29,16 +32,20 @@ def startup_event():
     init_db()
     print("✅ База данных готова!")
 
+
 @app.get("/")
 def root():
     return {"message": "Campus App API работает!", "version": "2.0.0"}
+
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
 
+
 # ==================== AUTH ENDPOINTS ====================
+
 
 @app.post("/auth/telegram", response_model=schemas.UserResponse)
 def auth_telegram(telegram_id: int = Query(...), db: Session = Depends(get_db)):
@@ -47,6 +54,7 @@ def auth_telegram(telegram_id: int = Query(...), db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     return user
+
 
 
 @app.post("/auth/register", response_model=schemas.UserResponse)
@@ -58,7 +66,9 @@ def register_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
     return crud.create_user(db, user_data)
 
 
+
 # ==================== USER ENDPOINTS ====================
+
 
 @app.get("/users/me", response_model=schemas.UserResponse)
 def get_current_user(telegram_id: int = Query(...), db: Session = Depends(get_db)):
@@ -67,6 +77,7 @@ def get_current_user(telegram_id: int = Query(...), db: Session = Depends(get_db
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     return user
+
 
 
 @app.patch("/users/me", response_model=schemas.UserResponse)
@@ -105,6 +116,7 @@ def update_current_user(
         db.refresh(updated_user)
     
     return updated_user
+
 
 
 @app.get("/users/{user_id}/posts", response_model=List[schemas.PostResponse])
@@ -170,6 +182,7 @@ def get_user_posts_endpoint(
     return result
 
 
+
 @app.get("/users/{user_id}/stats")
 def get_user_stats(user_id: int, db: Session = Depends(get_db)):
     """Получить статистику пользователя"""
@@ -183,7 +196,9 @@ def get_user_stats(user_id: int, db: Session = Depends(get_db)):
     }
 
 
+
 # ==================== POST ENDPOINTS (ОБНОВЛЕНЫ) ====================
+
 
 @app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
 def get_posts_feed(
@@ -247,6 +262,7 @@ def get_posts_feed(
     }
 
 
+
 @app.post("/posts/create", response_model=schemas.PostResponse)
 def create_post_endpoint(
     telegram_id: int = Query(...),
@@ -299,6 +315,7 @@ def create_post_endpoint(
         "created_at": post.created_at,
         "updated_at": post.updated_at
     }
+
 
 
 @app.get("/posts/{postid}", response_model=schemas.PostResponse)
@@ -358,6 +375,7 @@ def get_post_endpoint(
     }
 
 
+
 @app.delete("/posts/{post_id}")
 def delete_post_endpoint(
     post_id: int,
@@ -381,6 +399,7 @@ def delete_post_endpoint(
         raise HTTPException(status_code=500, detail="Ошибка удаления")
     
     return {"success": True}
+
 
 @app.patch("/posts/{post_id}", response_model=schemas.PostResponse)
 def update_post_endpoint(
@@ -445,6 +464,7 @@ def update_post_endpoint(
         "updated_at": updated_post.updated_at
     }
 
+
 @app.post("/posts/{post_id}/like")
 def toggle_post_like_endpoint(
     post_id: int,
@@ -460,7 +480,9 @@ def toggle_post_like_endpoint(
     return result
 
 
+
 # ==================== COMMENT ENDPOINTS (ОБНОВЛЕНЫ) ====================
+
 
 @app.get("/posts/{post_id}/comments", response_model=schemas.CommentsFeedResponse)
 def get_post_comments_endpoint(
@@ -496,6 +518,7 @@ def get_post_comments_endpoint(
             }
             author_id_data = comment.author_id
 
+
         else:
             if comment.author:
                 author_data = {
@@ -525,6 +548,7 @@ def get_post_comments_endpoint(
         result.append(comment_dict)
     
     return {"items": result, "total": len(result)}
+
 
 
 @app.post("/posts/{post_id}/comments", response_model=schemas.CommentResponse)
@@ -569,6 +593,7 @@ def create_comment_endpoint(
     }
 
 
+
 @app.delete("/comments/{comment_id}")
 def delete_comment_endpoint(
     comment_id: int,
@@ -582,6 +607,7 @@ def delete_comment_endpoint(
     
     result = crud.delete_comment(db, comment_id, user.id)
     return result
+
 
 @app.patch("/comments/{comment_id}", response_model=schemas.CommentResponse)
 def update_comment_endpoint(
@@ -625,6 +651,7 @@ def update_comment_endpoint(
         "created_at": comment.created_at
     }
 
+
 @app.post("/comments/{comment_id}/like")
 def toggle_comment_like_endpoint(
     comment_id: int,
@@ -640,80 +667,221 @@ def toggle_comment_like_endpoint(
     return result
 
 
-# ==================== REQUEST ENDPOINTS (НОВЫЕ) ====================
 
-@app.post("/requests/create", response_model=schemas.RequestResponse)
+# ==================== REQUEST ENDPOINTS (ОБНОВЛЕНО) ====================
+
+
+@app.post("/api/requests/create", response_model=schemas.RequestResponse)
 def create_request_endpoint(
     telegram_id: int = Query(...),
     request_data: schemas.RequestCreate = Body(...),
     db: Session = Depends(get_db)
 ):
-    """Создать запрос (для карточек dating)"""
+    """Создать запрос"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    request = crud.create_request(db, request_data, user.id)
+    try:
+        request = crud.create_request(db, request_data, user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
-    tags = json.loads(request.tags) if request.tags else []
+    # Формируем автора
+    author_data = schemas.RequestAuthor(
+        id=user.id,
+        name=user.name,
+        course=user.course,
+        university=user.university,
+        institute=user.institute,
+        username=user.username
+    )
     
-    return {
-        "id": request.id,
-        "author_id": request.author_id,
-        "author": schemas.UserShort.from_orm(user),
-        "category": request.category,
-        "title": request.title,
-        "body": request.body,
-        "tags": tags,
-        "expires_at": request.expires_at,
-        "max_responses": request.max_responses,
-        "responses_count": request.responses_count,
-        "views_count": request.views_count,
-        "status": request.status,
-        "created_at": request.created_at
-    }
+    return schemas.RequestResponse(
+        id=request.id,
+        category=request.category,
+        title=request.title,
+        body=request.body,
+        tags=json.loads(request.tags) if request.tags else [],
+        expires_at=request.expires_at,
+        status=request.status,
+        views_count=request.views_count,
+        responses_count=0,
+        created_at=request.created_at,
+        author=author_data,
+        is_author=True,
+        has_responded=False
+    )
 
 
-@app.get("/requests/feed", response_model=schemas.RequestsFeedResponse)
-def get_requests_feed(
-    category: str = Query(..., regex="^(study|help|hangout)$"),
+
+@app.get("/api/requests/feed", response_model=schemas.RequestsFeedResponse)
+def get_requests_feed_endpoint(
+    category: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
+    telegram_id: Optional[int] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Получить ленту запросов категории"""
-    requests = crud.get_active_requests(db, category, limit, offset)
+    """Получить ленту запросов (с умной сортировкой)"""
+    # Определяем current_user_id если авторизован
+    current_user_id = None
+    if telegram_id:
+        user = crud.get_user_by_telegram_id(db, telegram_id)
+        if user:
+            current_user_id = user.id
     
-    result = []
-    for req in requests:
-        tags = json.loads(req.tags) if req.tags else []
+    # Получаем ленту
+    feed_data = crud.get_requests_feed(db, category, limit, offset, current_user_id)
+    
+    # Формируем ответ
+    items = []
+    for req_dict in feed_data['items']:
+        author_data = schemas.RequestAuthor(
+            id=req_dict['author'].id,
+            name=req_dict['author'].name,
+            course=req_dict['author'].course,
+            university=req_dict['author'].university,
+            institute=req_dict['author'].institute,
+            username=req_dict['author'].username
+        )
         
-        req_dict = {
-            "id": req.id,
-            "author_id": req.author_id,
-            "author": schemas.UserShort.from_orm(req.author) if req.author else None,
-            "category": req.category,
-            "title": req.title,
-            "body": req.body,
-            "tags": tags,
-            "expires_at": req.expires_at,
-            "max_responses": req.max_responses,
-            "responses_count": req.responses_count,
-            "views_count": req.views_count,
-            "status": req.status,
-            "created_at": req.created_at
-        }
-        result.append(req_dict)
+        items.append(schemas.RequestResponse(
+            id=req_dict['id'],
+            category=req_dict['category'],
+            title=req_dict['title'],
+            body=req_dict['body'],
+            tags=req_dict['tags'],
+            expires_at=req_dict['expires_at'],
+            status=req_dict['status'],
+            views_count=req_dict['views_count'],
+            responses_count=req_dict['responses_count'],
+            created_at=req_dict['created_at'],
+            author=author_data,
+            is_author=req_dict['is_author'],
+            has_responded=req_dict['has_responded']
+        ))
     
-    return {
-        "items": result,
-        "total": len(result),
-        "has_more": len(requests) == limit
-    }
+    return schemas.RequestsFeedResponse(
+        items=items,
+        total=feed_data['total'],
+        has_more=feed_data['has_more']
+    )
 
 
-@app.get("/requests/my")
-def get_my_requests(
+
+@app.get("/api/requests/{request_id}", response_model=schemas.RequestResponse)
+def get_request_endpoint(
+    request_id: int,
+    telegram_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Получить запрос по ID"""
+    # Определяем current_user_id
+    current_user_id = None
+    if telegram_id:
+        user = crud.get_user_by_telegram_id(db, telegram_id)
+        if user:
+            current_user_id = user.id
+    
+    request_dict = crud.get_request_by_id(db, request_id, current_user_id)
+    if not request_dict:
+        raise HTTPException(status_code=404, detail="Запрос не найден")
+    
+    # Формируем автора
+    author_data = schemas.RequestAuthor(
+        id=request_dict['author'].id,
+        name=request_dict['author'].name,
+        course=request_dict['author'].course,
+        university=request_dict['author'].university,
+        institute=request_dict['author'].institute,
+        username=request_dict['author'].username
+    )
+    
+    return schemas.RequestResponse(
+        id=request_dict['id'],
+        category=request_dict['category'],
+        title=request_dict['title'],
+        body=request_dict['body'],
+        tags=request_dict['tags'],
+        expires_at=request_dict['expires_at'],
+        status=request_dict['status'],
+        views_count=request_dict['views_count'],
+        responses_count=request_dict['responses_count'],
+        created_at=request_dict['created_at'],
+        author=author_data,
+        is_author=request_dict['is_author'],
+        has_responded=request_dict['has_responded']
+    )
+
+
+
+@app.put("/api/requests/{request_id}", response_model=schemas.RequestResponse)
+def update_request_endpoint(
+    request_id: int,
+    telegram_id: int = Query(...),
+    data: schemas.RequestUpdate = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Обновить запрос"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    try:
+        request = crud.update_request(db, request_id, user.id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    
+    # Формируем автора
+    author_data = schemas.RequestAuthor(
+        id=user.id,
+        name=user.name,
+        course=user.course,
+        university=user.university,
+        institute=user.institute,
+        username=user.username
+    )
+    
+    return schemas.RequestResponse(
+        id=request.id,
+        category=request.category,
+        title=request.title,
+        body=request.body,
+        tags=json.loads(request.tags) if request.tags else [],
+        expires_at=request.expires_at,
+        status=request.status,
+        views_count=request.views_count,
+        responses_count=len(request.responses) if request.responses else 0,
+        created_at=request.created_at,
+        author=author_data,
+        is_author=True,
+        has_responded=False
+    )
+
+
+
+@app.delete("/api/requests/{request_id}")
+def delete_request_endpoint(
+    request_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Удалить запрос"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    try:
+        crud.delete_request(db, request_id, user.id)
+        return {"success": True}
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+
+@app.get("/api/requests/my/list")
+def get_my_requests_endpoint(
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
@@ -722,52 +890,15 @@ def get_my_requests(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    requests = crud.get_my_requests(db, user.id)
-    
-    result = []
-    for req in requests:
-        tags = json.loads(req.tags) if req.tags else []
-        
-        req_dict = {
-            "id": req.id,
-            "category": req.category,
-            "title": req.title,
-            "body": req.body,
-            "tags": tags,
-            "expires_at": req.expires_at,
-            "max_responses": req.max_responses,
-            "responses_count": req.responses_count,
-            "status": req.status,
-            "created_at": req.created_at
-        }
-        result.append(req_dict)
-    
-    return result
+    return crud.get_my_requests(db, user.id)
 
 
-@app.patch("/requests/{request_id}/close")
-def close_request_endpoint(
+
+@app.post("/api/requests/{request_id}/respond", response_model=schemas.ResponseItem)
+def create_response_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Закрыть запрос"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    success = crud.close_request(db, request_id, user.id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Запрос не найден или нет прав")
-    
-    return {"success": True}
-
-
-@app.post("/requests/{request_id}/respond")
-def respond_to_request_endpoint(
-    request_id: int,
-    telegram_id: int = Query(...),
-    response_data: schemas.ResponseToRequestCreate = Body(...),
+    data: schemas.ResponseCreate = Body(...),
     db: Session = Depends(get_db)
 ):
     """Откликнуться на запрос"""
@@ -775,15 +906,86 @@ def respond_to_request_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    result = crud.respond_to_request(db, request_id, user.id, response_data.message)
+    try:
+        response = crud.create_response(db, request_id, user.id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
+    # Формируем автора
+    author_data = schemas.ResponseAuthor(
+        id=user.id,
+        name=user.name,
+        username=user.username
+    )
+    
+    return schemas.ResponseItem(
+        id=response.id,
+        message=response.message,
+        telegram_contact=response.telegram_contact,
+        created_at=response.created_at,
+        author=author_data
+    )
+
+
+
+@app.get("/api/requests/{request_id}/responses", response_model=List[schemas.ResponseItem])
+def get_responses_endpoint(
+    request_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Получить отклики на мой запрос"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    try:
+        responses = crud.get_request_responses(db, request_id, user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    
+    # Формируем ответ
+    result = []
+    for resp in responses:
+        author_data = schemas.ResponseAuthor(
+            id=resp.author.id,
+            name=resp.author.name,
+            username=resp.author.username
+        )
+        
+        result.append(schemas.ResponseItem(
+            id=resp.id,
+            message=resp.message,
+            telegram_contact=resp.telegram_contact,
+            created_at=resp.created_at,
+            author=author_data
+        ))
     
     return result
 
 
+
+@app.delete("/api/responses/{response_id}")
+def delete_response_endpoint(
+    response_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Удалить отклик"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    try:
+        crud.delete_response(db, response_id, user.id)
+        return {"success": True}
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+
 # ==================== DATING ENDPOINTS ====================
+
 
 @app.get("/dating/feed", response_model=schemas.DatingFeedResponse)
 def get_dating_feed_endpoint(
@@ -831,36 +1033,6 @@ def get_dating_feed_endpoint(
     }
 
 
-@app.get("/dating/people", response_model=schemas.DatingFeedResponse)
-def get_people_with_requests_endpoint(
-    telegram_id: int = Query(...),
-    category: str = Query(..., regex="^(study|help|hangout)$"),
-    limit: int = Query(20, ge=1, le=50),
-    offset: int = Query(0, ge=0),
-    university: Optional[str] = Query(None),
-    institute: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
-):
-    """
-    Получить людей с их активными ЗАПРОСАМИ категории X (для карточек).
-    ЭТО ОБНОВЛЁННАЯ ВЕРСИЯ - использует requests, не posts!
-    """
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    result = crud.get_people_with_requests(
-        db, user.id, category, limit, offset,
-        university=university, institute=institute
-    )
-    
-    return {
-        "items": result["items"],
-        "total": len(result["items"]),
-        "has_more": result["has_more"]
-    }
-
-
 @app.post("/dating/like", response_model=schemas.LikeResult)
 def like_user_endpoint(
     telegram_id: int = Query(...),
@@ -890,6 +1062,7 @@ def like_user_endpoint(
         response["matched_user"] = schemas.UserShort.from_orm(matched_user) if matched_user else None
     
     return response
+
 
 
 @app.get("/dating/likes", response_model=List[schemas.DatingProfile])
@@ -928,6 +1101,7 @@ def get_who_liked_me_endpoint(
     return result
 
 
+
 @app.get("/dating/matches", response_model=List[schemas.MatchResponse])
 def get_my_matches_endpoint(
     telegram_id: int = Query(...),
@@ -955,6 +1129,7 @@ def get_my_matches_endpoint(
     return result
 
 
+
 @app.get("/dating/stats", response_model=schemas.DatingStatsResponse)
 def get_dating_stats_endpoint(
     telegram_id: int = Query(...),
@@ -970,7 +1145,6 @@ def get_dating_stats_endpoint(
     return {
         "likes_count": stats["likes_count"],
         "matches_count": stats["matches_count"],
-        "responses_count": stats["responses_count"]
     }
 
 
@@ -991,7 +1165,9 @@ def update_dating_settings_endpoint(
     return updated_user
 
 
+
 # ==================== DEV ENDPOINTS ====================
+
 
 @app.post("/dev/generate-mock-dating-data")
 def generate_mock_dating_data(

@@ -142,6 +142,33 @@ class Request(Base):
     
     # Отношения
     author = relationship('User', back_populates='requests')
+    responses = relationship('RequestResponse', back_populates='request', cascade='all, delete-orphan')
+
+
+class RequestResponse(Base):
+    """
+    Отклики на запросы (ведут в Telegram чат)
+    """
+    __tablename__ = 'request_responses'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey('requests.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    
+    # Контакт (берётся из профиля User.username)
+    message = Column(String(500), nullable=True)  # optional сообщение
+    telegram_contact = Column(String(255), nullable=True)  # @username
+    
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Отношения
+    request = relationship('Request', back_populates='responses')
+    author = relationship('User')
+    
+    # Ограничения (один пользователь = один отклик на запрос)
+    __table_args__ = (
+        UniqueConstraint('request_id', 'user_id', name='unique_request_response'),
+    )
 
 
 class Comment(Base):

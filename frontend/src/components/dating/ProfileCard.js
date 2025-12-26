@@ -2,10 +2,9 @@ import React from 'react';
 import { MapPin, GraduationCap, Calendar } from 'lucide-react';
 import theme from '../../theme';
 
-function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirection }) {
-  if (!profile) return null;
 
-  const isDatingMode = mode === 'dating';
+function ProfileCard({ profile, onSkip, onAction, isAnimating, swipeDirection }) {
+  if (!profile) return null;
 
   let animationStyle = 'slideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
   
@@ -27,11 +26,11 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
       <style>{keyframes}</style>
       <div style={cardStyle}>
         {/* Аватар */}
-        <div style={isDatingMode ? styles.avatarContainerLarge : styles.avatarContainerSmall}>
+        <div style={styles.avatarContainer}>
           {profile.avatar ? (
             <img src={profile.avatar} alt={profile.name} style={styles.avatarImage} />
           ) : (
-            <div style={isDatingMode ? styles.avatarPlaceholderLarge : styles.avatarPlaceholderSmall}>
+            <div style={styles.avatarPlaceholder}>
               {profile.name?.charAt(0) || '?'}
             </div>
           )}
@@ -67,74 +66,32 @@ function ProfileCard({ profile, mode, onSkip, onAction, isAnimating, swipeDirect
             )}
           </div>
 
-          {/* РЕЖИМ ЗНАКОМСТВА */}
-          {isDatingMode && (
-            <>
-              {profile.bio && (
-                <div style={styles.bioSection}>
-                  <p style={styles.bioText}>{profile.bio}</p>
-                </div>
-              )}
-
-              {profile.interests && profile.interests.length > 0 && (
-                <div style={styles.section}>
-                  <h3 style={styles.sectionTitle}>Интересы</h3>
-                  <div style={styles.tags}>
-                    {profile.interests.map((interest, idx) => (
-                      <span key={idx} style={styles.tag}>
-                        #{interest.trim()}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
+          {/* Био */}
+          {profile.bio && (
+            <div style={styles.bioSection}>
+              <p style={styles.bioText}>{profile.bio}</p>
+            </div>
           )}
 
-          {/* РЕЖИМЫ С ЗАПРОСАМИ */}
-          {!isDatingMode && profile.active_request && (
-            <>
-              <div style={styles.postSection}>
-                <h3 style={styles.postSectionTitle}>
-                  {mode === 'study' && '📚 Ищет помощь'}
-                  {mode === 'help' && '🤝 Нужна помощь'}
-                  {mode === 'hangout' && '🎉 Ищет компанию'}
-                </h3>
-                <div style={styles.postCard}>
-                  <h4 style={styles.postTitle}>{profile.active_request.title}</h4>
-                  <p style={styles.postBody}>{profile.active_request.body}</p>
-                  
-                  {profile.active_request.tags && profile.active_request.tags.length > 0 && (
-                    <div style={styles.tags}>
-                      {profile.active_request.tags.map((tag, idx) => (
-                        <span key={idx} style={styles.tagColored}>
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+          {/* Интересы */}
+          {profile.interests && profile.interests.length > 0 && (
+            <div style={styles.section}>
+              <h3 style={styles.sectionTitle}>Интересы</h3>
+              <div style={styles.tags}>
+                {profile.interests.map((interest, idx) => (
+                  <span key={idx} style={styles.tag}>
+                    #{interest.trim()}
+                  </span>
+                ))}
               </div>
-
-              {profile.interests && profile.interests.length > 0 && (
-                <div style={styles.section}>
-                  <h3 style={styles.sectionTitle}>💡 Может помочь с</h3>
-                  <div style={styles.tags}>
-                    {profile.interests.map((interest, idx) => (
-                      <span key={idx} style={styles.tag}>
-                        #{interest.trim()}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
+            </div>
           )}
         </div>
       </div>
     </>
   );
 }
+
 
 const keyframes = `
   @keyframes slideIn {
@@ -163,6 +120,7 @@ const keyframes = `
   }
 `;
 
+
 const styles = {
   card: {
     width: '100%',
@@ -176,7 +134,7 @@ const styles = {
     position: 'relative',
   },
   
-  avatarContainerLarge: {
+  avatarContainer: {
     width: '100%',
     height: 320,
     background: `linear-gradient(135deg, ${theme.colors.gradientStart} 0%, ${theme.colors.gradientEnd} 100%)`,
@@ -186,7 +144,8 @@ const styles = {
     position: 'relative',
     flexShrink: 0,
   },
-  avatarPlaceholderLarge: {
+  
+  avatarPlaceholder: {
     width: 180,
     height: 180,
     borderRadius: theme.radius.full,
@@ -196,31 +155,6 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 72,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
-    textTransform: 'uppercase',
-  },
-
-  avatarContainerSmall: {
-    width: '100%',
-    height: 180,
-    background: `linear-gradient(135deg, ${theme.colors.gradientStart} 0%, ${theme.colors.gradientEnd} 100%)`,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    flexShrink: 0,
-  },
-  avatarPlaceholderSmall: {
-    width: 100,
-    height: 100,
-    borderRadius: theme.radius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    border: '3px solid rgba(255, 255, 255, 0.3)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 42,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
     textTransform: 'uppercase',
@@ -250,6 +184,7 @@ const styles = {
     alignItems: 'baseline',
     gap: theme.spacing.sm,
   },
+  
   age: {
     fontSize: theme.fontSize.xxl,
     fontWeight: theme.fontWeight.normal,
@@ -261,6 +196,7 @@ const styles = {
     flexDirection: 'column',
     gap: theme.spacing.sm,
   },
+  
   infoItem: {
     display: 'flex',
     alignItems: 'center',
@@ -272,6 +208,7 @@ const styles = {
   bioSection: {
     marginTop: theme.spacing.sm,
   },
+  
   bioText: {
     color: theme.colors.textSecondary,
     fontSize: theme.fontSize.lg,
@@ -282,41 +219,12 @@ const styles = {
   section: {
     marginTop: theme.spacing.sm,
   },
+  
   sectionTitle: {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.text,
     marginBottom: theme.spacing.md,
-  },
-
-  postSection: {
-    marginTop: theme.spacing.md,
-  },
-  postSectionTitle: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
-  },
-  postCard: {
-    backgroundColor: theme.colors.cardHover,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.lg,
-    border: `1px solid ${theme.colors.border}`,
-  },
-  postTitle: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-    margin: 0,
-  },
-  postBody: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-    lineHeight: 1.5,
-    marginBottom: theme.spacing.md,
-    margin: 0,
   },
 
   tags: {
@@ -325,6 +233,7 @@ const styles = {
     gap: theme.spacing.sm,
     marginTop: theme.spacing.md,
   },
+  
   tag: {
     padding: `6px ${theme.spacing.md}px`,
     backgroundColor: 'rgba(135, 116, 225, 0.1)',
@@ -334,15 +243,7 @@ const styles = {
     color: theme.colors.primary,
     fontWeight: theme.fontWeight.medium,
   },
-  tagColored: {
-    padding: `6px ${theme.spacing.md}px`,
-    backgroundColor: 'rgba(100, 200, 255, 0.1)',
-    border: `1.5px solid rgba(100, 200, 255, 0.5)`,
-    borderRadius: theme.radius.md,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.info,
-    fontWeight: theme.fontWeight.medium,
-  },
 };
+
 
 export default ProfileCard;

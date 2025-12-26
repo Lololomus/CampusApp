@@ -19,17 +19,21 @@ export const useStore = create(
       // ===== NAVIGATION STATE =====
       activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile'
       feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
+      feedSubTab: 'posts', // 'posts' | 'requests' (ДЛЯ ТАБОВ В ГЛАВНОЙ)
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
+      setFeedSubTab: (tab) => set({ feedSubTab: tab }),
 
 
       // ===== MODAL STATES =====
       showAuthModal: false,
       showCreateModal: false,
+      showCreateRequestModal: false,
       viewPostId: null,
       showEditModal: false,
       setShowAuthModal: (show) => set({ showAuthModal: show }),
       setShowCreateModal: (show) => set({ showCreateModal: show }),
+      setShowCreateRequestModal: (show) => set({ showCreateRequestModal: show }),
       setViewPostId: (id) => set({ viewPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
@@ -85,22 +89,43 @@ export const useStore = create(
       },
 
 
-      // ===== REQUESTS STATE (НОВОЕ) =====
-      myRequests: [],
-      setMyRequests: (requests) => set({ myRequests: requests }),
+      // ===== REQUESTS STATE (ОБНОВЛЕНО) =====
+      requests: [], // Лента запросов (текущая категория)
+      myRequests: [], // Мои запросы
+      currentRequest: null, // Текущий открытый запрос (для модалки)
+      requestDraft: {}, // Черновик запроса (автосохранение)
+      
+      setRequests: (requests) => set({ requests }),
+      
       addNewRequest: (newRequest) => set((state) => ({
+        requests: [newRequest, ...state.requests],
         myRequests: [newRequest, ...state.myRequests]
       })),
-      removeRequest: (requestId) => set((state) => ({
+      
+      updateRequest: (requestId, updates) => set((state) => ({
+        requests: state.requests.map(r =>
+          r.id === requestId ? { ...r, ...updates } : r
+        ),
+        myRequests: state.myRequests.map(r =>
+          r.id === requestId ? { ...r, ...updates } : r
+        )
+      })),
+      
+      deleteRequest: (requestId) => set((state) => ({
+        requests: state.requests.filter(r => r.id !== requestId),
         myRequests: state.myRequests.filter(r => r.id !== requestId)
       })),
+      
+      setMyRequests: (requests) => set({ myRequests: requests }),
+      
+      setCurrentRequest: (request) => set({ currentRequest: request }),
+      
+      setRequestDraft: (draft) => set({ requestDraft: draft }),
+      
+      clearRequestDraft: () => set({ requestDraft: {} }),
 
 
       // ===== DATING STATE =====
-      datingMode: 'dating', // 'dating' | 'study' | 'help' | 'hangout'
-      setDatingMode: (mode) => set({ datingMode: mode }),
-
-
       // Профили (карточки)
       currentProfile: null,
       profilesQueue: [],
@@ -136,28 +161,20 @@ export const useStore = create(
       showLikesModal: false,
       showMatchModal: false,
       matchedUser: null,
-      showResponseModal: false, // Модалка для отклика на request
-      currentRequestForResponse: null, // Запрос на который откликаемся
       
       setShowLikesModal: (show) => set({ showLikesModal: show }),
       setShowMatchModal: (show, user = null) => set({
         showMatchModal: show,
         matchedUser: user,
       }),
-      setShowResponseModal: (show, request = null) => set({ 
-        showResponseModal: show,
-        currentRequestForResponse: request 
-      }),
 
 
       // Stats
       likesCount: 0,
       matchesCount: 0,
-      responsesCount: 0,
       updateDatingStats: (stats) => set({
         likesCount: stats.likes_count || 0,
         matchesCount: stats.matches_count || 0,
-        responsesCount: stats.responses_count || 0,
       }),
 
 
@@ -216,8 +233,9 @@ export const useStore = create(
         user: state.user,
         activeTab: state.activeTab,
         feedMode: state.feedMode,
-        datingMode: state.datingMode,
+        feedSubTab: state.feedSubTab,
         likedPosts: state.likedPosts,
+        requestDraft: state.requestDraft,
       }),
     }
   )
