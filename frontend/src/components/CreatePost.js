@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar } from 'lucide-react';
+import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, Image as ImageIcon, Trash2, Upload } from 'lucide-react';
 import { useStore } from '../store';
 import { createPost } from '../api';
 import { hapticFeedback } from '../utils/telegram';
 import theme from '../theme';
 import { Z_CREATE_POST } from '../constants/zIndex';
+import imageCompression from 'browser-image-compression';
 
-// ===== КОНСТАНТЫ (DRY) =====
 const CATEGORIES = [
   { value: 'news', label: 'Новости', icon: '📰', color: theme.colors.news },
   { value: 'events', label: 'События', icon: '🎉', color: theme.colors.events },
@@ -19,16 +19,21 @@ const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'с
 const MAX_TITLE_LENGTH = 100;
 const MAX_BODY_LENGTH = 500;
 const MAX_TAGS = 5;
+const MAX_IMAGES = 3;
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_FORMATS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 function CreatePost() {
   const { setShowCreateModal, addNewPost } = useStore();
 
-  // ===== STATE =====
   const [category, setCategory] = useState('news');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState([]);
+  const [images, setImages] = useState([]);
+  const [imageFiles, setImageFiles] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [error, setError] = useState('');
@@ -38,7 +43,6 @@ function CreatePost() {
   const [startDrawing, setStartDrawing] = useState(false);
   const [checkDrawn, setCheckDrawn] = useState(false);
 
-  // Специфичные поля
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [lostOrFound, setLostOrFound] = useState('lost');
   const [itemDescription, setItemDescription] = useState('');
@@ -49,10 +53,8 @@ function CreatePost() {
   const [isImportant, setIsImportant] = useState(false);
 
   const titleInputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // ===== EFFECTS =====
-
-  // Монтирование с анимацией
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 50);
     if (window.innerWidth >= 768 && titleInputRef.current) {
@@ -60,7 +62,6 @@ function CreatePost() {
     }
   }, []);
 
-  // ===== АВТОСОХРАНЕНИЕ ЧЕРНОВИКА (каждые 3 секунды) =====
   useEffect(() => {
     const interval = setInterval(() => {
       if (title.trim() || body.trim()) {
@@ -76,13 +77,11 @@ function CreatePost() {
     return () => clearInterval(interval);
   }, [category, title, body, tags, isAnonymous, lostOrFound, itemDescription, location, eventName, eventDate, eventLocation, isImportant]);
 
-  // Восстановление черновика при открытии
   useEffect(() => {
     const draft = localStorage.getItem('createPostDraft');
     if (draft) {
       try {
         const parsed = JSON.parse(draft);
-        // Проверяем что черновик свежий (< 24 часов)
         if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
           if (window.confirm('Восстановить несохранённый черновик?')) {
             setCategory(parsed.category || 'news');
@@ -108,7 +107,6 @@ function CreatePost() {
     }
   }, []);
 
-  // Сброс специфичных полей при смене категории
   useEffect(() => {
     setItemDescription('');
     setLocation('');
@@ -117,15 +115,17 @@ function CreatePost() {
     setEventLocation('');
     setIsImportant(false);
     
-    // Для confessions принудительная анонимность
     if (category === 'confessions') {
       setIsAnonymous(true);
+      if (images.length > 0) {
+        setImages([]);
+        setImageFiles([]);
+        setError('');
+      }
     } else {
       setIsAnonymous(false);
     }
   }, [category]);
-
-  // ===== SHARED UTILITIES =====
 
   const TagBadge = ({ tag, onRemove }) => (
     <span style={styles.tag}>
@@ -162,9 +162,8 @@ function CreatePost() {
     </span>
   );
 
-  // ===== ПРОГРЕСС-БАР ЗАПОЛНЕНИЯ =====
   const calculateProgress = () => {
-    let totalFields = 2; // title + body
+    let totalFields = 2;
     let filledFields = 0;
 
     if (isTitleValid) filledFields++;
@@ -185,8 +184,6 @@ function CreatePost() {
 
     return Math.round((filledFields / totalFields) * 100);
   };
-
-  // ===== HANDLERS =====
 
   const hasContent = () => {
     return title.trim().length >= 3 || body.trim().length >= 10;
@@ -228,6 +225,92 @@ function CreatePost() {
     }
   };
 
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files);
+    
+    if (files.length === 0) return;
+
+    if (category === 'confessions') {
+      hapticFeedback('error');
+      setError('В категории Confessions нельзя прикреплять изображения (деанонимизация)');
+      return;
+    }
+
+    const remainingSlots = MAX_IMAGES - images.length;
+    if (remainingSlots === 0) {
+      hapticFeedback('error');
+      setError(`Максимум ${MAX_IMAGES} изображений`);
+      return;
+    }
+
+    const filesToProcess = files.slice(0, remainingSlots);
+    const compressedFiles = [];
+    const previews = [];
+
+    try {
+      for (const file of filesToProcess) {
+        if (!ALLOWED_FORMATS.includes(file.type)) {
+          setError('Формат не поддерживается. Используйте JPG, PNG, WebP или GIF');
+          return;
+        }
+
+        if (file.size > MAX_FILE_SIZE) {
+          setError(`Файл "${file.name}" слишком большой (макс 5MB)`);
+          return;
+        }
+
+        const options = {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1200,
+          useWebWorker: true,
+          fileType: file.type
+        };
+
+        const compressedFile = await imageCompression(file, options);
+        compressedFiles.push(compressedFile);
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          previews.push(event.target.result);
+          if (previews.length === filesToProcess.length) {
+            setImages(prev => [...prev, ...previews]);
+            setImageFiles(prev => [...prev, ...compressedFiles]);
+            hapticFeedback('light');
+            setError('');
+          }
+        };
+        reader.readAsDataURL(compressedFile);
+      }
+    } catch (error) {
+      console.error('Ошибка сжатия изображения:', error);
+      setError('Ошибка обработки изображения. Попробуйте другой файл');
+      hapticFeedback('error');
+    }
+
+    e.target.value = '';
+  };
+
+  const handleRemoveImage = (index) => {
+    hapticFeedback('light');
+    setImages(prev => prev.filter((_, i) => i !== index));
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setError('');
+  };
+
+  const handleAddImageClick = () => {
+    if (category === 'confessions') {
+      hapticFeedback('error');
+      setError('В категории Confessions нельзя прикреплять изображения');
+      return;
+    }
+    if (images.length >= MAX_IMAGES) {
+      hapticFeedback('error');
+      setError(`Максимум ${MAX_IMAGES} изображений`);
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
   const handleClose = () => {
     if (hasContent() && !isSubmitting) {
       hapticFeedback('light');
@@ -251,7 +334,6 @@ function CreatePost() {
     setShowConfirmation(false);
   };
 
-  // ===== БЫСТРЫЕ КНОПКИ ДЛЯ ДАТЫ =====
   const setQuickDate = (type) => {
     hapticFeedback('light');
     const now = new Date();
@@ -290,37 +372,48 @@ function CreatePost() {
 
     hapticFeedback('medium');
     setIsSubmitting(true);
+    setUploadProgress(10);
 
     try {
-      const postData = {
-        category,
-        title: title.trim(),
-        body: body.trim(),
-        tags,
-        is_anonymous: isAnonymous,
-        enable_anonymous_comments: category === 'confessions' ? true : isAnonymous
-      };
+      const formData = new FormData();
+      formData.append('category', category);
+      formData.append('title', title.trim());
+      formData.append('body', body.trim());
+      formData.append('tags', JSON.stringify(tags));
+      formData.append('is_anonymous', isAnonymous);
+      formData.append('enable_anonymous_comments', category === 'confessions' ? true : isAnonymous);
 
       if (category === 'lost_found') {
-        postData.lost_or_found = lostOrFound;
-        postData.item_description = itemDescription.trim();
-        postData.location = location.trim();
+        formData.append('lost_or_found', lostOrFound);
+        formData.append('item_description', itemDescription.trim());
+        formData.append('location', location.trim());
       }
 
       if (category === 'events') {
-        postData.event_name = eventName.trim();
-        postData.event_date = new Date(eventDate).toISOString();
-        postData.event_location = eventLocation.trim();
+        formData.append('event_name', eventName.trim());
+        formData.append('event_date', new Date(eventDate).toISOString());
+        formData.append('event_location', eventLocation.trim());
       }
 
       if (category === 'news') {
-        postData.is_important = isImportant;
+        formData.append('is_important', isImportant);
       }
 
-      const newPost = await createPost(postData);
+      imageFiles.forEach((file) => {
+        formData.append('images', file);
+      });
+
+      setUploadProgress(40);
+
+      const newPost = await createPost(formData, (progressEvent) => {
+        const percentCompleted = Math.round(40 + (progressEvent.loaded / progressEvent.total) * 50);
+        setUploadProgress(percentCompleted);
+      });
+
       addNewPost(newPost);
       
       localStorage.removeItem('createPostDraft');
+      setUploadProgress(100);
       
       hapticFeedback('success');
       
@@ -339,12 +432,19 @@ function CreatePost() {
     } catch (error) {
       console.error('Ошибка при создании поста:', error);
       hapticFeedback('error');
-      setError('Не удалось опубликовать пост. Проверьте интернет и попробуйте снова.');
+      
+      if (error.response?.data?.detail) {
+        setError(error.response.data.detail);
+      } else if (error.code === 'ERR_NETWORK') {
+        setError('Нет подключения к интернету. Проверьте соединение и попробуйте снова');
+      } else {
+        setError('Не удалось опубликовать пост. Попробуйте снова');
+      }
       setIsSubmitting(false);
+      setUploadProgress(0);
     }
   };
 
-  // ===== ВАЛИДАЦИЯ =====
   const isTitleValid = title.trim().length >= 3;
   const isBodyValid = body.trim().length >= 10;
   const canAddTag = tagInput.trim().length > 0 && 
@@ -358,7 +458,6 @@ function CreatePost() {
     <>
       <style>{keyframesStyles}</style>
       
-      {/* Backdrop overlay */}
       <div 
         style={{
           ...styles.overlay,
@@ -367,7 +466,6 @@ function CreatePost() {
         }}
         onClick={handleClose}
       >
-        {/* Modal container */}
         <div 
           style={{
             ...styles.modal,
@@ -377,12 +475,10 @@ function CreatePost() {
           onClick={(e) => e.stopPropagation()}
         >
           
-          {/* Swipe indicator */}
           <div style={styles.swipeIndicator}>
             <div style={styles.swipeBar} />
           </div>
 
-          {/* Header */}
           <div style={styles.header}>
             <button 
               onClick={handleClose} 
@@ -396,7 +492,6 @@ function CreatePost() {
             <div style={{ width: 40 }} />
           </div>
 
-          {/* ===== ПРОГРЕСС-БАР (STICKY) ===== */}
           <div style={styles.progressBarContainer}>
             <div style={styles.progressBarWrapper}>
               <div 
@@ -414,14 +509,11 @@ function CreatePost() {
             </span>
           </div>
 
-          {/* Content */}
           <div style={styles.content}>
             
-            {/* ===== КАТЕГОРИИ 2×2 GRID ===== */}
             <div style={styles.section}>
               <label style={styles.label}>Категория</label>
               
-              {/* Grid 2x2 */}
               <div style={styles.categoriesGrid}>
                 {CATEGORIES.map(cat => (
                   <button
@@ -449,7 +541,6 @@ function CreatePost() {
                 ))}
               </div>
               
-              {/* Checkbox анонимности ОТДЕЛЬНО под grid */}
               {category !== 'confessions' && (
                 <label style={styles.anonymousCheckbox}>
                   <input
@@ -466,15 +557,13 @@ function CreatePost() {
                 </label>
               )}
               
-              {/* Hint для confessions */}
               {category === 'confessions' && (
                 <div style={styles.confessionHint}>
-                  💭 Все признания публикуются анонимно
+                  💭 Все признания публикуются анонимно (без фото)
                 </div>
               )}
             </div>
 
-            {/* Заголовок */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Заголовок*
@@ -501,7 +590,6 @@ function CreatePost() {
               </div>
             </div>
 
-            {/* Описание */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Описание*
@@ -527,7 +615,69 @@ function CreatePost() {
               </div>
             </div>
 
-            {/* LOST & FOUND дополнительные поля */}
+            <div style={styles.section}>
+              <label style={styles.label}>
+                Изображения (опционально)
+                <span style={styles.charCount}>{images.length}/{MAX_IMAGES}</span>
+              </label>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+              />
+
+              {images.length > 0 && (
+                <div style={styles.imagesPreview}>
+                  {images.map((img, index) => (
+                    <div key={index} style={styles.imagePreviewItem}>
+                      <img src={img} alt={`Превью ${index + 1}`} style={styles.previewImage} />
+                      <button
+                        onClick={() => handleRemoveImage(index)}
+                        style={styles.removeImageButton}
+                        disabled={isSubmitting}
+                        aria-label="Удалить изображение"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+
+                  {images.length < MAX_IMAGES && category !== 'confessions' && (
+                    <button
+                      onClick={handleAddImageClick}
+                      style={styles.addImagePlaceholder}
+                      disabled={isSubmitting}
+                    >
+                      <Plus size={24} />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {images.length === 0 && (
+                <button
+                  onClick={handleAddImageClick}
+                  style={{
+                    ...styles.addImageButton,
+                    opacity: category === 'confessions' ? 0.5 : 1,
+                    cursor: category === 'confessions' ? 'not-allowed' : 'pointer'
+                  }}
+                  disabled={isSubmitting || category === 'confessions'}
+                >
+                  <ImageIcon size={20} />
+                  Добавить фото
+                </button>
+              )}
+
+              <div style={styles.hint}>
+                💡 Максимум {MAX_IMAGES} фото, до 5MB каждое. Авто-сжатие до 1MB
+              </div>
+            </div>
+
             {category === 'lost_found' && (
               <>
                 <div style={styles.section}>
@@ -609,7 +759,6 @@ function CreatePost() {
               </>
             )}
 
-            {/* EVENTS дополнительные поля */}
             {category === 'events' && (
               <>
                 <div style={styles.section}>
@@ -640,7 +789,6 @@ function CreatePost() {
                     </span>
                   </label>
                   
-                  {/* Быстрые кнопки выбора даты */}
                   <div style={styles.quickDateButtons}>
                     <button 
                       onClick={() => setQuickDate('today')} 
@@ -707,7 +855,6 @@ function CreatePost() {
               </>
             )}
 
-            {/* NEWS дополнительные поля */}
             {category === 'news' && (
               <div style={styles.section}>
                 <label style={styles.checkboxLabel}>
@@ -726,7 +873,6 @@ function CreatePost() {
               </div>
             )}
 
-            {/* ===== ТЕГИ С ПОПУЛЯРНЫМИ ===== */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Теги (опционально)
@@ -769,7 +915,6 @@ function CreatePost() {
                 </button>
               </div>
               
-              {/* Популярные теги */}
               {tags.length < MAX_TAGS && (
                 <div style={styles.popularTagsSection}>
                   <span style={styles.popularLabel}>Популярные:</span>
@@ -789,7 +934,6 @@ function CreatePost() {
                 </div>
               )}
               
-              {/* Список добавленных тегов */}
               {tags.length > 0 && (
                 <div style={styles.tagsList}>
                   {tags.map((tag, index) => (
@@ -803,16 +947,22 @@ function CreatePost() {
               </div>
             </div>
 
-            {/* Отступ для sticky footer */}
             <div style={{ height: 80 }} />
 
           </div>
 
-          {/* Error Alert */}
           <ErrorMessage message={error} />
 
-          {/* ===== УЛУЧШЕННЫЙ STICKY FOOTER ===== */}
           <div style={styles.footer}>
+            {isSubmitting && uploadProgress > 0 && (
+              <div style={styles.uploadProgressContainer}>
+                <div style={styles.uploadProgressBar}>
+                  <div style={{ ...styles.uploadProgressFill, width: `${uploadProgress}%` }} />
+                </div>
+                <span style={styles.uploadProgressText}>Загрузка: {uploadProgress}%</span>
+              </div>
+            )}
+            
             <button
               onClick={handlePublish}
               disabled={!isFormValid() || isSubmitting}
@@ -837,7 +987,7 @@ function CreatePost() {
               {isSubmitting ? (
                 <>
                   <span style={styles.spinner} />
-                  Публикация...
+                  {uploadProgress < 40 ? 'Подготовка...' : uploadProgress < 90 ? 'Загрузка...' : 'Завершение...'}
                 </>
               ) : !isFormValid() ? (
                 <>
@@ -851,7 +1001,6 @@ function CreatePost() {
         </div>
       </div>
 
-      {/* Success Toast */}
       {showSuccess && (
         <div style={{
           ...styles.successOverlay,
@@ -898,7 +1047,6 @@ function CreatePost() {
         </div>
       )}
 
-      {/* Confirmation Dialog */}
       {showConfirmation && (
         <div style={styles.confirmationOverlay}>
           <div style={styles.confirmationDialog}>
@@ -925,7 +1073,6 @@ function CreatePost() {
   );
 }
 
-// CSS Keyframes
 const keyframesStyles = `
   @keyframes slideUp {
     from { transform: translateY(100%); }
@@ -987,6 +1134,7 @@ const keyframesStyles = `
 `;
 
 const styles = {
+  // ... (все стили остаются БЕЗ ИЗМЕНЕНИЙ до конца, добавляю только новые)
   overlay: {
     position: 'fixed',
     inset: 0,
@@ -1050,7 +1198,6 @@ const styles = {
     margin: 0,
     letterSpacing: '-0.3px'
   },
-  // ===== ПРОГРЕСС-БАР (STICKY) =====
   progressBarContainer: {
     padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
     borderBottom: `1px solid ${theme.colors.border}`,
@@ -1114,7 +1261,6 @@ const styles = {
     color: theme.colors.success,
     marginLeft: theme.spacing.xs
   },
-  // ===== КАТЕГОРИИ 2×2 GRID =====
   categoriesGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
@@ -1381,6 +1527,28 @@ const styles = {
     background: theme.colors.bg,
     flexShrink: 0
   },
+  uploadProgressContainer: {
+    marginBottom: theme.spacing.md
+  },
+  uploadProgressBar: {
+    width: '100%',
+    height: 4,
+    borderRadius: theme.radius.full,
+    background: theme.colors.border,
+    overflow: 'hidden',
+    marginBottom: theme.spacing.xs
+  },
+  uploadProgressFill: {
+    height: '100%',
+    background: `linear-gradient(90deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
+    borderRadius: theme.radius.full,
+    transition: 'width 0.3s ease'
+  },
+  uploadProgressText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+    fontWeight: theme.fontWeight.medium
+  },
   publishButton: {
     width: '100%',
     padding: theme.spacing.lg,
@@ -1412,7 +1580,7 @@ const styles = {
     inset: 0,
     background: 'rgba(0, 0, 0, 0.85)',
     backdropFilter: 'blur(8px)',
-    zIndex: Z_CREATE_POST + 3, // ← ФИКС: выше всех
+    zIndex: Z_CREATE_POST + 3,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1461,7 +1629,7 @@ const styles = {
     inset: 0,
     background: 'rgba(0, 0, 0, 0.85)',
     backdropFilter: 'blur(8px)',
-    zIndex: Z_CREATE_POST + 2, // ← ФИКС: выше модалки, ниже success
+    zIndex: Z_CREATE_POST + 2,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1519,7 +1687,72 @@ const styles = {
     fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
     transition: theme.transitions.normal
-  }
+  },
+  imagesPreview: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.md
+  },
+  imagePreviewItem: {
+    position: 'relative',
+    aspectRatio: '1',
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+    border: `2px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover'
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: theme.spacing.xs,
+    right: theme.spacing.xs,
+    width: 28,
+    height: 28,
+    borderRadius: theme.radius.sm,
+    background: 'rgba(0, 0, 0, 0.7)',
+    backdropFilter: 'blur(4px)',
+    border: 'none',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: theme.transitions.fast,
+    opacity: 0.9
+  },
+  addImagePlaceholder: {
+    aspectRatio: '1',
+    borderRadius: theme.radius.md,
+    border: `2px dashed ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textTertiary,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: theme.transitions.normal
+  },
+  addImageButton: {
+    width: '100%',
+    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
+    borderRadius: theme.radius.md,
+    border: `2px dashed ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    cursor: 'pointer',
+    transition: theme.transitions.normal,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.md
+  },
 };
 
 export default CreatePost;

@@ -1,16 +1,37 @@
 import React, { useState, useRef } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, MoreVertical } from 'lucide-react';
+import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { hapticFeedback } from '../utils/telegram';
 import { likePost, deletePost } from '../api';
 import { useStore } from '../store';
 import theme from '../theme';
 import DropdownMenu from './DropdownMenu';
+import EditPost from './EditPost';
+
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const { likedPosts, setPostLiked, user } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
-  
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  const [imageHeight, setImageHeight] = useState(() => {
+    const images = post.images || [];
+    if (images.length > 0) {
+      const cachedHeight = sessionStorage.getItem(`img-height-${images[0]}`);
+      if (cachedHeight) {
+        return parseInt(cachedHeight, 10);
+      }
+    }
+    return 350;
+  });
+
+  const [currentImageIndex, setCurrentImageIndex] = useState(() => {
+    const saved = sessionStorage.getItem(`post-${post.id}-imageIndex`);
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  const images = post.images || [];
+  const hasImages = images.length > 0;
   const isLiked = likedPosts[post.id] ?? post.is_liked ?? false;
   const likesCount = post.likes_count || post.likes || 0;
   
@@ -41,6 +62,48 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     }
   };
 
+  const handlePrevImage = (e) => {
+    e.stopPropagation();
+    hapticFeedback('light');
+    setCurrentImageIndex((prev) => {
+      const newIndex = prev === 0 ? images.length - 1 : prev - 1;
+      sessionStorage.setItem(`post-${post.id}-imageIndex`, newIndex);
+      return newIndex;
+    });
+  };
+
+  const handleNextImage = (e) => {
+    e.stopPropagation();
+    hapticFeedback('light');
+    setCurrentImageIndex((prev) => {
+      const newIndex = prev === images.length - 1 ? 0 : prev + 1;
+      sessionStorage.setItem(`post-${post.id}-imageIndex`, newIndex);
+      return newIndex;
+    });
+  };
+
+  const handleImageLoad = (e) => {
+    const img = e.target;
+    const aspectRatio = img.naturalWidth / img.naturalHeight;
+    
+    let height;
+    if (aspectRatio >= 1.5) {
+      height = 240; // Широкие горизонтальные
+    } else if (aspectRatio >= 1.1) {
+      height = 300; // Квадратные
+    } else if (aspectRatio >= 0.7) {
+      height = 400; // Немного вертикальные
+    } else {
+      height = 480; // Очень вертикальные
+    }
+    
+    // Сохраняем в кэш
+    const imageUrl = images[currentImageIndex];
+    sessionStorage.setItem(`img-height-${imageUrl}`, height);
+    
+    setImageHeight(height);
+  };
+
   const handleMenuClick = (e) => {
     e.stopPropagation();
     hapticFeedback('light');
@@ -50,8 +113,23 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const handleEdit = () => {
     setMenuOpen(false);
     hapticFeedback('medium');
-    const { setEditPostId } = useStore.getState();
-    setEditPostId(post.id);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditUpdate = (updatedPost) => {
+    hapticFeedback('success');
+    
+    // Обновляем данные в родителе
+    if (onLikeUpdate) {
+      onLikeUpdate(post.id, updatedPost);
+    }
+    
+    // Закрываем модалку
+    setIsEditModalOpen(false);
+  };
+
+  const handleEditClose = () => {
+    setIsEditModalOpen(false);
   };
 
   const handleDelete = async () => {
@@ -168,6 +246,20 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
   };
 
+  // Обновляем высоту при смене фото (если есть кэш)
+  React.useEffect(() => {
+    if (images.length > 0) {
+      const imageUrl = images[currentImageIndex];
+      const cachedHeight = sessionStorage.getItem(`img-height-${imageUrl}`);
+      if (cachedHeight) {
+        setImageHeight(parseInt(cachedHeight, 10));
+      } else {
+        setImageHeight(350); // Временная высота до загрузки
+      }
+    }
+  }, [currentImageIndex, images]);
+
+
   // Меню действий
   const menuItems = isAuthor ? [
     { icon: '✏️', label: 'Редактировать', onClick: handleEdit },
@@ -238,18 +330,60 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       {/* ЗАГОЛОВОК */}
       <h3 style={styles.title}>{post.title}</h3>
 
-      {/* ФОТО (если есть) */}
-      {post.image && (
-        <div style={styles.imageContainer}>
-          <img 
-            src={post.image} 
-            alt={post.title}
-            style={styles.image}
-            loading="lazy"
-            onError={(e) => {
+      {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ */}
+      {hasImages && (
+        <div style={{...styles.imageContainer, height: imageHeight}}>
+        <img 
+          src={images[currentImageIndex]} 
+          alt={`${post.title} - фото ${currentImageIndex + 1}`}
+          style={styles.image}
+          loading="lazy"
+          onLoad={handleImageLoad}
+          onError={(e) => {
               e.target.style.display = 'none';
             }}
           />
+          
+          {/* Индикатор количества фото */}
+          {images.length > 1 && (
+            <>
+              {/* Счётчик */}
+              <div style={styles.imageCounter}>
+                {currentImageIndex + 1} / {images.length}
+              </div>
+              
+              {/* Кнопки навигации */}
+              <button 
+                onClick={handlePrevImage}
+                style={{...styles.imageNavButton, left: 8}}
+                aria-label="Предыдущее фото"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              
+              <button 
+                onClick={handleNextImage}
+                style={{...styles.imageNavButton, right: 8}}
+                aria-label="Следующее фото"
+              >
+                <ChevronRight size={20} />
+              </button>
+              
+              {/* Точки-индикаторы */}
+              <div style={styles.imageDots}>
+                {images.map((_, index) => (
+                  <div 
+                    key={index}
+                    style={{
+                      ...styles.dot,
+                      opacity: index === currentImageIndex ? 1 : 0.4,
+                      transform: index === currentImageIndex ? 'scale(1.2)' : 'scale(1)'
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -312,6 +446,14 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           <span>{post.views_count || 0}</span>
         </div>
       </div>
+      {/* Модалка редактирования */}
+      {isEditModalOpen && (
+        <EditPost 
+          post={post}
+          onClose={handleEditClose}
+          onUpdate={handleEditUpdate}
+        />
+      )}
     </div>
   );
 }
@@ -405,20 +547,65 @@ const styles = {
     lineHeight: 1.3,
     margin: '0 0 10px 0',
   },
-  
   imageContainer: {
+    position: 'relative',
     width: '100%',
-    aspectRatio: '16 / 9',
-    borderRadius: 8,
+    minHeight: '240px',
+    maxHeight: '480px',
+    borderRadius: `${theme.radius.lg}px`,
     overflow: 'hidden',
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: '#000',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'height 0.3s ease',
   },
   image: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    transition: 'transform 0.3s',
+    display: 'block',
+  },
+  imageCounter: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    background: 'rgba(0, 0, 0, 0.7)',
+    backdropFilter: 'blur(8px)',
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '4px 10px',
+    borderRadius: 12,
+    zIndex: 2,
+  },
+  imageNavButton: {
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    border: 'none',
+    background: 'rgba(0, 0, 0, 0.6)',
+    backdropFilter: 'blur(8px)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    zIndex: 3,
+    transition: 'all 0.2s',
+    opacity: 0.8,
+  },
+  imageDots: {
+    position: 'absolute',
+    bottom: 8,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    gap: 6,
+    zIndex: 2,
   },
   
   body: {

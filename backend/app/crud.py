@@ -5,9 +5,14 @@ from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 import json
 
+# ✅ НОВОЕ: Импорт функций для работы с изображениями
+from app.utils import process_base64_images, delete_images, get_image_urls
+
+
 
 
 # ===== USER CRUD =====
+
 
 
 def get_user_by_telegram_id(db: Session, telegram_id: int) -> Optional[models.User]:
@@ -16,9 +21,11 @@ def get_user_by_telegram_id(db: Session, telegram_id: int) -> Optional[models.Us
 
 
 
+
 def get_user_by_id(db: Session, user_id: int) -> Optional[models.User]:
     """Найти пользователя по ID"""
     return db.query(models.User).filter(models.User.id == user_id).first()
+
 
 
 
@@ -29,6 +36,7 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db.commit()
     db.refresh(db_user)
     return db_user
+
 
 
 
@@ -54,7 +62,9 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> O
 
 
 
+
 # ===== POST CRUD =====
+
 
 
 def get_posts(
@@ -92,14 +102,33 @@ def get_posts(
 
 
 
+
 def get_post(db: Session, post_id: int) -> Optional[models.Post]:
     """Получить пост по ID"""
     return db.query(models.Post).filter(models.Post.id == post_id).first()
 
 
 
-def create_post(db: Session, post: schemas.PostCreate, author_id: int) -> models.Post:
-    """Создать новый пост"""
+async def create_post(db: Session, post: schemas.PostCreate, author_id: int, uploaded_files: List = None) -> models.Post:
+    """Создать новый пост (поддержка multipart files)"""
+    
+    from app.utils import process_uploaded_files
+    
+    # Обработка изображений
+    saved_image_filenames = []
+    
+    # Если есть файлы из multipart form (приоритет)
+    if uploaded_files and len(uploaded_files) > 0:
+        try:
+            saved_image_filenames = await process_uploaded_files(uploaded_files)
+        except Exception as e:
+            raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
+    # Иначе обрабатываем Base64 (для обратной совместимости)
+    elif post.images and len(post.images) > 0:
+        try:
+            saved_image_filenames = process_base64_images(post.images)
+        except Exception as e:
+            raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
     
     # Базовые данные
     db_post = models.Post(
@@ -108,22 +137,15 @@ def create_post(db: Session, post: schemas.PostCreate, author_id: int) -> models
         title=post.title,
         body=post.body,
         tags=json.dumps(post.tags) if post.tags else None,
-        
-        # Анонимность
+        images=json.dumps(saved_image_filenames) if saved_image_filenames else None,
         is_anonymous=post.is_anonymous,
         enable_anonymous_comments=post.enable_anonymous_comments,
-        
-        # Lost & Found
         lost_or_found=post.lost_or_found,
         item_description=post.item_description,
         location=post.location,
-        
-        # Events
         event_name=post.event_name,
         event_date=post.event_date,
         event_location=post.event_location,
-        
-        # News
         is_important=post.is_important,
     )
     
@@ -131,26 +153,69 @@ def create_post(db: Session, post: schemas.PostCreate, author_id: int) -> models
     if post.category == 'lost_found':
         db_post.expires_at = datetime.utcnow() + timedelta(days=7)
     
-    db.add(db_post)
-    db.commit()
-    db.refresh(db_post)
-    return db_post
+    try:
+        db.add(db_post)
+        db.commit()
+        db.refresh(db_post)
+        return db_post
+    except Exception as e:
+        # Если ошибка сохранения в БД → удаляем загруженные файлы
+        if saved_image_filenames:
+            delete_images(saved_image_filenames)
+        raise e
 
 
 
-def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate) -> Optional[models.Post]:
-    """Обновить пост"""
+async def update_post(
+    db: Session, 
+    post_id: int, 
+    post_update: schemas.PostUpdate, 
+    new_files: List = None, 
+    keep_filenames: List = None
+) -> Optional[models.Post]:
+    """Обновить пост (поддержка multipart files)"""
+    
+    from app.utils import process_uploaded_files
+    
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
     if not db_post:
         return None
     
     update_data = post_update.model_dump(exclude_unset=True)
     
-    # Отдельно обрабатываем теги
+    # Обрабатываем теги
     if "tags" in update_data:
         update_data['tags'] = json.dumps(update_data['tags'])
     
-    # Обновляем остальные поля
+    # Обработка изображений
+    if new_files is not None or keep_filenames is not None:
+        # Старые изображения
+        old_images = json.loads(db_post.images) if db_post.images else []
+        
+        # Итоговый список
+        final_filenames = []
+        
+        # 1. Оставляем старые (keep_filenames)
+        if keep_filenames:
+            final_filenames.extend(keep_filenames)
+        
+        # 2. Загружаем новые
+        if new_files and len(new_files) > 0:
+            try:
+                new_saved = await process_uploaded_files(new_files)
+                final_filenames.extend(new_saved)
+            except Exception as e:
+                raise ValueError(f"Ошибка обновления изображений: {str(e)}")
+        
+        # 3. Удаляем ненужные
+        files_to_delete = [f for f in old_images if f not in final_filenames]
+        if files_to_delete:
+            delete_images(files_to_delete)
+        
+        # 4. Сохраняем список
+        update_data['images'] = json.dumps(final_filenames) if final_filenames else None
+    
+    # Обновляем поля
     for key, value in update_data.items():
         setattr(db_post, key, value)
     
@@ -162,15 +227,25 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate) -> O
 
 
 
+
 def delete_post(db: Session, post_id: int) -> bool:
     """Удалить пост"""
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
     if not db_post:
         return False
     
+    # ✅ НОВОЕ: Удаляем файлы изображений перед удалением поста
+    if db_post.images:
+        try:
+            image_filenames = json.loads(db_post.images)
+            delete_images(image_filenames)
+        except Exception as e:
+            print(f"⚠️ Ошибка удаления изображений поста {post_id}: {e}")
+    
     db.delete(db_post)
     db.commit()
     return True
+
 
 
 
@@ -183,7 +258,9 @@ def increment_post_views(db: Session, post_id: int):
 
 
 
+
 # ===== POST LIKES (Лайки постов) =====
+
 
 
 def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
@@ -193,6 +270,7 @@ def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
         models.PostLike.user_id == user_id
     ).first()
     return like is not None
+
 
 
 
@@ -223,7 +301,9 @@ def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
 
 
 
+
 # ===== COMMENT CRUD =====
+
 
 
 def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) -> List[models.Comment]:
@@ -246,6 +326,7 @@ def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) 
             comment.is_liked = False
     
     return comments
+
 
 
 
@@ -303,7 +384,9 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
 
 
 
+
 # ===== COMMENT LIKES (Лайки комментариев) =====
+
 
 
 def is_comment_liked_by_user(db: Session, comment_id: int, user_id: int) -> bool:
@@ -313,6 +396,7 @@ def is_comment_liked_by_user(db: Session, comment_id: int, user_id: int) -> bool
         models.CommentLike.user_id == user_id
     ).first()
     return like is not None
+
 
 
 
@@ -340,6 +424,7 @@ def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
         comment.likes_count += 1
         db.commit()
         return {"is_liked": True, "likes": comment.likes_count}
+
 
 
 
@@ -375,6 +460,7 @@ def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
 
 
 
+
 def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Optional[models.Comment]:
     """Обновить текст комментария"""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
@@ -398,12 +484,14 @@ def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Opt
 
 
 
+
 def count_post_comments(db: Session, post_id: int) -> int:
     """Посчитать количество НЕудалённых комментариев к посту (включая ответы)."""
     return db.query(models.Comment).filter(
         models.Comment.post_id == post_id,
         models.Comment.is_deleted == False
     ).count()
+
 
 
 
@@ -418,11 +506,13 @@ def get_user_posts(db: Session, user_id: int, limit: int = 5, offset: int = 0) -
 
 
 
+
 def count_user_posts(db: Session, user_id: int) -> int:
     """Посчитать количество постов пользователя"""
     return db.query(models.Post)\
         .filter(models.Post.author_id == user_id)\
         .count()
+
 
 
 
@@ -437,7 +527,9 @@ def count_user_comments(db: Session, user_id: int) -> int:
 
 
 
+
 # ===== COOLDOWN для критичных полей =====
+
 
 
 def can_edit_critical_fields(db: Session, user_id: int) -> bool:
@@ -448,6 +540,7 @@ def can_edit_critical_fields(db: Session, user_id: int) -> bool:
     
     days_passed = (datetime.utcnow() - user.last_profile_edit).days
     return days_passed >= 30
+
 
 
 
@@ -462,7 +555,9 @@ def get_cooldown_days_left(db: Session, user_id: int) -> int:
 
 
 
+
 # ===== REQUEST CRUD (ОБНОВЛЕНО) =====
+
 
 
 def create_request(db: Session, request: schemas.RequestCreate, author_id: int) -> models.Request:
@@ -493,6 +588,7 @@ def create_request(db: Session, request: schemas.RequestCreate, author_id: int) 
     db.commit()
     db.refresh(db_request)
     return db_request
+
 
 
 
@@ -572,6 +668,7 @@ def get_requests_feed(
 
 
 
+
 def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[int] = None) -> Optional[Dict]:
     """Получить запрос по ID (с увеличением views_count)"""
     request = db.query(models.Request).options(
@@ -610,6 +707,7 @@ def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[in
 
 
 
+
 def update_request(db: Session, request_id: int, user_id: int, data: schemas.RequestUpdate) -> Optional[models.Request]:
     """Обновить запрос (только автор)"""
     request = db.query(models.Request).filter(
@@ -637,6 +735,7 @@ def update_request(db: Session, request_id: int, user_id: int, data: schemas.Req
 
 
 
+
 def delete_request(db: Session, request_id: int, user_id: int) -> bool:
     """Удалить запрос (только автор)"""
     request = db.query(models.Request).filter(
@@ -650,6 +749,7 @@ def delete_request(db: Session, request_id: int, user_id: int) -> bool:
     db.delete(request)
     db.commit()
     return True
+
 
 
 
@@ -683,7 +783,9 @@ def get_my_requests(db: Session, user_id: int) -> List[Dict]:
 
 
 
+
 # ===== RESPONSES (ОТКЛИКИ НА ЗАПРОСЫ) =====
+
 
 
 def create_response(db: Session, request_id: int, user_id: int, data: schemas.ResponseCreate) -> models.RequestResponse:
@@ -733,6 +835,7 @@ def create_response(db: Session, request_id: int, user_id: int, data: schemas.Re
 
 
 
+
 def get_request_responses(db: Session, request_id: int, user_id: int) -> List[models.RequestResponse]:
     """Получить отклики на мой запрос"""
     request = db.query(models.Request).filter(
@@ -750,6 +853,7 @@ def get_request_responses(db: Session, request_id: int, user_id: int) -> List[mo
     ).order_by(models.RequestResponse.created_at.desc()).all()
     
     return responses
+
 
 
 
@@ -774,6 +878,7 @@ def delete_response(db: Session, response_id: int, user_id: int) -> bool:
 
 
 
+
 def auto_expire_requests(db: Session):
     """Cron job: пометить истёкшие запросы как expired"""
     expired = db.query(models.Request).filter(
@@ -789,6 +894,7 @@ def auto_expire_requests(db: Session):
 
 
 
+
 def auto_delete_expired_posts(db: Session):
     """Cron job: удалить истёкшие посты (lost_found)"""
     expired = db.query(models.Post).filter(
@@ -797,10 +903,19 @@ def auto_delete_expired_posts(db: Session):
     ).all()
     
     for post in expired:
+        # ✅ НОВОЕ: Удаляем изображения перед удалением поста
+        if post.images:
+            try:
+                image_filenames = json.loads(post.images)
+                delete_images(image_filenames)
+            except Exception as e:
+                print(f"⚠️ Ошибка удаления изображений истёкшего поста {post.id}: {e}")
+        
         db.delete(post)
     
     db.commit()
     return len(expired)
+
 
 
 
@@ -821,7 +936,9 @@ def get_responses_count(db: Session, user_id: int, category: Optional[str] = Non
 
 
 
+
 # ===== DATING CRUD =====
+
 
 
 def get_dating_feed(
@@ -883,6 +1000,7 @@ def get_dating_feed(
 
 
 
+
 def get_active_requests(
     db: Session,
     category: str,
@@ -903,6 +1021,7 @@ def get_active_requests(
         .limit(limit)
         .all()
     )
+
 
 
 def create_like(db: Session, liker_id: int, liked_id: int) -> Dict:
@@ -967,6 +1086,7 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> Dict:
 
 
 
+
 def get_who_liked_me(
     db: Session,
     user_id: int,
@@ -996,6 +1116,7 @@ def get_who_liked_me(
     )
     
     return likers
+
 
 
 
@@ -1038,6 +1159,7 @@ def get_my_matches(
 
 
 
+
 def get_dating_stats(db: Session, user_id: int) -> Dict:
     """
     Получить статистику знакомств.
@@ -1072,6 +1194,7 @@ def get_dating_stats(db: Session, user_id: int) -> Dict:
         'likes_count': likes_count,
         'matches_count': matches_count
     }
+
 
 
 

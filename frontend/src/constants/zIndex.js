@@ -33,7 +33,7 @@ export const Z_NAVIGATION = 1000;
 export const Z_MODAL_FORMS = 1500;
 export const Z_EDIT_PROFILE = 1500;
 export const Z_CREATE_POST = 1500;
-export const Z_EDIT_POST = 1500;
+export const Z_EDIT_POST = 2500;
 
 // Модальные окна (аутентификация)
 export const Z_AUTH_MODAL = 2000;

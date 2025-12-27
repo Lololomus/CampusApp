@@ -32,6 +32,15 @@ function EditPost({ post, onClose, onUpdate }) {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [images, setImages] = useState(
+    (post.images || []).map(url => ({
+      url,           // URL старого фото
+      isNew: false   // Флаг старого фото
+    }))
+  );
+  const [imageHeight, setImageHeight] = useState(300);
+
+  const MAX_IMAGES = 3;
 
   // Категория READONLY
   const category = post.category;
@@ -53,6 +62,7 @@ function EditPost({ post, onClose, onUpdate }) {
     title: post.title || '',
     body: post.body || '',
     tags: post.tags || [],
+    images: (post.images || []).map(url => ({ url, isNew: false })),
     lostOrFound: post.lost_or_found || 'lost',
     itemDescription: post.item_description || '',
     location: post.location || '',
@@ -148,6 +158,7 @@ function EditPost({ post, onClose, onUpdate }) {
       title !== orig.title ||
       body !== orig.body ||
       JSON.stringify(tags) !== JSON.stringify(orig.tags) ||
+      JSON.stringify(images) !== JSON.stringify(orig.images) ||
       lostOrFound !== orig.lostOrFound ||
       itemDescription !== orig.itemDescription ||
       location !== orig.location ||
@@ -216,6 +227,65 @@ function EditPost({ post, onClose, onUpdate }) {
     setShowConfirmation(false);
   };
 
+  // ===== РАБОТА С ИЗОБРАЖЕНИЯМИ =====
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    const remainingSlots = MAX_IMAGES - images.length;
+    
+    if (remainingSlots <= 0) {
+      alert(`Максимум ${MAX_IMAGES} изображения`);
+      return;
+    }
+    
+    const filesToAdd = files.slice(0, remainingSlots);
+    
+    filesToAdd.forEach(file => {
+      if (!file.type.startsWith('image/')) {
+        alert('Можно загружать только изображения');
+        return;
+      }
+      
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Максимальный размер файла: 5 МБ');
+        return;
+      }
+      
+      // Создаём URL для превью + сохраняем сам File
+      const imageUrl = URL.createObjectURL(file);
+      
+      setImages(prev => [...prev, {
+        url: imageUrl,       // Для показа
+        file: file,          // Сам файл
+        isNew: true          // Флаг нового фото
+      }]);
+      
+      hapticFeedback('light');
+    });
+  };
+
+  const handleRemoveImage = (index) => {
+    hapticFeedback('light');
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleImageLoad = (e) => {
+    const img = e.target;
+    const aspectRatio = img.naturalWidth / img.naturalHeight;
+    
+    let height;
+    if (aspectRatio >= 1.5) {
+      height = 180;
+    } else if (aspectRatio >= 1.1) {
+      height = 220;
+    } else if (aspectRatio >= 0.7) {
+      height = 280;
+    } else {
+      height = 320;
+    }
+    
+    setImageHeight(height);
+  };
+
   // ===== СБРОС ИЗМЕНЕНИЙ =====
   const handleReset = () => {
     hapticFeedback('medium');
@@ -223,6 +293,7 @@ function EditPost({ post, onClose, onUpdate }) {
     setTitle(orig.title);
     setBody(orig.body);
     setTags(orig.tags);
+    setImages(orig.images);
     setLostOrFound(orig.lostOrFound);
     setItemDescription(orig.itemDescription);
     setLocation(orig.location);
@@ -257,53 +328,82 @@ function EditPost({ post, onClose, onUpdate }) {
   const handleSave = async () => {
     setAttemptedSubmit(true);
     setError('');
-
-    if (!isFormValid()) {
+    
+    if (!isFormValid) {
       hapticFeedback('error');
-      
       if (category === 'lost_found') {
-        setError('Заполните все поля: заголовок, описание, что потеряли/нашли, и где');
+        setError('Заполните обязательные поля: название, описание, местоположение, детали предмета');
       } else if (category === 'events') {
-        setError('Заполните все поля: заголовок, описание, название события, дату и место');
+        setError('Заполните обязательные поля: название, описание, дата и место события');
       } else {
-        setError('Заполните заголовок (мин. 3 символа) и описание (мин. 10 символов)');
+        setError('Пожалуйста, заполните все обязательные поля. Заголовок мин. 3 символа. Описание мин. 10 символов');
       }
       return;
     }
-
+    
     hapticFeedback('medium');
     setIsSubmitting(true);
-
+    
     try {
-      const postData = {
-        title: title.trim(),
-        body: body.trim(),
-        tags,
-        is_anonymous: isAnonymous
-      };
-
+      // Формируем FormData
+      const formData = new FormData();
+      
+      // Базовые поля
+      formData.append('title', title.trim());
+      formData.append('body', body.trim());
+      formData.append('tags', JSON.stringify(tags));
+      
+      // Специфичные поля по категориям
       if (category === 'lost_found') {
-        postData.lost_or_found = lostOrFound;
-        postData.item_description = itemDescription.trim();
-        postData.location = location.trim();
+        formData.append('lost_or_found', lostOrFound);
+        formData.append('item_description', itemDescription.trim());
+        formData.append('location', location.trim());
       }
-
+      
       if (category === 'events') {
-        postData.event_name = eventName.trim();
-        postData.event_date = new Date(eventDate).toISOString();
-        postData.event_location = eventLocation.trim();
+        formData.append('event_name', eventName.trim());
+        formData.append('event_date', new Date(eventDate).toISOString());
+        formData.append('event_location', eventLocation.trim());
       }
-
+      
       if (category === 'news') {
-        postData.is_important = isImportant;
+        formData.append('is_important', isImportant);
       }
-
-      const updatedPost = await updatePost(post.id, postData);
+      
+      // Разделяем старые и новые фото
+      const oldImages = [];  // Имена файлов для keep_images
+      const newFiles = [];   // File объекты для new_images
+      
+      images.forEach(img => {
+        if (typeof img === 'string') {
+          // Старое фото (URL) → извлекаем имя файла
+          const filename = img.split('/').pop();
+          oldImages.push(filename);
+        } else if (img.isNew && img.file) {
+          // Новое фото (File объект)
+          newFiles.push(img.file);
+        } else if (img.url && !img.isNew) {
+          // Старое фото (объект с url)
+          const filename = img.url.split('/').pop();
+          oldImages.push(filename);
+        }
+      });
+      
+      // Добавляем keep_images (JSON)
+      formData.append('keep_images', JSON.stringify(oldImages));
+      
+      // Добавляем новые файлы
+      newFiles.forEach(file => {
+        formData.append('new_images', file);
+      });
+      
+      // Отправляем
+      const updatedPost = await updatePost(post.id, formData);
       
       hapticFeedback('success');
       onUpdate(updatedPost);
       
-      // Упрощённая success анимация (0.5s)
+      // Success анимация (0.5s)
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -311,9 +411,10 @@ function EditPost({ post, onClose, onUpdate }) {
       }, 500);
       
     } catch (error) {
-      console.error('Ошибка при обновлении поста:', error);
+      console.error('Ошибка обновления:', error);
       hapticFeedback('error');
-      setError('Не удалось сохранить изменения. Проверьте интернет и попробуйте снова.');
+      setError('Не удалось обновить пост. Попробуйте снова.');
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -484,6 +585,62 @@ function EditPost({ post, onClose, onUpdate }) {
                 {isBodyValid && (
                   <Check size={20} style={styles.textareaCheckIcon} />
                 )}
+              </div>
+            </div>
+
+            {/* ИЗОБРАЖЕНИЯ */}
+            <div style={styles.section}>
+              <label style={styles.label}>
+                Изображения (опционально)
+                <span style={styles.charCount}>{images.length}/{MAX_IMAGES}</span>
+              </label>
+              
+              {/* Превью изображений */}
+              {images.length > 0 && (
+                <div style={styles.imagesPreview}>
+                  {images.map((img, index) => (
+                    <div key={index} style={{...styles.imagePreviewItem, height: imageHeight}}>
+                      <img 
+                        src={typeof img === 'string' ? img : img.url}
+                        alt={`Фото ${index + 1}`}
+                        style={styles.previewImage}
+                        onLoad={handleImageLoad}
+                      />
+                      <button
+                        onClick={() => handleRemoveImage(index)}
+                        style={styles.removeImageBtn}
+                        type="button"
+                        disabled={isSubmitting}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Кнопка добавления */}
+              {images.length < MAX_IMAGES && (
+                <label style={{
+                  ...styles.uploadButton,
+                  opacity: isSubmitting ? 0.5 : 1,
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer'
+                }}>
+                  <Plus size={20} />
+                  <span>Добавить фото ({images.length}/{MAX_IMAGES})</span>
+                  <input 
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    style={{ display: 'none' }}
+                    disabled={isSubmitting}
+                  />
+                </label>
+              )}
+              
+              <div style={styles.hint}>
+                💡 Максимум 3 фото, до 5 МБ каждое
               </div>
             </div>
 
@@ -1488,7 +1645,60 @@ const styles = {
     fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
     transition: theme.transitions.normal
-  }
+  },
+  imagesPreview: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.md
+  },
+  imagePreviewItem: {
+    position: 'relative',
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 180
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain'
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: theme.radius.full,
+    border: 'none',
+    background: 'rgba(0, 0, 0, 0.7)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: theme.transitions.fast,
+    zIndex: 2
+  },
+  uploadButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.md,
+    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
+    borderRadius: theme.radius.md,
+    border: `2px dashed ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    cursor: 'pointer',
+    transition: theme.transitions.normal
+  },
 };
 
 export default EditPost;

@@ -41,7 +41,13 @@ function Feed() {
       const data = await getPosts({ 
         category: activeCategory === 'all' ? null : activeCategory
       });
-      setPosts(data.items || []);
+      
+      const postsWithImages = (data.items || []).map(post => ({
+        ...post,
+        images: typeof post.images === 'string' ? JSON.parse(post.images) : (post.images || [])
+      }));
+      
+      setPosts(postsWithImages);
     } catch (error) {
       console.error('Error loading posts:', error);
       setPosts([]);
@@ -149,7 +155,7 @@ function Feed() {
 
             {!loading && posts.length > 0 && posts.map((post) => (
               <PostCard 
-                key={`${post.id}-${post.is_liked}-${post.likes_count}`}
+                key={post.id}
                 post={post} 
                 onClick={handlePostClick}
                 onLikeUpdate={handleLikeUpdate}

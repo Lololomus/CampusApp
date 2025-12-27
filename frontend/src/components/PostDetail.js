@@ -22,6 +22,8 @@ function PostDetail() {
   const [editText, setEditText] = useState('');
   const [reportingComment, setReportingComment] = useState(null);
   const [replyToName, setReplyToName] = useState('');
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [imageHeight, setImageHeight] = useState(400);
 
 
   useEffect(() => {
@@ -37,8 +39,13 @@ function PostDetail() {
     setLoading(true);
     try {
       const data = await getPost(viewPostId);
-      setPost(data);
-
+      
+      const postWithImages = {
+        ...data,
+        images: typeof data.images === 'string' ? JSON.parse(data.images) : (data.images || [])
+      };
+      
+      setPost(postWithImages);
 
       try {
         const commentsData = await getPostComments(viewPostId);
@@ -263,6 +270,37 @@ function PostDetail() {
     }
   };
 
+  // Навигация по изображениям
+  const handlePrevImage = (e) => {
+    e.stopPropagation();
+    hapticFeedback('light');
+    setCurrentImageIndex((prev) => (prev === 0 ? post.images.length - 1 : prev - 1));
+  };
+
+  const handleNextImage = (e) => {
+    e.stopPropagation();
+    hapticFeedback('light');
+    setCurrentImageIndex((prev) => (prev === post.images.length - 1 ? 0 : prev + 1));
+  };
+
+  // Расчёт высоты изображения по пропорциям
+  const handleImageLoad = (e) => {
+    const img = e.target;
+    const aspectRatio = img.naturalWidth / img.naturalHeight;
+    
+    let height;
+    if (aspectRatio >= 1.5) {
+      height = 300; // Широкие горизонтальные
+    } else if (aspectRatio >= 1.1) {
+      height = 400; // Квадратные
+    } else if (aspectRatio >= 0.7) {
+      height = 500; // Немного вертикальные
+    } else {
+      height = 600; // Очень вертикальные
+    }
+    
+    setImageHeight(height);
+  };
 
   const buildCommentTree = (comments) => {
     const commentMap = {};
@@ -409,6 +447,62 @@ function PostDetail() {
         <h1 style={styles.title}>{post.title}</h1>
         <p style={styles.body}>{post.body}</p>
 
+        {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ */}
+        {post.images && post.images.length > 0 && (
+          <div style={{...styles.imageContainer, height: imageHeight}}>
+            <img 
+              src={post.images[currentImageIndex]}
+              alt={`${post.title} - фото ${currentImageIndex + 1}`}
+              style={styles.image}
+              loading="lazy"
+              onLoad={handleImageLoad}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+            
+            {/* Индикатор количества фото */}
+            {post.images.length > 1 && (
+              <>
+                {/* Счётчик */}
+                <div style={styles.imageCounter}>
+                  {currentImageIndex + 1} / {post.images.length}
+                </div>
+                
+                {/* Кнопки навигации */}
+                <button 
+                  onClick={handlePrevImage}
+                  style={{...styles.imageNavButton, left: 8}}
+                  aria-label="Предыдущее фото"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                
+                <button 
+                  onClick={handleNextImage}
+                  style={{...styles.imageNavButton, right: 8}}
+                  aria-label="Следующее фото"
+                >
+                  <ArrowLeft size={20} style={{ transform: 'rotate(180deg)' }} />
+                </button>
+                
+                {/* Точки-индикаторы */}
+                <div style={styles.imageDots}>
+                  {post.images.map((_, index) => (
+                    <div 
+                      key={index}
+                      style={{
+                        ...styles.dot,
+                        opacity: index === currentImageIndex ? 1 : 0.4,
+                        transform: index === currentImageIndex ? 'scale(1.2)' : 'scale(1)'
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {post.category === 'lost_found' && (
           <div style={styles.additionalInfo}>
@@ -1092,7 +1186,72 @@ const styles = {
     fontSize: theme.fontSize.md,
     cursor: 'pointer',
     marginTop: theme.spacing.sm
-  }
+  },
+  imageContainer: {
+  position: 'relative',
+  width: '100%',
+  minHeight: 300,
+  maxHeight: 600,
+  borderRadius: 12,
+  overflow: 'hidden',
+  marginBottom: theme.spacing.lg,
+  backgroundColor: '#000',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  transition: 'height 0.2s ease',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    transition: 'transform 0.3s',
+  },
+  imageCounter: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    color: '#fff',
+    padding: '6px 12px',
+    borderRadius: 16,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+    zIndex: 2,
+  },
+  imageNavButton: {
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: theme.radius.full,
+    width: 40,
+    height: 40,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    zIndex: 2,
+    transition: 'background-color 0.2s',
+  },
+  imageDots: {
+    position: 'absolute',
+    bottom: 12,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    gap: 6,
+    zIndex: 2,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: theme.radius.full,
+    backgroundColor: '#fff',
+    transition: 'all 0.3s ease',
+  },
 };
 
 

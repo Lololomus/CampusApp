@@ -143,12 +143,22 @@ export async function getPost(id) {
   }
 }
 
-export async function createPost(postData) {
+export async function createPost(postData, onProgress = null) {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.post('/posts/create', postData, {
-      params: { telegram_id }
-    });
+    
+    const config = {
+      params: { telegram_id },
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    };
+    
+    if (onProgress) {
+      config.onUploadProgress = onProgress;
+    }
+    
+    const response = await api.post('/posts/create', postData, config);
     return response.data;
   } catch (error) {
     console.error('Ошибка создания поста:', error);
@@ -156,18 +166,30 @@ export async function createPost(postData) {
   }
 }
 
-export async function updatePost(postId, postData) {
+
+export async function updatePost(postId, postData, onProgress = null) {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.patch(`/posts/${postId}`, postData, {
-      params: { telegram_id }
-    });
+    
+    const config = {
+      params: { telegram_id },
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    };
+    
+    if (onProgress) {
+      config.onUploadProgress = onProgress;
+    }
+    
+    const response = await api.patch(`/posts/${postId}`, postData, config);
     return response.data;
   } catch (error) {
     console.error('Ошибка обновления поста:', error);
     throw error;
   }
 }
+
 
 export async function deletePost(postId) {
   try {

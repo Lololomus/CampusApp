@@ -56,17 +56,18 @@ class Post(Base):
     title = Column(String(200), nullable=True)
     body = Column(Text, nullable=False)
     tags = Column(Text, nullable=True)  # JSON array: '["python", "react"]'
+    images = Column(Text, nullable=True)  # JSON array Base64 строк
     
-    # АНОНИМНОСТЬ (НОВОЕ)
+    # АНОНИМНОСТЬ
     is_anonymous = Column(Boolean, default=False)  # пост анонимный
     enable_anonymous_comments = Column(Boolean, default=False)  # комменты анонимные
     
-    # Для lost_found (НОВОЕ)
+    # Для lost_found
     lost_or_found = Column(Enum('lost', 'found', name='lost_found_enum'), nullable=True)
     item_description = Column(String(500), nullable=True)
     location = Column(String(200), nullable=True)
     
-    # Для events (НОВОЕ)
+    # Для events
     event_name = Column(String(200), nullable=True)
     event_date = Column(DateTime, nullable=True)
     event_location = Column(String(200), nullable=True)

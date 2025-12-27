@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Body
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app import models, schemas, crud
 from app.database import get_db, init_db
+from app.utils import get_image_urls
 import json
 
 
@@ -23,6 +25,10 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+# ✅ НОВОЕ: Статические файлы (изображения)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 # Startup
@@ -144,6 +150,9 @@ def get_user_posts_endpoint(
     for post in posts:
         tags = json.loads(post.tags) if post.tags else []
         
+        # ✅ НОВОЕ: Получаем URL изображений
+        images = get_image_urls(post.images) if post.images else []
+        
         author_id_data = post.author_id
         
         if post.is_anonymous:
@@ -159,6 +168,7 @@ def get_user_posts_endpoint(
             "title": post.title,
             "body": post.body,
             "tags": tags,
+            "images": images,  # ✅ НОВОЕ
             "is_anonymous": post.is_anonymous,
             "enable_anonymous_comments": post.enable_anonymous_comments,
             "lost_or_found": post.lost_or_found,
@@ -217,6 +227,9 @@ def get_posts_feed(
         tags = json.loads(post.tags) if post.tags else []
         is_liked = crud.is_post_liked_by_user(db, post.id, user.id)
         
+        # ✅ НОВОЕ: Получаем URL изображений
+        images = get_image_urls(post.images) if post.images else []
+        
         author_id_data = post.author_id
         
         if post.is_anonymous:
@@ -232,6 +245,7 @@ def get_posts_feed(
             "title": post.title,
             "body": post.body,
             "tags": tags,
+            "images": images,  # ✅ НОВОЕ
             "is_anonymous": post.is_anonymous,
             "enable_anonymous_comments": post.enable_anonymous_comments,
             "lost_or_found": post.lost_or_found,
@@ -260,24 +274,67 @@ def get_posts_feed(
 
 
 @app.post("/posts/create", response_model=schemas.PostResponse)
-def create_post_endpoint(
+async def create_post_endpoint(
     telegram_id: int = Query(...),
-    post_data: schemas.PostCreate = Body(...),
+    category: str = Form(...),
+    body: str = Form(...),
+    title: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    is_anonymous: Optional[bool] = Form(False),
+    lost_or_found: Optional[str] = Form(None),
+    item_description: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    event_name: Optional[str] = Form(None),
+    event_date: Optional[str] = Form(None),
+    event_location: Optional[str] = Form(None),
+    is_important: Optional[bool] = Form(False),
+    images: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db)
 ):
-    """Создать новый пост"""
+    """Создать новый пост (multipart form)"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    # Для confessions принудительная анонимность
-    if post_data.category == 'confessions':
-        post_data.is_anonymous = True
+    tags_list = json.loads(tags) if tags else []
     
-    post = crud.create_post(db, post_data, user.id)
+    if category == 'confessions':
+        is_anonymous = True
+        
+        if images and len(images) > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="В категории Confessions нельзя прикреплять изображения (деанонимизация)"
+            )
     
-    # Формируем ответ
+    if images and len(images) > 3:
+        raise HTTPException(status_code=400, detail="Максимум 3 изображения")
+    
+    post_data = schemas.PostCreate(
+        category=category,
+        title=title,
+        body=body,
+        tags=tags_list,
+        is_anonymous=is_anonymous,
+        lost_or_found=lost_or_found,
+        item_description=item_description,
+        location=location,
+        event_name=event_name,
+        event_date=event_date,
+        event_location=event_location,
+        is_important=is_important,
+        images=[]
+    )
+    
+    try:
+        post = await crud.create_post(db, post_data, user.id, uploaded_files=images)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
     tags = json.loads(post.tags) if post.tags else []
+    
+    images_urls = get_image_urls(post.images) if post.images else []
+    
     author_data = None
     author_id_data = post.author_id
     
@@ -295,6 +352,7 @@ def create_post_endpoint(
         "title": post.title,
         "body": post.body,
         "tags": tags,
+        "images": images_urls,
         "is_anonymous": post.is_anonymous,
         "enable_anonymous_comments": post.enable_anonymous_comments,
         "lost_or_found": post.lost_or_found,
@@ -311,6 +369,7 @@ def create_post_endpoint(
         "created_at": post.created_at,
         "updated_at": post.updated_at
     }
+
 
 
 
@@ -334,6 +393,9 @@ def get_post_endpoint(
     is_liked = crud.is_post_liked_by_user(db, post_id, user.id)
     tags = json.loads(post.tags) if post.tags else []
     
+    # ✅ НОВОЕ: Получаем URL изображений
+    images = get_image_urls(post.images) if post.images else []
+    
     author_id_data = post.author_id
     
     if post.is_anonymous:
@@ -349,6 +411,7 @@ def get_post_endpoint(
         "title": post.title,
         "body": post.body,
         "tags": tags,
+        "images": images,  # ✅ НОВОЕ
         "is_anonymous": post.is_anonymous,
         "enable_anonymous_comments": post.enable_anonymous_comments,
         "lost_or_found": post.lost_or_found,
@@ -395,13 +458,24 @@ def delete_post_endpoint(
 
 
 @app.patch("/posts/{post_id}", response_model=schemas.PostResponse)
-def update_post_endpoint(
+async def update_post_endpoint(
     post_id: int,
     telegram_id: int = Query(...),
-    post_update: schemas.PostUpdate = Body(...),
+    title: Optional[str] = Form(None),
+    body: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    lost_or_found: Optional[str] = Form(None),
+    item_description: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    event_name: Optional[str] = Form(None),
+    event_date: Optional[str] = Form(None),
+    event_location: Optional[str] = Form(None),
+    is_important: Optional[bool] = Form(None),
+    new_images: List[UploadFile] = File(default=[]),
+    keep_images: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    """Обновление поста"""
+    """Обновление поста (multipart form)"""
     # Проверка пользователя
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -416,13 +490,57 @@ def update_post_endpoint(
     if post.author_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to edit this post")
     
+    # Парсинг tags из JSON string
+    tags_list = json.loads(tags) if tags else None
+    
+    # Парсинг keep_images
+    keep_images_list = json.loads(keep_images) if keep_images else []
+    
+    # Валидация общего количества изображений
+    total_images = len(keep_images_list) + len(new_images)
+    if total_images > 3:
+        raise HTTPException(status_code=400, detail="Максимум 3 изображения")
+    
+    # Для confessions нельзя добавлять фото
+    if post.category == 'confessions' and (len(new_images) > 0 or len(keep_images_list) > 0):
+        raise HTTPException(
+            status_code=400,
+            detail="В категории Confessions нельзя прикреплять изображения"
+        )
+    
+    # Создаём Pydantic объект вручную
+    post_update = schemas.PostUpdate(
+        title=title,
+        body=body,
+        tags=tags_list,
+        lost_or_found=lost_or_found,
+        item_description=item_description,
+        location=location,
+        event_name=event_name,
+        event_date=event_date,
+        event_location=event_location,
+        is_important=is_important,
+        images=None  # Обработаем отдельно
+    )
+    
     # Обновление поста
-    updated_post = crud.update_post(db, post_id, post_update)
+    try:
+        updated_post = await crud.update_post(
+            db, post_id, post_update,
+            new_files=new_images,
+            keep_filenames=keep_images_list
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
     if not updated_post:
         raise HTTPException(status_code=500, detail="Failed to update post")
     
     # Формирование ответа
     tags = json.loads(updated_post.tags) if updated_post.tags else []
+    
+    # Получаем URL изображений
+    images_urls = get_image_urls(updated_post.images) if updated_post.images else []
     
     author_data = None
     author_id_data = updated_post.author_id
@@ -440,6 +558,7 @@ def update_post_endpoint(
         "title": updated_post.title,
         "body": updated_post.body,
         "tags": tags,
+        "images": images_urls,
         "is_anonymous": updated_post.is_anonymous,
         "enable_anonymous_comments": updated_post.enable_anonymous_comments,
         "lost_or_found": updated_post.lost_or_found,
