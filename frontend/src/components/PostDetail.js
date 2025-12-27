@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical, MapPin, Calendar, Clock } from 'lucide-react';
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment } from '../api';
 import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
 import BottomActionBar from './BottomActionBar';
+import DropdownMenu from './DropdownMenu';
 import { Z_MODAL_FORMS } from '../constants/zIndex';
 import theme from '../theme';
+
 
 function PostDetail() {
   const { viewPostId, setViewPostId, user, updatePost, setUpdatedPost, likedPosts, setPostLiked } = useStore();
@@ -21,6 +23,7 @@ function PostDetail() {
   const [reportingComment, setReportingComment] = useState(null);
   const [replyToName, setReplyToName] = useState('');
 
+
   useEffect(() => {
     if (viewPostId) {
       loadPost();
@@ -29,11 +32,13 @@ function PostDetail() {
     }
   }, [viewPostId]);
 
+
   const loadPost = async () => {
     setLoading(true);
     try {
       const data = await getPost(viewPostId);
       setPost(data);
+
 
       try {
         const commentsData = await getPostComments(viewPostId);
@@ -59,6 +64,7 @@ function PostDetail() {
     }
   };
 
+
   const refreshPost = async () => {
     try {
       const fresh = await getPost(viewPostId);
@@ -76,10 +82,12 @@ function PostDetail() {
     }
   };
 
+
   const handleBack = () => {
     hapticFeedback('light');
     setViewPostId(null);
   };
+
 
   const handleSendComment = async (text) => {
     if (!text || !text.trim()) return;
@@ -98,10 +106,12 @@ function PostDetail() {
     }
   };
 
+
   const handleDirectSend = async (text) => {
     hapticFeedback('success');
     alert(`Отклик отправлен автору!\n\n"${text}"`);
   };
+
 
   const handleLike = async () => {
     hapticFeedback('light');
@@ -137,6 +147,7 @@ function PostDetail() {
     }
   };
 
+
   const handleCommentLike = async (commentId) => {
     hapticFeedback('light');
     try {
@@ -153,6 +164,7 @@ function PostDetail() {
     }
   };
 
+
   const handleReply = (comment) => {
     hapticFeedback('light');
     setReplyTo(comment.id);
@@ -160,6 +172,7 @@ function PostDetail() {
     setReplyToName(authorName || '');
     setMenuOpen(null);
   };
+
 
   const handleDeleteComment = async (commentId) => {
     if (!window.confirm('Удалить комментарий?')) return;
@@ -188,12 +201,14 @@ function PostDetail() {
     }
   };
 
+
   const handleEditComment = (comment) => {
     hapticFeedback('light');
     setEditingComment(comment.id);
     setEditText(comment.body);
     setMenuOpen(null);
   };
+
 
   const handleSaveEdit = async (commentId) => {
     if (!editText.trim()) return;
@@ -220,17 +235,20 @@ function PostDetail() {
     }
   };
 
+
   const cancelEdit = () => {
     hapticFeedback('light');
     setEditingComment(null);
     setEditText('');
   };
 
+
   const handleReportComment = (commentId) => {
     hapticFeedback('light');
     setReportingComment(commentId);
     setMenuOpen(null);
   };
+
 
   const submitReport = async (reason) => {
     hapticFeedback('medium');
@@ -244,6 +262,7 @@ function PostDetail() {
       alert('Не удалось отправить жалобу');
     }
   };
+
 
   const buildCommentTree = (comments) => {
     const commentMap = {};
@@ -266,7 +285,9 @@ function PostDetail() {
     return roots;
   };
 
+
   if (!viewPostId) return null;
+
 
   if (loading) {
     return (
@@ -275,6 +296,7 @@ function PostDetail() {
       </div>
     );
   }
+
 
   if (!post) {
     return (
@@ -290,6 +312,7 @@ function PostDetail() {
     );
   }
 
+
   const getCategoryColor = (category) => {
     const colors = {
       'news': theme.colors.news,
@@ -300,6 +323,7 @@ function PostDetail() {
     return colors[category] || theme.colors.textDisabled;
   };
 
+
   const getCategoryLabel = (category) => {
     const labels = {
       'news': '📰 Новости',
@@ -309,6 +333,7 @@ function PostDetail() {
     };
     return labels[category] || category;
   };
+
 
   const formatEventDate = (dateString) => {
     if (!dateString) return '';
@@ -323,9 +348,11 @@ function PostDetail() {
     return date.toLocaleDateString('ru-RU', options);
   };
 
+
   const commentTree = buildCommentTree(comments);
   const isAnonymous = post.is_anonymous === true;
   const displayAuthorName = isAnonymous ? 'Аноним' : (typeof post.author === 'object' ? post.author.name : post.author);
+
 
   return (
     <div style={styles.container}>
@@ -335,6 +362,7 @@ function PostDetail() {
         </button>
         <span style={styles.headerTitle}>Пост</span>
       </div>
+
 
       <div style={styles.content}>
         <div style={styles.authorSection}>
@@ -363,6 +391,7 @@ function PostDetail() {
           </div>
         </div>
 
+
         <div
           style={{
             ...styles.category,
@@ -376,8 +405,10 @@ function PostDetail() {
           )}
         </div>
 
+
         <h1 style={styles.title}>{post.title}</h1>
         <p style={styles.body}>{post.body}</p>
+
 
         {post.category === 'lost_found' && (
           <div style={styles.additionalInfo}>
@@ -395,6 +426,7 @@ function PostDetail() {
             )}
           </div>
         )}
+
 
         {post.category === 'events' && (
           <div style={styles.additionalInfo}>
@@ -419,6 +451,7 @@ function PostDetail() {
           </div>
         )}
 
+
         {post.tags && post.tags.length > 0 && (
           <div style={styles.tags}>
             {post.tags.map((tag, index) => (
@@ -426,6 +459,7 @@ function PostDetail() {
             ))}
           </div>
         )}
+
 
         <div style={styles.stats}>
           <button
@@ -448,8 +482,10 @@ function PostDetail() {
           </div>
         </div>
 
+
         <div style={styles.commentsSection}>
           <h3 style={styles.commentsTitle}>Комментарии ({comments.length})</h3>
+
 
           {commentTree.length === 0 ? (
             <div style={styles.noComments}>
@@ -483,6 +519,7 @@ function PostDetail() {
         </div>
       </div>
 
+
       <BottomActionBar
         onCommentSend={handleSendComment}
         onDirectSend={handleDirectSend}
@@ -492,6 +529,7 @@ function PostDetail() {
         postAuthorName={displayAuthorName}
         isAnonymousPost={isAnonymous}
       />
+
 
       {reportingComment && (
         <div style={styles.modalOverlay} onClick={() => setReportingComment(null)}>
@@ -516,7 +554,9 @@ function PostDetail() {
   );
 }
 
+
 function Comment({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit }) {
+  const menuButtonRef = useRef(null);
   const likes = commentLikes[comment.id] || { isLiked: false, count: comment.likes || 0 };
   const maxDepth = 3;
   const isMyComment = currentUser && comment.author_id === currentUser.id;
@@ -529,6 +569,14 @@ function Comment({ comment, depth = 0, currentUser, commentLikes, onLike, onRepl
   const commentAuthorInitial = isAnonymousComment 
     ? '?' 
     : (typeof comment.author === 'object' ? comment.author.name[0] : comment.author?.[0] || '?');
+
+  // Меню действий
+  const menuItems = isMyComment ? [
+    { icon: '✏️', label: 'Редактировать', onClick: () => onEdit(comment) },
+    { icon: '🗑', label: 'Удалить', onClick: () => onDelete(comment.id), danger: true },
+  ] : [
+    { icon: '🚫', label: 'Пожаловаться', onClick: () => onReport(comment.id), danger: true },
+  ];
 
   return (
     <div style={{ position: 'relative' }}>
@@ -569,30 +617,22 @@ function Comment({ comment, depth = 0, currentUser, commentLikes, onLike, onRepl
             {!comment.is_deleted && (
               <div style={{ marginLeft: 'auto', position: 'relative' }}>
                 <button
-                  onClick={() => setMenuOpen(menuOpen === comment.id ? null : comment.id)}
+                  ref={menuButtonRef}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(menuOpen === comment.id ? null : comment.id);
+                  }}
                   style={styles.menuButton}
                 >
                   <MoreVertical size={16} />
                 </button>
                 
-                {menuOpen === comment.id && (
-                  <div style={styles.menu}>
-                    {isMyComment ? (
-                      <>
-                        <button onClick={() => onEdit(comment)} style={styles.menuItem}>
-                          Редактировать
-                        </button>
-                        <button onClick={() => onDelete(comment.id)} style={styles.menuItem}>
-                          Удалить
-                        </button>
-                      </>
-                    ) : (
-                      <button onClick={() => onReport(comment.id)} style={styles.menuItem}>
-                        Пожаловаться
-                      </button>
-                    )}
-                  </div>
-                )}
+                <DropdownMenu 
+                  isOpen={menuOpen === comment.id}
+                  onClose={() => setMenuOpen(null)}
+                  anchorRef={menuButtonRef}
+                  items={menuItems}
+                />
               </div>
             )}
           </div>
@@ -680,6 +720,7 @@ function Comment({ comment, depth = 0, currentUser, commentLikes, onLike, onRepl
     </div>
   );
 }
+
 
 const styles = {
   container: {
@@ -946,32 +987,6 @@ const styles = {
     minHeight: 32,
     transition: theme.transitions.normal,
   },
-  menu: {
-    position: 'absolute',
-    top: '100%',
-    right: 0,
-    marginTop: theme.spacing.xs,
-    backgroundColor: theme.colors.cardHover,
-    borderRadius: theme.radius.sm,
-    boxShadow: theme.shadows.lg,
-    overflow: 'hidden',
-    zIndex: 100,
-    minWidth: 140,
-  },
-  menuItem: {
-    width: '100%',
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    background: 'none',
-    border: 'none',
-    color: theme.colors.text,
-    fontSize: theme.fontSize.base,
-    cursor: 'pointer',
-    textAlign: 'left',
-    transition: theme.transitions.normal,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-  },
   loading: {
     textAlign: 'center',
     color: theme.colors.textTertiary,
@@ -1079,5 +1094,6 @@ const styles = {
     marginTop: theme.spacing.sm
   }
 };
+
 
 export default PostDetail;

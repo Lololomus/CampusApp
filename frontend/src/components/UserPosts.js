@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit, Trash2, MoreVertical } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import EditPost from './EditPost';
 import { getUserPosts, deletePost } from '../api';
 import { useStore } from '../store';
-import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
+import { hapticFeedback } from '../utils/telegram';
 import PostCard from './PostCard';
 import { Z_USER_POSTS } from '../constants/zIndex';
 import PostCardSkeleton from './PostCardSkeleton';
@@ -14,7 +14,6 @@ function UserPosts() {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
   const LIMIT = 10;
 
@@ -23,14 +22,14 @@ function UserPosts() {
   }, []);
 
   useEffect(() => {
-  // Когда возвращаемся из детального просмотра - перезагружаем
-  if (!viewPostId && showUserPosts) {
-    setPosts([]);
-    setOffset(0);
-    setHasMore(true);
-    loadPosts();
-  }
-}, [viewPostId]);
+    // Когда возвращаемся из детального просмотра - перезагружаем
+    if (!viewPostId && showUserPosts) {
+      setPosts([]);
+      setOffset(0);
+      setHasMore(true);
+      loadPosts();
+    }
+  }, [viewPostId]);
 
   const loadPosts = async () => {
     if (loading || !hasMore) return;
@@ -62,35 +61,17 @@ function UserPosts() {
     setViewPostId(postId);
   };
 
-  const handleEdit = (post, e) => {
-    e.stopPropagation();
-    hapticFeedback('medium');
-    setMenuOpen(null);
-    setEditingPost(post);
+  const handlePostDeleted = (postId) => {
+    setPosts(posts.filter(p => p.id !== postId));
+    hapticFeedback('success');
   };
 
-  const handleDelete = async (postId, e) => {
-    e.stopPropagation();
-    setMenuOpen(null);
-    
-    if (!window.confirm('Удалить пост? Это действие нельзя отменить.')) {
-      return;
-    }
-
-    hapticFeedback('medium');
-    
-    try {
-      await deletePost(postId);
-      setPosts(posts.filter(p => p.id !== postId));
-      hapticFeedback('success');
-    } catch (error) {
-      console.error('Ошибка удаления:', error);
-      alert('Не удалось удалить пост');
-    }
-  };
-
-  const handlePostUpdate = (updatedPost) => {
-    setPosts(posts.map(p => p.id === updatedPost.id ? updatedPost : p));
+  const handleLikeUpdate = (postId, updates) => {
+    setPosts(posts.map(p => 
+      p.id === postId 
+        ? { ...p, ...updates } 
+        : p
+    ));
   };
 
   const handleScroll = (e) => {
@@ -114,46 +95,26 @@ function UserPosts() {
       <div style={styles.content}>
         {posts.length === 0 && !loading ? (
           <div style={styles.empty}>
+            <div style={styles.emptyEmoji}>📝</div>
             <p style={styles.emptyText}>У вас пока нет постов</p>
+            <p style={styles.emptySubtext}>
+              Нажмите кнопку "+" внизу экрана, чтобы создать первый пост
+            </p>
           </div>
         ) : (
-          posts.map((post) => (
-            <div key={post.id} style={styles.postWrapper}>
+          posts.map((post, idx) => (
+            <div 
+              key={post.id} 
+              style={{
+                animation: `fadeInUp 0.4s ease ${idx * 0.05}s both`
+              }}
+            >
               <PostCard 
                 post={post} 
-                onClick={() => handlePostClick(post.id)}
+                onClick={handlePostClick}
+                onPostDeleted={handlePostDeleted}
+                onLikeUpdate={handleLikeUpdate}
               />
-              
-              {/* Кнопка меню */}
-              <button
-                style={styles.menuButton}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(menuOpen === post.id ? null : post.id);
-                }}
-              >
-                <MoreVertical size={20} />
-              </button>
-
-              {/* Меню действий */}
-              {menuOpen === post.id && (
-                <div style={styles.menu}>
-                    <button
-                    style={styles.menuItem}
-                    onClick={(e) => handleEdit(post, e)}
-                    >
-                    <Edit size={16} />
-                    <span>Редактировать</span>
-                    </button>
-                  <button
-                    style={{...styles.menuItem, color: '#ff4444'}}
-                    onClick={(e) => handleDelete(post.id, e)}
-                  >
-                    <Trash2 size={16} />
-                    <span>Удалить</span>
-                  </button>
-                </div>
-              )}
             </div>
           ))
         )}
@@ -167,7 +128,10 @@ function UserPosts() {
         )}
 
         {!hasMore && posts.length > 0 && (
-          <div style={styles.endMessage}>Это все ваши посты</div>
+          <div style={styles.endMessage}>
+            <div style={styles.endIcon}>✨</div>
+            <div>Это все ваши посты</div>
+          </div>
         )}
       </div>
 
@@ -175,15 +139,31 @@ function UserPosts() {
         <EditPost
           post={editingPost}
           onClose={() => setEditingPost(null)}
-          onUpdate={handlePostUpdate}
+          onUpdate={(updatedPost) => {
+            setPosts(posts.map(p => p.id === updatedPost.id ? updatedPost : p));
+            setEditingPost(null);
+          }}
         />
       )}
+
+      <style>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }
 
 const styles = {
-    container: {
+  container: {
     position: 'fixed',
     top: 0,
     left: 0,
@@ -204,6 +184,7 @@ const styles = {
     backgroundColor: '#1a1a1a',
     borderBottom: '1px solid #333',
     zIndex: 10,
+    backdropFilter: 'blur(10px)',
   },
   backButton: {
     background: 'none',
@@ -215,6 +196,8 @@ const styles = {
     alignItems: 'center',
     minWidth: '44px',
     minHeight: '44px',
+    borderRadius: '50%',
+    transition: 'background 0.2s',
   },
   headerTitle: {
     fontSize: '18px',
@@ -224,66 +207,38 @@ const styles = {
   content: {
     padding: '16px',
   },
-  postWrapper: {
-    position: 'relative',
-    marginBottom: '12px',
-  },
-  menuButton: {
-    position: 'absolute',
-    top: '12px',
-    right: '12px',
-    width: '36px',
-    height: '36px',
-    borderRadius: '50%',
-    backgroundColor: '#1a1a1acc',
-    backdropFilter: 'blur(8px)',
-    border: '1px solid #333',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 5,
-  },
-  menu: {
-    position: 'absolute',
-    top: '52px',
-    right: '12px',
-    backgroundColor: '#2a2a2a',
-    borderRadius: '12px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-    overflow: 'hidden',
-    zIndex: 100,
-    minWidth: '180px',
-    border: '1px solid #333',
-  },
-  menuItem: {
-    width: '100%',
-    padding: '14px 16px',
-    background: 'none',
-    border: 'none',
-    color: '#fff',
-    fontSize: '15px',
-    cursor: 'pointer',
-    textAlign: 'left',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    transition: 'background 0.2s',
-  },
   empty: {
     textAlign: 'center',
-    padding: '60px 20px',
+    padding: '80px 20px',
+    animation: 'fadeInUp 0.5s ease',
+  },
+  emptyEmoji: {
+    fontSize: '64px',
+    marginBottom: '16px',
   },
   emptyText: {
-    fontSize: '16px',
+    fontSize: '18px',
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: '8px',
+  },
+  emptySubtext: {
+    fontSize: '14px',
     color: '#999',
+    lineHeight: '1.5',
   },
   endMessage: {
     textAlign: 'center',
     color: '#666',
-    padding: '20px',
+    padding: '32px 20px',
     fontSize: '14px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  endIcon: {
+    fontSize: '24px',
   },
 };
 

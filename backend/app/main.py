@@ -127,29 +127,27 @@ def get_user_posts_endpoint(
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Получить посты пользователя"""
+    # Check requesting user
     requesting_user = crud.get_user_by_telegram_id(db, telegram_id)
     if not requesting_user:
-        raise HTTPException(status_code=404, detail="Вы не авторизованы")
+        raise HTTPException(status_code=404, detail="User not found")
     
+    # Get target user
     target_user = crud.get_user_by_id(db, user_id)
     if not target_user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        raise HTTPException(status_code=404, detail="User not found")
     
+    # Get posts
     posts = crud.get_user_posts(db, user_id, limit, offset)
     
-    # Обрабатываем каждый пост
     result = []
     for post in posts:
-        # Парсим теги
         tags = json.loads(post.tags) if post.tags else []
         
-        # Обрабатываем анонимность
-        author_data = None
         author_id_data = post.author_id
+        
         if post.is_anonymous:
             author_data = {"name": "Аноним"}
-            author_id_data = None
         else:
             author_data = schemas.UserShort.from_orm(target_user)
         
@@ -175,7 +173,7 @@ def get_user_posts_endpoint(
             "comments_count": post.comments_count,
             "views_count": post.views_count,
             "created_at": post.created_at,
-            "updated_at": post.updated_at
+            "updated_at": post.updated_at,
         }
         result.append(post_dict)
     
@@ -212,19 +210,17 @@ def get_posts_feed(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    posts = crud.get_posts(db, skip, limit, category=category)
+    posts = crud.get_posts(db, skip=skip, limit=limit, category=category)
     
     result = []
     for post in posts:
         tags = json.loads(post.tags) if post.tags else []
-        
         is_liked = crud.is_post_liked_by_user(db, post.id, user.id)
         
-        author_data = None
         author_id_data = post.author_id
+        
         if post.is_anonymous:
             author_data = {"name": "Аноним"}
-            author_id_data = None
         else:
             author_data = schemas.UserShort.from_orm(post.author) if post.author else None
         
@@ -318,33 +314,30 @@ def create_post_endpoint(
 
 
 
-@app.get("/posts/{postid}", response_model=schemas.PostResponse)
+@app.get("/posts/{post_id}", response_model=schemas.PostResponse)
 def get_post_endpoint(
-    postid: int, 
-    telegram_id: int = Query(...), 
+    post_id: int,
+    telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    # ID поста
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    post = crud.get_post(db, postid)
+    post = crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    # Увеличиваем просмотры
-    crud.increment_post_views(db, postid)
+    # Increment views
+    crud.increment_post_views(db, post_id)
     
-    is_liked = crud.is_post_liked_by_user(db, postid, user.id)
-    
+    is_liked = crud.is_post_liked_by_user(db, post_id, user.id)
     tags = json.loads(post.tags) if post.tags else []
     
-    author_data = None
     author_id_data = post.author_id
+    
     if post.is_anonymous:
         author_data = {"name": "Аноним"}
-        author_id_data = None
     else:
         author_data = schemas.UserShort.from_orm(post.author) if post.author else None
     

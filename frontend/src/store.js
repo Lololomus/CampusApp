@@ -35,6 +35,7 @@ export const useStore = create(
       setShowCreateModal: (show) => set({ showCreateModal: show }),
       setShowCreateRequestModal: (show) => set({ showCreateRequestModal: show }),
       setViewPostId: (id) => set({ viewPostId: id }),
+      setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
 

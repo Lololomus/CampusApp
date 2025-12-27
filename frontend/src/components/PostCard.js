@@ -1,14 +1,22 @@
-import React from 'react';
-import { Heart, MessageCircle, Eye, MapPin, Calendar } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Heart, MessageCircle, Eye, MapPin, MoreVertical } from 'lucide-react';
 import { hapticFeedback } from '../utils/telegram';
-import { likePost } from '../api';
+import { likePost, deletePost } from '../api';
 import { useStore } from '../store';
 import theme from '../theme';
+import DropdownMenu from './DropdownMenu';
 
-function PostCard({ post, onClick, onLikeUpdate }) {
-  const { likedPosts, setPostLiked } = useStore();
+function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
+  const { likedPosts, setPostLiked, user } = useStore();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef(null);
+  
   const isLiked = likedPosts[post.id] ?? post.is_liked ?? false;
   const likesCount = post.likes_count || post.likes || 0;
+  
+  // Проверка авторства
+  const currentUserId = user?.id;
+  const isAuthor = currentUserId && post.author_id === currentUserId;
   
   const handleLike = async (e) => {
     e.stopPropagation();
@@ -33,6 +41,84 @@ function PostCard({ post, onClick, onLikeUpdate }) {
     }
   };
 
+  const handleMenuClick = (e) => {
+    e.stopPropagation();
+    hapticFeedback('light');
+    setMenuOpen(!menuOpen);
+  };
+
+  const handleEdit = () => {
+    setMenuOpen(false);
+    hapticFeedback('medium');
+    const { setEditPostId } = useStore.getState();
+    setEditPostId(post.id);
+  };
+
+  const handleDelete = async () => {
+    setMenuOpen(false);
+    
+    if (!window.confirm('Удалить пост? Это действие нельзя отменить.')) {
+      return;
+    }
+    
+    hapticFeedback('heavy');
+    
+    try {
+      await deletePost(post.id);
+      if (onPostDeleted) {
+        onPostDeleted(post.id);
+      }
+    } catch (error) {
+      console.error('Ошибка удаления:', error);
+      alert('Не удалось удалить пост');
+    }
+  };
+
+  const handlePin = () => {
+    setMenuOpen(false);
+    hapticFeedback('medium');
+    alert('Функция закрепления в разработке');
+  };
+
+  const handleReport = () => {
+    setMenuOpen(false);
+    hapticFeedback('medium');
+    alert('Функция жалобы в разработке');
+  };
+
+  const handleCopyLink = async () => {
+    setMenuOpen(false);
+    hapticFeedback('light');
+    
+    const link = `${window.location.origin}/post/${post.id}`;
+    
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(link);
+        alert('Ссылка скопирована!');
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = link;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('Ссылка скопирована!');
+      }
+    } catch (error) {
+      console.error('Ошибка копирования:', error);
+      alert('Не удалось скопировать ссылку');
+    }
+  };
+
+  const handleRepost = () => {
+    setMenuOpen(false);
+    hapticFeedback('medium');
+    alert('Функция репоста в разработке');
+  };
+
   const getCategoryColor = (category) => {
     const colors = {
       news: theme.colors.news,
@@ -43,111 +129,161 @@ function PostCard({ post, onClick, onLikeUpdate }) {
     return colors[category] || theme.colors.textDisabled;
   };
 
-  const getCategoryLabel = (category) => {
-    const labels = {
-      news: '📰 Новости',
-      events: '🎉 События',
-      confessions: '💭 Признания',
-      lost_found: '🔍 Находки',
+  const getCategoryIcon = (category) => {
+    const icons = {
+      news: '📰',
+      events: '🎉',
+      confessions: '💭',
+      lost_found: '🔍',
     };
-    return labels[category] || category;
+    return icons[category] || '';
   };
 
-  const formatEventDate = (dateString) => {
+  const getCategoryName = (category) => {
+    const names = {
+      news: 'Новости',
+      events: 'События',
+      confessions: 'Признания',
+      lost_found: 'Находки',
+    };
+    return names[category] || category;
+  };
+
+  const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    const options = { 
-      day: 'numeric', 
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit'
-    };
-    return date.toLocaleDateString('ru-RU', options);
+    const options = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+    return date.toLocaleDateString('ru-RU', options).replace(' г.', '');
   };
 
   const isAnonymous = post.is_anonymous === true;
-  const displayAuthorName = isAnonymous ? 'Аноним' : (typeof post.author === 'object' ? post.author.name : post.author);
-  const displayAuthorAvatar = isAnonymous ? '?' : (typeof post.author === 'object' ? post.author.name : post.author)?.[0] || '?';
+  const authorName = isAnonymous ? 'Аноним' : (post.author?.name || 'Пользователь');
+  const authorMeta = !isAnonymous && post.author 
+    ? [post.author.university, post.author.course ? `${post.author.course}к` : null]
+        .filter(Boolean).join(' · ')
+    : null;
+
+  const truncateText = (text, maxLength) => {
+    if (!text) return '';
+    return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
+  };
+
+  // Меню действий
+  const menuItems = isAuthor ? [
+    { icon: '✏️', label: 'Редактировать', onClick: handleEdit },
+    { icon: '📌', label: 'Закрепить', onClick: handlePin },
+    { icon: '🗑', label: 'Удалить', onClick: handleDelete, danger: true },
+    { divider: true },
+    { icon: '🔗', label: 'Копировать ссылку', onClick: handleCopyLink },
+    { icon: '📤', label: 'Репост', onClick: handleRepost },
+  ] : [
+    { icon: '🚫', label: 'Пожаловаться', onClick: handleReport, danger: true },
+    { divider: true },
+    { icon: '🔗', label: 'Копировать ссылку', onClick: handleCopyLink },
+    { icon: '📤', label: 'Репост', onClick: handleRepost },
+  ];
 
   return (
-    <div style={styles.card} onClick={() => onClick(post.id)}>
-      {/* Шапка */}
+    <div 
+      style={{
+        ...styles.card,
+        borderLeft: `4px solid ${getCategoryColor(post.category)}`
+      }} 
+      onClick={() => onClick(post.id)}
+    >
+      {/* ХЕДЕР */}
       <div style={styles.header}>
-        <div style={styles.authorInfo}>
+        <div style={styles.authorSection}>
           <div style={{
             ...styles.avatar,
             backgroundColor: isAnonymous ? theme.colors.textDisabled : theme.colors.primary
           }}>
-            {displayAuthorAvatar}
+            {authorName[0]?.toUpperCase() || '?'}
           </div>
-          <div>
-            <div style={styles.author}>
-              {displayAuthorName}
-            </div>
-            {!isAnonymous && (post.author?.university || post.author?.institute || post.author?.course) && (
-              <div style={styles.meta}>
-                {[
-                  post.author?.university, 
-                  post.author?.institute, 
-                  post.author?.course ? `${post.author.course} курс` : null
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </div>
+          <div style={styles.authorText}>
+            <span style={styles.authorName}>{authorName}</span>
+            {authorMeta && (
+              <>
+                <span style={styles.dot}> · </span>
+                <span style={styles.authorMeta}>{authorMeta}</span>
+              </>
             )}
           </div>
         </div>
-        <div style={styles.time}>{post.time}</div>
+        
+        <div style={styles.headerRight}>
+          <div style={styles.categoryIcon}>
+            {getCategoryIcon(post.category)} {getCategoryName(post.category)}
+          </div>
+          
+          {/* МЕНЮ (3 точки) */}
+          <button 
+            ref={menuButtonRef}
+            style={styles.menuButton}
+            onClick={handleMenuClick}
+            aria-label="Меню"
+          >
+            <MoreVertical size={18} />
+          </button>
+
+          <DropdownMenu 
+            isOpen={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            items={menuItems}
+            anchorRef={menuButtonRef}
+          />
+        </div>
       </div>
 
-      {/* Категория */}
-      <div
-        style={{
-          ...styles.category,
-          backgroundColor: `${getCategoryColor(post.category)}20`,
-          color: getCategoryColor(post.category),
-        }}
-      >
-        {getCategoryLabel(post.category)}
-        {post.category === 'news' && post.is_important && (
-          <span style={styles.importantBadge}>⭐</span>
-        )}
-      </div>
-
-      {/* Контент */}
+      {/* ЗАГОЛОВОК */}
       <h3 style={styles.title}>{post.title}</h3>
-      <p style={styles.body}>{post.body}</p>
 
-      {/* LOST & FOUND */}
-      {post.category === 'lost_found' && post.item_description && (
-        <div style={styles.extraInfo}>
-          <span style={styles.extraLabel}>
-            {post.lost_or_found === 'lost' ? '😢' : '🎉'} {post.item_description}
-          </span>
+      {/* ФОТО (если есть) */}
+      {post.image && (
+        <div style={styles.imageContainer}>
+          <img 
+            src={post.image} 
+            alt={post.title}
+            style={styles.image}
+            loading="lazy"
+            onError={(e) => {
+              e.target.style.display = 'none';
+            }}
+          />
+        </div>
+      )}
+
+      {/* ОПИСАНИЕ */}
+      <p style={styles.body}>
+        {truncateText(post.body, 180)}
+      </p>
+
+      {/* ДОП ИНФО */}
+      {(post.event_name || post.event_date || post.item_description || post.location) && (
+        <div style={styles.metaInfo}>
+          {post.event_name && (
+            <span style={styles.metaItem}>
+              📅 {post.event_name} • {formatDate(post.event_date)}
+            </span>
+          )}
+          {post.item_description && (
+            <span style={styles.metaItem}>
+              {post.lost_or_found === 'lost' ? '😢' : '🎉'} {post.item_description}
+            </span>
+          )}
           {post.location && (
-            <span style={styles.extraDetail}>
-              <MapPin size={12} /> {post.location}
+            <span style={styles.metaItem}>
+              <MapPin size={12} style={{verticalAlign: 'middle', marginRight: 4}} />
+              {post.location}
             </span>
           )}
         </div>
       )}
 
-      {/* EVENTS */}
-      {post.category === 'events' && post.event_name && (
-        <div style={styles.extraInfo}>
-          <span style={styles.extraLabel}>{post.event_name}</span>
-          {post.event_date && (
-            <span style={styles.extraDetail}>
-              <Calendar size={12} /> {formatEventDate(post.event_date)}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Теги */}
+      {/* ТЕГИ */}
       {post.tags && post.tags.length > 0 && (
         <div style={styles.tags}>
-          {post.tags.map((tag, index) => (
+          {post.tags.slice(0, 3).map((tag, index) => (
             <span key={index} style={styles.tag}>
               #{tag}
             </span>
@@ -155,7 +291,7 @@ function PostCard({ post, onClick, onLikeUpdate }) {
         </div>
       )}
 
-      {/* Футер */}
+      {/* ФУТЕР */}
       <div style={styles.footer}>
         <button 
           style={{
@@ -169,11 +305,11 @@ function PostCard({ post, onClick, onLikeUpdate }) {
         </button>
         <button style={styles.actionButton}>
           <MessageCircle size={18} />
-          <span>{post.commentsCount || post.comments_count || 0}</span>
+          <span>{post.comments_count || 0}</span>
         </button>
         <div style={styles.views}>
-          <Eye size={18} />
-          <span>{post.views_count || post.views || 0}</span>
+          <Eye size={16} />
+          <span>{post.views_count || 0}</span>
         </div>
       </div>
     </div>
@@ -183,113 +319,149 @@ function PostCard({ post, onClick, onLikeUpdate }) {
 const styles = {
   card: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
     cursor: 'pointer',
-    transition: theme.transitions.normal,
+    transition: 'transform 0.2s, box-shadow 0.2s',
     border: `1px solid ${theme.colors.border}`,
   },
+  
   header: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing.md,
-  },
-  authorInfo: {
-    display: 'flex',
-    gap: theme.spacing.md,
     alignItems: 'center',
+    marginBottom: 10,
+    position: 'relative',
+  },
+  authorSection: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.full,
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.bold,
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#fff',
+    flexShrink: 0,
+  },
+  authorText: {
+    fontSize: 13,
+    lineHeight: 1.3,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  authorName: {
+    fontWeight: 600,
     color: theme.colors.text,
   },
-  author: {
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-  },
-  meta: {
-    fontSize: theme.fontSize.xs,
+  dot: {
     color: theme.colors.textTertiary,
-    marginTop: 2,
   },
-  time: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textDisabled,
+  authorMeta: {
+    color: theme.colors.textTertiary,
   },
-  category: {
+  
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+    position: 'relative',
+  },
+  categoryIcon: {
+    fontSize: 11,
+    color: theme.colors.textTertiary,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  
+  menuButton: {
+    background: 'none',
+    border: 'none',
+    color: theme.colors.textTertiary,
+    cursor: 'pointer',
+    padding: 4,
+    display: 'flex',
+    alignItems: 'center',
+    borderRadius: 6,
+    transition: 'all 0.2s',
+  },
+  
+  title: {
+    fontSize: 18,
+    fontWeight: 600,
+    color: theme.colors.text,
+    marginBottom: 10,
+    lineHeight: 1.3,
+    margin: '0 0 10px 0',
+  },
+  
+  imageContainer: {
+    width: '100%',
+    aspectRatio: '16 / 9',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    transition: 'transform 0.3s',
+  },
+  
+  body: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    lineHeight: 1.4,
+    marginBottom: 8,
+    display: '-webkit-box',
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  },
+  
+  metaInfo: {
+    fontSize: 13,
+    color: theme.colors.textTertiary,
+    marginBottom: 8,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metaItem: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: theme.spacing.xs,
-    padding: `${theme.spacing.xs}px 10px`,
-    borderRadius: 6,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    marginBottom: theme.spacing.md,
   },
-  importantBadge: {
-    fontSize: 11,
-    marginLeft: 2,
-  },
-  title: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-    lineHeight: 1.4,
-  },
-  body: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-    lineHeight: 1.5,
-    marginBottom: theme.spacing.md,
-  },
-  extraInfo: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.xs,
-    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: theme.radius.sm,
-    marginBottom: theme.spacing.md,
-  },
-  extraLabel: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-  },
-  extraDetail: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textTertiary,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-  },
+  
   tags: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
+    gap: 6,
+    marginBottom: 10,
   },
   tag: {
-    fontSize: theme.fontSize.sm,
+    fontSize: 12,
     color: theme.colors.primary,
-    fontWeight: theme.fontWeight.medium,
+    fontWeight: 500,
   },
+  
   footer: {
     display: 'flex',
-    gap: theme.spacing.lg,
+    gap: 16,
     alignItems: 'center',
-    paddingTop: theme.spacing.md,
+    paddingTop: 10,
     borderTop: `1px solid ${theme.colors.border}`,
   },
   actionButton: {
@@ -300,16 +472,16 @@ const styles = {
     border: 'none',
     color: theme.colors.textTertiary,
     cursor: 'pointer',
-    padding: theme.spacing.xs,
-    fontSize: theme.fontSize.base,
-    transition: theme.transitions.normal,
+    padding: 4,
+    fontSize: 14,
+    transition: 'color 0.2s',
   },
   views: {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
     color: theme.colors.textDisabled,
-    fontSize: theme.fontSize.base,
+    fontSize: 14,
     marginLeft: 'auto',
   },
 };

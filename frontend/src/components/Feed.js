@@ -31,6 +31,10 @@ function Feed() {
     });
   }, []);
 
+  const handlePostDeleted = useCallback((postId) => {
+    setPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
+  }, []);
+
   const loadPosts = useCallback(async () => {
     setLoading(true);
     try {
@@ -149,6 +153,7 @@ function Feed() {
                 post={post} 
                 onClick={handlePostClick}
                 onLikeUpdate={handleLikeUpdate}
+                onPostDeleted={handlePostDeleted}
               />
             ))}
           </>
