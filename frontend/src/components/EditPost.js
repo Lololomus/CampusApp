@@ -1,10 +1,12 @@
+// ===== 📄 ФАЙЛ: EditPost.js =====
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, Lock } from 'lucide-react';
+import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, Lock, Trash2 } from 'lucide-react';
 import { updatePost } from '../api';
-import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
 import theme from '../theme';
 import { Z_EDIT_POST } from '../constants/zIndex';
+import imageCompression from 'browser-image-compression';
 
 // ===== КОНСТАНТЫ (DRY) =====
 const CATEGORIES = [
@@ -19,6 +21,9 @@ const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'с
 const MAX_TITLE_LENGTH = 100;
 const MAX_BODY_LENGTH = 500;
 const MAX_TAGS = 5;
+const MAX_IMAGES = 3;
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const API_URL = 'http://localhost:8000'; // Для формирования превью
 
 function EditPost({ post, onClose, onUpdate }) {
   // ===== STATE (инициализация из post) =====
@@ -32,20 +37,42 @@ function EditPost({ post, onClose, onUpdate }) {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [images, setImages] = useState(
-    (post.images || []).map(url => ({
-      url,           // URL старого фото
-      isNew: false   // Флаг старого фото
-    }))
-  );
-  const [imageHeight, setImageHeight] = useState(300);
+  
+  // Инициализация изображений
+  const [images, setImages] = useState(() => {
+    const rawImages = post.images || [];
+    let parsedImages = rawImages;
+    
+    // Защита от кривого формата данных
+    if (typeof rawImages === 'string') {
+        try {
+            parsedImages = JSON.parse(rawImages);
+        } catch {
+            parsedImages = [];
+        }
+    }
 
-  const MAX_IMAGES = 3;
+    if (!Array.isArray(parsedImages)) parsedImages = [];
 
+    return parsedImages.map(img => {
+      // Извлекаем "сырое" имя/url
+      let rawFilename = (typeof img === 'object' && img !== null) ? img.url : img;
+      
+      // Формируем полный URL для отображения (preview)
+      const fullUrl = rawFilename.startsWith('http') ? rawFilename : `${API_URL}/uploads/images/${rawFilename}`;
+      
+      return {
+        url: fullUrl,       // Полный путь для <img>
+        filename: rawFilename, // Имя файла (может быть как чистым, так и url)
+        isNew: false        // Флаг старого фото
+      };
+    });
+  });
+  
   // Категория READONLY
   const category = post.category;
 
-  // Специфичные поля (инициализация из post)
+  // Специфичные поля
   const isAnonymous = post.is_anonymous || false;
   const [lostOrFound, setLostOrFound] = useState(post.lost_or_found || 'lost');
   const [itemDescription, setItemDescription] = useState(post.item_description || '');
@@ -62,7 +89,7 @@ function EditPost({ post, onClose, onUpdate }) {
     title: post.title || '',
     body: post.body || '',
     tags: post.tags || [],
-    images: (post.images || []).map(url => ({ url, isNew: false })),
+    images: images, 
     lostOrFound: post.lost_or_found || 'lost',
     itemDescription: post.item_description || '',
     location: post.location || '',
@@ -75,8 +102,6 @@ function EditPost({ post, onClose, onUpdate }) {
   const titleInputRef = useRef(null);
 
   // ===== EFFECTS =====
-
-  // Монтирование с анимацией
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 50);
     if (window.innerWidth >= 768 && titleInputRef.current) {
@@ -85,7 +110,6 @@ function EditPost({ post, onClose, onUpdate }) {
   }, []);
 
   // ===== SHARED UTILITIES =====
-
   const TagBadge = ({ tag, onRemove }) => (
     <span style={styles.tag}>
       #{tag}
@@ -121,7 +145,6 @@ function EditPost({ post, onClose, onUpdate }) {
     </span>
   );
 
-  // Получить данные категории
   const getCategoryData = () => {
     return CATEGORIES.find(cat => cat.value === category) || CATEGORIES[0];
   };
@@ -151,14 +174,21 @@ function EditPost({ post, onClose, onUpdate }) {
   };
 
   // ===== HANDLERS =====
-
   const hasChanges = () => {
     const orig = originalValues.current;
+    
+    const currentTagsStr = JSON.stringify(tags);
+    const origTagsStr = JSON.stringify(orig.tags);
+    
+    // Сравнение картинок
+    const currentImagesStr = JSON.stringify(images.map(i => i.isNew ? i.file.name : i.filename));
+    const origImagesStr = JSON.stringify(orig.images.map(i => i.isNew ? i.file.name : i.filename));
+
     return (
       title !== orig.title ||
       body !== orig.body ||
-      JSON.stringify(tags) !== JSON.stringify(orig.tags) ||
-      JSON.stringify(images) !== JSON.stringify(orig.images) ||
+      currentTagsStr !== origTagsStr ||
+      currentImagesStr !== origImagesStr ||
       lostOrFound !== orig.lostOrFound ||
       itemDescription !== orig.itemDescription ||
       location !== orig.location ||
@@ -228,8 +258,10 @@ function EditPost({ post, onClose, onUpdate }) {
   };
 
   // ===== РАБОТА С ИЗОБРАЖЕНИЯМИ =====
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
     const remainingSlots = MAX_IMAGES - images.length;
     
     if (remainingSlots <= 0) {
@@ -238,52 +270,47 @@ function EditPost({ post, onClose, onUpdate }) {
     }
     
     const filesToAdd = files.slice(0, remainingSlots);
-    
-    filesToAdd.forEach(file => {
+    const validNewImages = [];
+
+    for (const file of filesToAdd) {
       if (!file.type.startsWith('image/')) {
         alert('Можно загружать только изображения');
-        return;
+        continue;
       }
       
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > MAX_FILE_SIZE) {
         alert('Максимальный размер файла: 5 МБ');
-        return;
+        continue;
       }
-      
-      // Создаём URL для превью + сохраняем сам File
-      const imageUrl = URL.createObjectURL(file);
-      
-      setImages(prev => [...prev, {
-        url: imageUrl,       // Для показа
-        file: file,          // Сам файл
-        isNew: true          // Флаг нового фото
-      }]);
-      
+
+      try {
+        const options = {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1200,
+          useWebWorker: true
+        };
+        const compressedFile = await imageCompression(file, options);
+        const imageUrl = URL.createObjectURL(compressedFile);
+        
+        validNewImages.push({
+          url: imageUrl,       
+          file: compressedFile,
+          isNew: true          
+        });
+      } catch (error) {
+        console.error('Ошибка сжатия:', error);
+      }
+    }
+    
+    if (validNewImages.length > 0) {
+      setImages(prev => [...prev, ...validNewImages]);
       hapticFeedback('light');
-    });
+    }
   };
 
   const handleRemoveImage = (index) => {
     hapticFeedback('light');
     setImages(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleImageLoad = (e) => {
-    const img = e.target;
-    const aspectRatio = img.naturalWidth / img.naturalHeight;
-    
-    let height;
-    if (aspectRatio >= 1.5) {
-      height = 180;
-    } else if (aspectRatio >= 1.1) {
-      height = 220;
-    } else if (aspectRatio >= 0.7) {
-      height = 280;
-    } else {
-      height = 320;
-    }
-    
-    setImageHeight(height);
   };
 
   // ===== СБРОС ИЗМЕНЕНИЙ =====
@@ -331,13 +358,7 @@ function EditPost({ post, onClose, onUpdate }) {
     
     if (!isFormValid) {
       hapticFeedback('error');
-      if (category === 'lost_found') {
-        setError('Заполните обязательные поля: название, описание, местоположение, детали предмета');
-      } else if (category === 'events') {
-        setError('Заполните обязательные поля: название, описание, дата и место события');
-      } else {
-        setError('Пожалуйста, заполните все обязательные поля. Заголовок мин. 3 символа. Описание мин. 10 символов');
-      }
+      setError('Заполните обязательные поля');
       return;
     }
     
@@ -345,15 +366,14 @@ function EditPost({ post, onClose, onUpdate }) {
     setIsSubmitting(true);
     
     try {
-      // Формируем FormData
       const formData = new FormData();
       
-      // Базовые поля
       formData.append('title', title.trim());
       formData.append('body', body.trim());
+      
+      // Отправляем теги как JSON строку (совместимость с main.py: Form(None))
       formData.append('tags', JSON.stringify(tags));
       
-      // Специфичные поля по категориям
       if (category === 'lost_found') {
         formData.append('lost_or_found', lostOrFound);
         formData.append('item_description', itemDescription.trim());
@@ -370,40 +390,41 @@ function EditPost({ post, onClose, onUpdate }) {
         formData.append('is_important', isImportant);
       }
       
-      // Разделяем старые и новые фото
-      const oldImages = [];  // Имена файлов для keep_images
-      const newFiles = [];   // File объекты для new_images
+      // ✅ FIX: "Параноидальная" обработка имен файлов
+      const oldImages = [];   
+      const newFiles = [];    
       
       images.forEach(img => {
-        if (typeof img === 'string') {
-          // Старое фото (URL) → извлекаем имя файла
-          const filename = img.split('/').pop();
-          oldImages.push(filename);
-        } else if (img.isNew && img.file) {
-          // Новое фото (File объект)
+        if (img.isNew && img.file) {
+          // Новые файлы отправляем как есть
           newFiles.push(img.file);
-        } else if (img.url && !img.isNew) {
-          // Старое фото (объект с url)
-          const filename = img.url.split('/').pop();
-          oldImages.push(filename);
+        } else if (!img.isNew && img.filename) {
+          // Старые файлы: ОБЯЗАТЕЛЬНО очищаем от пути (http://... или uploads/...)
+          let cleanName = img.filename;
+          
+          if (cleanName.includes('/')) {
+             cleanName = cleanName.split('/').pop();
+          }
+          
+          if (cleanName && cleanName.trim() !== '') {
+             oldImages.push(cleanName);
+          }
         }
       });
       
-      // Добавляем keep_images (JSON)
+      // Отправляем массив старых имен как JSON
       formData.append('keep_images', JSON.stringify(oldImages));
       
-      // Добавляем новые файлы
+      // Отправляем новые файлы
       newFiles.forEach(file => {
         formData.append('new_images', file);
       });
       
-      // Отправляем
       const updatedPost = await updatePost(post.id, formData);
       
       hapticFeedback('success');
-      onUpdate(updatedPost);
+      if (onUpdate) onUpdate(updatedPost);
       
-      // Success анимация (0.5s)
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -434,7 +455,6 @@ function EditPost({ post, onClose, onUpdate }) {
     <>
       <style>{keyframesStyles}</style>
       
-      {/* Backdrop overlay */}
       <div 
         style={{
           ...styles.overlay,
@@ -443,7 +463,6 @@ function EditPost({ post, onClose, onUpdate }) {
         }}
         onClick={handleClose}
       >
-        {/* Modal container */}
         <div 
           style={{
             ...styles.modal,
@@ -452,13 +471,10 @@ function EditPost({ post, onClose, onUpdate }) {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          
-          {/* Swipe indicator */}
           <div style={styles.swipeIndicator}>
             <div style={styles.swipeBar} />
           </div>
 
-          {/* Header */}
           <div style={styles.header}>
             <button 
               onClick={handleClose} 
@@ -472,7 +488,6 @@ function EditPost({ post, onClose, onUpdate }) {
             <div style={{ width: 40 }} />
           </div>
 
-          {/* ===== ПРОГРЕСС-БАР (STICKY) ===== */}
           <div style={styles.progressBarContainer}>
             <div style={styles.progressBarWrapper}>
               <div 
@@ -490,10 +505,7 @@ function EditPost({ post, onClose, onUpdate }) {
             </span>
           </div>
 
-          {/* Content */}
           <div style={styles.content}>
-            
-            {/* ===== КАТЕГОРИЯ READONLY ===== */}
             <div style={styles.section}>
               <label style={styles.label}>Категория</label>
               <div 
@@ -509,7 +521,6 @@ function EditPost({ post, onClose, onUpdate }) {
                 <span style={styles.categoryHintText}>(нельзя изменить)</span>
               </div>
               
-              {/* Статус анонимности (нельзя изменить) */}
               {category !== 'confessions' && (
                 <div style={isAnonymous ? styles.anonymousBadge : styles.publicBadge}>
                   {isAnonymous ? (
@@ -526,7 +537,6 @@ function EditPost({ post, onClose, onUpdate }) {
                 </div>
               )}
 
-              {/* Hint для confessions */}
               {category === 'confessions' && (
                 <div style={styles.confessionHint}>
                   <span style={styles.badgeIcon}>💭</span>
@@ -535,7 +545,6 @@ function EditPost({ post, onClose, onUpdate }) {
               )}
             </div>
 
-            {/* Заголовок */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Заголовок*
@@ -562,7 +571,6 @@ function EditPost({ post, onClose, onUpdate }) {
               </div>
             </div>
 
-            {/* Описание */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Описание*
@@ -588,7 +596,6 @@ function EditPost({ post, onClose, onUpdate }) {
               </div>
             </div>
 
-            {/* ИЗОБРАЖЕНИЯ */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Изображения (опционально)
@@ -599,12 +606,11 @@ function EditPost({ post, onClose, onUpdate }) {
               {images.length > 0 && (
                 <div style={styles.imagesPreview}>
                   {images.map((img, index) => (
-                    <div key={index} style={{...styles.imagePreviewItem, height: imageHeight}}>
+                    <div key={index} style={styles.imagePreviewItem}>
                       <img 
-                        src={typeof img === 'string' ? img : img.url}
+                        src={img.url}
                         alt={`Фото ${index + 1}`}
                         style={styles.previewImage}
-                        onLoad={handleImageLoad}
                       />
                       <button
                         onClick={() => handleRemoveImage(index)}
@@ -644,7 +650,6 @@ function EditPost({ post, onClose, onUpdate }) {
               </div>
             </div>
 
-            {/* LOST & FOUND дополнительные поля */}
             {category === 'lost_found' && (
               <>
                 <div style={styles.section}>
@@ -726,7 +731,6 @@ function EditPost({ post, onClose, onUpdate }) {
               </>
             )}
 
-            {/* EVENTS дополнительные поля */}
             {category === 'events' && (
               <>
                 <div style={styles.section}>
@@ -756,8 +760,6 @@ function EditPost({ post, onClose, onUpdate }) {
                       Дата и время*
                     </span>
                   </label>
-                  
-                  {/* Быстрые кнопки выбора даты */}
                   <div style={styles.quickDateButtons}>
                     <button 
                       onClick={() => setQuickDate('today')} 
@@ -784,7 +786,6 @@ function EditPost({ post, onClose, onUpdate }) {
                       Через неделю
                     </button>
                   </div>
-                  
                   <input 
                     type="datetime-local"
                     value={eventDate}
@@ -824,7 +825,6 @@ function EditPost({ post, onClose, onUpdate }) {
               </>
             )}
 
-            {/* NEWS дополнительные поля */}
             {category === 'news' && (
               <div style={styles.section}>
                 <label style={styles.checkboxLabel}>
@@ -843,13 +843,11 @@ function EditPost({ post, onClose, onUpdate }) {
               </div>
             )}
 
-            {/* ===== ТЕГИ С ПОПУЛЯРНЫМИ ===== */}
             <div style={styles.section}>
               <label style={styles.label}>
                 Теги (опционально)
                 <span style={styles.charCount}>{tags.length}/{MAX_TAGS}</span>
               </label>
-              
               <div style={styles.tagInputWrapper}>
                 <Hash size={18} style={{ color: theme.colors.primary, flexShrink: 0 }} />
                 <input 
@@ -886,7 +884,6 @@ function EditPost({ post, onClose, onUpdate }) {
                 </button>
               </div>
               
-              {/* Популярные теги */}
               {tags.length < MAX_TAGS && (
                 <div style={styles.popularTagsSection}>
                   <span style={styles.popularLabel}>Популярные:</span>
@@ -906,7 +903,6 @@ function EditPost({ post, onClose, onUpdate }) {
                 </div>
               )}
               
-              {/* Список добавленных тегов */}
               {tags.length > 0 && (
                 <div style={styles.tagsList}>
                   {tags.map((tag, index) => (
@@ -920,18 +916,14 @@ function EditPost({ post, onClose, onUpdate }) {
               </div>
             </div>
 
-            {/* Отступ для sticky footer */}
             <div style={{ height: 80 }} />
 
           </div>
 
-          {/* Error Alert */}
           <ErrorMessage message={error} />
 
-          {/* ===== FOOTER ===== */}
           <div style={styles.footer}>
             <div style={styles.footerButtons}>
-              {/* Кнопка "Сбросить" ВСЕГДА видна */}
               <button
                 onClick={handleReset}
                 disabled={!hasChanges() || isSubmitting}
@@ -945,7 +937,6 @@ function EditPost({ post, onClose, onUpdate }) {
                 Сбросить
               </button>
               
-              {/* Кнопка "Сохранить" */}
               <button
                 onClick={handleSave}
                 disabled={!isFormValid() || isSubmitting}
@@ -971,7 +962,6 @@ function EditPost({ post, onClose, onUpdate }) {
         </div>
       </div>
 
-      {/* Success Toast (упрощённый) */}
       {showSuccess && (
         <div style={{
           ...styles.successOverlay,
@@ -984,7 +974,6 @@ function EditPost({ post, onClose, onUpdate }) {
         </div>
       )}
 
-      {/* Confirmation Dialog */}
       {showConfirmation && (
         <div style={styles.confirmationOverlay}>
           <div style={styles.confirmationDialog}>
@@ -1011,7 +1000,6 @@ function EditPost({ post, onClose, onUpdate }) {
   );
 }
 
-// CSS Keyframes
 const keyframesStyles = `
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -1187,7 +1175,6 @@ const styles = {
     color: theme.colors.success,
     marginLeft: theme.spacing.xs
   },
-  // ===== КАТЕГОРИЯ READONLY =====
   categoryReadonly: {
     padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     borderRadius: theme.radius.md,

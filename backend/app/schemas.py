@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any
 
 
 
@@ -130,6 +130,15 @@ class UserPublic(BaseModel):
 # ===== POST SCHEMAS (ОБНОВЛЕНЫ) =====
 
 
+class ImageMeta(BaseModel):
+    """
+    Модель изображения с метаданными (The Holy Grail).
+    Фронтенд использует w/h для расчёта aspect-ratio до загрузки картинки.
+    """
+    url: str
+    w: int
+    h: int
+
 
 class PostCreate(BaseModel):
     """Создание поста"""
@@ -138,7 +147,7 @@ class PostCreate(BaseModel):
     body: str = Field(..., min_length=1)
     tags: List[str] = []
     
-    # ✅ НОВОЕ: Изображения (Base64 строки для загрузки)
+    # Изображения (Base64 строки для загрузки, если не multipart)
     images: List[str] = Field(default=[], max_length=3)
     
     # Анонимность
@@ -174,7 +183,7 @@ class PostUpdate(BaseModel):
     tags: Optional[List[str]] = None
     is_anonymous: Optional[bool] = None
     
-    # ✅ НОВОЕ: Обновление изображений
+    # Обновление изображений (здесь могут быть имена файлов или base64)
     images: Optional[List[str]] = Field(None, max_length=3)
     
     # Специфичные поля
@@ -205,8 +214,8 @@ class PostResponse(BaseModel):
     body: str
     tags: List[str] = []
     
-    # ✅ НОВОЕ: Изображения (полные URL для отображения)
-    images: List[str] = []
+    # ✅ THE HOLY GRAIL: Список объектов с размерами, а не просто строки
+    images: List[ImageMeta] = []
     
     # Анонимность
     is_anonymous: bool = False
@@ -235,18 +244,30 @@ class PostResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
-    # ✅ НОВОЕ: Парсинг JSON полей (tags и images из БД)
+    # Валидатор для тегов и картинок
     @field_validator('tags', 'images', mode='before')
     @classmethod
     def parse_json_fields(cls, v):
+        # Если пришел None
         if v is None:
             return []
+            
+        # Если пришел готовый список (из main.py)
+        if isinstance(v, list):
+            return v
+            
+        # Если пришла JSON строка (из БД напрямую)
         if isinstance(v, str):
             import json
             try:
-                return json.loads(v) if v else []
+                parsed = json.loads(v) if v else []
+                # Для images: если это старый формат (список строк), 
+                # конвертировать в список объектов нельзя здесь без URL.
+                # Поэтому предполагаем, что main.py уже обработал images через utils.get_image_urls
+                return parsed
             except:
                 return []
+                
         return v
 
 

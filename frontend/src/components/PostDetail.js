@@ -1,5 +1,7 @@
+// ===== 📄 ФАЙЛ: PostDetail.js =====
+
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical, MapPin, Calendar, Clock } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical, MapPin, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment } from '../api';
 import { useStore } from '../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
@@ -8,6 +10,8 @@ import DropdownMenu from './DropdownMenu';
 import { Z_MODAL_FORMS } from '../constants/zIndex';
 import theme from '../theme';
 
+// Константы
+const API_URL = 'http://localhost:8000'; 
 
 function PostDetail() {
   const { viewPostId, setViewPostId, user, updatePost, setUpdatedPost, likedPosts, setPostLiked } = useStore();
@@ -23,8 +27,8 @@ function PostDetail() {
   const [reportingComment, setReportingComment] = useState(null);
   const [replyToName, setReplyToName] = useState('');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [imageHeight, setImageHeight] = useState(400);
 
+  // ❌ Removed imageHeight state (controlled by CSS aspect-ratio now)
 
   useEffect(() => {
     if (viewPostId) {
@@ -40,9 +44,22 @@ function PostDetail() {
     try {
       const data = await getPost(viewPostId);
       
+      // Обработка изображений: парсим JSON если пришла строка, иначе берем как есть
+      // Это обеспечивает совместимость, если бэкенд отдал JSON-строку
+      let imagesData = [];
+      if (typeof data.images === 'string') {
+        try {
+          imagesData = JSON.parse(data.images);
+        } catch (e) {
+          imagesData = [];
+        }
+      } else {
+        imagesData = data.images || [];
+      }
+
       const postWithImages = {
         ...data,
-        images: typeof data.images === 'string' ? JSON.parse(data.images) : (data.images || [])
+        images: imagesData
       };
       
       setPost(postWithImages);
@@ -75,7 +92,19 @@ function PostDetail() {
   const refreshPost = async () => {
     try {
       const fresh = await getPost(viewPostId);
-      setPost(fresh);
+      // Сохраняем структуру картинок при обновлении
+      let imagesData = [];
+      if (typeof fresh.images === 'string') {
+        try {
+          imagesData = JSON.parse(fresh.images);
+        } catch (e) {
+          imagesData = [];
+        }
+      } else {
+        imagesData = fresh.images || [];
+      }
+      
+      setPost({ ...fresh, images: imagesData });
       
       if (setUpdatedPost && viewPostId) {
         setUpdatedPost(viewPostId, { 
@@ -136,7 +165,8 @@ function PostDetail() {
       setPost({ 
         ...post, 
         likes_count: result.likes,
-        is_liked: result.is_liked
+        is_liked: result.is_liked,
+        images: post.images // Важно: сохраняем картинки при обновлении стейта
       });
       
       if (setUpdatedPost && viewPostId) {
@@ -283,25 +313,6 @@ function PostDetail() {
     setCurrentImageIndex((prev) => (prev === post.images.length - 1 ? 0 : prev + 1));
   };
 
-  // Расчёт высоты изображения по пропорциям
-  const handleImageLoad = (e) => {
-    const img = e.target;
-    const aspectRatio = img.naturalWidth / img.naturalHeight;
-    
-    let height;
-    if (aspectRatio >= 1.5) {
-      height = 300; // Широкие горизонтальные
-    } else if (aspectRatio >= 1.1) {
-      height = 400; // Квадратные
-    } else if (aspectRatio >= 0.7) {
-      height = 500; // Немного вертикальные
-    } else {
-      height = 600; // Очень вертикальные
-    }
-    
-    setImageHeight(height);
-  };
-
   const buildCommentTree = (comments) => {
     const commentMap = {};
     const roots = [];
@@ -322,6 +333,35 @@ function PostDetail() {
 
     return roots;
   };
+
+
+  // ===== IMAGE HELPERS (The Holy Grail) =====
+  
+  // Получаем метаданные текущей картинки. Поддерживаем и объекты, и старые строки.
+  const getCurrentImage = () => {
+    if (!post || !post.images || post.images.length === 0) return null;
+    const img = post.images[currentImageIndex];
+    
+    // Если объект (новый формат)
+    if (typeof img === 'object' && img !== null) {
+      return img;
+    }
+    // Если строка (старый формат), создаем заглушку 1:1
+    return { url: img, w: 1000, h: 1000 };
+  };
+
+  const currentImgMeta = getCurrentImage();
+  
+  const getImageUrl = (meta) => {
+    if (!meta) return '';
+    if (meta.url.startsWith('http')) return meta.url;
+    return `${API_URL}/uploads/images/${meta.url}`;
+  };
+
+  // Вычисляем соотношение сторон для текущего слайда
+  const currentAspectRatio = (currentImgMeta && currentImgMeta.w && currentImgMeta.h) 
+    ? currentImgMeta.w / currentImgMeta.h 
+    : 1;
 
 
   if (!viewPostId) return null;
@@ -447,35 +487,37 @@ function PostDetail() {
         <h1 style={styles.title}>{post.title}</h1>
         <p style={styles.body}>{post.body}</p>
 
-        {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ */}
-        {post.images && post.images.length > 0 && (
-          <div style={{...styles.imageContainer, height: imageHeight}}>
+        {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ (Holy Grail Fullscreen Logic) */}
+        {post.images && post.images.length > 0 && currentImgMeta && (
+          <div style={{
+            ...styles.imageContainer, 
+            aspectRatio: `${currentAspectRatio}`,
+            // В деталях разрешаем любую высоту (чтобы видеть длинные скриншоты целиком)
+            maxHeight: 'none', 
+          }}>
             <img 
-              src={post.images[currentImageIndex]}
+              src={getImageUrl(currentImgMeta)}
               alt={`${post.title} - фото ${currentImageIndex + 1}`}
               style={styles.image}
               loading="lazy"
-              onLoad={handleImageLoad}
               onError={(e) => {
                 e.target.style.display = 'none';
               }}
             />
             
-            {/* Индикатор количества фото */}
+            {/* Навигация и индикаторы */}
             {post.images.length > 1 && (
               <>
-                {/* Счётчик */}
                 <div style={styles.imageCounter}>
                   {currentImageIndex + 1} / {post.images.length}
                 </div>
                 
-                {/* Кнопки навигации */}
                 <button 
                   onClick={handlePrevImage}
                   style={{...styles.imageNavButton, left: 8}}
                   aria-label="Предыдущее фото"
                 >
-                  <ArrowLeft size={20} />
+                  <ChevronLeft size={24} />
                 </button>
                 
                 <button 
@@ -483,10 +525,9 @@ function PostDetail() {
                   style={{...styles.imageNavButton, right: 8}}
                   aria-label="Следующее фото"
                 >
-                  <ArrowLeft size={20} style={{ transform: 'rotate(180deg)' }} />
+                  <ChevronRight size={24} />
                 </button>
                 
-                {/* Точки-индикаторы */}
                 <div style={styles.imageDots}>
                   {post.images.map((_, index) => (
                     <div 
@@ -1188,23 +1229,20 @@ const styles = {
     marginTop: theme.spacing.sm
   },
   imageContainer: {
-  position: 'relative',
-  width: '100%',
-  minHeight: 300,
-  maxHeight: 600,
-  borderRadius: 12,
-  overflow: 'hidden',
-  marginBottom: theme.spacing.lg,
-  backgroundColor: '#000',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  transition: 'height 0.2s ease',
+    position: 'relative',
+    width: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: theme.spacing.lg,
+    backgroundColor: '#000',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   image: {
     width: '100%',
     height: '100%',
-    objectFit: 'contain',
+    objectFit: 'contain', 
     transition: 'transform 0.3s',
   },
   imageCounter: {
@@ -1253,6 +1291,5 @@ const styles = {
     transition: 'all 0.3s ease',
   },
 };
-
 
 export default PostDetail;

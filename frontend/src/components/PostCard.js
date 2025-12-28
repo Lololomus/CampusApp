@@ -1,3 +1,5 @@
+// ===== 📄 ФАЙЛ: PostCard.js =====
+
 import React, { useState, useRef } from 'react';
 import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { hapticFeedback } from '../utils/telegram';
@@ -7,6 +9,8 @@ import theme from '../theme';
 import DropdownMenu from './DropdownMenu';
 import EditPost from './EditPost';
 
+// Константы для URL изображений
+const API_URL = 'http://localhost:8000'; 
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const { likedPosts, setPostLiked, user } = useStore();
@@ -14,23 +18,32 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const menuButtonRef = useRef(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  const [imageHeight, setImageHeight] = useState(() => {
-    const images = post.images || [];
-    if (images.length > 0) {
-      const cachedHeight = sessionStorage.getItem(`img-height-${images[0]}`);
-      if (cachedHeight) {
-        return parseInt(cachedHeight, 10);
-      }
-    }
-    return 350;
-  });
+  // ===== THE HOLY GRAIL: LOGIC (Новая логика) =====
+  
+  // 1. Получаем изображения. Поддержка и старого формата (строки), и нового (объекты)
+  const images = post.images || [];
+  
+  // 2. Определяем метаданные первого изображения для расчета aspect-ratio
+  const firstImage = images.length > 0 ? images[0] : null;
+  const meta = (typeof firstImage === 'object' && firstImage !== null) 
+    ? firstImage 
+    : { w: 1000, h: 1000, url: firstImage }; 
 
+  // 3. Слайдер изображений (С сохранением индекса в session, как у тебя было)
   const [currentImageIndex, setCurrentImageIndex] = useState(() => {
     const saved = sessionStorage.getItem(`post-${post.id}-imageIndex`);
     return saved ? parseInt(saved, 10) : 0;
   });
 
-  const images = post.images || [];
+  // Получаем URL для src (учитываем, что image может быть объектом или строкой)
+  const getCurrentImageUrl = () => {
+    const img = images[currentImageIndex];
+    if (!img) return '';
+    const filename = (typeof img === 'object') ? img.url : img;
+    if (filename.startsWith('http')) return filename;
+    return `${API_URL}/uploads/images/${filename}`;
+  };
+
   const hasImages = images.length > 0;
   const isLiked = likedPosts[post.id] ?? post.is_liked ?? false;
   const likesCount = post.likes_count || post.likes || 0;
@@ -82,27 +95,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     });
   };
 
-  const handleImageLoad = (e) => {
-    const img = e.target;
-    const aspectRatio = img.naturalWidth / img.naturalHeight;
-    
-    let height;
-    if (aspectRatio >= 1.5) {
-      height = 240; // Широкие горизонтальные
-    } else if (aspectRatio >= 1.1) {
-      height = 300; // Квадратные
-    } else if (aspectRatio >= 0.7) {
-      height = 400; // Немного вертикальные
-    } else {
-      height = 480; // Очень вертикальные
-    }
-    
-    // Сохраняем в кэш
-    const imageUrl = images[currentImageIndex];
-    sessionStorage.setItem(`img-height-${imageUrl}`, height);
-    
-    setImageHeight(height);
-  };
+  // ❌ handleImageLoad удален, так как высоту теперь задает CSS
 
   const handleMenuClick = (e) => {
     e.stopPropagation();
@@ -118,13 +111,9 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
 
   const handleEditUpdate = (updatedPost) => {
     hapticFeedback('success');
-    
-    // Обновляем данные в родителе
     if (onLikeUpdate) {
       onLikeUpdate(post.id, updatedPost);
     }
-    
-    // Закрываем модалку
     setIsEditModalOpen(false);
   };
 
@@ -134,13 +123,10 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
 
   const handleDelete = async () => {
     setMenuOpen(false);
-    
     if (!window.confirm('Удалить пост? Это действие нельзя отменить.')) {
       return;
     }
-    
     hapticFeedback('heavy');
-    
     try {
       await deletePost(post.id);
       if (onPostDeleted) {
@@ -167,9 +153,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const handleCopyLink = async () => {
     setMenuOpen(false);
     hapticFeedback('light');
-    
     const link = `${window.location.origin}/post/${post.id}`;
-    
     try {
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(link);
@@ -246,20 +230,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
   };
 
-  // Обновляем высоту при смене фото (если есть кэш)
-  React.useEffect(() => {
-    if (images.length > 0) {
-      const imageUrl = images[currentImageIndex];
-      const cachedHeight = sessionStorage.getItem(`img-height-${imageUrl}`);
-      if (cachedHeight) {
-        setImageHeight(parseInt(cachedHeight, 10));
-      } else {
-        setImageHeight(350); // Временная высота до загрузки
-      }
-    }
-  }, [currentImageIndex, images]);
-
-
   // Меню действий
   const menuItems = isAuthor ? [
     { icon: '✏️', label: 'Редактировать', onClick: handleEdit },
@@ -274,6 +244,13 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     { icon: '🔗', label: 'Копировать ссылку', onClick: handleCopyLink },
     { icon: '📤', label: 'Репост', onClick: handleRepost },
   ];
+
+  // ===== СТИЛИ (The Holy Grail Calculation) =====
+  
+  // Вычисляем соотношение сторон
+  const rawRatio = (meta.w && meta.h) ? meta.w / meta.h : 1;
+  // Ограничиваем: от 3:4 (вертикальное) до 16:9 (горизонтальное)
+  const safeRatio = Math.max(0.75, Math.min(rawRatio, 1.9));
 
   return (
     <div 
@@ -308,7 +285,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
             {getCategoryIcon(post.category)} {getCategoryName(post.category)}
           </div>
           
-          {/* МЕНЮ (3 точки) */}
           <button 
             ref={menuButtonRef}
             style={styles.menuButton}
@@ -330,33 +306,32 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       {/* ЗАГОЛОВОК */}
       <h3 style={styles.title}>{post.title}</h3>
 
-      {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ */}
+      {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ (Holy Grail) */}
       {hasImages && (
-        <div style={{...styles.imageContainer, height: imageHeight}}>
-        <img 
-          src={images[currentImageIndex]} 
-          alt={`${post.title} - фото ${currentImageIndex + 1}`}
-          style={styles.image}
-          loading="lazy"
-          onLoad={handleImageLoad}
-          onError={(e) => {
-              e.target.style.display = 'none';
-            }}
+        <div style={{
+          ...styles.imageContainer, 
+          // 🔥 Тут магия: CSS задает высоту сразу, браузер не ждет загрузки картинки
+          aspectRatio: `${safeRatio}`,
+          maxHeight: '500px' // Защита от слишком длинных экранов
+        }}>
+          <img 
+            src={getCurrentImageUrl()} 
+            alt={`${post.title} - фото ${currentImageIndex + 1}`}
+            style={styles.image}
+            loading="lazy"
+            onError={(e) => { e.target.style.display = 'none'; }}
           />
           
-          {/* Индикатор количества фото */}
+          {/* Индикаторы и навигация (оставил как было у тебя) */}
           {images.length > 1 && (
             <>
-              {/* Счётчик */}
               <div style={styles.imageCounter}>
                 {currentImageIndex + 1} / {images.length}
               </div>
               
-              {/* Кнопки навигации */}
               <button 
                 onClick={handlePrevImage}
                 style={{...styles.imageNavButton, left: 8}}
-                aria-label="Предыдущее фото"
               >
                 <ChevronLeft size={20} />
               </button>
@@ -364,18 +339,16 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
               <button 
                 onClick={handleNextImage}
                 style={{...styles.imageNavButton, right: 8}}
-                aria-label="Следующее фото"
               >
                 <ChevronRight size={20} />
               </button>
               
-              {/* Точки-индикаторы */}
               <div style={styles.imageDots}>
                 {images.map((_, index) => (
                   <div 
                     key={index}
                     style={{
-                      ...styles.dot,
+                      ...styles.dotIndicator,
                       opacity: index === currentImageIndex ? 1 : 0.4,
                       transform: index === currentImageIndex ? 'scale(1.2)' : 'scale(1)'
                     }}
@@ -446,7 +419,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           <span>{post.views_count || 0}</span>
         </div>
       </div>
-      {/* Модалка редактирования */}
+      
       {isEditModalOpen && (
         <EditPost 
           post={post}
@@ -547,25 +520,28 @@ const styles = {
     lineHeight: 1.3,
     margin: '0 0 10px 0',
   },
+  
+  // 🔥 НОВЫЕ СТИЛИ КОНТЕЙНЕРА (Holy Grail)
   imageContainer: {
     position: 'relative',
     width: '100%',
-    minHeight: '240px',
-    maxHeight: '480px',
+    // minHeight/Height удалены, их заменит aspectRatio в inline-style
     borderRadius: `${theme.radius.lg}px`,
     overflow: 'hidden',
-    backgroundColor: '#000',
+    backgroundColor: '#000', // Чтобы не мигало белым
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'height 0.3s ease',
+    marginBottom: 12, // Вернул отступ снизу
   },
+  
   image: {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
+    objectFit: 'cover', // Теперь cover безопасен, так как контейнер имеет правильные пропорции
     display: 'block',
   },
+  
   imageCounter: {
     position: 'absolute',
     top: 8,
@@ -606,6 +582,14 @@ const styles = {
     display: 'flex',
     gap: 6,
     zIndex: 2,
+  },
+  // Точка пагинации (я заменил имя стиля с dot на dotIndicator, чтобы не было конфликта с разделителем)
+  dotIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    backgroundColor: '#fff',
+    transition: 'all 0.2s',
   },
   
   body: {

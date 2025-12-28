@@ -1,3 +1,5 @@
+// ===== 📄 ФАЙЛ: Feed.js =====
+
 import React, { useEffect, useState, useCallback } from 'react';
 import PostCard from './PostCard';
 import RequestsFeed from './requests/RequestsFeed';
@@ -42,10 +44,22 @@ function Feed() {
         category: activeCategory === 'all' ? null : activeCategory
       });
       
-      const postsWithImages = (data.items || []).map(post => ({
-        ...post,
-        images: typeof post.images === 'string' ? JSON.parse(post.images) : (post.images || [])
-      }));
+      // БЕЗОПАСНЫЙ ПАРСИНГ КАРТИНОК
+      const postsWithImages = (data.items || []).map(post => {
+        let images = [];
+        try {
+          // Если строка -> парсим JSON. Если массив -> берем как есть. Иначе -> пустой массив.
+          images = typeof post.images === 'string' ? JSON.parse(post.images) : (post.images || []);
+        } catch (e) {
+          console.error(`Ошибка парсинга картинок для поста ${post.id}`, e);
+          images = [];
+        }
+        
+        return {
+          ...post,
+          images: images
+        };
+      });
       
       setPosts(postsWithImages);
     } catch (error) {
@@ -155,7 +169,7 @@ function Feed() {
 
             {!loading && posts.length > 0 && posts.map((post) => (
               <PostCard 
-                key={post.id}
+                key={post.id} 
                 post={post} 
                 onClick={handlePostClick}
                 onLikeUpdate={handleLikeUpdate}

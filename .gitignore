@@ -26,4 +26,5 @@ venv/
 # Logs
 *.log
 
-uploads/
+# Uploads file
+backend/uploads/
