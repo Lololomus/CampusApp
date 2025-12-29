@@ -1,7 +1,6 @@
-// ===== RequestsFeed.js =====
+// ===== RequestsFeed.js (РЕФАКТОРЕННЫЙ) =====
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search } from 'lucide-react';
 import { useStore } from '../../store';
 import { getRequestsFeed } from '../../api';
 import RequestCard from './RequestCard';
@@ -10,28 +9,19 @@ import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import RequestDetailModal from './RequestDetailModal';
 
-function RequestsFeed() {
+// ✅ ДОБАВЛЕНЫ PROPS: category, searchQuery
+function RequestsFeed({ category = 'all', searchQuery = '' }) {
   const { requests, setRequests, setCurrentRequest } = useStore();
   
   // ===== STATE =====
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [activeCategory, setActiveCategory] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
   const [showDetailModal, setShowDetailModal] = useState(false);
   
   const offsetRef = useRef(0);
   const isLoadingRef = useRef(false);
   const observerRef = useRef(null);
   const lastCardRef = useRef(null);
-
-  // ===== КАТЕГОРИИ ФИЛЬТРОВ =====
-  const CATEGORIES = [
-    { id: 'all', label: 'Все', icon: '' },
-    { id: 'study', label: 'Учёба', icon: '📚' },
-    { id: 'help', label: 'Помощь', icon: '🤝' },
-    { id: 'hangout', label: 'Движ', icon: '🎉' }
-  ];
 
   // ===== ЗАГРУЗКА ЗАПРОСОВ =====
   const loadRequests = useCallback(async (reset = false) => {
@@ -46,8 +36,8 @@ function RequestsFeed() {
         setRequests([]);
       }
 
-      const category = activeCategory === 'all' ? null : activeCategory;
-      const response = await getRequestsFeed(category, 20, offsetRef.current);
+      const cat = category === 'all' ? null : category;
+      const response = await getRequestsFeed(cat, 20, offsetRef.current);
 
       console.log('✅ Загружено запросов:', response.items?.length || 0);
 
@@ -68,14 +58,14 @@ function RequestsFeed() {
       setLoading(false);
       isLoadingRef.current = false;
     }
-  }, [activeCategory, requests, setRequests]);
+  }, [category, requests, setRequests]);
 
   // ===== INITIAL LOAD =====
   useEffect(() => {
     loadRequests(true);
-  }, [activeCategory]);
+  }, [category]);
 
-  // ===== INFINITE SCROLL (IntersectionObserver) =====
+  // ===== INFINITE SCROLL =====
   useEffect(() => {
     if (loading || !hasMore) return;
 
@@ -102,23 +92,13 @@ function RequestsFeed() {
     };
   }, [loading, hasMore, loadRequests]);
 
-  // ===== СМЕНА КАТЕГОРИИ =====
-  const handleCategoryChange = (categoryId) => {
-    if (categoryId === activeCategory) return;
-    
-    hapticFeedback('light');
-    setActiveCategory(categoryId);
-    setHasMore(true);
-    offsetRef.current = 0;
-  };
-
   // ===== КЛИК НА КАРТОЧКУ =====
   const handleCardClick = (request) => {
     setCurrentRequest(request);
     setShowDetailModal(true);
   };
 
-  // ===== ФИЛЬТРАЦИЯ ПО ПОИСКУ (клиентская) =====
+  // ===== ФИЛЬТРАЦИЯ ПО ПОИСКУ =====
   const filteredRequests = requests.filter(req => {
     if (!searchQuery.trim()) return true;
     
@@ -132,41 +112,11 @@ function RequestsFeed() {
 
   return (
     <div style={styles.container}>
-      {/* ХЕДЕР С ПОИСКОМ */}
-      <div style={styles.header}>
-        <div style={styles.searchContainer}>
-          <Search size={18} color={theme.colors.textTertiary} />
-          <input
-            type="text"
-            placeholder="Поиск запросов..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={styles.searchInput}
-          />
-        </div>
-      </div>
-
-      {/* ФИЛЬТРЫ КАТЕГОРИЙ */}
-      <div style={styles.filters}>
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat.id}
-            onClick={() => handleCategoryChange(cat.id)}
-            style={{
-              ...styles.filterButton,
-              ...(activeCategory === cat.id ? styles.filterButtonActive : {})
-            }}
-          >
-            {cat.icon && <span style={styles.filterIcon}>{cat.icon}</span>}
-            {cat.label}
-          </button>
-        ))}
-      </div>
+      {/* ✅ УБРАН HEADER И FILTERS (теперь в Feed.js) */}
 
       {/* ЛЕНТА КАРТОЧЕК */}
       <div style={styles.feed}>
         {loading && requests.length === 0 ? (
-          // SKELETON при первой загрузке
           <>
             <RequestCardSkeleton />
             <RequestCardSkeleton />
@@ -186,26 +136,25 @@ function RequestsFeed() {
               </div>
             ))}
 
-            {/* LOADER ПРИ ПОДГРУЗКЕ */}
             {loading && hasMore && <RequestCardSkeleton />}
           </>
         ) : (
-          // EMPTY STATE
           <EmptyState 
-            category={activeCategory}
+            category={category}
             hasSearch={!!searchQuery.trim()}
           />
         )}
       </div>
-        {/* МОДАЛКИ */}
-        {showDetailModal && (
+
+      {/* МОДАЛКИ */}
+      {showDetailModal && (
         <RequestDetailModal onClose={() => setShowDetailModal(false)} />
-        )}
+      )}
     </div>
   );
 }
 
-// ===== EMPTY STATE КОМПОНЕНТ =====
+// ===== EMPTY STATE =====
 function EmptyState({ category, hasSearch }) {
   const getEmptyMessage = () => {
     if (hasSearch) {
@@ -225,7 +174,7 @@ function EmptyState({ category, hasSearch }) {
       study: {
         icon: '📚',
         title: 'Нет запросов по учёбе',
-        subtitle: 'Создай запрос на помощь с курсовой или найди репетитора'
+        subtitle: 'Создай запрос на помощь с курсовой'
       },
       help: {
         icon: '🤝',
@@ -235,7 +184,7 @@ function EmptyState({ category, hasSearch }) {
       hangout: {
         icon: '🎉',
         title: 'Нет запросов на движ',
-        subtitle: 'Собери компанию на игру или прогулку'
+        subtitle: 'Собери компанию на игру'
       }
     };
 
@@ -253,98 +202,24 @@ function EmptyState({ category, hasSearch }) {
   );
 }
 
-// ===== СТИЛИ =====
+// ===== СТИЛИ (УПРОЩЕНЫ) =====
 const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    background: theme.colors.bg // #121212
+    // Убрали все отступы, так как они задаются в родителе (Feed.js)
   },
 
-  // ХЕДЕР С ПОИСКОМ
-  header: {
-    padding: theme.spacing.lg, // 16px
-    paddingBottom: theme.spacing.md, // 12px
-    borderBottom: `1px solid ${theme.colors.border}`,
-    position: 'sticky',
-    top: 0,
-    background: theme.colors.bg,
-    zIndex: 10
-  },
-
-  searchContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm, // 8px
-    background: theme.colors.bgSecondary, // #1a1a1a
-    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-    borderRadius: theme.radius.md, // 12px
-    border: `1px solid ${theme.colors.border}`
-  },
-
-  searchInput: {
-    flex: 1,
-    background: 'transparent',
-    border: 'none',
-    outline: 'none',
-    color: theme.colors.text,
-    fontSize: theme.fontSize.base, // 14px
-    fontFamily: 'inherit'
-  },
-
-  // ФИЛЬТРЫ
-  filters: {
-    display: 'flex',
-    gap: theme.spacing.sm, // 8px
-    padding: theme.spacing.lg, // 16px
-    overflowX: 'auto',
-    WebkitOverflowScrolling: 'touch',
-    scrollbarWidth: 'none',
-    msOverflowStyle: 'none',
-    '::-webkit-scrollbar': {
-      display: 'none'
-    }
-  },
-
-  filterButton: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs, // 4px
-    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-    borderRadius: theme.radius.full, // круглые углы
-    border: `1px solid ${theme.colors.border}`,
-    background: theme.colors.bgSecondary, // #1a1a1a
-    color: theme.colors.textSecondary, // #ccc
-    fontSize: theme.fontSize.sm, // 13px
-    fontWeight: theme.fontWeight.medium, // 500
-    cursor: 'pointer',
-    transition: theme.transitions.normal, // 0.2s ease
-    whiteSpace: 'nowrap',
-    outline: 'none'
-  },
-
-  filterButtonActive: {
-    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, #b19ef5 100%)`,
-    color: '#fff',
-    border: 'none',
-    boxShadow: '0 4px 12px rgba(135, 116, 225, 0.4)'
-  },
-
-  filterIcon: {
-    fontSize: theme.fontSize.md // 15px
-  },
-
-  // ЛЕНТА
   feed: {
     flex: 1,
-    padding: theme.spacing.lg, // 16px
-    paddingTop: 0,
-    overflowY: 'auto',
-    paddingBottom: 80 // отступ для навигации
+    // Убрали overflowY, так как скроллится вся страница (window)
+    
+    // ✅ ИСПРАВЛЕНИЕ: Убрали padding-top, padding-left, padding-right, padding-bottom.
+    // Теперь этот блок просто занимает доступное место внутри Feed.js.
+    display: 'block', 
   },
 
-  // EMPTY STATE
   emptyState: {
     display: 'flex',
     flexDirection: 'column',
@@ -352,27 +227,27 @@ const styles = {
     justifyContent: 'center',
     padding: `${theme.spacing.xxxl}px ${theme.spacing.lg}px`,
     textAlign: 'center',
-    minHeight: 300
+    minHeight: 300,
   },
 
   emptyIcon: {
     fontSize: 64,
-    marginBottom: theme.spacing.lg // 16px
+    marginBottom: theme.spacing.lg,
   },
 
   emptyTitle: {
-    fontSize: theme.fontSize.xl, // 18px
-    fontWeight: theme.fontWeight.semibold, // 600
-    color: theme.colors.text, // #fff
-    marginBottom: theme.spacing.sm // 8px
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
 
   emptySubtitle: {
-    fontSize: theme.fontSize.base, // 14px
-    color: theme.colors.textSecondary, // #ccc
+    fontSize: theme.fontSize.base,
+    color: theme.colors.textSecondary,
     lineHeight: 1.5,
-    maxWidth: 300
-  }
+    maxWidth: 300,
+  },
 };
 
 export default RequestsFeed;

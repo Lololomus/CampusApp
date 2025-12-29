@@ -1,11 +1,13 @@
-// ===== 📄 ФАЙЛ: src/components/Market/Market.js =====
+// ===== 📄 ФАЙЛ: src/components/market/Market.js =====
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../../store';
 import { getMarketItems } from '../../api';
+import AppHeader from '../shared/AppHeader';
 import MarketCard from './MarketCard';
 import MarketDetail from './MarketDetail';
 import MarketFilters from './MarketFilters';
+import CreateMarketItem from './CreateMarketItem';
 import theme from '../../theme';
 
 const Market = () => {
@@ -17,7 +19,7 @@ const Market = () => {
   } = useStore();
 
   // ===== STATE =====
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'my' | 'favorites'
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,27 +27,36 @@ const Market = () => {
   const [page, setPage] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
   const [showDetail, setShowDetail] = useState(null);
+  const [showCreateItem, setShowCreateItem] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   // Refs
   const contentRef = useRef(null);
-  const searchTimeoutRef = useRef(null);
   const observerRef = useRef(null);
   const loadMoreTriggerRef = useRef(null);
 
   // ===== CATEGORIES =====
   const categories = [
-    { id: 'all', label: 'Все', icon: '📋' },
-    { id: 'textbooks', label: 'Учебники', icon: '📚' },
-    { id: 'electronics', label: 'Электроника', icon: '💻' },
-    { id: 'furniture', label: 'Мебель', icon: '🛋️' },
-    { id: 'clothing', label: 'Одежда', icon: '👕' },
-    { id: 'sports', label: 'Спорт', icon: '⚽' },
-    { id: 'appliances', label: 'Техника', icon: '🔌' },
+    { id: 'all', label: 'Все', emoji: '📋' },
+    { id: 'textbooks', label: 'Учебники', emoji: '📚' },
+    { id: 'electronics', label: 'Электроника', emoji: '💻' },
+    { id: 'furniture', label: 'Мебель', emoji: '🛋️' },
+    { id: 'clothing', label: 'Одежда', emoji: '👕' },
+    { id: 'sports', label: 'Спорт', emoji: '⚽' },
+    { id: 'appliances', label: 'Техника', emoji: '🔌' },
   ];
 
-  // ===== LOAD DATA (С ИСПРАВЛЕНИЕМ ДУБЛИКАТОВ) =====
+  // ===== DYNAMIC TITLE =====
+  const getDynamicTitle = () => {
+    if (activeTab === 'my') return 'Мои товары';
+    if (activeTab === 'favorites') return 'Избранное';
+    if (selectedCategory === 'all') return 'Барахолка';
+    const category = categories.find(c => c.id === selectedCategory);
+    return category ? category.label : 'Барахолка';
+  };
+
+  // ===== LOAD DATA =====
   const loadItems = useCallback(async (reset = false) => {
     if (loading) return;
     
@@ -56,22 +67,14 @@ const Market = () => {
       const currentPage = reset ? 0 : page;
       const limit = 20;
       
-      // Подготовка фильтров
       const filters = {
-        // 1. Сначала дефолтные фильтры из стора (чтобы их можно было переопределить)
         ...marketFilters,
-        
-        // 2. Затем пагинация и поиск
         skip: currentPage * limit,
         limit,
         search: searchQuery || undefined,
-        
-        // 3. Категория из чипсов имеет приоритет над фильтром, если она выбрана
-        // Если selectedCategory !== 'all', мы перезаписываем то, что пришло из marketFilters
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
       };
 
-      // Фильтрация по табам (добавляет флаги для api.js)
       if (activeTab === 'my') {
         filters.seller_id = user?.id;
       } else if (activeTab === 'favorites') {
@@ -84,10 +87,7 @@ const Market = () => {
         setMarketItems(result.items);
         setPage(1);
       } else {
-        // ✅ ФИКС: Фильтруем дубликаты перед добавлением
-        // Берем текущие ID
         const existingIds = new Set(marketItems.map(item => item.id));
-        // Оставляем только те новые, которых еще нет
         const uniqueNewItems = result.items.filter(item => !existingIds.has(item.id));
         
         if (uniqueNewItems.length > 0) {
@@ -108,26 +108,14 @@ const Market = () => {
     }
   }, [loading, page, selectedCategory, searchQuery, marketFilters, activeTab, user, marketItems, setMarketItems]);
 
-  // ===== INITIAL LOAD =====
-    // Срабатывает автоматически при изменении фильтров, поиска или табов
-    useEffect(() => {
-        loadItems(true);
-    }, [
-        selectedCategory, 
-        searchQuery, 
-        activeTab,
-        // ✅ ФИКС: Используем JSON.stringify, чтобы React точно увидел изменения внутри объекта фильтров
-        JSON.stringify(marketFilters) 
-    ]);
-
-  // ===== INFINITE SCROLL =====
+  // ===== EFFECTS =====
   useEffect(() => {
-    const options = {
-      root: null,
-      rootMargin: '200px', // Грузим заранее
-      threshold: 0,
-    };
+    loadItems(true);
+  }, [selectedCategory, searchQuery, activeTab, JSON.stringify(marketFilters)]);
 
+  // Infinite Scroll
+  useEffect(() => {
+    const options = { root: null, rootMargin: '200px', threshold: 0 };
     observerRef.current = new IntersectionObserver((entries) => {
       const first = entries[0];
       if (first.isIntersecting && hasMore && !loading) {
@@ -139,192 +127,122 @@ const Market = () => {
       observerRef.current.observe(loadMoreTriggerRef.current);
     }
 
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
+    return () => { if (observerRef.current) observerRef.current.disconnect(); };
   }, [hasMore, loading, loadItems]);
 
-  // ===== PULL TO REFRESH =====
+  // Pull to Refresh (Basic)
   useEffect(() => {
     let startY = 0;
-    let isDragging = false;
-
-    const handleTouchStart = (e) => {
-      if (contentRef.current?.scrollTop === 0) {
-        startY = e.touches[0].clientY;
-        isDragging = true;
-      }
-    };
-
+    const handleTouchStart = (e) => { if (window.scrollY === 0) startY = e.touches[0].clientY; };
     const handleTouchMove = (e) => {
-      if (!isDragging) return;
-      
-      const currentY = e.touches[0].clientY;
-      const diff = currentY - startY;
-
-      if (diff > 80 && !refreshing) {
+      if (window.scrollY === 0 && e.touches[0].clientY - startY > 80 && !refreshing) {
         setRefreshing(true);
-        isDragging = false;
         handleRefresh();
       }
     };
-
-    const handleTouchEnd = () => {
-      isDragging = false;
-    };
-
-    const content = contentRef.current;
-    if (content) {
-      content.addEventListener('touchstart', handleTouchStart);
-      content.addEventListener('touchmove', handleTouchMove);
-      content.addEventListener('touchend', handleTouchEnd);
-    }
-
+    window.addEventListener('touchstart', handleTouchStart);
+    window.addEventListener('touchmove', handleTouchMove);
     return () => {
-      if (content) {
-        content.removeEventListener('touchstart', handleTouchStart);
-        content.removeEventListener('touchmove', handleTouchMove);
-        content.removeEventListener('touchend', handleTouchEnd);
-      }
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
     };
   }, [refreshing]);
 
   // ===== HANDLERS =====
-  const handleRefresh = () => {
-    haptic('light');
-    setPage(0);
-    loadItems(true);
-  };
+  const haptic = (type) => window.Telegram?.WebApp?.HapticFeedback?.impactOccurred(type);
 
-  const handleSearch = (value) => {
-    setSearchQuery(value);
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    searchTimeoutRef.current = setTimeout(() => {
+  const handleRefresh = () => { haptic('light'); setPage(0); loadItems(true); };
+  const handleSearchChange = (val) => setSearchQuery(val);
+  const handleCategoryChange = (id) => { haptic('light'); setSelectedCategory(id); setPage(0); };
+  const handleOpenFilters = () => { haptic('light'); setShowFilters(true); };
+  const handleApplyFilters = () => { setPage(0); loadItems(true); };
+  const handleCardClick = (item) => { haptic('medium'); setShowDetail(item); };
+
+  // Новый хендлер табов (с вибрацией)
+  const handleTabSwitch = (tab) => {
+    if (activeTab !== tab) {
+      haptic('medium');
+      setActiveTab(tab);
       setPage(0);
-      loadItems(true);
-    }, 300);
-  };
-
-  const handleCategoryChange = (categoryId) => {
-    haptic('light');
-    setSelectedCategory(categoryId);
-    setPage(0);
-  };
-
-  const handleTabChange = (tab) => {
-    haptic('medium');
-    setActiveTab(tab);
-    setPage(0);
-  };
-
-  const handleOpenFilters = () => {
-    haptic('light');
-    setShowFilters(true);
-  };
-
-  const handleApplyFilters = () => {
-    // Загрузку вызовет useEffect выше, так как marketFilters в сторе изменились.
-    // Ручной вызов loadItems(true) здесь вызывал бы запрос со СТАРЫМИ данными.
-    setPage(0);
-  };
-
-  const handleCardClick = (item) => {
-    haptic('medium');
-    setShowDetail(item);
-  };
-
-  const haptic = (type) => {
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
     }
   };
 
   const getActiveFiltersCount = () => {
     let count = 0;
-    if (marketFilters.price_min !== null) count++;
-    if (marketFilters.price_max !== null) count++;
+    if (marketFilters.price_min || marketFilters.price_max) count++;
     if (marketFilters.condition) count++;
     if (marketFilters.location !== 'all') count++;
     if (marketFilters.sort !== 'newest') count++;
     return count;
   };
 
-  const filteredItems = marketItems; // Фильтрация теперь на сервере + поисковая строка
+  // Расчет позиции индикатора для 3-х табов
+  const getIndicatorPosition = () => {
+    switch (activeTab) {
+      case 'all': return '0%';
+      case 'my': return '100%';
+      case 'favorites': return '200%';
+      default: return '0%';
+    }
+  };
 
-  // ===== RENDER =====
   return (
     <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.headerTop}>
-          <div style={styles.headerTitle}>🛒 Барахолка</div>
-          <div style={styles.headerActions}>
-            <button style={styles.headerButton} onClick={handleOpenFilters}>
-              <span style={styles.headerIcon}>🎛️</span>
-              {getActiveFiltersCount() > 0 && (
-                <div style={styles.filterBadge}>{getActiveFiltersCount()}</div>
-              )}
+      
+      <AppHeader 
+        title={getDynamicTitle()}
+        showSearch={true}
+        searchValue={searchQuery}
+        searchPlaceholder="Поиск товаров..."
+        onSearchChange={handleSearchChange}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onCategoryChange={handleCategoryChange}
+        showFilters={true}
+        onFiltersClick={handleOpenFilters}
+        activeFiltersCount={getActiveFiltersCount()}
+      >
+        {/* ✅ НОВЫЕ ТАБЫ (SEGMENTED CONTROL - GREEN STYLE) */}
+        <div style={styles.tabsWrapper}>
+          <div style={styles.tabsContainer}>
+            {/* Зеленый индикатор */}
+            <div 
+              style={{
+                ...styles.activeIndicator,
+                transform: `translateX(${getIndicatorPosition()})`,
+              }} 
+            />
+            
+            <button 
+              onClick={() => handleTabSwitch('all')}
+              style={{...styles.tabButton, color: activeTab === 'all' ? '#fff' : theme.colors.textSecondary}}
+            >
+              Все
             </button>
-            <button style={styles.headerButton} onClick={() => handleTabChange('favorites')}>
-              <span style={styles.headerIcon}>❤️</span>
+
+            <button 
+              onClick={() => handleTabSwitch('my')}
+              style={{...styles.tabButton, color: activeTab === 'my' ? '#fff' : theme.colors.textSecondary}}
+            >
+              Мои
+            </button>
+
+            <button 
+              onClick={() => handleTabSwitch('favorites')}
+              style={{...styles.tabButton, color: activeTab === 'favorites' ? '#fff' : theme.colors.textSecondary}}
+            >
+              Избранное
             </button>
           </div>
         </div>
+      </AppHeader>
 
-        <div style={styles.searchContainer}>
-          <span style={styles.searchIcon}>🔍</span>
-          <input
-            type="text"
-            placeholder="Поиск товаров..."
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-            style={styles.searchInput}
-          />
-          {searchQuery && (
-            <button style={styles.searchClear} onClick={() => handleSearch('')}>✕</button>
-          )}
-        </div>
-
-        <div style={styles.categoryChips} className="market-category-chips">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              style={{
-                ...styles.categoryChip,
-                ...(selectedCategory === cat.id ? styles.categoryChipActive : {}),
-              }}
-              onClick={() => handleCategoryChange(cat.id)}
-            >
-              <span style={styles.categoryChipIcon}>{cat.icon}</span>
-              <span style={styles.categoryChipLabel}>{cat.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div style={styles.tabs}>
-          {['all', 'my', 'favorites'].map(tab => (
-             <button
-              key={tab}
-              style={{
-                ...styles.tab,
-                ...(activeTab === tab ? styles.tabActive : {}),
-              }}
-              onClick={() => handleTabChange(tab)}
-            >
-              {tab === 'all' ? 'Все' : tab === 'my' ? 'Мои' : 'Избранное'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
+      {/* CONTENT */}
       <div style={styles.content} ref={contentRef}>
         {refreshing && (
           <div style={styles.refreshIndicator}>
             <span style={styles.refreshIcon}>↻</span>
-            <span style={styles.refreshText}>Обновление...</span>
+            <span>Обновление...</span>
           </div>
         )}
 
@@ -332,38 +250,46 @@ const Market = () => {
           <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>⚠️</div>
             <div style={styles.emptyTitle}>{error}</div>
-            <button style={styles.retryButton} onClick={handleRefresh}>Попробовать снова</button>
+            <button style={styles.retryButton} onClick={handleRefresh}>Повторить</button>
           </div>
         )}
 
-        {!loading && !error && filteredItems.length === 0 && (
+        {!loading && !error && marketItems.length === 0 && (
           <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>📦</div>
             <div style={styles.emptyTitle}>Ничего не найдено</div>
-            <div style={styles.emptyText}>Попробуйте изменить параметры поиска</div>
+            <div style={styles.emptyText}>Попробуйте изменить фильтры</div>
           </div>
         )}
 
+        {/* СЕТКА ТОВАРОВ */}
         <div style={styles.grid}>
-          {filteredItems.map((item, index) => (
+          {marketItems.map((item, index) => (
             <MarketCard
-              key={item.id} // ⚠️ Ключи теперь точно уникальны благодаря фильтрации
+              key={item.id}
               item={item}
               index={index}
               onClick={() => handleCardClick(item)}
             />
           ))}
           
-          {loading && [...Array(4)].map((_, i) => <MarketCardSkeleton key={`skeleton-${i}`} />)}
+          {loading && [...Array(4)].map((_, i) => (
+            <MarketCardSkeleton key={`skeleton-${i}`} />
+          ))}
         </div>
 
-        {hasMore && !loading && filteredItems.length > 0 && (
+        {hasMore && !loading && marketItems.length > 0 && (
           <div ref={loadMoreTriggerRef} style={styles.loadMoreTrigger} />
         )}
       </div>
 
+      {/* MODALS */}
       {showFilters && (
         <MarketFilters onClose={() => setShowFilters(false)} onApply={handleApplyFilters} />
+      )}
+
+      {showCreateItem && (
+        <CreateMarketItem onClose={() => { setShowCreateItem(false); handleRefresh(); }} />
       )}
 
       {showDetail && (
@@ -373,10 +299,7 @@ const Market = () => {
   );
 };
 
-// ... Skeleton and Styles remain the same ...
-// ✅ Убедись, что styles.grid имеет paddingBottom: theme.spacing.xl, 
-// чтобы контент не перекрывался таббаром если он есть
-
+// ===== SKELETON =====
 const MarketCardSkeleton = () => (
   <div style={styles.skeletonCard}>
     <div style={styles.skeletonImage} />
@@ -387,233 +310,97 @@ const MarketCardSkeleton = () => (
   </div>
 );
 
+// ===== STYLES =====
 const styles = {
-    container: {
-        paddingBottom: 80,
-        minHeight: '100vh',
-        backgroundColor: theme.colors.bgPrimary,
-    },
-    header: {
-        background: theme.colors.card,
-        borderBottom: `1px solid ${theme.colors.border}`,
-        display: 'flex',
-        flexDirection: 'column',
-    },
-    headerTop: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: theme.spacing.lg,
-    },
-    headerTitle: {
-        fontSize: theme.fontSize.xl,
-        fontWeight: theme.fontWeight.bold,
-        color: theme.colors.text,
-    },
-    headerActions: {
-        display: 'flex',
-        gap: theme.spacing.sm,
-    },
-    headerButton: {
-        position: 'relative',
-        background: theme.colors.bgSecondary,
-        border: 'none',
-        borderRadius: theme.radius.md,
-        padding: theme.spacing.sm,
-        cursor: 'pointer',
-    },
-    headerIcon: {
-        fontSize: theme.fontSize.xl,
-    },
-    filterBadge: {
-        position: 'absolute',
-        top: -4,
-        right: -4,
-        background: theme.colors.market,
-        color: theme.colors.text,
-        fontSize: theme.fontSize.xs,
-        fontWeight: theme.fontWeight.bold,
-        padding: `2px ${theme.spacing.xs}px`,
-        borderRadius: theme.radius.full,
-        minWidth: 18,
-        height: 18,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    searchContainer: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: theme.spacing.sm,
-        background: theme.colors.bgSecondary,
-        borderRadius: theme.radius.md,
-        padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-        margin: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`,
-    },
-    searchIcon: {
-        fontSize: theme.fontSize.lg,
-        color: theme.colors.textSecondary,
-    },
-    searchInput: {
-        flex: 1,
-        background: 'transparent',
-        border: 'none',
-        color: theme.colors.text,
-        fontSize: theme.fontSize.base,
-        outline: 'none',
-    },
-    searchClear: {
-        background: 'transparent',
-        border: 'none',
-        color: theme.colors.textSecondary,
-        fontSize: theme.fontSize.base,
-        padding: theme.spacing.xs,
-    },
-    categoryChips: {
-        display: 'flex',
-        gap: theme.spacing.sm,
-        padding: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`,
-        overflowX: 'auto',
-        WebkitOverflowScrolling: 'touch',
-    },
-    categoryChip: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: theme.spacing.xs,
-        background: theme.colors.bgSecondary,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: theme.radius.full,
-        padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-        whiteSpace: 'nowrap',
-        transition: theme.transitions.fast,
-    },
-    categoryChipActive: {
-        background: theme.colors.market,
-        borderColor: theme.colors.market,
-    },
-    categoryChipIcon: { fontSize: theme.fontSize.base },
-    categoryChipLabel: {
-        fontSize: theme.fontSize.sm,
-        fontWeight: theme.fontWeight.medium,
-        color: theme.colors.text,
-    },
-    tabs: {
-        display: 'flex',
-        borderTop: `1px solid ${theme.colors.border}`,
-    },
-    tab: {
-        flex: 1,
-        background: 'transparent',
-        border: 'none',
-        borderBottomWidth: '2px',
-        borderBottomStyle: 'solid',
-        borderBottomColor: 'transparent',
-        padding: theme.spacing.md,
-        color: theme.colors.textSecondary,
-        fontSize: theme.fontSize.base,
-        fontWeight: theme.fontWeight.medium,
-    },
-    tabActive: {
-        color: theme.colors.market,
-        borderBottomColor: theme.colors.market,
-    },
-    content: {
-        flex: 1,
-        // overflowY: 'auto' // Убрал, так как скролл на window для infinite scroll лучше работает
-    },
-    refreshIndicator: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: theme.spacing.sm,
-        padding: theme.spacing.md,
-        color: theme.colors.textSecondary,
-    },
-    refreshIcon: {
-        fontSize: theme.fontSize.xl,
-        animation: 'spin 1s linear infinite',
-    },
-    refreshText: { fontSize: theme.fontSize.sm },
-    grid: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: theme.spacing.md,
-        padding: theme.spacing.lg,
-    },
-    emptyState: {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: theme.spacing.xxxl,
-        textAlign: 'center',
-        minHeight: 300,
-    },
-    emptyIcon: { fontSize: 64, marginBottom: theme.spacing.lg, opacity: 0.5 },
-    emptyTitle: {
-        fontSize: theme.fontSize.lg,
-        fontWeight: theme.fontWeight.semibold,
-        color: theme.colors.text,
-        marginBottom: theme.spacing.sm,
-    },
-    emptyText: {
-        fontSize: theme.fontSize.base,
-        color: theme.colors.textSecondary,
-        maxWidth: 300,
-    },
-    retryButton: {
-        marginTop: theme.spacing.lg,
-        background: theme.colors.market,
-        border: 'none',
-        borderRadius: theme.radius.md,
-        padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
-        color: theme.colors.text,
-        fontSize: theme.fontSize.base,
-        fontWeight: theme.fontWeight.semibold,
-    },
-    loadMoreTrigger: {
-        height: 20,
-        width: '100%',
-    },
-    skeletonCard: {
-        background: theme.colors.card,
-        borderRadius: theme.radius.lg,
-        overflow: 'hidden',
-        animation: 'pulse 1.5s ease-in-out infinite',
-        aspectRatio: '0.7',
-    },
-    skeletonImage: {
-        width: '100%',
-        height: '60%',
-        background: theme.colors.bgSecondary,
-    },
-    skeletonInfo: {
-        padding: theme.spacing.md,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing.sm,
-    },
-    skeletonLine: {
-        height: 16,
-        background: theme.colors.bgSecondary,
-        borderRadius: 4,
-    },
-    skeletonLineShort: {
-        height: 16,
-        width: '60%',
-        background: theme.colors.bgSecondary,
-        borderRadius: 4,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.bg,
+    minHeight: '100vh',
+  },
+
+  // ✅ НОВЫЕ СТИЛИ ТАБОВ
+  tabsWrapper: {
+    padding: '0 12px 12px 12px',
+  },
+
+  tabsContainer: {
+    position: 'relative',
+    display: 'flex',
+    backgroundColor: theme.colors.bg,
+    borderRadius: theme.radius.lg,
+    padding: '4px',
+    height: 44,
+    border: `1px solid ${theme.colors.border}`,
+  },
+
+  activeIndicator: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 4,
+    width: 'calc(33.33% - 4px)', // Треть ширины минус отступы
+    backgroundColor: theme.colors.market, // 💚 ЗЕЛЕНЫЙ ЦВЕТ ДЛЯ БАРАХОЛКИ
+    borderRadius: theme.radius.md,
+    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)', // Зеленая тень
+    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    zIndex: 1,
+  },
+
+  tabButton: {
+    flex: 1,
+    position: 'relative',
+    zIndex: 2,
+    background: 'transparent',
+    border: 'none',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'color 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ✅ ОБНОВЛЕННЫЙ CONTENT
+  content: {
+    // Используем нашу "магическую" формулу отступа
+    paddingTop: 'calc(var(--header-padding, 104px) + 16px)',
+    transition: 'padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: theme.spacing.md,
+    padding: '0 12px 100px 12px', // Отступы по бокам и снизу
+  },
+
+  // Остальные стили (без изменений)
+  refreshIndicator: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, color: theme.colors.textSecondary },
+  refreshIcon: { fontSize: 20, animation: 'spin 1s linear infinite' },
+  emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center', minHeight: 300 },
+  emptyIcon: { fontSize: 64, marginBottom: 16, opacity: 0.5 },
+  emptyTitle: { fontSize: 18, fontWeight: 600, color: theme.colors.text, marginBottom: 8 },
+  emptyText: { fontSize: 14, color: theme.colors.textSecondary, maxWidth: 300 },
+  retryButton: { marginTop: 16, background: theme.colors.market, border: 'none', borderRadius: 12, padding: '12px 24px', color: '#fff', fontWeight: 600 },
+  loadMoreTrigger: { height: 20, width: '100%' },
+  
+  skeletonCard: { background: theme.colors.card, borderRadius: 16, overflow: 'hidden', animation: 'pulse 1.5s infinite', aspectRatio: '0.7' },
+  skeletonImage: { width: '100%', height: '60%', background: theme.colors.bgSecondary },
+  skeletonInfo: { padding: 12, display: 'flex', flexDirection: 'column', gap: 8 },
+  skeletonLine: { height: 16, background: theme.colors.bgSecondary, borderRadius: 4 },
+  skeletonLineShort: { height: 16, width: '60%', background: theme.colors.bgSecondary, borderRadius: 4 },
 };
 
-// CSS Animations
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  .market-category-chips { scrollbar-width: none; -ms-overflow-style: none; }
-  .market-category-chips::-webkit-scrollbar { display: none; }
-`;
-document.head.appendChild(styleSheet);
+// Animations
+if (!document.getElementById('market-animations')) {
+  const styleSheet = document.createElement('style');
+  styleSheet.id = 'market-animations';
+  styleSheet.textContent = `
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  `;
+  document.head.appendChild(styleSheet);
+}
 
 export default Market;

@@ -25,9 +25,9 @@ function App() {
     showCreateModal,
     showCreateRequestModal,
     showCreateMarketItem,
-    editingMarketItem,       // ✅ NEW: Достаем редактируемый товар
-    setEditingMarketItem,    // ✅ NEW: Сеттер для очистки
-    setShowCreateMarketItem, // ✅ NEW: Управление видимостью
+    editingMarketItem,
+    setEditingMarketItem,
+    setShowCreateMarketItem,
     onboardingStep,
     showUserPosts
   } = useStore();
@@ -37,46 +37,27 @@ function App() {
   }, []);
 
   const renderContent = () => {
-    // Если открыт детальный просмотр поста
-    if (viewPostId) {
-      return <PostDetail />;
-    }
+    if (viewPostId) return <PostDetail />;
+    if (showUserPosts) return <UserPosts />;
 
-    // Экран "Мои посты"
-    if (showUserPosts) {
-      return <UserPosts />;
-    }
-
-    // Остальные экраны
     switch (activeTab) {
-      case 'feed':
-        return <Feed />;
-      case 'market':
-        return <Market />;
-      case 'people':
-        return <DatingFeed />;
-      case 'profile':
-        return <Profile />;
-      default:
-        return <Feed />;
+      case 'feed': return <Feed />;
+      case 'market': return <Market />;
+      case 'people': return <DatingFeed />;
+      case 'profile': return <Profile />;
+      default: return <Feed />;
     }
   };
   
-  // Если идёт онбординг - показываем только его
   if (onboardingStep > 0) {
-    return (
-      <div style={styles.app}>
-        <Onboarding />
-      </div>
-    );
+    return <div style={styles.app}><Onboarding /></div>;
   }
 
   return (
-    <div style={styles.app}>
+    <div style={styles.app}>   
       {renderContent()}
       <Navigation />
       
-      {/* Модальные окна */}
       {showCreateModal && <CreatePost />}
       
       {showCreateRequestModal && (
@@ -85,16 +66,15 @@ function App() {
         />
       )}
 
-      {/* ✅ NEW: Модалка создания/редактирования товара */}
       {showCreateMarketItem && (
         <CreateMarketItem 
-          editItem={editingMarketItem} // Передаем данные для редактирования (или null)
+          editItem={editingMarketItem}
           onClose={() => {
-            setEditingMarketItem(null); // Обязательно сбрасываем режим редактирования!
+            setEditingMarketItem(null);
             setShowCreateMarketItem(false);
           }}
           onSuccess={() => {
-            setEditingMarketItem(null); // Сбрасываем и закрываем
+            setEditingMarketItem(null);
             setShowCreateMarketItem(false);
           }}
         />
@@ -112,7 +92,7 @@ const styles = {
     backgroundColor: '#121212',
     color: '#fff',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  }
+  },
 };
 
 export default App;
