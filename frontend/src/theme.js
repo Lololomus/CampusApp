@@ -28,11 +28,13 @@ export const theme = {
     events: '#f59e0b',
     confessions: '#ec4899',
     lostFound: '#10b981',
+    market: '#10b981', // Market (зелёный)
     
     // Статусы
     success: '#10b981',
     error: '#ef4444',
     warning: '#f59e0b',
+
 
     // ProfileCard:
     info: '#64c8ff',           // Для цветных тегов
@@ -41,6 +43,10 @@ export const theme = {
     // Градиенты
     gradientStart: '#667eea',
     gradientEnd: '#764ba2',
+    
+    // Market градиент
+    marketGradientStart: '#059669',
+    marketGradientEnd: '#10b981',
   },
   
   spacing: {

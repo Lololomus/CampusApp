@@ -1,4 +1,4 @@
-// ===== App.js =====
+// ===== 📄 ФАЙЛ: src/App.js =====
 
 import React, { useEffect } from 'react';
 import { useStore } from './store';
@@ -12,9 +12,10 @@ import Onboarding from './components/Onboarding';
 import AuthModal from './components/AuthModal';
 import EditProfile from './components/EditProfile';
 import Profile from './components/Profile';
-import Search from './components/Search';
 import UserPosts from './components/UserPosts';
 import DatingFeed from './components/dating/DatingFeed';
+import Market from './components/market/Market';
+import CreateMarketItem from './components/market/CreateMarketItem';
 import './App.css';
 
 function App() {
@@ -23,6 +24,10 @@ function App() {
     viewPostId, 
     showCreateModal,
     showCreateRequestModal,
+    showCreateMarketItem,
+    editingMarketItem,       // ✅ NEW: Достаем редактируемый товар
+    setEditingMarketItem,    // ✅ NEW: Сеттер для очистки
+    setShowCreateMarketItem, // ✅ NEW: Управление видимостью
     onboardingStep,
     showUserPosts
   } = useStore();
@@ -46,8 +51,8 @@ function App() {
     switch (activeTab) {
       case 'feed':
         return <Feed />;
-      case 'search':
-        return <Search />;
+      case 'market':
+        return <Market />;
       case 'people':
         return <DatingFeed />;
       case 'profile':
@@ -73,11 +78,28 @@ function App() {
       
       {/* Модальные окна */}
       {showCreateModal && <CreatePost />}
+      
       {showCreateRequestModal && (
         <CreateRequestModal 
           onClose={() => useStore.getState().setShowCreateRequestModal(false)} 
         />
       )}
+
+      {/* ✅ NEW: Модалка создания/редактирования товара */}
+      {showCreateMarketItem && (
+        <CreateMarketItem 
+          editItem={editingMarketItem} // Передаем данные для редактирования (или null)
+          onClose={() => {
+            setEditingMarketItem(null); // Обязательно сбрасываем режим редактирования!
+            setShowCreateMarketItem(false);
+          }}
+          onSuccess={() => {
+            setEditingMarketItem(null); // Сбрасываем и закрываем
+            setShowCreateMarketItem(false);
+          }}
+        />
+      )}
+
       <AuthModal />
       <EditProfile />
     </div>

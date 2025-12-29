@@ -3,7 +3,6 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
 
-
 class User(Base):
     __tablename__ = 'users'
     
@@ -29,6 +28,8 @@ class User(Base):
     # Метаданные
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_profile_edit = Column(DateTime, nullable=True)  # для cooldown редактирования
+    updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
     
     # Отношения
     posts = relationship('Post', back_populates='author', cascade='all, delete-orphan')
@@ -38,7 +39,10 @@ class User(Base):
     # Dating отношения
     likes_given = relationship('Like', foreign_keys='Like.liker_id', back_populates='liker', cascade='all, delete-orphan')
     likes_received = relationship('Like', foreign_keys='Like.liked_id', back_populates='liked', cascade='all, delete-orphan')
-
+    
+    # Market отношения
+    market_items = relationship('MarketItem', back_populates='seller', cascade='all, delete-orphan')
+    market_favorites = relationship('MarketFavorite', back_populates='user', cascade='all, delete-orphan')
 
 class Post(Base):
     __tablename__ = 'posts'
@@ -145,7 +149,6 @@ class Request(Base):
     author = relationship('User', back_populates='requests')
     responses = relationship('RequestResponse', back_populates='request', cascade='all, delete-orphan')
 
-
 class RequestResponse(Base):
     """
     Отклики на запросы (ведут в Telegram чат)
@@ -170,7 +173,6 @@ class RequestResponse(Base):
     __table_args__ = (
         UniqueConstraint('request_id', 'user_id', name='unique_request_response'),
     )
-
 
 class Comment(Base):
     __tablename__ = 'comments'
@@ -236,7 +238,6 @@ class Like(Base):
         CheckConstraint('liker_id != liked_id', name='no_self_like'),
     )
 
-
 class Match(Base):
     """
     Матчи для знакомств (взаимные лайки)
@@ -256,4 +257,83 @@ class Match(Base):
     __table_args__ = (
         UniqueConstraint('user_a_id', 'user_b_id', name='unique_match'),
         CheckConstraint('user_a_id < user_b_id', name='ordered_match'),
+    )
+
+# ========================================
+# MARKETPLACE
+# ========================================
+
+class MarketItem(Base):
+    """
+    Товары барахолки
+    """
+    __tablename__ = 'market_items'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    seller_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    
+    # Категория (String, не Enum! Для кастомных категорий)
+    category = Column(String(50), nullable=False, index=True)
+    
+    # Основная информация
+    title = Column(String(100), nullable=False)  # 5-100 символов
+    description = Column(Text, nullable=False)  # 20-1000 символов
+    price = Column(Integer, nullable=False)  # 0-1000000 рублей
+    
+    # Состояние товара
+    condition = Column(
+        Enum('new', 'like_new', 'good', 'fair', name='item_condition_enum'),
+        nullable=False,
+        default='good'
+    )
+    
+    # Локация (опционально, автозаполнение из профиля)
+    location = Column(String(200), nullable=True)
+    
+    # Изображения (JSON array, первое = обложка)
+    # Формат: [{"url": "abc.jpg", "w": 800, "h": 600}, ...]
+    images = Column(Text, nullable=False)  # минимум 1 фото, максимум 5
+    
+    # Статус товара
+    status = Column(
+        Enum('active', 'sold', name='market_status_enum'),
+        nullable=False,
+        default='active',
+        index=True
+    )
+    
+    # Университет/институт продавца (копируются из User при создании)
+    university = Column(String(255), nullable=False)
+    institute = Column(String(255), nullable=False)
+    
+    # Счётчики
+    views_count = Column(Integer, default=0)
+    favorites_count = Column(Integer, default=0)
+    
+    # Временные метки
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Отношения
+    seller = relationship('User', back_populates='market_items')
+    favorites = relationship('MarketFavorite', back_populates='item', cascade='all, delete-orphan')
+
+class MarketFavorite(Base):
+    """
+    Избранные товары пользователей
+    """
+    __tablename__ = 'market_favorites'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Отношения
+    user = relationship('User', back_populates='market_favorites')
+    item = relationship('MarketItem', back_populates='favorites')
+    
+    # Ограничения (один пользователь = один лайк на товар)
+    __table_args__ = (
+        UniqueConstraint('user_id', 'item_id', name='unique_market_favorite'),
     )

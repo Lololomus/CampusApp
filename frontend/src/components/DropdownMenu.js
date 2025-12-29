@@ -1,70 +1,97 @@
-import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
+// ===== 📄 ФАЙЛ: src/components/DropdownMenu.js =====
+
+import React, { useRef, useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import theme from '../theme';
 
+const SAFE_MARGIN = 8; // Отступ от края
+
 function DropdownMenu({ isOpen, onClose, items, anchorRef }) {
   const menuRef = useRef(null);
-  const [state, setState] = useState({ mounted: false, position: null });
-  const animationFrameRef = useRef(null); // ← Отслеживаем requestAnimationFrame
+  const [state, setState] = useState({ 
+    mounted: false, 
+    position: null,
+    transformOrigin: 'top right' 
+  });
+  
+  const animationFrameRef = useRef(null);
 
-  // useLayoutEffect вместо useEffect - синхронно, до paint
   useLayoutEffect(() => {
-    // Отменяем предыдущий requestAnimationFrame если есть
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
 
     if (isOpen && anchorRef?.current) {
-      // 1. Вычисляем позицию СИНХРОННО
-      const rect = anchorRef.current.getBoundingClientRect();
-      const newPosition = {
-        top: rect.bottom + 8,
-        right: window.innerWidth - rect.right,
-      };
+      // 1. Сбрасываем позицию, но рендерим (opacity 0) для замеров
+      setState(prev => ({ ...prev, mounted: false, position: null }));
 
-      // 2. Устанавливаем позицию БЕЗ mounted (меню невидимо)
-      setState({ mounted: false, position: newPosition });
-
-      // 3. В СЛЕДУЮЩЕМ фрейме включаем анимацию
       animationFrameRef.current = requestAnimationFrame(() => {
-        setState(prev => ({ ...prev, mounted: true }));
-        animationFrameRef.current = null;
+        if (!menuRef.current || !anchorRef.current) return;
+
+        // 2. ИЗМЕРЕНИЯ
+        const anchorRect = anchorRef.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+
+        const menuHeight = menuRef.current.offsetHeight;
+        const menuWidth = menuRef.current.offsetWidth;
+
+        let finalTop = 0;
+        let finalRight = 'auto';
+        let finalLeft = 'auto';
+        let originY = 'top';
+        let originX = 'right';
+
+        // 3. ВЕРТИКАЛЬ (Вверх или Вниз)
+        const spaceBelow = viewportHeight - anchorRect.bottom;
+        const spaceAbove = anchorRect.top;
+
+        if (spaceBelow < menuHeight + SAFE_MARGIN && spaceAbove > menuHeight + SAFE_MARGIN) {
+          finalTop = anchorRect.top - menuHeight - SAFE_MARGIN;
+          originY = 'bottom';
+        } else {
+          finalTop = anchorRect.bottom + SAFE_MARGIN;
+          originY = 'top';
+        }
+
+        // 4. ГОРИЗОНТАЛЬ (Влево или Вправо)
+        if (anchorRect.right - menuWidth < SAFE_MARGIN) {
+           finalLeft = anchorRect.left;
+           finalRight = 'auto';
+           originX = 'left';
+        } else {
+           finalRight = viewportWidth - anchorRect.right;
+           finalLeft = 'auto';
+           originX = 'right';
+        }
+
+        // 5. SET STATE
+        setState({
+          mounted: true,
+          position: {
+            top: finalTop,
+            left: finalLeft,
+            right: finalRight,
+          },
+          transformOrigin: `${originY} ${originX}`
+        });
       });
-
-      const handleClickOutside = (e) => {
-        if (menuRef.current && !menuRef.current.contains(e.target) && 
-            anchorRef.current && !anchorRef.current.contains(e.target)) {
-          onClose();
-        }
-      };
-      
-      const handleEscape = (e) => {
-        if (e.key === 'Escape') {
-          onClose();
-        }
-      };
-      
-      setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
-      document.addEventListener('keydown', handleEscape);
-      
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-        document.removeEventListener('keydown', handleEscape);
-        
-        // Отменяем requestAnimationFrame при unmount
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-          animationFrameRef.current = null;
-        }
-      };
     } else {
-      // Сбрасываем состояние при закрытии
-      setState({ mounted: false, position: null });
+      setState(prev => ({ ...prev, mounted: false }));
     }
-  }, [isOpen, onClose, anchorRef]);
 
-  if (!isOpen || !state.position) return null;
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isOpen, anchorRef]);
+
+  if (!isOpen) return null;
+
+  // Безопасная позиция по дефолту
+  const pos = state.position || { top: 0, left: 'auto', right: 'auto' };
 
   const dropdownContent = (
     <>
@@ -72,9 +99,13 @@ function DropdownMenu({ isOpen, onClose, items, anchorRef }) {
       <div 
         style={{
           ...styles.backdrop,
-          opacity: state.mounted ? 0.5 : 0,
+          opacity: state.mounted ? 1 : 0,
+          pointerEvents: state.mounted ? 'auto' : 'none',
         }}
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation(); // ⛔ ОСТАНАВЛИВАЕТ ВСЛЫТИЕ СОБЫТИЯ К КАРТОЧКЕ
+          onClose();
+        }}
       />
       
       {/* Dropdown */}
@@ -82,13 +113,17 @@ function DropdownMenu({ isOpen, onClose, items, anchorRef }) {
         ref={menuRef}
         style={{
           ...styles.dropdown,
-          top: state.position.top,
-          right: state.position.right,
+          visibility: state.position ? 'visible' : 'hidden', 
           opacity: state.mounted ? 1 : 0,
-          transform: state.mounted 
-            ? 'translateY(0) scale(1)' 
-            : 'translateY(-20px) scale(0.85)',
+          
+          top: pos.top,
+          left: pos.left,
+          right: pos.right,
+          
+          transformOrigin: state.transformOrigin,
+          transform: state.mounted ? 'scale(1)' : 'scale(0.95)',
         }}
+        onClick={(e) => e.stopPropagation()} // Блокируем клики внутри самого меню
       >
         {items.map((item, index) => {
           if (item.divider) {
@@ -100,7 +135,12 @@ function DropdownMenu({ isOpen, onClose, items, anchorRef }) {
               key={index}
               icon={item.icon}
               label={item.label}
-              onClick={item.onClick}
+              onClick={() => {
+                setTimeout(() => {
+                  item.onClick();
+                  onClose();
+                }, 50);
+              }}
               danger={item.danger}
               delay={index * 30}
               mounted={state.mounted}
@@ -117,12 +157,6 @@ function DropdownMenu({ isOpen, onClose, items, anchorRef }) {
 function MenuItem({ icon, label, onClick, danger, delay, mounted }) {
   const [isPressed, setIsPressed] = useState(false);
 
-  const handleClick = (e) => {
-    e.stopPropagation();
-    setIsPressed(true);
-    setTimeout(() => onClick(), 100);
-  };
-
   return (
     <button
       style={{
@@ -135,19 +169,19 @@ function MenuItem({ icon, label, onClick, danger, delay, mounted }) {
         transform: mounted ? 'translateX(0)' : 'translateX(-10px)',
         transitionDelay: mounted ? `${delay}ms` : '0ms',
       }}
-      onClick={handleClick}
+      onClick={(e) => {
+        e.stopPropagation(); // Блокируем всплытие клика по пункту
+        setIsPressed(true);
+        onClick();
+      }}
       onTouchStart={() => setIsPressed(true)}
-      onTouchEnd={() => setTimeout(() => setIsPressed(false), 150)}
+      onTouchEnd={() => setTimeout(() => setIsPressed(false), 200)}
       onMouseDown={() => setIsPressed(true)}
       onMouseUp={() => setIsPressed(false)}
       onMouseLeave={() => setIsPressed(false)}
     >
       <span style={styles.menuIcon}>{icon}</span>
       <span style={styles.menuLabel}>{label}</span>
-      
-      {isPressed && (
-        <span style={styles.ripple} />
-      )}
     </button>
   );
 }
@@ -159,84 +193,65 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     zIndex: 9998,
-    transition: 'opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-    pointerEvents: 'auto',
+    transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
   },
   
   dropdown: {
-    position: 'fixed',
-    background: `linear-gradient(135deg, ${theme.colors.card} 0%, ${theme.colors.card}dd 100%)`,
+    position: 'fixed', 
+    background: '#1e1e1e', 
     border: `1px solid ${theme.colors.border}`,
-    borderRadius: 16,
-    boxShadow: `
-      0 10px 25px -5px rgba(0, 0, 0, 0.4),
-      0 8px 10px -6px rgba(0, 0, 0, 0.3),
-      0 0 0 1px rgba(255, 255, 255, 0.08),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.1)
-    `,
+    borderRadius: 14,
+    padding: '6px 0',
+    boxShadow: `0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05)`,
     zIndex: 9999,
-    minWidth: 220,
-    overflow: 'hidden',
-    transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
-    transformOrigin: 'top right',
+    minWidth: 180,
+    maxWidth: 240,
     willChange: 'transform, opacity',
+    transition: 'opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
   },
   
   menuItem: {
     width: '100%',
-    padding: '14px 18px',
+    padding: '12px 16px',
     background: 'none',
     border: 'none',
     fontSize: 15,
     fontWeight: 500,
     textAlign: 'left',
     cursor: 'pointer',
-    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    transition: 'all 0.2s ease',
     display: 'flex',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
     position: 'relative',
-    overflow: 'hidden',
     WebkitTapHighlightColor: 'transparent',
     userSelect: 'none',
+    outline: 'none',
   },
   
   menuIcon: {
-    fontSize: 20,
-    width: 28,
-    height: 28,
+    fontSize: 18,
+    width: 24,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    opacity: 0.9,
   },
   
   menuLabel: {
     flex: 1,
     whiteSpace: 'nowrap',
-    letterSpacing: '0.01em',
+    letterSpacing: '-0.01em',
   },
   
   divider: {
     height: 1,
-    background: `linear-gradient(90deg, transparent, ${theme.colors.border}, transparent)`,
-    margin: '8px 12px',
-    opacity: 0.6,
-  },
-  
-  ripple: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: '100%',
-    height: '100%',
-    borderRadius: '50%',
-    background: 'rgba(255, 255, 255, 0.2)',
-    transform: 'translate(-50%, -50%) scale(0)',
-    animation: 'ripple 0.6s ease-out',
-    pointerEvents: 'none',
+    background: theme.colors.border,
+    margin: '4px 0',
+    opacity: 0.5,
   },
 };
 

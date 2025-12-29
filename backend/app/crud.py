@@ -6,19 +6,15 @@ from datetime import datetime, timedelta
 import json
 from app.utils import process_base64_images, delete_images, get_image_urls
 
-
 # ===== USER CRUD =====
-
 
 def get_user_by_telegram_id(db: Session, telegram_id: int) -> Optional[models.User]:
     """Найти пользователя по Telegram ID"""
     return db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
 
-
 def get_user_by_id(db: Session, user_id: int) -> Optional[models.User]:
     """Найти пользователя по ID"""
     return db.query(models.User).filter(models.User.id == user_id).first()
-
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     """Создать нового пользователя"""
@@ -28,17 +24,14 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db.refresh(db_user)
     return db_user
 
-
 def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> Optional[models.User]:
     """Обновить данные пользователя"""
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
         return None
     
-    # Обновляем только те поля, которые переданы
     update_data = user_update.model_dump(exclude_unset=True)
     
-    # Обрабатываем interests (список -> JSON строка)
     if 'interests' in update_data:
         update_data['interests'] = json.dumps(update_data['interests'])
     
@@ -49,9 +42,7 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> O
     db.refresh(db_user)
     return db_user
 
-
 # ===== POST CRUD =====
-
 
 def get_posts(
     db: Session,
@@ -64,7 +55,6 @@ def get_posts(
     """Получить список постов с фильтрами"""
     query = db.query(models.Post).options(joinedload(models.Post.author))
     
-    # Исключаем expired посты (для lost_found)
     query = query.filter(
         or_(
             models.Post.expires_at == None,
@@ -72,7 +62,6 @@ def get_posts(
         )
     )
     
-    # Фильтры
     if category and category != "all":
         query = query.filter(models.Post.category == category)
     if university and university != "all":
@@ -80,17 +69,14 @@ def get_posts(
     if course and course != "all":
         query = query.filter(models.Post.course == course)
     
-    # Сортировка: важные первые, потом по дате
     return query.order_by(
         models.Post.is_important.desc(),
         models.Post.created_at.desc()
     ).offset(skip).limit(limit).all()
 
-
 def get_post(db: Session, post_id: int) -> Optional[models.Post]:
     """Получить пост по ID"""
     return db.query(models.Post).filter(models.Post.id == post_id).first()
-
 
 async def create_post(db: Session, post: schemas.PostCreate, author_id: int, uploaded_files: List = None) -> models.Post:
     """
@@ -100,30 +86,25 @@ async def create_post(db: Session, post: schemas.PostCreate, author_id: int, upl
     
     from app.utils import process_uploaded_files
     
-    # Обработка изображений (возвращает список словарей {'url':..., 'w':..., 'h':...})
     saved_images_meta = []
     
-    # Если есть файлы из multipart form (приоритет)
     if uploaded_files and len(uploaded_files) > 0:
         try:
             saved_images_meta = await process_uploaded_files(uploaded_files)
         except Exception as e:
             raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
-    # Иначе обрабатываем Base64 (для обратной совместимости)
     elif post.images and len(post.images) > 0:
         try:
             saved_images_meta = process_base64_images(post.images)
         except Exception as e:
             raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
     
-    # Базовые данные
     db_post = models.Post(
         author_id=author_id,
         category=post.category,
         title=post.title,
         body=post.body,
         tags=json.dumps(post.tags) if post.tags else None,
-        # Сохраняем список объектов как JSON
         images=json.dumps(saved_images_meta) if saved_images_meta else None,
         is_anonymous=post.is_anonymous,
         enable_anonymous_comments=post.enable_anonymous_comments,
@@ -136,7 +117,6 @@ async def create_post(db: Session, post: schemas.PostCreate, author_id: int, upl
         is_important=post.is_important,
     )
     
-    # Автоматическое expires_at для lost_found (7 дней)
     if post.category == 'lost_found':
         db_post.expires_at = datetime.utcnow() + timedelta(days=7)
     
@@ -146,11 +126,9 @@ async def create_post(db: Session, post: schemas.PostCreate, author_id: int, upl
         db.refresh(db_post)
         return db_post
     except Exception as e:
-        # Если ошибка сохранения в БД → удаляем загруженные файлы
         if saved_images_meta:
             delete_images(saved_images_meta)
         raise e
-
 
 async def update_post(
     db: Session, 
@@ -172,46 +150,33 @@ async def update_post(
     
     update_data = post_update.model_dump(exclude_unset=True)
     
-    # Обрабатываем теги
     if "tags" in update_data:
         update_data['tags'] = json.dumps(update_data['tags'])
     
-    # Обработка изображений (самая сложная часть)
     if new_files is not None or keep_filenames is not None:
-        # 1. Парсим старые данные из БД
         raw_old_images = json.loads(db_post.images) if db_post.images else []
         
-        # Создаём мапу {filename: meta_object} для быстрого поиска
-        # Это нужно, чтобы найти размеры (w, h) для старых картинок
         old_images_map = {}
         for item in raw_old_images:
             if isinstance(item, str):
-                # Fallback для старого формата (строки)
                 old_images_map[item] = {"url": item, "w": 1000, "h": 1000}
             elif isinstance(item, dict):
-                # Новый формат (объекты)
                 old_images_map[item.get("url")] = item
         
-        # Итоговый список объектов метаданных
         final_images_meta = []
         
-        # 2. Восстанавливаем старые картинки (из keep_filenames)
         if keep_filenames:
             for fname in keep_filenames:
                 if fname in old_images_map:
                     final_images_meta.append(old_images_map[fname])
         
-        # 3. Загружаем и обрабатываем новые файлы
         if new_files and len(new_files) > 0:
             try:
-                # process_uploaded_files возвращает List[Dict] с размерами!
                 new_saved_meta = await process_uploaded_files(new_files)
                 final_images_meta.extend(new_saved_meta)
             except Exception as e:
                 raise ValueError(f"Ошибка обновления изображений: {str(e)}")
         
-        # 4. Вычисляем файлы на удаление (Garbage Collection)
-        # Те файлы, что были в old_images_map, но не попали в final_images_meta
         kept_urls = {img["url"] for img in final_images_meta}
         files_to_delete = []
         
@@ -222,10 +187,8 @@ async def update_post(
         if files_to_delete:
             delete_images(files_to_delete)
         
-        # 5. Сохраняем новый список объектов
         update_data['images'] = json.dumps(final_images_meta) if final_images_meta else None
     
-    # Обновляем поля в БД
     for key, value in update_data.items():
         setattr(db_post, key, value)
     
@@ -235,17 +198,14 @@ async def update_post(
     db.refresh(db_post)
     return db_post
 
-
 def delete_post(db: Session, post_id: int) -> bool:
     """Удалить пост и его изображения"""
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
     if not db_post:
         return False
     
-    # Удаляем файлы изображений
     if db_post.images:
         try:
-            # delete_images умеет работать и со строками, и со словарями
             images_data = json.loads(db_post.images)
             delete_images(images_data)
         except Exception as e:
@@ -255,7 +215,6 @@ def delete_post(db: Session, post_id: int) -> bool:
     db.commit()
     return True
 
-
 def increment_post_views(db: Session, post_id: int):
     """Увеличить счётчик просмотров"""
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
@@ -263,9 +222,7 @@ def increment_post_views(db: Session, post_id: int):
         db_post.views_count += 1
         db.commit()
 
-
 # ===== POST LIKES =====
-
 
 def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
     """Проверить лайкнул ли пользователь пост"""
@@ -274,7 +231,6 @@ def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
         models.PostLike.user_id == user_id
     ).first()
     return like is not None
-
 
 def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
     """Toggle лайка (добавить или убрать)"""
@@ -299,9 +255,7 @@ def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
         db.commit()
         return {"is_liked": True, "likes": post.likes_count}
 
-
 # ===== COMMENT CRUD =====
-
 
 def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) -> List[models.Comment]:
     """Получить все комментарии к посту"""
@@ -319,7 +273,6 @@ def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) 
             comment.is_liked = False
     
     return comments
-
 
 def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
     """Создание комментария с логикой анонимности"""
@@ -366,9 +319,7 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
     db.refresh(db_comment)
     return db_comment
 
-
 # ===== COMMENT LIKES =====
-
 
 def is_comment_liked_by_user(db: Session, comment_id: int, user_id: int) -> bool:
     like = db.query(models.CommentLike).filter(
@@ -376,7 +327,6 @@ def is_comment_liked_by_user(db: Session, comment_id: int, user_id: int) -> bool
         models.CommentLike.user_id == user_id
     ).first()
     return like is not None
-
 
 def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
     like = db.query(models.CommentLike).filter(
@@ -399,7 +349,6 @@ def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
         comment.likes_count += 1
         db.commit()
         return {"is_liked": True, "likes": comment.likes_count}
-
 
 def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
@@ -425,7 +374,6 @@ def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
         db.commit()
         return {"success": True, "type": "hard_delete"}
 
-
 def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Optional[models.Comment]:
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not comment:
@@ -443,13 +391,11 @@ def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Opt
     db.refresh(comment)
     return comment
 
-
 def count_post_comments(db: Session, post_id: int) -> int:
     return db.query(models.Comment).filter(
         models.Comment.post_id == post_id,
         models.Comment.is_deleted == False
     ).count()
-
 
 def get_user_posts(db: Session, user_id: int, limit: int = 5, offset: int = 0) -> List[models.Post]:
     return db.query(models.Post)\
@@ -459,10 +405,8 @@ def get_user_posts(db: Session, user_id: int, limit: int = 5, offset: int = 0) -
         .limit(limit)\
         .all()
 
-
 def count_user_posts(db: Session, user_id: int) -> int:
     return db.query(models.Post).filter(models.Post.author_id == user_id).count()
-
 
 def count_user_comments(db: Session, user_id: int) -> int:
     return db.query(models.Comment).filter(
@@ -470,9 +414,7 @@ def count_user_comments(db: Session, user_id: int) -> int:
         models.Comment.is_deleted == False
     ).count()
 
-
 # ===== COOLDOWN =====
-
 
 def can_edit_critical_fields(db: Session, user_id: int) -> bool:
     user = get_user_by_id(db, user_id)
@@ -481,7 +423,6 @@ def can_edit_critical_fields(db: Session, user_id: int) -> bool:
     days_passed = (datetime.utcnow() - user.last_profile_edit).days
     return days_passed >= 30
 
-
 def get_cooldown_days_left(db: Session, user_id: int) -> int:
     user = get_user_by_id(db, user_id)
     if not user or not user.last_profile_edit:
@@ -489,9 +430,7 @@ def get_cooldown_days_left(db: Session, user_id: int) -> int:
     days_passed = (datetime.utcnow() - user.last_profile_edit).days
     return max(0, 30 - days_passed)
 
-
 # ===== REQUEST CRUD =====
-
 
 def create_request(db: Session, request: schemas.RequestCreate, author_id: int) -> models.Request:
     active_count = db.query(models.Request).filter(
@@ -519,7 +458,6 @@ def create_request(db: Session, request: schemas.RequestCreate, author_id: int) 
     db.commit()
     db.refresh(db_request)
     return db_request
-
 
 def get_requests_feed(
     db: Session,
@@ -581,7 +519,6 @@ def get_requests_feed(
         'has_more': offset + limit < total
     }
 
-
 def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[int] = None) -> Optional[Dict]:
     request = db.query(models.Request).options(
         joinedload(models.Request.author),
@@ -614,7 +551,6 @@ def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[in
     
     return request_dict
 
-
 def update_request(db: Session, request_id: int, user_id: int, data: schemas.RequestUpdate) -> Optional[models.Request]:
     request = db.query(models.Request).filter(
         models.Request.id == request_id,
@@ -637,7 +573,6 @@ def update_request(db: Session, request_id: int, user_id: int, data: schemas.Req
     db.refresh(request)
     return request
 
-
 def delete_request(db: Session, request_id: int, user_id: int) -> bool:
     request = db.query(models.Request).filter(
         models.Request.id == request_id,
@@ -650,7 +585,6 @@ def delete_request(db: Session, request_id: int, user_id: int) -> bool:
     db.delete(request)
     db.commit()
     return True
-
 
 def get_my_requests(db: Session, user_id: int) -> List[Dict]:
     requests = db.query(models.Request).options(
@@ -679,9 +613,7 @@ def get_my_requests(db: Session, user_id: int) -> List[Dict]:
     
     return result
 
-
 # ===== RESPONSES =====
-
 
 def create_response(db: Session, request_id: int, user_id: int, data: schemas.ResponseCreate) -> models.RequestResponse:
     request = db.query(models.Request).filter(models.Request.id == request_id).first()
@@ -718,7 +650,6 @@ def create_response(db: Session, request_id: int, user_id: int, data: schemas.Re
     db.refresh(response)
     return response
 
-
 def get_request_responses(db: Session, request_id: int, user_id: int) -> List[models.RequestResponse]:
     request = db.query(models.Request).filter(
         models.Request.id == request_id,
@@ -735,7 +666,6 @@ def get_request_responses(db: Session, request_id: int, user_id: int) -> List[mo
     ).order_by(models.RequestResponse.created_at.desc()).all()
     
     return responses
-
 
 def delete_response(db: Session, response_id: int, user_id: int) -> bool:
     response = db.query(models.RequestResponse).filter(
@@ -754,7 +684,6 @@ def delete_response(db: Session, response_id: int, user_id: int) -> bool:
     db.commit()
     return True
 
-
 def auto_expire_requests(db: Session):
     expired = db.query(models.Request).filter(
         models.Request.status == 'active',
@@ -766,7 +695,6 @@ def auto_expire_requests(db: Session):
     
     db.commit()
     return len(expired)
-
 
 def auto_delete_expired_posts(db: Session):
     """Cron job: удалить истёкшие посты и их картинки"""
@@ -788,7 +716,6 @@ def auto_delete_expired_posts(db: Session):
     db.commit()
     return len(expired)
 
-
 def get_responses_count(db: Session, user_id: int, category: Optional[str] = None) -> int:
     query = db.query(func.sum(models.Request.responses_count)).filter(
         models.Request.author_id == user_id,
@@ -801,9 +728,7 @@ def get_responses_count(db: Session, user_id: int, category: Optional[str] = Non
     result = query.scalar()
     return result if result else 0
 
-
 # ===== DATING CRUD =====
-
 
 def get_dating_feed(
     db: Session,
@@ -849,7 +774,6 @@ def get_dating_feed(
     
     return query.order_by(models.User.created_at.desc()).offset(offset).limit(limit).all()
 
-
 def get_active_requests(db: Session, category: str, limit: int = 20, offset: int = 0) -> List[models.Request]:
     return (
         db.query(models.Request)
@@ -864,7 +788,6 @@ def get_active_requests(db: Session, category: str, limit: int = 20, offset: int
         .limit(limit)
         .all()
     )
-
 
 def create_like(db: Session, liker_id: int, liked_id: int) -> Dict:
     if liker_id == liked_id:
@@ -917,7 +840,6 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> Dict:
     
     return {"success": True, "is_match": False}
 
-
 def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.User]:
     my_likes_ids = db.query(models.Like.liked_id).filter(
         models.Like.liker_id == user_id
@@ -935,7 +857,6 @@ def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0
         .limit(limit)
         .all()
     )
-
 
 def get_my_matches(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[Dict]:
     matches = (
@@ -964,7 +885,6 @@ def get_my_matches(db: Session, user_id: int, limit: int = 20, offset: int = 0) 
         })
     
     return result
-
 
 def get_dating_stats(db: Session, user_id: int) -> Dict:
     my_likes_ids = db.query(models.Like.liked_id).filter(
@@ -996,7 +916,6 @@ def get_dating_stats(db: Session, user_id: int) -> Dict:
         'matches_count': matches_count
     }
 
-
 def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optional[models.User]:
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
@@ -1017,3 +936,294 @@ def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optiona
     db.commit()
     db.refresh(user)
     return user
+
+# ===== MARKET CRUD =====
+
+STANDARD_CATEGORIES = [
+    'textbooks',
+    'electronics',
+    'furniture',
+    'clothing',
+    'sports',
+    'appliances'
+]
+
+async def create_market_item(
+    db: Session, 
+    item: schemas.MarketItemCreate, 
+    seller_id: int, 
+    uploaded_files: List = None
+) -> models.MarketItem:
+    """Создание товара с автозаполнением university/institute из профиля"""
+    from app.utils import process_uploaded_files
+    
+    seller = get_user_by_id(db, seller_id)
+    if not seller:
+        raise ValueError("Продавец не найден")
+    
+    saved_images_meta = []
+    
+    if uploaded_files and len(uploaded_files) > 0:
+        try:
+            saved_images_meta = await process_uploaded_files(uploaded_files)
+        except Exception as e:
+            raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
+    elif item.images and len(item.images) > 0:
+        try:
+            saved_images_meta = process_base64_images(item.images)
+        except Exception as e:
+            raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
+    
+    if not saved_images_meta:
+        raise ValueError("Минимум 1 фото обязательно")
+    
+    db_item = models.MarketItem(
+        seller_id=seller_id,
+        category=item.category.strip(),
+        title=item.title,
+        description=item.description,
+        price=item.price,
+        condition=item.condition,
+        location=item.location or f"{seller.university}, {seller.institute}",
+        images=json.dumps(saved_images_meta),
+        status='active',
+        university=seller.university,
+        institute=seller.institute
+    )
+    
+    try:
+        db.add(db_item)
+        db.commit()
+        db.refresh(db_item)
+        return db_item
+    except Exception as e:
+        if saved_images_meta:
+            delete_images(saved_images_meta)
+        raise e
+
+def get_market_items(
+    db: Session,
+    skip: int = 0,
+    limit: int = 20,
+    category: Optional[str] = None,
+    price_min: Optional[int] = None,
+    price_max: Optional[int] = None,
+    condition: Optional[str] = None,
+    university: Optional[str] = None,
+    institute: Optional[str] = None,
+    sort: str = 'newest',
+    current_user_id: Optional[int] = None
+) -> Dict:
+    """Лента товаров с фильтрами и сортировкой"""
+    query = db.query(models.MarketItem).options(joinedload(models.MarketItem.seller))
+    
+    query = query.filter(models.MarketItem.status == 'active')
+    
+    if category and category != 'all':
+        query = query.filter(models.MarketItem.category == category)
+    
+    if price_min is not None:
+        query = query.filter(models.MarketItem.price >= price_min)
+    
+    if price_max is not None:
+        query = query.filter(models.MarketItem.price <= price_max)
+    
+    if condition:
+        query = query.filter(models.MarketItem.condition == condition)
+    
+    if university and university != 'all':
+        query = query.filter(models.MarketItem.university == university)
+    
+    if institute and institute != 'all':
+        query = query.filter(models.MarketItem.institute == institute)
+    
+    total = query.count()
+    
+    if sort == 'cheapest':
+        query = query.order_by(models.MarketItem.price.asc())
+    elif sort == 'expensive':
+        query = query.order_by(models.MarketItem.price.desc())
+    else:
+        query = query.order_by(models.MarketItem.created_at.desc())
+    
+    items = query.offset(skip).limit(limit).all()
+    
+    return {
+        'items': items,
+        'total': total,
+        'has_more': skip + limit < total
+    }
+
+def get_market_item(db: Session, item_id: int) -> Optional[models.MarketItem]:
+    """Получить товар по ID и увеличить просмотры"""
+    item = db.query(models.MarketItem).options(
+        joinedload(models.MarketItem.seller)
+    ).filter(models.MarketItem.id == item_id).first()
+    
+    if item:
+        item.views_count += 1
+        db.commit()
+    
+    return item
+
+async def update_market_item(
+    db: Session,
+    item_id: int,
+    seller_id: int,
+    item_update: schemas.MarketItemUpdate,
+    new_files: List = None,
+    keep_filenames: List[str] = None
+) -> Optional[models.MarketItem]:
+    """Обновление товара (только продавец)"""
+    from app.utils import process_uploaded_files
+    
+    db_item = db.query(models.MarketItem).filter(
+        models.MarketItem.id == item_id,
+        models.MarketItem.seller_id == seller_id
+    ).first()
+    
+    if not db_item:
+        return None
+    
+    update_data = item_update.model_dump(exclude_unset=True)
+    
+    if new_files is not None or keep_filenames is not None:
+        raw_old_images = json.loads(db_item.images) if db_item.images else []
+        
+        old_images_map = {}
+        for item in raw_old_images:
+            if isinstance(item, str):
+                old_images_map[item] = {"url": item, "w": 1000, "h": 1000}
+            elif isinstance(item, dict):
+                old_images_map[item.get("url")] = item
+        
+        final_images_meta = []
+        
+        if keep_filenames:
+            for fname in keep_filenames:
+                if fname in old_images_map:
+                    final_images_meta.append(old_images_map[fname])
+        
+        if new_files and len(new_files) > 0:
+            try:
+                new_saved_meta = await process_uploaded_files(new_files)
+                final_images_meta.extend(new_saved_meta)
+            except Exception as e:
+                raise ValueError(f"Ошибка обновления изображений: {str(e)}")
+        
+        if not final_images_meta:
+            raise ValueError("Минимум 1 фото обязательно")
+        
+        kept_urls = {img["url"] for img in final_images_meta}
+        files_to_delete = []
+        
+        for url in old_images_map:
+            if url not in kept_urls:
+                files_to_delete.append(url)
+        
+        if files_to_delete:
+            delete_images(files_to_delete)
+        
+        update_data['images'] = json.dumps(final_images_meta)
+    
+    for key, value in update_data.items():
+        setattr(db_item, key, value)
+    
+    db_item.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_item)
+    return db_item
+
+def delete_market_item(db: Session, item_id: int, seller_id: int) -> bool:
+    """Удаление товара (только продавец)"""
+    db_item = db.query(models.MarketItem).filter(
+        models.MarketItem.id == item_id,
+        models.MarketItem.seller_id == seller_id
+    ).first()
+    
+    if not db_item:
+        return False
+    
+    if db_item.images:
+        try:
+            images_data = json.loads(db_item.images)
+            delete_images(images_data)
+        except Exception as e:
+            print(f"⚠️ Ошибка удаления изображений товара {item_id}: {e}")
+    
+    db.delete(db_item)
+    db.commit()
+    return True
+
+def toggle_market_favorite(db: Session, item_id: int, user_id: int) -> dict:
+    """Toggle избранное"""
+    favorite = db.query(models.MarketFavorite).filter(
+        models.MarketFavorite.item_id == item_id,
+        models.MarketFavorite.user_id == user_id
+    ).first()
+    
+    item = db.query(models.MarketItem).filter(models.MarketItem.id == item_id).first()
+    if not item:
+        return {"is_favorited": False, "favorites_count": 0}
+    
+    if favorite:
+        db.delete(favorite)
+        item.favorites_count = max(0, item.favorites_count - 1)
+        db.commit()
+        return {"is_favorited": False, "favorites_count": item.favorites_count}
+    else:
+        new_favorite = models.MarketFavorite(user_id=user_id, item_id=item_id)
+        db.add(new_favorite)
+        item.favorites_count += 1
+        db.commit()
+        return {"is_favorited": True, "favorites_count": item.favorites_count}
+
+def is_item_favorited(db: Session, item_id: int, user_id: int) -> bool:
+    """Проверка в избранном ли товар"""
+    favorite = db.query(models.MarketFavorite).filter(
+        models.MarketFavorite.item_id == item_id,
+        models.MarketFavorite.user_id == user_id
+    ).first()
+    return favorite is not None
+
+def get_user_favorites(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.MarketItem]:
+    """Список избранных товаров"""
+    return (
+        db.query(models.MarketItem)
+        .options(joinedload(models.MarketItem.seller))
+        .join(models.MarketFavorite)
+        .filter(models.MarketFavorite.user_id == user_id)
+        .order_by(models.MarketFavorite.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+def get_user_market_items(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.MarketItem]:
+    """Мои объявления"""
+    return (
+        db.query(models.MarketItem)
+        .filter(models.MarketItem.seller_id == user_id)
+        .order_by(models.MarketItem.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+def get_market_categories(db: Session) -> Dict[str, List[str]]:
+    """Список стандартных + популярных кастомных категорий"""
+    custom_categories = (
+        db.query(models.MarketItem.category, func.count(models.MarketItem.id).label('count'))
+        .filter(~models.MarketItem.category.in_(STANDARD_CATEGORIES))
+        .group_by(models.MarketItem.category)
+        .order_by(func.count(models.MarketItem.id).desc())
+        .limit(10)
+        .all()
+    )
+    
+    popular_custom = [cat[0] for cat in custom_categories]
+    
+    return {
+        'standard': STANDARD_CATEGORIES,
+        'popular_custom': popular_custom
+    }

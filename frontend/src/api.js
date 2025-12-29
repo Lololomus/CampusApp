@@ -578,4 +578,216 @@ export async function generateMockDatingData() {
   return response.json();
 }
 
+// ===== MARKET API =====
+
+/**
+ * Получить ленту товаров (Умная функция-маршрутизатор)
+ */
+export async function getMarketItems(filters = {}) {
+  try {
+    const telegram_id = getTelegramId();
+    const skip = filters.skip || 0;
+    const limit = filters.limit || 20;
+
+    // 1. Если это таб "Избранное" -> вызываем отдельный эндпоинт
+    if (filters.favorites_only) {
+      const response = await api.get('/market/favorites', {
+        params: { telegram_id, limit, offset: skip } // Backend использует offset
+      });
+      const items = response.data || [];
+      return { 
+        items, 
+        total: items.length, 
+        has_more: items.length === limit 
+      };
+    }
+
+    // 2. Если это таб "Мои" -> вызываем отдельный эндпоинт
+    if (filters.seller_id) {
+      const response = await api.get('/market/my-items', {
+        params: { telegram_id, limit, offset: skip }
+      });
+      const items = response.data || [];
+      return { 
+        items, 
+        total: items.length, 
+        has_more: items.length === limit 
+      };
+    }
+
+    // 3. Иначе -> стандартная лента с фильтрами
+    const params = { telegram_id, skip, limit };
+    
+    // Аккуратно переносим фильтры в params
+    if (filters.category && filters.category !== 'all') params.category = filters.category;
+    if (filters.price_min !== null && filters.price_min !== undefined) params.price_min = filters.price_min;
+    if (filters.price_max !== null && filters.price_max !== undefined) params.price_max = filters.price_max;
+    if (filters.condition) params.condition = filters.condition;
+    if (filters.university && filters.university !== 'all') params.university = filters.university;
+    if (filters.institute && filters.institute !== 'all') params.institute = filters.institute;
+    if (filters.sort) params.sort = filters.sort;
+    if (filters.search) params.search = filters.search; // Если бэк поддерживает поиск
+    
+    const response = await api.get('/market/feed', { params });
+    return response.data;
+
+  } catch (error) {
+    console.error('Ошибка получения товаров:', error);
+    return { items: [], total: 0, has_more: false };
+  }
+}
+
+/**
+ * Получить товар по ID
+ */
+export async function getMarketItem(itemId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get(`/market/${itemId}`, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения товара:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * Создать товар (multipart/form-data)
+ */
+export async function createMarketItem(itemData, onProgress = null) {
+  try {
+    const telegram_id = getTelegramId();
+    
+    const config = {
+      params: { telegram_id },
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    };
+    
+    if (onProgress) {
+      config.onUploadProgress = onProgress;
+    }
+    
+    const response = await api.post('/market/items', itemData, config);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка создания товара:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * Обновить товар (multipart/form-data)
+ */
+export async function updateMarketItem(itemId, itemData, onProgress = null) {
+  try {
+    const telegram_id = getTelegramId();
+    
+    const config = {
+      params: { telegram_id },
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    };
+    
+    if (onProgress) {
+      config.onUploadProgress = onProgress;
+    }
+    
+    const response = await api.patch(`/market/${itemId}`, itemData, config);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка обновления товара:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * Удалить товар
+ */
+export async function deleteMarketItem(itemId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.delete(`/market/${itemId}`, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка удаления товара:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * Toggle избранное
+ */
+export async function toggleMarketFavorite(itemId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.post(`/market/${itemId}/favorite`, null, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка toggle избранного:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * Получить мои избранные товары
+ */
+export async function getMarketFavorites(limit = 20, offset = 0) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get('/market/favorites', {
+      params: { telegram_id, limit, offset }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения избранных:', error);
+    return [];
+  }
+}
+
+
+/**
+ * Получить мои объявления
+ */
+export async function getMyMarketItems(limit = 20, offset = 0) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get('/market/my-items', {
+      params: { telegram_id, limit, offset }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения моих объявлений:', error);
+    return [];
+  }
+}
+
+
+/**
+ * Получить список категорий
+ */
+export async function getMarketCategories() {
+  try {
+    const response = await api.get('/market/categories');
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения категорий:', error);
+    return { standard: [], popular_custom: [] };
+  }
+}
+
+
 export { api };

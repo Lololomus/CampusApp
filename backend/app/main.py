@@ -1316,3 +1316,433 @@ def generate_mock_dating_data(
         "message": f"Создано/проверено {len(created_users)} пользователей",
         "users": created_users
     }
+
+# ==================== MARKET ENDPOINTS ====================
+
+@app.get("/market/feed", response_model=schemas.MarketFeedResponse)
+def get_market_feed_endpoint(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=50),
+    category: Optional[str] = Query(None),
+    price_min: Optional[int] = Query(None, ge=0),
+    price_max: Optional[int] = Query(None, ge=0),
+    condition: Optional[str] = Query(None),
+    university: Optional[str] = Query(None),
+    institute: Optional[str] = Query(None),
+    sort: str = Query("newest"),
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Лента товаров барахолки"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    feed_data = crud.get_market_items(
+        db, skip, limit,
+        category=category,
+        price_min=price_min,
+        price_max=price_max,
+        condition=condition,
+        university=university,
+        institute=institute,
+        sort=sort,
+        current_user_id=user.id
+    )
+    
+    result = []
+    for item in feed_data['items']:
+        images = get_image_urls(item.images) if item.images else []
+        
+        seller_data = schemas.MarketSeller(
+            id=item.seller.id,
+            name=item.seller.name,
+            username=item.seller.username,
+            university=item.seller.university,
+            institute=item.seller.institute,
+            course=item.seller.course
+        )
+        
+        is_favorited = crud.is_item_favorited(db, item.id, user.id)
+        is_seller = item.seller_id == user.id
+        
+        item_dict = {
+            "id": item.id,
+            "seller_id": item.seller_id,
+            "seller": seller_data,
+            "category": item.category,
+            "title": item.title,
+            "description": item.description,
+            "price": item.price,
+            "condition": item.condition,
+            "location": item.location,
+            "images": images,
+            "status": item.status,
+            "university": item.university,
+            "institute": item.institute,
+            "views_count": item.views_count,
+            "favorites_count": item.favorites_count,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "is_seller": is_seller,
+            "is_favorited": is_favorited
+        }
+        result.append(item_dict)
+    
+    return {
+        "items": result,
+        "total": feed_data['total'],
+        "has_more": feed_data['has_more']
+    }
+
+@app.get("/market/{item_id}", response_model=schemas.MarketItemResponse)
+def get_market_item_endpoint(
+    item_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Получить товар по ID"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    item = crud.get_market_item(db, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Товар не найден")
+    
+    images = get_image_urls(item.images) if item.images else []
+    
+    seller_data = schemas.MarketSeller(
+        id=item.seller.id,
+        name=item.seller.name,
+        username=item.seller.username,
+        university=item.seller.university,
+        institute=item.seller.institute,
+        course=item.seller.course
+    )
+    
+    is_favorited = crud.is_item_favorited(db, item.id, user.id)
+    is_seller = item.seller_id == user.id
+    
+    return {
+        "id": item.id,
+        "seller_id": item.seller_id,
+        "seller": seller_data,
+        "category": item.category,
+        "title": item.title,
+        "description": item.description,
+        "price": item.price,
+        "condition": item.condition,
+        "location": item.location,
+        "images": images,
+        "status": item.status,
+        "university": item.university,
+        "institute": item.institute,
+        "views_count": item.views_count,
+        "favorites_count": item.favorites_count,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "is_seller": is_seller,
+        "is_favorited": is_favorited
+    }
+
+@app.post("/market/items", response_model=schemas.MarketItemResponse)
+async def create_market_item_endpoint(
+    telegram_id: int = Query(...),
+    category: str = Form(...),
+    title: str = Form(...),
+    description: str = Form(...),
+    price: int = Form(...),
+    condition: str = Form(...),
+    location: Optional[str] = Form(None),
+    images: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Валидация количества фото
+    if len(images) < 1:
+        raise HTTPException(status_code=400, detail="Необходимо загрузить хотя бы 1 фото")
+    if len(images) > 5:
+        raise HTTPException(status_code=400, detail="Максимум 5 фото")
+    
+    # Создаем схему БЕЗ images (файлы передаем отдельно)
+    item_data = schemas.MarketItemCreate(
+        category=category,
+        title=title,
+        description=description,
+        price=price,
+        condition=condition,
+        location=location,
+        images=["placeholder"]
+    )
+    
+    try:
+        item = await crud.create_market_item(db, item_data, user.id, uploaded_files=images)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Формируем ответ
+    images_urls = get_image_urls(item.images) if item.images else []
+    
+    seller_data = schemas.MarketSeller(
+        id=user.id,
+        name=user.name,
+        username=user.username,
+        university=user.university,
+        institute=user.institute,
+        course=user.course
+    )
+    
+    return {
+        "id": item.id,
+        "seller_id": item.seller_id,
+        "seller": seller_data,
+        "category": item.category,
+        "title": item.title,
+        "description": item.description,
+        "price": item.price,
+        "condition": item.condition,
+        "location": item.location,
+        "images": images_urls,
+        "status": item.status,
+        "university": item.university,
+        "institute": item.institute,
+        "views_count": item.views_count,
+        "favorites_count": item.favorites_count,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "is_seller": True,
+        "is_favorited": False
+    }
+
+@app.patch("/market/{item_id}", response_model=schemas.MarketItemResponse)
+async def update_market_item_endpoint(
+    item_id: int,
+    telegram_id: int = Query(...),
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    price: Optional[int] = Form(None),
+    condition: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    status: Optional[str] = Form(None),
+    new_images: List[UploadFile] = File(default=[]),
+    keep_images: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Обновить товар"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    keep_images_list = json.loads(keep_images) if keep_images else []
+    
+    total_images = len(keep_images_list) + len(new_images)
+    if total_images < 1:
+        raise HTTPException(status_code=400, detail="Минимум 1 фото обязательно")
+    if total_images > 5:
+        raise HTTPException(status_code=400, detail="Максимум 5 фото")
+    
+    item_update = schemas.MarketItemUpdate(
+        title=title,
+        description=description,
+        price=price,
+        condition=condition,
+        location=location,
+        status=status,
+        images=None
+    )
+    
+    try:
+        updated_item = await crud.update_market_item(
+            db, item_id, user.id, item_update,
+            new_files=new_images,
+            keep_filenames=keep_images_list
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    if not updated_item:
+        raise HTTPException(status_code=404, detail="Товар не найден или нет прав")
+    
+    images_urls = get_image_urls(updated_item.images) if updated_item.images else []
+    
+    seller_data = schemas.MarketSeller(
+        id=user.id,
+        name=user.name,
+        username=user.username,
+        university=user.university,
+        institute=user.institute,
+        course=user.course
+    )
+    
+    is_favorited = crud.is_item_favorited(db, updated_item.id, user.id)
+    
+    return {
+        "id": updated_item.id,
+        "seller_id": updated_item.seller_id,
+        "seller": seller_data,
+        "category": updated_item.category,
+        "title": updated_item.title,
+        "description": updated_item.description,
+        "price": updated_item.price,
+        "condition": updated_item.condition,
+        "location": updated_item.location,
+        "images": images_urls,
+        "status": updated_item.status,
+        "university": updated_item.university,
+        "institute": updated_item.institute,
+        "views_count": updated_item.views_count,
+        "favorites_count": updated_item.favorites_count,
+        "created_at": updated_item.created_at,
+        "updated_at": updated_item.updated_at,
+        "is_seller": True,
+        "is_favorited": is_favorited
+    }
+
+@app.delete("/market/{item_id}")
+def delete_market_item_endpoint(
+    item_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Удалить товар"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    success = crud.delete_market_item(db, item_id, user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Товар не найден или нет прав")
+    
+    return {"success": True}
+
+@app.post("/market/{item_id}/favorite")
+def toggle_market_favorite_endpoint(
+    item_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Toggle избранное"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    result = crud.toggle_market_favorite(db, item_id, user.id)
+    return result
+
+@app.get("/market/favorites", response_model=List[schemas.MarketItemResponse])
+def get_market_favorites_endpoint(
+    telegram_id: int = Query(...),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """Мои избранные товары"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    items = crud.get_user_favorites(db, user.id, limit, offset)
+    
+    result = []
+    for item in items:
+        images = get_image_urls(item.images) if item.images else []
+        
+        seller_data = schemas.MarketSeller(
+            id=item.seller.id,
+            name=item.seller.name,
+            username=item.seller.username,
+            university=item.seller.university,
+            institute=item.seller.institute,
+            course=item.seller.course
+        )
+        
+        is_seller = item.seller_id == user.id
+        
+        item_dict = {
+            "id": item.id,
+            "seller_id": item.seller_id,
+            "seller": seller_data,
+            "category": item.category,
+            "title": item.title,
+            "description": item.description,
+            "price": item.price,
+            "condition": item.condition,
+            "location": item.location,
+            "images": images,
+            "status": item.status,
+            "university": item.university,
+            "institute": item.institute,
+            "views_count": item.views_count,
+            "favorites_count": item.favorites_count,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "is_seller": is_seller,
+            "is_favorited": True
+        }
+        result.append(item_dict)
+    
+    return result
+
+@app.get("/market/my-items", response_model=List[schemas.MarketItemResponse])
+def get_my_market_items_endpoint(
+    telegram_id: int = Query(...),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """Мои объявления"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    items = crud.get_user_market_items(db, user.id, limit, offset)
+    
+    result = []
+    for item in items:
+        images = get_image_urls(item.images) if item.images else []
+        
+        seller_data = schemas.MarketSeller(
+            id=user.id,
+            name=user.name,
+            username=user.username,
+            university=user.university,
+            institute=user.institute,
+            course=user.course
+        )
+        
+        is_favorited = crud.is_item_favorited(db, item.id, user.id)
+        
+        item_dict = {
+            "id": item.id,
+            "seller_id": item.seller_id,
+            "seller": seller_data,
+            "category": item.category,
+            "title": item.title,
+            "description": item.description,
+            "price": item.price,
+            "condition": item.condition,
+            "location": item.location,
+            "images": images,
+            "status": item.status,
+            "university": item.university,
+            "institute": item.institute,
+            "views_count": item.views_count,
+            "favorites_count": item.favorites_count,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "is_seller": True,
+            "is_favorited": is_favorited
+        }
+        result.append(item_dict)
+    
+    return result
+
+@app.get("/market/categories", response_model=schemas.MarketCategoriesResponse)
+def get_market_categories_endpoint(db: Session = Depends(get_db)):
+    """Список категорий"""
+    categories = crud.get_market_categories(db)
+    return categories

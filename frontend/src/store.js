@@ -1,10 +1,10 @@
+// ===== 📄 ФАЙЛ: src/store.js =====
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { registerUser } from './api';
 
-
 const API_URL = 'http://localhost:8000';
-
 
 export const useStore = create(
   persist(
@@ -15,34 +15,32 @@ export const useStore = create(
       setUser: (user) => set({ user, isRegistered: true }),
       logout: () => set({ user: {}, isRegistered: false }),
 
-
       // ===== NAVIGATION STATE =====
-      activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile'
+      activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile' | 'market'
       feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
       feedSubTab: 'posts', // 'posts' | 'requests' (ДЛЯ ТАБОВ В ГЛАВНОЙ)
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
       setFeedSubTab: (tab) => set({ feedSubTab: tab }),
 
-
       // ===== MODAL STATES =====
       showAuthModal: false,
       showCreateModal: false,
       showCreateRequestModal: false,
+      showCreateMarketItem: false,
       viewPostId: null,
       showEditModal: false,
       setShowAuthModal: (show) => set({ showAuthModal: show }),
       setShowCreateModal: (show) => set({ showCreateModal: show }),
       setShowCreateRequestModal: (show) => set({ showCreateRequestModal: show }),
+      setShowCreateMarketItem: (show) => set({ showCreateMarketItem: show }),
       setViewPostId: (id) => set({ viewPostId: id }),
       setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
-
       // My posts screen
       showUserPosts: false,
       setShowUserPosts: (show) => set({ showUserPosts: show }),
-
 
       // ===== ONBOARDING STATE =====
       onboardingStep: 0,
@@ -51,7 +49,6 @@ export const useStore = create(
       setOnboardingData: (data) => set((state) => ({
         onboardingData: { ...state.onboardingData, ...data }
       })),
-
 
       // ===== POSTS STATE (НЕ СОХРАНЯЕМ В LOCALSTORAGE!) =====
       posts: [],
@@ -65,8 +62,7 @@ export const useStore = create(
         )
       })),
 
-
-      // ✅ НОВОЕ: Синхронизация между PostDetail и Feed
+      // Синхронизация между PostDetail и Feed
       updatedPostId: null,
       updatedPostData: {},
       
@@ -88,7 +84,6 @@ export const useStore = create(
           updatedPostData: {} 
         });
       },
-
 
       // ===== REQUESTS STATE (ОБНОВЛЕНО) =====
       requests: [], // Лента запросов (текущая категория)
@@ -125,7 +120,6 @@ export const useStore = create(
       
       clearRequestDraft: () => set({ requestDraft: {} }),
 
-
       // ===== DATING STATE =====
       // Профили (карточки)
       currentProfile: null,
@@ -150,13 +144,11 @@ export const useStore = create(
       }),
       clearProfilesQueue: () => set({ profilesQueue: [], currentProfile: null }),
 
-
       // Likes & Matches
       whoLikedMe: [],
       setWhoLikedMe: (users) => set({ whoLikedMe: users }),
       myMatches: [],
       setMyMatches: (matches) => set({ myMatches: matches }),
-
 
       // Dating Modal states
       showLikesModal: false,
@@ -169,7 +161,6 @@ export const useStore = create(
         matchedUser: user,
       }),
 
-
       // Stats
       likesCount: 0,
       matchesCount: 0,
@@ -177,7 +168,6 @@ export const useStore = create(
         likesCount: stats.likes_count || 0,
         matchesCount: stats.matches_count || 0,
       }),
-
 
       // ===== LIKES STATE =====
       likedPosts: {},  // { 1: true, 5: true, 10: false }
@@ -191,6 +181,103 @@ export const useStore = create(
         return state.likedPosts[postId];
       },
 
+      // ===== MARKET STATE =====
+      marketItems: [], // Текущая лента товаров
+      myMarketItems: [], // Мои объявления
+      marketFavorites: [], // Избранные товары
+      currentMarketItem: null, // Открытый товар (детальная модалка)
+      editingMarketItem: null, // ✅ NEW: Товар, который редактируется
+      
+      marketFilters: {
+        category: 'all',
+        price_min: null,
+        price_max: null,
+        condition: null,
+        university: 'all',
+        institute: 'all',
+        sort: 'newest'
+      },
+      
+      // Market Actions
+      setMarketItems: (items) => set({ marketItems: items }),
+      
+      // ✅ NEW: Установить редактируемый товар
+      setEditingMarketItem: (item) => set({ editingMarketItem: item }),
+
+      addMarketItem: (newItem) => set((state) => ({
+        marketItems: [newItem, ...state.marketItems],
+        myMarketItems: [newItem, ...state.myMarketItems]
+      })),
+      
+      updateMarketItem: (itemId, updates) => set((state) => ({
+        marketItems: state.marketItems.map(item =>
+          item.id === itemId ? { ...item, ...updates } : item
+        ),
+        myMarketItems: state.myMarketItems.map(item =>
+          item.id === itemId ? { ...item, ...updates } : item
+        ),
+        marketFavorites: state.marketFavorites.map(item =>
+          item.id === itemId ? { ...item, ...updates } : item
+        )
+      })),
+      
+      deleteMarketItem: (itemId) => set((state) => ({
+        marketItems: state.marketItems.filter(item => item.id !== itemId),
+        myMarketItems: state.myMarketItems.filter(item => item.id !== itemId),
+        marketFavorites: state.marketFavorites.filter(item => item.id !== itemId)
+      })),
+      
+      setMyMarketItems: (items) => set({ myMarketItems: items }),
+      
+      setMarketFavorites: (items) => set({ marketFavorites: items }),
+      
+      setCurrentMarketItem: (item) => set({ currentMarketItem: item }),
+      
+      setMarketFilters: (filters) => set((state) => ({
+        marketFilters: { ...state.marketFilters, ...filters }
+      })),
+      
+      clearMarketFilters: () => set({
+        marketFilters: {
+          category: 'all',
+          price_min: null,
+          price_max: null,
+          condition: null,
+          university: 'all',
+          institute: 'all',
+          sort: 'newest'
+        }
+      }),
+      
+      // Оптимистичное обновление избранного
+      toggleMarketFavoriteOptimistic: (itemId, isFavorited) => set((state) => ({
+        marketItems: state.marketItems.map(item =>
+          item.id === itemId 
+            ? { 
+                ...item, 
+                is_favorited: isFavorited,
+                favorites_count: item.favorites_count + (isFavorited ? 1 : -1)
+              }
+            : item
+        ),
+        myMarketItems: state.myMarketItems.map(item =>
+          item.id === itemId 
+            ? { 
+                ...item, 
+                is_favorited: isFavorited,
+                favorites_count: item.favorites_count + (isFavorited ? 1 : -1)
+              }
+            : item
+        ),
+        currentMarketItem: state.currentMarketItem?.id === itemId
+          ? {
+              ...state.currentMarketItem,
+              is_favorited: isFavorited,
+              favorites_count: state.currentMarketItem.favorites_count + (isFavorited ? 1 : -1)
+            }
+          : state.currentMarketItem
+      })),
+
       // ===== ACTIONS =====
       
       startRegistration: () => set({
@@ -198,7 +285,6 @@ export const useStore = create(
         onboardingStep: 1,
         onboardingData: {}
       }),
-
 
       finishRegistration: async (data) => {
         try {
@@ -210,7 +296,6 @@ export const useStore = create(
           console.log('📤 Отправляем данные:', fullData);
           const user = await registerUser(fullData);
           console.log('✅ Регистрация успешна:', user);
-
 
           set({
             user: user,
@@ -226,7 +311,6 @@ export const useStore = create(
       },
     }),
 
-
     {
       name: 'campus-storage',
       partialize: (state) => ({
@@ -237,10 +321,10 @@ export const useStore = create(
         feedSubTab: state.feedSubTab,
         likedPosts: state.likedPosts,
         requestDraft: state.requestDraft,
+        marketFilters: state.marketFilters, // Сохраняем фильтры
       }),
     }
   )
 );
-
 
 export default useStore;

@@ -1,48 +1,51 @@
-// ===== Navigation.js =====
+// ===== 📄 ФАЙЛ: src/components/Navigation.js =====
 
 import React from 'react';
-import { Home, Search, PlusCircle, User, Users } from 'lucide-react';
+import { Home, ShoppingBag, PlusCircle, User, Heart } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
 import theme from '../theme';
 import { Z_NAVIGATION } from '../constants/zIndex';
 
 function Navigation() {
-  const { 
-    activeTab, 
-    setActiveTab, 
-    setShowCreateModal, 
+  const {
+    activeTab,
+    setActiveTab,
+    setShowCreateModal,
     setShowCreateRequestModal,
+    setShowCreateMarketItem,
     feedSubTab,
-    isRegistered, 
-    setShowAuthModal 
+    isRegistered,
+    setShowAuthModal
   } = useStore();
-  
+
   const tabs = [
-    { id: 'feed', icon: Home, label: 'Главная' },
-    { id: 'search', icon: Search, label: 'Поиск' },
-    { id: 'people', icon: Users, label: 'Люди' },
+    { id: 'feed', icon: Home, label: 'Лента' },
+    { id: 'market', icon: ShoppingBag, label: 'Барахолка' },
     { id: 'create', icon: PlusCircle, label: 'Создать' },
+    { id: 'people', icon: Heart, label: 'Знакомства' },
     { id: 'profile', icon: User, label: 'Профиль' },
   ];
 
   const handleTabClick = (tabId) => {
     hapticFeedback('light');
-    
-    if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people')) {
+
+    if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people' || tabId === 'market')) {
       setShowAuthModal(true);
       return;
     }
-    
+
     if (tabId === 'create') {
-      if (feedSubTab === 'requests') {
+      if (activeTab === 'market') {
+        setShowCreateMarketItem(true); // Открываем CreateMarketItem напрямую!
+      } else if (feedSubTab === 'requests') {
         setShowCreateRequestModal(true);
       } else {
         setShowCreateModal(true);
       }
       return;
     }
-    
+
     setActiveTab(tabId);
   };
 
@@ -60,7 +63,7 @@ function Navigation() {
                 onClick={() => handleTabClick(tab.id)}
                 style={styles.createButton}
               >
-                <Icon size={28} strokeWidth={2.5} />
+                <Icon size={28} />
               </button>
             </div>
           );
@@ -75,7 +78,7 @@ function Navigation() {
               color: isActive ? theme.colors.primary : theme.colors.textDisabled
             }}
           >
-            <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
+            <Icon size={24} />
             {tab.label && <span style={styles.label}>{tab.label}</span>}
           </button>
         );
@@ -99,6 +102,7 @@ const styles = {
     paddingBottom: 'env(safe-area-inset-bottom)',
     zIndex: Z_NAVIGATION
   },
+
   button: {
     display: 'flex',
     flexDirection: 'column',
@@ -111,10 +115,12 @@ const styles = {
     transition: theme.transitions.normal,
     flex: 1
   },
+
   label: {
     fontSize: 11,
     fontWeight: theme.fontWeight.medium
   },
+
   createButtonWrapper: {
     position: 'relative',
     top: -20,
@@ -122,6 +128,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'center'
   },
+
   createButton: {
     width: 56,
     height: 56,

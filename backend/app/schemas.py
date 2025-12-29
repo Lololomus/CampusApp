@@ -2,11 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional, List, Union, Dict, Any
 
-
-
 # ===== USER SCHEMAS =====
-
-
 
 class UserBase(BaseModel):
     """Базовые поля пользователя"""
@@ -15,8 +11,6 @@ class UserBase(BaseModel):
     institute: str
     course: int
 
-
-
 class UserCreate(UserBase):
     """Создание нового пользователя"""
     telegram_id: int
@@ -24,8 +18,6 @@ class UserCreate(UserBase):
     age: Optional[int] = None
     group: Optional[str] = None
     bio: Optional[str] = None
-
-
 
 class UserUpdate(BaseModel):
     """Обновление профиля"""
@@ -38,8 +30,6 @@ class UserUpdate(BaseModel):
     course: Optional[int] = None
     group: Optional[str] = None
     interests: Optional[List[str]] = None
-
-
 
 class UserResponse(BaseModel):
     """Ответ с данными пользователя"""
@@ -60,8 +50,6 @@ class UserResponse(BaseModel):
     updated_at: Optional[datetime] = None
     last_profile_edit: Optional[datetime] = None
 
-
-
     @field_validator('interests', mode='before')
     @classmethod
     def parse_interests(cls, v):
@@ -72,17 +60,13 @@ class UserResponse(BaseModel):
             return json.loads(v) if v else []
         return v
 
-
-
     class Config:
         from_attributes = True
 
-
-
 class UserShort(BaseModel):
     """Краткие данные пользователя"""
-    id: Optional[int] = None           # ОПЦИОНАЛЬНО для анонимов
-    telegram_id: Optional[int] = None  # ОПЦИОНАЛЬНО для анонимов
+    id: Optional[int] = None
+    telegram_id: Optional[int] = None
     name: str
     avatar: Optional[str] = None
     university: Optional[str] = None
@@ -91,8 +75,6 @@ class UserShort(BaseModel):
     
     class Config:
         from_attributes = True
-
-
 
 class UserPublic(BaseModel):
     """Публичные данные пользователя (для dating)"""
@@ -108,8 +90,6 @@ class UserPublic(BaseModel):
     group: Optional[str] = None
     interests: List[str] = []
 
-
-
     @field_validator('interests', mode='before')
     @classmethod
     def parse_interests(cls, v):
@@ -119,16 +99,11 @@ class UserPublic(BaseModel):
             import json
             return json.loads(v) if v else []
         return v
-
-
-
+    
     class Config:
         from_attributes = True
 
-
-
-# ===== POST SCHEMAS (ОБНОВЛЕНЫ) =====
-
+# ===== POST SCHEMAS =====
 
 class ImageMeta(BaseModel):
     """
@@ -138,7 +113,6 @@ class ImageMeta(BaseModel):
     url: str
     w: int
     h: int
-
 
 class PostCreate(BaseModel):
     """Создание поста"""
@@ -155,7 +129,7 @@ class PostCreate(BaseModel):
     enable_anonymous_comments: bool = False
     
     # Lost & Found
-    lost_or_found: Optional[str] = None  # 'lost' | 'found'
+    lost_or_found: Optional[str] = None
     item_description: Optional[str] = None
     location: Optional[str] = None
     
@@ -173,8 +147,6 @@ class PostCreate(BaseModel):
         if len(v) > 3:
             raise ValueError('Максимум 3 изображения на пост')
         return v
-
-
 
 class PostUpdate(BaseModel):
     """Схема для обновления поста"""
@@ -202,8 +174,6 @@ class PostUpdate(BaseModel):
             raise ValueError('Максимум 3 изображения на пост')
         return v
 
-
-
 class PostResponse(BaseModel):
     """Ответ с данными поста"""
     id: int
@@ -214,7 +184,6 @@ class PostResponse(BaseModel):
     body: str
     tags: List[str] = []
     
-    # ✅ THE HOLY GRAIL: Список объектов с размерами, а не просто строки
     images: List[ImageMeta] = []
     
     # Анонимность
@@ -244,33 +213,24 @@ class PostResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
-    # Валидатор для тегов и картинок
     @field_validator('tags', 'images', mode='before')
     @classmethod
     def parse_json_fields(cls, v):
-        # Если пришел None
         if v is None:
             return []
             
-        # Если пришел готовый список (из main.py)
         if isinstance(v, list):
             return v
             
-        # Если пришла JSON строка (из БД напрямую)
         if isinstance(v, str):
             import json
             try:
                 parsed = json.loads(v) if v else []
-                # Для images: если это старый формат (список строк), 
-                # конвертировать в список объектов нельзя здесь без URL.
-                # Поэтому предполагаем, что main.py уже обработал images через utils.get_image_urls
                 return parsed
             except:
                 return []
                 
         return v
-
-
 
 class PostsFeedResponse(BaseModel):
     """Лента постов"""
@@ -278,11 +238,7 @@ class PostsFeedResponse(BaseModel):
     total: int
     has_more: bool
 
-
-
-# ===== COMMENT SCHEMAS (ОБНОВЛЕНЫ) =====
-
-
+# ===== COMMENT SCHEMAS =====
 
 class CommentCreate(BaseModel):
     """Создание комментария"""
@@ -291,13 +247,9 @@ class CommentCreate(BaseModel):
     parent_id: Optional[int] = None
     is_anonymous: bool = False
 
-
-
 class CommentUpdate(BaseModel):
     """Обновление комментария"""
     body: str = Field(..., min_length=1)
-
-
 
 class CommentResponse(BaseModel):
     """Ответ с данными комментария"""
@@ -316,23 +268,15 @@ class CommentResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-
-
     class Config:
         from_attributes = True
-
-
 
 class CommentsFeedResponse(BaseModel):
     """Лента комментариев"""
     items: List[CommentResponse]
     total: int
 
-
-
-# ===== REQUEST SCHEMAS (ОБНОВЛЕНО) =====
-
-
+# ===== REQUEST SCHEMAS =====
 
 class RequestCreate(BaseModel):
     """Создание запроса"""
@@ -348,9 +292,7 @@ class RequestCreate(BaseModel):
     def validate_tags(cls, v):
         if len(v) > 5:
             raise ValueError('Максимум 5 тегов')
-        return [tag[:20] for tag in v]  # макс 20 символов на тег
-
-
+        return [tag[:20] for tag in v]
 
 class RequestUpdate(BaseModel):
     """Обновление запроса"""
@@ -359,21 +301,17 @@ class RequestUpdate(BaseModel):
     tags: Optional[List[str]] = None
     is_closed: Optional[bool] = None
 
-
-
 class RequestAuthor(BaseModel):
-    """Автор запроса (краткие данные)"""
+    """Автор запроса"""
     id: int
     name: str
     course: Optional[int] = None
     university: str
     institute: str
-    username: Optional[str] = None  # telegram username для контакта
+    username: Optional[str] = None
     
     class Config:
         from_attributes = True
-
-
 
 class RequestResponse(BaseModel):
     """Ответ с данными запроса"""
@@ -383,13 +321,13 @@ class RequestResponse(BaseModel):
     body: str
     tags: List[str] = []
     expires_at: datetime
-    status: str  # 'active' | 'closed' | 'expired'
+    status: str
     views_count: int = 0
     responses_count: int = 0
     created_at: datetime
     author: RequestAuthor
-    is_author: bool = False  # вычисляется на бэкенде
-    has_responded: bool = False  # вычисляется на бэкенде
+    is_author: bool = False
+    has_responded: bool = False
     
     @field_validator('tags', mode='before')
     @classmethod
@@ -404,37 +342,27 @@ class RequestResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
-
 class RequestsFeedResponse(BaseModel):
     """Лента запросов"""
     items: List[RequestResponse]
     total: int
     has_more: bool
 
-
-
-# ===== RESPONSE SCHEMAS (ОТКЛИКИ НА ЗАПРОСЫ) =====
-
-
+# ===== RESPONSE SCHEMAS =====
 
 class ResponseCreate(BaseModel):
     """Создание отклика на запрос"""
     message: Optional[str] = Field(None, max_length=500)
     telegram_contact: Optional[str] = None
 
-
-
 class ResponseAuthor(BaseModel):
     """Автор отклика"""
     id: int
     name: str
-    username: Optional[str] = None  # telegram username
+    username: Optional[str] = None
     
     class Config:
         from_attributes = True
-
-
 
 class ResponseItem(BaseModel):
     """Отклик на запрос"""
@@ -447,18 +375,12 @@ class ResponseItem(BaseModel):
     class Config:
         from_attributes = True
 
-
-
 # ===== REPORT SCHEMAS =====
-
-
 
 class CommentReportCreate(BaseModel):
     """Создание жалобы на комментарий"""
     reason: str = Field(..., pattern="^(spam|abuse|inappropriate)$")
     description: Optional[str] = None
-
-
 
 class CommentReport(BaseModel):
     """Информация о жалобе"""
@@ -469,16 +391,10 @@ class CommentReport(BaseModel):
     description: Optional[str]
     created_at: datetime
 
-
-
     class Config:
         from_attributes = True
 
-
-
 # ===== AUTH SCHEMAS =====
-
-
 
 class TelegramAuth(BaseModel):
     """Данные для авторизации через Telegram"""
@@ -487,33 +403,23 @@ class TelegramAuth(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
 
-
-
 class Token(BaseModel):
     """JWT токен для авторизации"""
     access_token: str
     token_type: str = "bearer"
 
-
-
 # ===== DATING SCHEMAS =====
-
-
 
 class LikeCreate(BaseModel):
     """Создание лайка"""
     liked_id: int
 
-
-
 class LikeResult(BaseModel):
-    """Результат лайка (с проверкой на матч)"""
+    """Результат лайка"""
     success: bool
     is_match: bool = False
     match_id: Optional[int] = None
     matched_user: Optional[UserShort] = None
-
-
 
 class MatchResponse(BaseModel):
     """Матч"""
@@ -523,12 +429,8 @@ class MatchResponse(BaseModel):
     matched_at: datetime
     matched_user: UserShort
 
-
-
     class Config:
         from_attributes = True
-
-
 
 class DatingProfile(BaseModel):
     """Профиль для ленты знакомств"""
@@ -544,8 +446,6 @@ class DatingProfile(BaseModel):
     group: Optional[str] = None
     interests: List[str] = []
 
-
-
     @field_validator('interests', mode='before')
     @classmethod
     def parse_interests(cls, v):
@@ -556,12 +456,8 @@ class DatingProfile(BaseModel):
             return json.loads(v) if v else []
         return v
 
-
-
     class Config:
         from_attributes = True
-
-
 
 class DatingFeedResponse(BaseModel):
     """Лента профилей"""
@@ -569,17 +465,125 @@ class DatingFeedResponse(BaseModel):
     total: int
     has_more: bool
 
-
-
 class DatingSettings(BaseModel):
     """Настройки приватности для знакомств"""
     show_in_dating: Optional[bool] = None
     hide_course_group: Optional[bool] = None
     interests: Optional[List[str]] = None
 
-
-
 class DatingStatsResponse(BaseModel):
     """Статистика знакомств"""
     likes_count: int = 0
     matches_count: int = 0
+
+# ===== MARKET SCHEMAS =====
+
+class MarketSeller(BaseModel):
+    """Продавец товара"""
+    id: int
+    name: str
+    username: Optional[str] = None
+    university: str
+    institute: str
+    course: Optional[int] = None
+    
+    class Config:
+        from_attributes = True
+
+class MarketItemCreate(BaseModel):
+    """Создание товара"""
+    category: str = Field(..., min_length=1, max_length=50)
+    title: str = Field(..., min_length=5, max_length=100)
+    description: str = Field(..., min_length=20, max_length=1000)
+    price: int = Field(..., ge=0, le=1000000)
+    condition: str = Field(..., pattern="^(new|like_new|good|fair)$")
+    location: Optional[str] = Field(None, max_length=200)
+    images: List[str] = Field(..., min_length=1, max_length=5)
+    
+    @field_validator('category')
+    @classmethod
+    def validate_category(cls, v):
+        import re
+        if not re.match(r'^[а-яА-ЯёЁa-zA-Z0-9\s]+$', v):
+            raise ValueError('Категория может содержать только буквы, цифры и пробелы')
+        return v.strip()
+    
+    @field_validator('images')
+    @classmethod
+    def validate_images(cls, v):
+        if len(v) < 1:
+            raise ValueError('Минимум 1 фото обязательно')
+        if len(v) > 5:
+            raise ValueError('Максимум 5 фото')
+        return v
+
+class MarketItemUpdate(BaseModel):
+    """Обновление товара"""
+    title: Optional[str] = Field(None, min_length=5, max_length=100)
+    description: Optional[str] = Field(None, min_length=20, max_length=1000)
+    price: Optional[int] = Field(None, ge=0, le=1000000)
+    condition: Optional[str] = Field(None, pattern="^(new|like_new|good|fair)$")
+    location: Optional[str] = Field(None, max_length=200)
+    images: Optional[List[str]] = Field(None, min_length=1, max_length=5)
+    status: Optional[str] = Field(None, pattern="^(active|sold)$")
+    
+    @field_validator('images')
+    @classmethod
+    def validate_images(cls, v):
+        if v is not None:
+            if len(v) < 1:
+                raise ValueError('Минимум 1 фото обязательно')
+            if len(v) > 5:
+                raise ValueError('Максимум 5 фото')
+        return v
+
+class MarketItemResponse(BaseModel):
+    """Ответ с данными товара"""
+    id: int
+    seller_id: int
+    seller: MarketSeller
+    category: str
+    title: str
+    description: str
+    price: int
+    condition: str
+    location: Optional[str] = None
+    images: List[ImageMeta] = []
+    status: str
+    university: str
+    institute: str
+    views_count: int = 0
+    favorites_count: int = 0
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    is_seller: bool = False
+    is_favorited: bool = False
+    
+    @field_validator('images', mode='before')
+    @classmethod
+    def parse_images(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v) if v else []
+            except:
+                return []
+        return v
+    
+    class Config:
+        from_attributes = True
+
+class MarketFeedResponse(BaseModel):
+    """Лента товаров"""
+    items: List[MarketItemResponse]
+    total: int
+    has_more: bool
+
+class MarketCategoriesResponse(BaseModel):
+    """Список категорий"""
+    standard: List[str]
+    popular_custom: List[str]
