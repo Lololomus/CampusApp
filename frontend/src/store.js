@@ -15,6 +15,43 @@ export const useStore = create(
       setUser: (user) => set({ user, isRegistered: true }),
       logout: () => set({ user: {}, isRegistered: false }),
 
+      // ===== DATING STATE (ЗНАКОМСТВА) =====
+      datingProfile: null, // null = не зарегистрирован в знакомствах
+      setDatingProfile: (profile) => set({ datingProfile: profile }),
+      
+      // Очередь анкет (Свайпы)
+      profilesQueue: [],
+      currentProfile: null,
+      
+      setCurrentProfile: (profile) => set({ currentProfile: profile }),
+      
+      addProfilesToQueue: (newProfiles) => set((state) => ({
+        profilesQueue: [...state.profilesQueue, ...newProfiles]
+      })),
+      
+      removeCurrentProfile: () => set((state) => {
+        // Удаляем текущий, берем следующий из очереди
+        const [removed, ...rest] = state.profilesQueue; 
+        const next = rest.length > 0 ? rest[0] : null; 
+        return { 
+          profilesQueue: rest,
+          currentProfile: next 
+        };
+      }),
+      
+      clearProfilesQueue: () => set({ profilesQueue: [], currentProfile: null }),
+
+      // Лайки, Мэтчи и Статистика
+      likesCount: 0,
+      whoLikedMe: [], // Список людей в табе "Симпатии"
+      setWhoLikedMe: (users) => set({ whoLikedMe: users }),
+      
+      matchedUser: null,
+      showMatchModal: false,
+      setShowMatchModal: (show, user = null) => set({ showMatchModal: show, matchedUser: user }),
+      
+      updateDatingStats: (stats) => set({ likesCount: stats.likes_count || 0 }),
+
       // ===== NAVIGATION STATE =====
       activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile' | 'market'
       feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
@@ -318,10 +355,11 @@ export const useStore = create(
         user: state.user,
         activeTab: state.activeTab,
         feedMode: state.feedMode,
+        datingProfile: state.datingProfile,
         feedSubTab: state.feedSubTab,
         likedPosts: state.likedPosts,
         requestDraft: state.requestDraft,
-        marketFilters: state.marketFilters, // Сохраняем фильтры
+        marketFilters: state.marketFilters,
       }),
     }
   )

@@ -1227,3 +1227,20 @@ def get_market_categories(db: Session) -> Dict[str, List[str]]:
         'standard': STANDARD_CATEGORIES,
         'popular_custom': popular_custom
     }
+
+def count_user_total_likes(db: Session, user_id: int) -> int:
+    """Суммарное количество полученных лайков (за посты + за комментарии)"""
+    
+    # Лайки за посты
+    post_likes = db.query(func.sum(models.Post.likes_count)).filter(
+        models.Post.author_id == user_id,
+        models.Post.is_anonymous == False # Анонимные лайки не считаем в карму (опционально)
+    ).scalar() or 0
+    
+    # Лайки за комментарии
+    comment_likes = db.query(func.sum(models.Comment.likes_count)).filter(
+        models.Comment.author_id == user_id,
+        models.Comment.is_anonymous == False
+    ).scalar() or 0
+    
+    return int(post_likes + comment_likes)

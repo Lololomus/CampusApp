@@ -1,536 +1,346 @@
-import React, { useEffect, useMemo, useState } from 'react';
+// ===== 📄 ФАЙЛ: src/components/EditProfile.js =====
+
+import React, { useState, useEffect } from 'react';
+import { 
+  X, Camera, User, AtSign, 
+  BookOpen, Layers, Hash, ChevronRight 
+} from 'lucide-react';
 import { useStore } from '../store';
+import { updateUserProfile, uploadUserAvatar } from '../api'; 
 import { hapticFeedback } from '../utils/telegram';
-import { updateUserProfile, getCurrentUser } from '../api';
 import { Z_EDIT_PROFILE } from '../constants/zIndex';
 
-// TODO: перелопатить логику "возможности редактирования КРИТИЧЕСКИХ полей"
+// КОНСТАНТЫ
+const UNIVERSITIES = ["РУК", "МГУ", "ВШЭ", "МГТУ", "РАНХиГС", "Другой"];
+const INSTITUTES = ["ИСА", "Юридический", "Экономический", "Менеджмент", "Гостиничный сервис", "Другой"];
+const COURSES = [1, 2, 3, 4, 5, 6];
 
 function EditProfile() {
-  const { user, setUser, showEditModal, setShowEditModal } = useStore();
-
-  const universities = useMemo(() => ['МГСУ', 'РУК'], []);
-  const institutes = useMemo(
-    () => ['ИЦИТ', 'ИСА', 'ИЭУИС', 'Юридический', 'Экономический'],
-    []
-  );
-
-  const buildFormDataFromUser = (u) => ({
-    name: u?.name || '',
-    age: u?.age ?? '',
-    bio: u?.bio || '',
-    university: u?.university || 'МГСУ',
-    institute: u?.institute || 'ИЦИТ',
-    course: u?.course || 1,
-    group: u?.group || ''
+  const { user, setUser, setShowEditModal } = useStore();
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    username: '',
+    university: '',
+    institute: '',
+    course: '',
+    group: ''
   });
 
-  const [formData, setFormData] = useState(() => buildFormDataFromUser(user));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  // Пока открылась модалка, но user ещё не подтянулся — держим критичные поля заблокированными
-  const [refreshingUser, setRefreshingUser] = useState(false);
-
-  // Подтянуть актуального user при открытии формы (чтобы last_profile_edit был точно свежим)
   useEffect(() => {
-    if (!showEditModal) return;
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        username: user.username || '',
+        university: user.university || '',
+        institute: user.institute || '',
+        course: user.course || '',
+        group: user.group || ''
+      });
+      setAvatarPreview(user.avatar);
+    }
+  }, [user]);
 
-    let cancelled = false;
-    setRefreshingUser(true);
-
-    (async () => {
-      try {
-        const freshUser = await getCurrentUser();
-        if (!cancelled) setUser(freshUser);
-      } catch (e) {
-        // игнор: UI всё равно работает
-      } finally {
-        if (!cancelled) setRefreshingUser(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [showEditModal, setUser]);
-
-  // Синхронизация формы с user при открытии/обновлении user
-  useEffect(() => {
-    if (!showEditModal) return;
-    setFormData(buildFormDataFromUser(user));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showEditModal, user?.id, user?.updated_at, user?.last_profile_edit]);
-
-  // Парсер даты с бэка (микросекунды + без TZ)
-  const parseServerDate = (value) => {
-    if (!value) return null;
-    let s = String(value).trim();
-
-    // "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
-    s = s.replace(' ', 'T');
-
-    // ".123456" -> ".123" (Safari/WebView часто не ест 6 цифр)
-    s = s.replace(/\.(\d{3})\d+/, '.$1');
-
-    // Если нет таймзоны, считаем что UTC (у тебя datetime.utcnow на бэке)
-    if (!/[zZ]$|[+-]\d\d:\d\d$/.test(s)) s += 'Z';
-
-    const d = new Date(s);
-    return Number.isNaN(d.getTime()) ? null : d;
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const getCooldownDaysLeft = () => {
-    if (!user || !user.last_profile_edit) return 0;
-
-    const lastEdit = parseServerDate(user.last_profile_edit);
-    if (!lastEdit) return 0;
-
-    const daysPassed = Math.floor((Date.now() - lastEdit.getTime()) / 86400000);
-    return Math.max(0, 30 - daysPassed);
-  };
-
-  const cooldownDays = getCooldownDaysLeft();
-  const isCooldownActive = cooldownDays > 0;
-
-  // Важно: блокируем критичные поля, пока обновляется user, чтобы нельзя было “успеть кликнуть”
-  const isCriticalLocked = refreshingUser || isCooldownActive;
-
-  const hasChanges = () => {
-    if (!user) return false;
-    return (
-      formData.name !== (user.name || '') ||
-      String(formData.age ?? '') !== String(user.age ?? '') ||
-      formData.bio !== (user.bio || '') ||
-      (!isCriticalLocked && formData.university !== (user.university || '')) ||
-      (!isCriticalLocked && formData.institute !== (user.institute || '')) ||
-      (!isCriticalLocked && formData.course !== (user.course || 1)) ||
-      formData.group !== (user.group || '')
-    );
-  };
-
-  // Никаких confirm/alert — просто закрываем
   const handleClose = () => {
     hapticFeedback('light');
     setShowEditModal(false);
   };
 
-  // Telegram BackButton
-  useEffect(() => {
-    const tg = window.Telegram?.WebApp;
-    if (tg && showEditModal) {
-      tg.BackButton.show();
-      tg.BackButton.onClick(handleClose);
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      hapticFeedback('selection');
+      const reader = new FileReader();
+      reader.onloadend = () => setAvatarPreview(reader.result);
+      reader.readAsDataURL(file);
 
-      return () => {
-        tg.BackButton.hide();
-        tg.BackButton.offClick(handleClose);
-      };
-    }
-  }, [showEditModal, formData]); // formData чтобы back работал “актуально”
-
-  const handleSave = async () => {
-    if (!user) return;
-
-    if (!formData.name.trim()) {
-      setError('Имя или никнейм не может быть пустым');
-      hapticFeedback('error');
-      return;
-    }
-
-    if (formData.age !== '') {
-      const ageNum = parseInt(formData.age, 10);
-      if (Number.isNaN(ageNum) || ageNum < 16 || ageNum > 100) {
-        setError('Возраст должен быть числом от 16 до 100');
-        hapticFeedback('error');
-        return;
+      try {
+        setLoading(true);
+        const newAvatarData = await uploadUserAvatar(file);
+        if (newAvatarData && newAvatarData.avatar) {
+           setUser({ ...user, avatar: newAvatarData.avatar });
+        }
+      } catch (error) {
+        console.error("Ошибка загрузки фото", error);
+        alert("Не удалось загрузить фото");
+        setAvatarPreview(user.avatar);
+      } finally {
+        setLoading(false);
       }
-    }
-
-    setError('');
-    setSaving(true);
-
-    try {
-      const updateData = {
-        name: formData.name.trim(),
-        age: formData.age === '' ? null : parseInt(formData.age, 10),
-        bio: formData.bio.trim() || null,
-        group: formData.group.trim() || null
-      };
-
-      // Критичные поля отправляем ТОЛЬКО когда они разрешены
-      if (!isCriticalLocked) {
-        updateData.university = formData.university;
-        updateData.institute = formData.institute;
-        updateData.course = formData.course;
-      }
-
-      await updateUserProfile(updateData);
-
-      // Жёстко синхронизируем user после сохранения
-      const freshUser = await getCurrentUser();
-      setUser(freshUser);
-
-      hapticFeedback('success');
-      setShowEditModal(false);
-    } catch (err) {
-      const errorMsg = err?.response?.data?.detail || 'Не удалось сохранить изменения';
-      setError(errorMsg);
-      hapticFeedback('error');
-    } finally {
-      setSaving(false);
     }
   };
 
-  if (!showEditModal) return null;
+  const handleSave = async () => {
+    hapticFeedback('success');
+    setLoading(true);
+    
+    try {
+      const cleanUsername = formData.username.replace('@', '').trim();
 
-  const LockedField = ({ value }) => (
-    <div
-      style={{
-        ...styles.select,
-        opacity: 0.5,
-        cursor: 'not-allowed',
-        pointerEvents: 'none',
-        display: 'flex',
-        alignItems: 'center'
-      }}
-    >
-      {value}
-    </div>
-  );
+      const updateData = {
+        name: formData.name,
+        username: cleanUsername,
+        // Bio не отправляем
+        university: formData.university,
+        institute: formData.institute,
+        course: parseInt(formData.course),
+        group: formData.group
+      };
+
+      const updatedUser = await updateUserProfile(updateData);
+      setUser(updatedUser);
+      handleClose();
+    } catch (error) {
+      console.error("Ошибка сохранения", error);
+      if (error.response && error.response.status === 403) {
+          alert(error.response.data.detail || "Нельзя часто менять учебные данные");
+      } else {
+          alert("Ошибка сохранения изменений");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <>
-      <style>{`
-        @keyframes slide-in-right {
-          from { opacity: 0; transform: translateX(30px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        .edit-enter { animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-        .fade-in { animation: fade-in 0.3s ease-out; }
-
-        input[type=number]::-webkit-inner-spin-button,
-        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        input[type=number] { -moz-appearance: textfield; }
-      `}</style>
-
-      <div style={styles.overlay} className="fade-in">
-        <div style={styles.container} className="edit-enter">
-          <div style={styles.header}>
-            <h1 style={styles.title}>Редактирование профиля</h1>
-            <p style={styles.subtitle}>Измените данные о себе</p>
-          </div>
-
-          <div style={styles.content}>
-            <div style={styles.field}>
-              <label style={styles.label}>Имя или никнейм</label>
-              <input
-                type="text"
-                placeholder="Иван Иванов или @ivan_coder"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                style={styles.input}
-                maxLength={100}
-                onFocus={(e) => (e.currentTarget.style.borderColor = '#8774e1')}
-                onBlur={(e) => (e.currentTarget.style.borderColor = '#333')}
-              />
-              <div style={styles.hint}>Можете указать реальное имя или ник</div>
-            </div>
-
-            <div style={styles.field}>
-              <label style={styles.label}>Возраст (опционально)</label>
-              <input
-                type="number"
-                placeholder="20"
-                value={formData.age}
-                onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                style={styles.input}
-                min={16}
-                max={100}
-                onFocus={(e) => (e.currentTarget.style.borderColor = '#8774e1')}
-                onBlur={(e) => (e.currentTarget.style.borderColor = '#333')}
-              />
-              <div style={styles.hint}>Это поле можно оставить пустым</div>
-            </div>
-
-            <div style={styles.field}>
-              <label style={styles.label}>О себе (опционально)</label>
-              <textarea
-                placeholder="Расскажите о своих интересах, хобби..."
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                style={styles.textarea}
-                rows={4}
-                maxLength={500}
-                onFocus={(e) => (e.currentTarget.style.borderColor = '#8774e1')}
-                onBlur={(e) => (e.currentTarget.style.borderColor = '#333')}
-              />
-              <div style={styles.bioFooter}>
-                <div style={styles.hint}>Это поле можно оставить пустым</div>
-                <div style={styles.charCount}>{formData.bio.length}/500</div>
-              </div>
-            </div>
-
-            {/* Университет (критичное) */}
-            <div style={styles.field}>
-              <label style={styles.label}>Университет</label>
-
-              {isCriticalLocked ? (
-                <LockedField value={formData.university} />
-              ) : (
-                <select
-                  value={formData.university}
-                  onChange={(e) => setFormData({ ...formData, university: e.target.value })}
-                  style={styles.select}
-                >
-                  {universities.map((uni) => (
-                    <option key={uni} value={uni}>
-                      {uni}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {isCooldownActive && (
-                <div style={styles.cooldownActiveHint}>
-                  ⏱ Изменить можно через {cooldownDays} {cooldownDays === 1 ? 'день' : 'дней'}
-                </div>
-              )}
-            </div>
-
-            {/* Институт (критичное) */}
-            <div style={styles.field}>
-              <label style={styles.label}>Институт</label>
-
-              {isCriticalLocked ? (
-                <LockedField value={formData.institute} />
-              ) : (
-                <select
-                  value={formData.institute}
-                  onChange={(e) => setFormData({ ...formData, institute: e.target.value })}
-                  style={styles.select}
-                >
-                  {institutes.map((inst) => (
-                    <option key={inst} value={inst}>
-                      {inst}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {isCooldownActive && (
-                <div style={styles.cooldownActiveHint}>
-                  ⏱ Изменить можно через {cooldownDays} {cooldownDays === 1 ? 'день' : 'дней'}
-                </div>
-              )}
-            </div>
-
-            {/* Курс (критичное) */}
-            <div style={styles.field}>
-              <label style={styles.label}>Курс</label>
-
-              {isCriticalLocked ? (
-                <LockedField value={`${formData.course} курс`} />
-              ) : (
-                <select
-                  value={formData.course}
-                  onChange={(e) =>
-                    setFormData({ ...formData, course: parseInt(e.target.value, 10) })
-                  }
-                  style={styles.select}
-                >
-                  {[1, 2, 3, 4, 5, 6].map((num) => (
-                    <option key={num} value={num}>
-                      {num} курс
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {isCooldownActive && (
-                <div style={styles.cooldownActiveHint}>
-                  ⏱ Изменить можно через {cooldownDays} {cooldownDays === 1 ? 'день' : 'дней'}
-                </div>
-              )}
-            </div>
-
-            <div style={styles.field}>
-              <label style={styles.label}>Группа (опционально)</label>
-              <input
-                type="text"
-                placeholder="БИ-21"
-                value={formData.group}
-                onChange={(e) => setFormData({ ...formData, group: e.target.value })}
-                style={styles.input}
-                maxLength={100}
-                onFocus={(e) => (e.currentTarget.style.borderColor = '#8774e1')}
-                onBlur={(e) => (e.currentTarget.style.borderColor = '#333')}
-              />
-              <div style={styles.hint}>Это поле можно оставить пустым</div>
-            </div>
-
-            {error && <div style={styles.error}>⚠️ {error}</div>}
-          </div>
-
-          <div style={styles.footer}>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                ...styles.saveButton,
-                opacity: saving ? 0.6 : 1,
-                cursor: saving ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {saving ? 'Сохранение...' : 'Сохранить изменения 💾'}
-            </button>
-          </div>
+    <div style={styles.overlay}>
+      <div style={styles.container} className="slide-in-right">
+        
+        {/* HEADER */}
+        <div style={styles.header}>
+          <button onClick={handleClose} style={styles.iconButton}>
+            <X size={24} color="#fff" />
+          </button>
+          <span style={styles.headerTitle}>Редактирование</span>
+          <div style={{width: 44}}></div>
         </div>
+
+        <div style={styles.scrollContent}>
+          
+          {/* AVATAR */}
+          <div style={styles.avatarSection}>
+            <div style={styles.avatarWrapper}>
+              {avatarPreview ? (
+                <img src={avatarPreview} style={styles.avatarImg} alt="avatar" />
+              ) : (
+                <div style={styles.avatarPlaceholder}>{formData.name?.[0]}</div>
+              )}
+              <label style={styles.cameraButton}>
+                <input type="file" accept="image/*" onChange={handleAvatarChange} style={{display: 'none'}} />
+                <Camera size={20} color="#fff" />
+              </label>
+            </div>
+            <div style={styles.avatarHint}>Нажмите на фото, чтобы изменить</div>
+          </div>
+
+          {/* ОСНОВНОЕ */}
+          <div style={styles.sectionTitle}>ОСНОВНОЕ</div>
+          <div style={styles.card}>
+            <div style={styles.inputGroup}>
+              <div style={styles.inputIcon}><User size={18} color="#666" /></div>
+              <input 
+                style={styles.input} 
+                name="name" 
+                value={formData.name} 
+                onChange={handleChange} 
+                placeholder="Ваше имя" 
+              />
+            </div>
+            
+            <div style={styles.divider} />
+
+            <div style={styles.inputGroup}>
+              <div style={styles.inputIcon}><AtSign size={18} color="#8b5cf6" /></div>
+              <input 
+                style={{...styles.input, color: '#8b5cf6', fontWeight: '500'}} 
+                name="username" 
+                value={formData.username} 
+                onChange={handleChange} 
+                placeholder="username" 
+                autoCapitalize="none" 
+              />
+            </div>
+          </div>
+
+          {/* СТУДЕНТ */}
+          <div style={styles.sectionTitle}>СТУДЕНТ</div>
+          <div style={styles.card}>
+             
+             {/* ВУЗ */}
+             <div style={styles.inputGroup}>
+               <div style={styles.inputIcon}><BookOpen size={18} color="#666" /></div>
+               <div style={styles.selectWrapper}>
+                 <select 
+                    style={styles.select} 
+                    name="university" 
+                    value={formData.university} 
+                    onChange={handleChange}
+                 >
+                    <option value="" disabled>Выберите ВУЗ</option>
+                    {UNIVERSITIES.map(u => <option key={u} value={u}>{u}</option>)}
+                 </select>
+                 <ChevronRight size={16} color="#444" style={styles.selectArrow}/>
+               </div>
+             </div>
+             
+             <div style={styles.divider} />
+             
+             {/* Институт */}
+             <div style={styles.inputGroup}>
+               <div style={styles.inputIcon}><Layers size={18} color="#666" /></div>
+               <div style={styles.selectWrapper}>
+                 <select 
+                    style={styles.select} 
+                    name="institute" 
+                    value={formData.institute} 
+                    onChange={handleChange}
+                 >
+                    <option value="" disabled>Выберите институт</option>
+                    {INSTITUTES.map(i => <option key={i} value={i}>{i}</option>)}
+                 </select>
+                 <ChevronRight size={16} color="#444" style={styles.selectArrow}/>
+               </div>
+             </div>
+
+             <div style={styles.divider} />
+
+             {/* Курс и Группа */}
+             <div style={{display: 'flex'}}>
+                <div style={{...styles.inputGroup, flex: 1}}>
+                  <div style={styles.inputIcon}><Hash size={18} color="#666" /></div>
+                  <div style={styles.selectWrapper}>
+                    <select 
+                        style={styles.select} 
+                        name="course" 
+                        value={formData.course} 
+                        onChange={handleChange}
+                    >
+                        <option value="" disabled>Курс</option>
+                        {COURSES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <ChevronRight size={16} color="#444" style={styles.selectArrow}/>
+                  </div>
+                </div>
+                
+                <div style={{width: 1, background: '#333'}}></div>
+                
+                <div style={{...styles.inputGroup, flex: 1}}>
+                  <div style={styles.inputIcon}><User size={18} color="#666" /></div>
+                  <input 
+                    style={styles.input} 
+                    name="group" 
+                    value={formData.group} 
+                    onChange={handleChange} 
+                    placeholder="Группа" 
+                  />
+                </div>
+             </div>
+          </div>
+          
+          <div style={{height: 100}} />
+        </div>
+        
+        {/* FOOTER */}
+        <div style={styles.footer}>
+             <button style={styles.bigSaveButton} onClick={handleSave} disabled={loading}>
+                 {loading ? 'Сохранение...' : 'Сохранить изменения'}
+             </button>
+        </div>
+
       </div>
-    </>
+      
+      <style>{`
+        .slide-in-right { animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        
+        /* Убираем дефолтные стрелки */
+        select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+        
+        /* 🔥 ВАЖНО: Делаем выпадающий список темным */
+        select option {
+            background-color: #1e1e1e;
+            color: #fff;
+            padding: 10px;
+        }
+      `}</style>
+    </div>
   );
 }
 
 const styles = {
   overlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: '#121212',
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: '#000', 
     zIndex: Z_EDIT_PROFILE,
-    overflowY: 'auto'
+    display: 'flex', flexDirection: 'column',
   },
   container: {
-    maxWidth: '500px',
-    margin: '0 auto',
-    padding: '24px',
-    paddingBottom: '100px'
+    flex: 1, display: 'flex', flexDirection: 'column',
+    backgroundColor: '#121212', height: '100%',
   },
   header: {
-    marginBottom: '32px'
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '16px', borderBottom: '1px solid #222',
+    backgroundColor: '#121212', zIndex: 10,
   },
-  title: {
-    fontSize: '32px',
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: '8px',
-    marginTop: '40px'
+  headerTitle: {
+    fontSize: '17px', fontWeight: '600', color: '#fff',
   },
-  subtitle: {
-    fontSize: '16px',
-    color: '#8774e1',
-    fontWeight: '500'
+  iconButton: {
+    background: 'none', border: 'none', padding: 8, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    minWidth: 44, minHeight: 44,
   },
-  content: {
-    marginBottom: '24px'
+  scrollContent: {
+    flex: 1, overflowY: 'auto', padding: '20px',
   },
-  field: {
-    marginBottom: '24px'
+  
+  // Avatar
+  avatarSection: { display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 32 },
+  avatarWrapper: { position: 'relative', width: 100, height: 100 },
+  avatarImg: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: '2px solid #333' },
+  avatarPlaceholder: { width: '100%', height: '100%', borderRadius: '50%', backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', color: '#666', fontWeight: 'bold' },
+  cameraButton: { position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: '50%', backgroundColor: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid #121212', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.3)' },
+  avatarHint: { marginTop: 12, fontSize: '13px', color: '#666' },
+
+  // Sections
+  sectionTitle: { fontSize: '12px', fontWeight: '700', color: '#666', marginBottom: 8, paddingLeft: 12, letterSpacing: '0.5px' },
+  card: { backgroundColor: '#1e1e1e', borderRadius: 16, overflow: 'hidden', marginBottom: 24 },
+  
+  // Inputs
+  inputGroup: { display: 'flex', alignItems: 'center', minHeight: 48, padding: '0 16px' },
+  inputIcon: { marginRight: 12, display: 'flex', alignItems: 'center' },
+  input: { flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '16px', height: '100%', outline: 'none', padding: '12px 0' },
+  
+  // Selects (Background must be set explicitly here too)
+  selectWrapper: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
+  select: { 
+    width: '100%', 
+    background: 'transparent', // Фон самого инпута прозрачный
+    border: 'none', 
+    color: '#fff', 
+    fontSize: '16px', height: '48px', 
+    outline: 'none', cursor: 'pointer', zIndex: 2 
   },
-  label: {
-    display: 'block',
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#999',
-    marginBottom: '8px'
-  },
-  input: {
-    width: '100%',
-    padding: '16px',
-    borderRadius: '12px',
-    border: '2px solid #333',
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    fontSize: '16px',
-    outline: 'none',
-    boxSizing: 'border-box',
-    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
-  },
-  textarea: {
-    width: '100%',
-    padding: '16px',
-    borderRadius: '12px',
-    border: '2px solid #333',
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    fontSize: '16px',
-    outline: 'none',
-    resize: 'none',
-    lineHeight: '1.5',
-    boxSizing: 'border-box',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
-  },
-  select: {
-    width: '100%',
-    padding: '16px',
-    borderRadius: '12px',
-    border: '2px solid #333',
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    fontSize: '16px',
-    outline: 'none',
-    boxSizing: 'border-box',
-    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-    cursor: 'pointer'
-  },
-  hint: {
-    fontSize: '13px',
-    color: '#666',
-    marginTop: '6px'
-  },
-  cooldownActiveHint: {
-    fontSize: '13px',
-    color: '#ff6b6b',
-    marginTop: '6px',
-    fontWeight: '600'
-  },
-  bioFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: '4px'
-  },
-  charCount: {
-    fontSize: '12px',
-    color: '#666'
-  },
-  error: {
-    padding: '12px 16px',
-    borderRadius: '12px',
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-    border: '1px solid rgba(255, 59, 48, 0.3)',
-    color: '#ff3b30',
-    fontSize: '14px',
-    marginTop: '16px'
-  },
-  footer: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: '16px 24px',
-    backgroundColor: '#121212',
-    borderTop: '1px solid #333'
-  },
-  saveButton: {
-    width: '100%',
-    maxWidth: '500px',
-    margin: '0 auto',
-    display: 'block',
-    padding: '16px',
-    borderRadius: '12px',
-    border: 'none',
-    backgroundColor: '#8774e1',
-    color: '#fff',
-    fontSize: '16px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-    boxShadow: '0 8px 24px rgba(135, 116, 225, 0.4)'
+  selectArrow: { position: 'absolute', right: 0, pointerEvents: 'none' },
+
+  divider: { height: 1, backgroundColor: '#333', marginLeft: 46 },
+  
+  footer: { padding: '16px 20px 30px 20px', borderTop: '1px solid #222', backgroundColor: '#121212' },
+  bigSaveButton: { 
+    width: '100%', padding: '14px', borderRadius: 16, border: 'none', cursor: 'pointer', 
+    background: '#8b5cf6', 
+    color: '#fff', fontSize: '16px', fontWeight: '700', 
+    boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)', 
+    transition: 'transform 0.1s' 
   }
 };
 

@@ -21,6 +21,7 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     """Обновление профиля"""
+    username: Optional[str] = None
     name: Optional[str] = None
     age: Optional[int] = None
     bio: Optional[str] = None
@@ -35,6 +36,7 @@ class UserResponse(BaseModel):
     """Ответ с данными пользователя"""
     id: int
     telegram_id: int
+    username: Optional[str] = None
     name: str
     age: Optional[int] = None
     bio: Optional[str] = None
@@ -67,6 +69,7 @@ class UserShort(BaseModel):
     """Краткие данные пользователя"""
     id: Optional[int] = None
     telegram_id: Optional[int] = None
+    username: Optional[str] = None
     name: str
     avatar: Optional[str] = None
     university: Optional[str] = None
@@ -587,3 +590,52 @@ class MarketCategoriesResponse(BaseModel):
     """Список категорий"""
     standard: List[str]
     popular_custom: List[str]
+
+# Схема для создания/обновления анкеты
+class DatingProfileCreate(BaseModel):
+    gender: str
+    looking_for: str
+    bio: Optional[str] = None
+    goals: List[str] = []
+    # Фотографии загружаются отдельным списком файлов (UploadFile), 
+    # но здесь мы можем принимать метаданные, если нужно.
+
+    @field_validator('goals', mode='before')
+    @classmethod
+    def parse_goals(cls, v):
+        if isinstance(v, str):
+            import json
+            return json.loads(v)
+        return v or []
+
+# Схема для ответа (полная анкета)
+class DatingProfileResponse(BaseModel):
+    id: int
+    user_id: int
+    gender: str
+    looking_for: str
+    bio: Optional[str] = None
+    goals: List[str] = []
+    photos: List[Any] = [] # List[ImageMeta] или List[str]
+    is_active: bool
+    
+    # Данные пользователя (для удобства)
+    name: str
+    age: Optional[int] = None
+    university: str
+    institute: str
+    course: Optional[int] = None
+
+    @field_validator('photos', 'goals', mode='before')
+    @classmethod
+    def parse_json(cls, v):
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v)
+            except:
+                return []
+        return v or []
+
+    class Config:
+        from_attributes = True

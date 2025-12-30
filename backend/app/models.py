@@ -20,10 +20,11 @@ class User(Base):
     course = Column(Integer, nullable=True)
     group = Column(String(100), nullable=True)
     
-    # Dating поля (НОВЫЕ)
+    # Dating поля
     show_in_dating = Column(Boolean, default=True)  # показывать в знакомствах
     hide_course_group = Column(Boolean, default=False)  # скрыть курс/группу
     interests = Column(Text, nullable=True)  # JSON array как строка: ["python", "спорт"]
+    dating_profile = relationship("DatingProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
     # Метаданные
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -337,3 +338,39 @@ class MarketFavorite(Base):
     __table_args__ = (
         UniqueConstraint('user_id', 'item_id', name='unique_market_favorite'),
     )
+
+# ===== DATING MODELS =====
+
+class DatingProfile(Base):
+    __tablename__ = 'dating_profiles'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
+    
+    # Основные параметры поиска
+    gender = Column(String(50), nullable=False)        # 'male', 'female'
+    looking_for = Column(String(50), nullable=False)   # 'male', 'female', 'all'
+    
+    # Контент
+    bio = Column(Text, nullable=True)
+    goals = Column(Text, nullable=True)                # JSON string: ["relationship", "friends"]
+    photos = Column(Text, nullable=True)               # JSON string: [{"url": "...", "w": 1000, "h": 1000}]
+    
+    # Статус
+    location = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True)          # Можно ли искать этого человека
+    
+    # Метаданные
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Связь с юзером
+    user = relationship("User", back_populates="dating_profile")
+
+class DatingLike(Base):
+    __tablename__ = 'dating_likes'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    who_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    whom_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    is_like = Column(Boolean, default=True)  # True = лайк, False = дизлайк/скип
+    created_at = Column(DateTime, default=datetime.utcnow)

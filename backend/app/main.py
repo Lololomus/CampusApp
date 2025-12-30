@@ -5,9 +5,12 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app import models, schemas, crud
 from app.database import get_db, init_db
-from app.utils import get_image_urls
+from app.utils import get_image_urls, BASE_URL
 import json
-
+from app.routers import dating
+import shutil
+import uuid
+import os
 
 app = FastAPI(
     title="Campus App API",
@@ -15,6 +18,7 @@ app = FastAPI(
     version="2.0.0"
 )
 
+app.include_router(dating.router)
 
 # CORS
 app.add_middleware(
@@ -30,6 +34,35 @@ app.add_middleware(
 # ✅ НОВОЕ: Статические файлы (изображения)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+@app.post("/users/me/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    telegram_id: int = Query(...) 
+):
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    file_ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"avatar_{user.id}_{uuid.uuid4().hex[:8]}.{file_ext}"
+    
+    avatar_dir = "uploads/avatars"
+    os.makedirs(avatar_dir, exist_ok=True)
+    file_path = f"{avatar_dir}/{filename}"
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    # Стало (добавляем домен, как в постах):
+    avatar_url = f"{BASE_URL}/uploads/avatars/{filename}"
+    # ------------------------
+    
+    user.avatar = avatar_url
+    db.commit()
+    db.refresh(user)
+    
+    return {"avatar": user.avatar}
 
 # Startup
 @app.on_event("startup")
@@ -189,8 +222,6 @@ def get_user_posts_endpoint(
     
     return result
 
-
-
 @app.get("/users/{user_id}/stats")
 def get_user_stats(user_id: int, db: Session = Depends(get_db)):
     """Получить статистику пользователя"""
@@ -200,10 +231,10 @@ def get_user_stats(user_id: int, db: Session = Depends(get_db)):
     
     return {
         "posts_count": crud.count_user_posts(db, user_id),
-        "comments_count": crud.count_user_comments(db, user_id)
+        "comments_count": crud.count_user_comments(db, user_id),
+        # 👇 ДОБАВИЛИ ЭТУ СТРОКУ
+        "likes_count": crud.count_user_total_likes(db, user_id) 
     }
-
-
 
 # ==================== POST ENDPOINTS (ОБНОВЛЕНЫ) ====================
 

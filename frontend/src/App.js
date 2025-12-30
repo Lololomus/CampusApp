@@ -29,7 +29,8 @@ function App() {
     setEditingMarketItem,
     setShowCreateMarketItem,
     onboardingStep,
-    showUserPosts
+    showUserPosts,
+    showEditModal
   } = useStore();
 
   useEffect(() => {
@@ -81,7 +82,8 @@ function App() {
       )}
 
       <AuthModal />
-      <EditProfile />
+      {showEditModal && <EditProfile />} 
+      
     </div>
   );
 }
