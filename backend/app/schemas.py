@@ -436,13 +436,13 @@ class MatchResponse(BaseModel):
         from_attributes = True
 
 class DatingProfile(BaseModel):
-    """Профиль для ленты знакомств"""
     id: int
     telegram_id: int
     name: str
     age: Optional[int] = None
     bio: Optional[str] = None
     avatar: Optional[str] = None
+    photos: List[Any] = [] 
     university: str
     institute: str
     course: Optional[int] = None
@@ -452,8 +452,7 @@ class DatingProfile(BaseModel):
     @field_validator('interests', mode='before')
     @classmethod
     def parse_interests(cls, v):
-        if v is None:
-            return []
+        if v is None: return []
         if isinstance(v, str):
             import json
             return json.loads(v) if v else []

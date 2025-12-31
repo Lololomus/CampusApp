@@ -109,7 +109,10 @@ const Market = () => {
   }, [loading, page, selectedCategory, searchQuery, marketFilters, activeTab, user, marketItems, setMarketItems]);
 
   // ===== EFFECTS =====
+  
+  // 1. Реагируем на изменение фильтров, поиска, категории и табов
   useEffect(() => {
+    // Этот эффект сработает автоматически, когда marketFilters обновятся в сторе
     loadItems(true);
   }, [selectedCategory, searchQuery, activeTab, JSON.stringify(marketFilters)]);
 
@@ -155,7 +158,13 @@ const Market = () => {
   const handleSearchChange = (val) => setSearchQuery(val);
   const handleCategoryChange = (id) => { haptic('light'); setSelectedCategory(id); setPage(0); };
   const handleOpenFilters = () => { haptic('light'); setShowFilters(true); };
-  const handleApplyFilters = () => { setPage(0); loadItems(true); };
+  
+  // 🔥 ИСПРАВЛЕНО: Убрали лишний вызов loadItems(true), оставили только сброс страницы
+  const handleApplyFilters = () => { 
+    setPage(0); 
+    // loadItems(true) здесь НЕ НУЖЕН, так как сработает useEffect выше
+  };
+  
   const handleCardClick = (item) => { haptic('medium'); setShowDetail(item); };
 
   // Новый хендлер табов (с вибрацией)
@@ -201,11 +210,11 @@ const Market = () => {
         showFilters={true}
         onFiltersClick={handleOpenFilters}
         activeFiltersCount={getActiveFiltersCount()}
+        accentColor={theme.colors.market} 
       >
-        {/* ✅ НОВЫЕ ТАБЫ (SEGMENTED CONTROL - GREEN STYLE) */}
+        {/* ТАБЫ (SEGMENTED CONTROL) */}
         <div style={styles.tabsWrapper}>
           <div style={styles.tabsContainer}>
-            {/* Зеленый индикатор */}
             <div 
               style={{
                 ...styles.activeIndicator,
@@ -318,7 +327,6 @@ const styles = {
     minHeight: '100vh',
   },
 
-  // ✅ НОВЫЕ СТИЛИ ТАБОВ
   tabsWrapper: {
     padding: '0 12px 12px 12px',
   },
@@ -338,10 +346,10 @@ const styles = {
     top: 4,
     bottom: 4,
     left: 4,
-    width: 'calc(33.33% - 4px)', // Треть ширины минус отступы
-    backgroundColor: theme.colors.market, // 💚 ЗЕЛЕНЫЙ ЦВЕТ ДЛЯ БАРАХОЛКИ
+    width: 'calc(33.33% - 4px)',
+    backgroundColor: theme.colors.market, 
     borderRadius: theme.radius.md,
-    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)', // Зеленая тень
+    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
     transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
     zIndex: 1,
   },
@@ -361,9 +369,7 @@ const styles = {
     justifyContent: 'center',
   },
 
-  // ✅ ОБНОВЛЕННЫЙ CONTENT
   content: {
-    // Используем нашу "магическую" формулу отступа
     paddingTop: 'calc(var(--header-padding, 104px) + 16px)',
     transition: 'padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
   },
@@ -372,10 +378,9 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
     gap: theme.spacing.md,
-    padding: '0 12px 100px 12px', // Отступы по бокам и снизу
+    padding: '0 12px 100px 12px',
   },
 
-  // Остальные стили (без изменений)
   refreshIndicator: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, color: theme.colors.textSecondary },
   refreshIcon: { fontSize: 20, animation: 'spin 1s linear infinite' },
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center', minHeight: 300 },
@@ -392,7 +397,6 @@ const styles = {
   skeletonLineShort: { height: 16, width: '60%', background: theme.colors.bgSecondary, borderRadius: 4 },
 };
 
-// Animations
 if (!document.getElementById('market-animations')) {
   const styleSheet = document.createElement('style');
   styleSheet.id = 'market-animations';

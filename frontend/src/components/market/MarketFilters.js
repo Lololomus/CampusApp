@@ -20,11 +20,12 @@ const MarketFilters = ({ onClose, onApply }) => {
     { value: 'my_institute', label: `Мой институт (${user?.institute || 'ФКН'})` },
   ];
 
-  // Быстрые фильтры по цене
+  // ✅ БЫСТРЫЕ ФИЛЬТРЫ ЦЕНЫ (ОБНОВЛЕНО)
   const priceQuickFilters = [
     { label: 'До 500₽', min: null, max: 500 },
     { label: '500-2000₽', min: 500, max: 2000 },
-    { label: '2000-10000₽', min: 2000, max: 10000 },
+    { label: '2000-5000₽', min: 2000, max: 5000 },   // ✅ Добавлено
+    { label: '5000-10000₽', min: 5000, max: 10000 }, // ✅ Изменено
     { label: '10000+₽', min: 10000, max: null },
   ];
 
@@ -33,22 +34,20 @@ const MarketFilters = ({ onClose, onApply }) => {
     { value: 'new', label: 'Новое', icon: '✨' },
     { value: 'like-new', label: 'Как новое', icon: '⭐' },
     { value: 'good', label: 'Хорошее', icon: '👍' },
-    { value: 'fair', label: 'Удовлетворительное', icon: '👌' },
+    { value: 'fair', label: 'Удовл.', icon: '👌' },
   ];
 
   // Сортировка
   const sortOptions = [
     { value: 'newest', label: 'Новые', icon: '🆕' },
-    { value: 'price_asc', label: 'Дешевле', icon: '💰' },
-    { value: 'price_desc', label: 'Дороже', icon: '💸' },
+    { value: 'price_asc', label: 'Дешевле', icon: '📉' },
+    { value: 'price_desc', label: 'Дороже', icon: '📈' },
   ];
 
   // ===== HANDLERS =====
 
   const handleLocationChange = (value) => {
     haptic('light');
-    
-    // Конвертируем локацию в university/institute фильтры
     if (value === 'all') {
       setLocalFilters({
         ...localFilters,
@@ -92,8 +91,6 @@ const MarketFilters = ({ onClose, onApply }) => {
 
   const handleConditionToggle = (value) => {
     haptic('light');
-    
-    // Toggle режим (можно выбрать несколько)
     const currentConditions = localFilters.condition ? localFilters.condition.split(',') : [];
     const newConditions = currentConditions.includes(value)
       ? currentConditions.filter(c => c !== value)
@@ -143,8 +140,6 @@ const MarketFilters = ({ onClose, onApply }) => {
       window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
     }
   };
-
-  // ===== HELPERS =====
 
   const isConditionSelected = (value) => {
     if (!localFilters.condition) return false;
@@ -201,7 +196,6 @@ const MarketFilters = ({ onClose, onApply }) => {
           <div style={styles.section}>
             <div style={styles.sectionTitle}>💰 Цена</div>
             
-            {/* Быстрые фильтры */}
             <div style={styles.chipGroup}>
               {priceQuickFilters.map((filter, index) => (
                 <button
@@ -219,7 +213,6 @@ const MarketFilters = ({ onClose, onApply }) => {
               ))}
             </div>
 
-            {/* Inputs от-до */}
             <div style={styles.priceInputs}>
               <div style={styles.inputGroup}>
                 <label style={styles.inputLabel}>От</label>
@@ -238,7 +231,7 @@ const MarketFilters = ({ onClose, onApply }) => {
                 <label style={styles.inputLabel}>До</label>
                 <input
                   type="number"
-                  placeholder="∞"
+                  placeholder="1 000 000"
                   value={localFilters.price_max || ''}
                   onChange={(e) => handlePriceInputChange('price_max', e.target.value)}
                   style={styles.input}
@@ -247,10 +240,10 @@ const MarketFilters = ({ onClose, onApply }) => {
             </div>
           </div>
 
-          {/* ===== СОСТОЯНИЕ ===== */}
+          {/* ===== СОСТОЯНИЕ (Грид 2x2) ===== */}
           <div style={styles.section}>
             <div style={styles.sectionTitle}>📦 Состояние</div>
-            <div style={styles.checkboxGroup}>
+            <div style={styles.conditionGrid}>
               {conditionOptions.map((option) => (
                 <button
                   key={option.value}
@@ -269,20 +262,21 @@ const MarketFilters = ({ onClose, onApply }) => {
             </div>
           </div>
 
-          {/* ===== СОРТИРОВКА ===== */}
+          {/* ===== СОРТИРОВКА (Грид 1x3) ===== */}
           <div style={styles.section}>
             <div style={styles.sectionTitle}>🔄 Сортировка</div>
-            <div style={styles.radioGroup}>
+            <div style={styles.sortingGrid}>
               {sortOptions.map((option) => (
                 <button
                   key={option.value}
                   style={{
-                    ...styles.radioButton,
-                    ...(localFilters.sort === option.value ? styles.radioButtonActive : {}),
+                    ...styles.sortButton,
+                    ...(localFilters.sort === option.value ? styles.sortButtonActive : {}),
                   }}
                   onClick={() => handleSortChange(option.value)}
                 >
-                  {option.icon} {option.label}
+                  <span style={styles.sortIcon}>{option.icon}</span>
+                  <span style={styles.sortLabel}>{option.label}</span>
                 </button>
               ))}
             </div>
@@ -389,7 +383,7 @@ const styles = {
     color: theme.colors.text,
   },
 
-  // Radio группы
+  // === ЛОКАЦИЯ ===
   radioGroup: {
     display: 'flex',
     flexDirection: 'column',
@@ -410,12 +404,12 @@ const styles = {
   },
 
   radioButtonActive: {
-    background: theme.colors.market,
+    background: theme.colors.card,
     border: `1px solid ${theme.colors.market}`,
-    color: theme.colors.text,
+    color: theme.colors.market,
   },
 
-  // Chips (быстрые фильтры)
+  // === ЦЕНА (Chips) ===
   chipGroup: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -440,33 +434,38 @@ const styles = {
     color: theme.colors.text,
   },
 
-  // Price inputs
+  // === ЦЕНА (Inputs - КОМПАКТНЫЕ) ===
   priceInputs: {
     display: 'flex',
     alignItems: 'flex-end',
     gap: theme.spacing.md,
+    marginTop: 4,
   },
 
   inputGroup: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing.xs,
+    gap: 4,
   },
 
   inputLabel: {
-    fontSize: theme.fontSize.sm,
+    fontSize: 11,
     color: theme.colors.textSecondary,
     fontWeight: theme.fontWeight.medium,
+    marginBottom: 2,
   },
 
   input: {
+    width: '100%',
+    boxSizing: 'border-box',
     background: theme.colors.card,
     border: `1px solid ${theme.colors.border}`,
     borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
+    padding: '6px 10px',
+    height: 34,
     color: theme.colors.text,
-    fontSize: theme.fontSize.base,
+    fontSize: 13,
     outline: 'none',
     transition: theme.transitions.fast,
   },
@@ -474,13 +473,13 @@ const styles = {
   inputDivider: {
     color: theme.colors.textSecondary,
     fontSize: theme.fontSize.lg,
-    marginBottom: theme.spacing.md,
+    marginBottom: 6,
   },
 
-  // Checkbox группы
-  checkboxGroup: {
-    display: 'flex',
-    flexDirection: 'column',
+  // === СОСТОЯНИЕ (Grid 2x2) ===
+  conditionGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
     gap: theme.spacing.sm,
   },
 
@@ -488,9 +487,9 @@ const styles = {
     background: theme.colors.card,
     border: `1px solid ${theme.colors.border}`,
     borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
+    padding: '10px',
     color: theme.colors.text,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     cursor: 'pointer',
     transition: theme.transitions.fast,
@@ -506,7 +505,46 @@ const styles = {
   },
 
   checkboxIcon: {
-    fontSize: theme.fontSize.lg,
+    fontSize: 16,
+  },
+
+  // === СОРТИРОВКА (Grid 1x3) ===
+  sortingGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: theme.spacing.sm,
+  },
+
+  sortButton: {
+    background: theme.colors.card,
+    border: `1px solid ${theme.colors.border}`,
+    borderRadius: theme.radius.md,
+    padding: '10px 4px',
+    color: theme.colors.text,
+    cursor: 'pointer',
+    transition: theme.transitions.fast,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: '100%',
+  },
+
+  sortButtonActive: {
+    background: theme.colors.card,
+    border: `1px solid ${theme.colors.market}`,
+    color: theme.colors.market,
+  },
+
+  sortIcon: {
+    fontSize: 20,
+  },
+
+  sortLabel: {
+    fontSize: 11,
+    fontWeight: theme.fontWeight.medium,
+    textAlign: 'center',
   },
 
   // Footer
@@ -544,7 +582,7 @@ const styles = {
   },
 };
 
-// CSS Animations
+// CSS Animations & Global Styles
 const styleSheet = document.createElement('style');
 styleSheet.textContent = `
   @keyframes fadeIn {
@@ -559,6 +597,15 @@ styleSheet.textContent = `
     to {
       transform: translateY(0);
     }
+  }
+
+  input[type=number]::-webkit-inner-spin-button, 
+  input[type=number]::-webkit-outer-spin-button { 
+    -webkit-appearance: none; 
+    margin: 0; 
+  }
+  input[type=number] {
+    -moz-appearance: textfield;
   }
 `;
 document.head.appendChild(styleSheet);

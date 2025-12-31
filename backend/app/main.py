@@ -1126,189 +1126,6 @@ def delete_response_endpoint(
         raise HTTPException(status_code=403, detail=str(e))
 
 
-
-# ==================== DATING ENDPOINTS ====================
-
-
-@app.get("/dating/feed", response_model=schemas.DatingFeedResponse)
-def get_dating_feed_endpoint(
-    telegram_id: int = Query(...),
-    limit: int = Query(20, le=50),
-    offset: int = Query(0, ge=0),
-    university: Optional[str] = Query(None),
-    institute: Optional[str] = Query(None),
-    course: Optional[int] = Query(None),
-    db: Session = Depends(get_db)
-):
-    """Получить ленту профилей для знакомств"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    users = crud.get_dating_feed(
-        db, user.id, limit, offset,
-        university=university, institute=institute, course=course
-    )
-    
-    result = []
-    for u in users:
-        interests_list = json.loads(u.interests) if u.interests else []
-        
-        profile = {
-            "id": u.id,
-            "telegram_id": u.telegram_id,
-            "name": u.name,
-            "age": u.age,
-            "bio": u.bio,
-            "university": u.university,
-            "institute": u.institute,
-            "course": None if u.hide_course_group else u.course,
-            "group": None if u.hide_course_group else u.group,
-            "interests": interests_list,
-            "active_request": None
-        }
-        result.append(profile)
-    
-    return {
-        "items": result,
-        "total": len(result),
-        "has_more": len(users) == limit
-    }
-
-
-@app.post("/dating/like", response_model=schemas.LikeResult)
-def like_user_endpoint(
-    telegram_id: int = Query(...),
-    like_data: schemas.LikeCreate = Body(...),
-    db: Session = Depends(get_db)
-):
-    """Лайкнуть пользователя"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    result = crud.create_like(db, user.id, like_data.liked_id)
-    
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result.get("error"))
-    
-    response = {
-        "success": True,
-        "is_match": result.get("is_match", False),
-        "match_id": None,
-        "matched_user": None
-    }
-    
-    if result.get("is_match"):
-        matched_user = result.get("matched_user")
-        response["match_id"] = result.get("match_id")
-        response["matched_user"] = schemas.UserShort.from_orm(matched_user) if matched_user else None
-    
-    return response
-
-
-
-@app.get("/dating/likes", response_model=List[schemas.DatingProfile])
-def get_who_liked_me_endpoint(
-    telegram_id: int = Query(...),
-    limit: int = Query(20, le=50),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
-):
-    """Получить тех, кто меня лайкнул"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    users = crud.get_who_liked_me(db, user.id, limit, offset)
-    
-    result = []
-    for u in users:
-        interests_list = json.loads(u.interests) if u.interests else []
-        
-        profile = {
-            "id": u.id,
-            "telegram_id": u.telegram_id,
-            "name": u.name,
-            "age": u.age,
-            "bio": u.bio,
-            "university": u.university,
-            "institute": u.institute,
-            "course": None if u.hide_course_group else u.course,
-            "group": None if u.hide_course_group else u.group,
-            "interests": interests_list,
-            "active_request": None
-        }
-        result.append(profile)
-    
-    return result
-
-
-
-@app.get("/dating/matches", response_model=List[schemas.MatchResponse])
-def get_my_matches_endpoint(
-    telegram_id: int = Query(...),
-    limit: int = Query(20, le=50),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
-):
-    """Получить мои матчи"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    matches = crud.get_my_matches(db, user.id, limit, offset)
-    
-    result = []
-    for match in matches:
-        result.append({
-            "id": match["id"],
-            "user_a_id": 0,  # не важно
-            "user_b_id": 0,  # не важно
-            "matched_at": match["matched_at"],
-            "matched_user": schemas.UserShort.from_orm(match["matched_user"])
-        })
-    
-    return result
-
-
-
-@app.get("/dating/stats", response_model=schemas.DatingStatsResponse)
-def get_dating_stats_endpoint(
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Получить статистику знакомств"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    stats = crud.get_dating_stats(db, user.id)
-    
-    return {
-        "likes_count": stats["likes_count"],
-        "matches_count": stats["matches_count"],
-    }
-
-
-@app.patch("/me/dating-settings", response_model=schemas.UserResponse)
-def update_dating_settings_endpoint(
-    telegram_id: int = Query(...),
-    settings: schemas.DatingSettings = Body(...),
-    db: Session = Depends(get_db)
-):
-    """Обновить настройки приватности dating"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    settings_dict = settings.model_dump(exclude_unset=True)
-    updated_user = crud.update_dating_settings(db, user.id, settings_dict)
-    
-    return updated_user
-
-
-
 # ==================== DEV ENDPOINTS ====================
 
 
@@ -1361,6 +1178,7 @@ def get_market_feed_endpoint(
     university: Optional[str] = Query(None),
     institute: Optional[str] = Query(None),
     sort: str = Query("newest"),
+    search: Optional[str] = Query(None),
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
@@ -1378,6 +1196,7 @@ def get_market_feed_endpoint(
         university=university,
         institute=institute,
         sort=sort,
+        search=search,
         current_user_id=user.id
     )
     

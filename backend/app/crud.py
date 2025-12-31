@@ -728,210 +728,214 @@ def get_responses_count(db: Session, user_id: int, category: Optional[str] = Non
     result = query.scalar()
     return result if result else 0
 
-# ===== DATING CRUD =====
+# ========================================
+# 💘 DATING CRUD (REFACTORED)
+# ========================================
+
+def get_dating_profile(db: Session, user_id: int) -> Optional[models.DatingProfile]:
+    """Получить анкету пользователя"""
+    return db.query(models.DatingProfile).filter(models.DatingProfile.user_id == user_id).first()
+
+def update_dating_profile_activity(db: Session, user_id: int, is_active: bool):
+    """Скрыть/показать анкету"""
+    profile = get_dating_profile(db, user_id)
+    if profile:
+        profile.is_active = is_active
+        db.commit()
 
 def get_dating_feed(
     db: Session,
-    user_id: int,
-    limit: int = 20,
+    current_user_id: int,
+    limit: int = 10,
     offset: int = 0,
-    university: Optional[str] = None,
-    institute: Optional[str] = None,
-    course: Optional[int] = None
-) -> List[models.User]:
-    current_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not current_user:
-        return []
+    looking_for: Optional[str] = None
+) -> List[dict]:
+    """
+    Получить ленту анкет.
+    Исключает:
+    1. Самого себя
+    2. Тех, кого я уже лайкнул (или дизлайкнул)
+    3. Неактивные анкеты
+    """
     
+    # ID тех, кого я уже лайкнул/скипнул
     liked_ids = db.query(models.Like.liked_id).filter(
-        models.Like.liker_id == user_id
+        models.Like.liker_id == current_user_id
     ).subquery()
     
-    matched_ids_a = db.query(models.Match.user_b_id).filter(
-        models.Match.user_a_id == user_id
-    ).subquery()
-    
-    matched_ids_b = db.query(models.Match.user_a_id).filter(
-        models.Match.user_b_id == user_id
-    ).subquery()
-    
-    query = db.query(models.User).filter(
-        models.User.id != user_id,
-        models.User.show_in_dating == True,
-        ~models.User.id.in_(liked_ids),
-        ~models.User.id.in_(matched_ids_a),
-        ~models.User.id.in_(matched_ids_b)
+    # Базовый запрос: Джойним User и DatingProfile
+    query = db.query(models.DatingProfile).join(models.User).filter(
+        models.DatingProfile.user_id != current_user_id,
+        models.DatingProfile.is_active == True,
+        models.User.id.notin_(liked_ids) # Исключаем лайкнутых
     )
     
-    target_university = university if university else current_user.university
-    query = query.filter(models.User.university == target_university)
+    # Фильтр "Кого ищу" (если указан)
+    if looking_for and looking_for != 'all':
+        query = query.filter(models.DatingProfile.gender == looking_for)
     
-    if institute:
-        query = query.filter(models.User.institute == institute)
+    # Сортировка (сначала новые)
+    profiles = query.order_by(models.DatingProfile.updated_at.desc()).offset(offset).limit(limit).all()
     
-    if course:
-        query = query.filter(models.User.course == course)
-    
-    return query.order_by(models.User.created_at.desc()).offset(offset).limit(limit).all()
+    # Формируем плоский объект для фронтенда
+    results = []
+    for p in profiles:
+        # User данные
+        user = p.user
+        
+        # Фото: берем из профиля dating, если нет - аватар юзера
+        photos_raw = p.photos
+        photos = get_image_urls(photos_raw) if photos_raw else []
+        if not photos and user.avatar:
+            photos = [{"url": user.avatar, "w": 500, "h": 500}] # Fallback
 
-def get_active_requests(db: Session, category: str, limit: int = 20, offset: int = 0) -> List[models.Request]:
-    return (
-        db.query(models.Request)
-        .options(joinedload(models.Request.author))
-        .filter(
-            models.Request.category == category,
-            models.Request.status == 'active',
-            models.Request.expires_at > datetime.utcnow()
-        )
-        .order_by(models.Request.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+        interests = json.loads(user.interests) if user.interests else []
+        goals = json.loads(p.goals) if p.goals else []
 
-def create_like(db: Session, liker_id: int, liked_id: int) -> Dict:
+        # Собираем объект, который ждет ProfileCard.js
+        results.append({
+            "id": user.id,              # ID для лайка
+            "telegram_id": user.telegram_id,
+            "name": user.name,
+            "age": user.age,
+            "bio": p.bio or user.bio,   # Био из дейтинга приоритетнее
+            "university": user.university,
+            "institute": user.institute,
+            "course": user.course,
+            "photos": photos,
+            "goals": goals,
+            "interests": interests,
+            "looking_for": p.looking_for
+        })
+        
+    return results
+
+def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
+    """
+    Создать лайк и проверить на мэтч.
+    Возвращает словарь с результатом.
+    """
     if liker_id == liked_id:
         return {"success": False, "error": "Нельзя лайкнуть себя"}
     
-    liker = db.query(models.User).filter(models.User.id == liker_id).first()
-    liked = db.query(models.User).filter(models.User.id == liked_id).first()
-    
-    if not liker or not liked:
-        return {"success": False, "error": "Пользователь не найден"}
-    
-    existing_like = db.query(models.Like).filter(
+    # 1. Проверяем, не лайкали ли уже
+    existing = db.query(models.Like).filter(
         models.Like.liker_id == liker_id,
         models.Like.liked_id == liked_id
     ).first()
     
-    if existing_like:
-        return {"success": False, "error": "Уже лайкнуто"}
+    if existing:
+        return {"success": True, "is_match": False, "already_liked": True} # Не ошибка, просто игнор
     
+    # 2. Создаем лайк
     new_like = models.Like(liker_id=liker_id, liked_id=liked_id)
     db.add(new_like)
     db.commit()
     
+    # 3. Проверяем ВЗАИМНОСТЬ (Ищет лайк в обратную сторону)
     reverse_like = db.query(models.Like).filter(
         models.Like.liker_id == liked_id,
         models.Like.liked_id == liker_id
     ).first()
     
+    is_match = False
+    match_obj = None
+    matched_user = None
+    
     if reverse_like:
+        is_match = True
+        # Нормализация ID для таблицы matches (меньший ID всегда user_a)
         user_a = min(liker_id, liked_id)
         user_b = max(liker_id, liked_id)
         
+        # Проверяем, не создан ли уже матч
         existing_match = db.query(models.Match).filter(
             models.Match.user_a_id == user_a,
             models.Match.user_b_id == user_b
         ).first()
         
         if not existing_match:
-            new_match = models.Match(user_a_id=user_a, user_b_id=user_b)
-            db.add(new_match)
+            match_obj = models.Match(user_a_id=user_a, user_b_id=user_b)
+            db.add(match_obj)
             db.commit()
-            db.refresh(new_match)
-            
-            return {
-                "success": True,
-                "is_match": True,
-                "match_id": new_match.id,
-                "matched_user": liked
-            }
-    
-    return {"success": True, "is_match": False}
-
-def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.User]:
-    my_likes_ids = db.query(models.Like.liked_id).filter(
-        models.Like.liker_id == user_id
-    ).subquery()
-    
-    return (
-        db.query(models.User)
-        .join(models.Like, models.Like.liker_id == models.User.id)
-        .filter(
-            models.Like.liked_id == user_id,
-            ~models.User.id.in_(my_likes_ids)
-        )
-        .order_by(models.Like.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-
-def get_my_matches(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[Dict]:
-    matches = (
-        db.query(models.Match)
-        .filter(
-            or_(
-                models.Match.user_a_id == user_id,
-                models.Match.user_b_id == user_id
-            )
-        )
-        .order_by(models.Match.matched_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    
-    result = []
-    for match in matches:
-        matched_user_id = match.user_b_id if match.user_a_id == user_id else match.user_a_id
-        matched_user = db.query(models.User).filter(models.User.id == matched_user_id).first()
+            db.refresh(match_obj)
         
-        result.append({
-            'id': match.id,
-            'matched_at': match.matched_at,
-            'matched_user': matched_user
-        })
-    
-    return result
-
-def get_dating_stats(db: Session, user_id: int) -> Dict:
-    my_likes_ids = db.query(models.Like.liked_id).filter(
-        models.Like.liker_id == user_id
-    ).subquery()
-    
-    likes_count = (
-        db.query(func.count(models.Like.id))
-        .filter(
-            models.Like.liked_id == user_id,
-            ~models.Like.liker_id.in_(my_likes_ids)
-        )
-        .scalar()
-    ) or 0
-    
-    matches_count = (
-        db.query(func.count(models.Match.id))
-        .filter(
-            or_(
-                models.Match.user_a_id == user_id,
-                models.Match.user_b_id == user_id
-            )
-        )
-        .scalar()
-    ) or 0
-    
+        # Получаем данные того, с кем совпали
+        matched_user_db = db.query(models.User).filter(models.User.id == liked_id).first()
+        matched_user = matched_user_db # Вернем модель, схема обработает
+        
     return {
-        'likes_count': likes_count,
-        'matches_count': matches_count
+        "success": True,
+        "is_match": is_match,
+        "match_id": match_obj.id if match_obj else None,
+        "matched_user": matched_user
     }
 
+def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.User]:
+    """Кто лайкнул меня, но кого я ЕЩЕ НЕ лайкнул в ответ (чтобы не показывать матчи в лайках)"""
+    
+    # Мои лайки (кого я уже оценил)
+    my_likes = db.query(models.Like.liked_id).filter(models.Like.liker_id == user_id).subquery()
+    
+    # Те кто лайкнул меня
+    users = db.query(models.User).join(models.Like, models.Like.liker_id == models.User.id)\
+        .filter(
+            models.Like.liked_id == user_id,
+            models.User.id.notin_(my_likes) # Исключаем тех, кого я уже лайкнул (это уже матчи)
+        )\
+        .order_by(models.Like.created_at.desc())\
+        .offset(offset)\
+        .limit(limit)\
+        .all()
+        
+    return users
+
+def get_dating_stats(db: Session, user_id: int) -> dict:
+    """Счетчики лайков и матчей"""
+    # Входящие лайки (без моих ответов)
+    my_likes = db.query(models.Like.liked_id).filter(models.Like.liker_id == user_id).subquery()
+    
+    likes_count = db.query(func.count(models.Like.id)).filter(
+        models.Like.liked_id == user_id,
+        models.Like.liker_id.notin_(my_likes)
+    ).scalar()
+    
+    matches_count = db.query(func.count(models.Match.id)).filter(
+        or_(models.Match.user_a_id == user_id, models.Match.user_b_id == user_id)
+    ).scalar()
+    
+    return {"likes_count": likes_count, "matches_count": matches_count}
+
 def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optional[models.User]:
+    """
+    Обновление настроек приватности и интересов.
+    Синхронизирует статус User.show_in_dating и DatingProfile.is_active.
+    """
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         return None
     
+    # 1. Скрыть/показать анкету
     if 'show_in_dating' in settings:
-        user.show_in_dating = settings['show_in_dating']
-    
+        is_visible = settings['show_in_dating']
+        user.show_in_dating = is_visible
+        
+        # Важно: Синхронизируем с DatingProfile, если он есть
+        # (используем relationship user.dating_profile)
+        if user.dating_profile:
+            user.dating_profile.is_active = is_visible
+
+    # 2. Скрыть группу/курс
     if 'hide_course_group' in settings:
         user.hide_course_group = settings['hide_course_group']
     
+    # 3. Обновить интересы
     if 'interests' in settings:
-        if isinstance(settings['interests'], list):
-            user.interests = json.dumps(settings['interests'])
+        val = settings['interests']
+        if isinstance(val, list):
+            user.interests = json.dumps(val)
         else:
-            user.interests = settings['interests']
+            user.interests = val
     
     db.commit()
     db.refresh(user)
@@ -1012,13 +1016,25 @@ def get_market_items(
     university: Optional[str] = None,
     institute: Optional[str] = None,
     sort: str = 'newest',
+    search: Optional[str] = None,
     current_user_id: Optional[int] = None
 ) -> Dict:
     """Лента товаров с фильтрами и сортировкой"""
     query = db.query(models.MarketItem).options(joinedload(models.MarketItem.seller))
     
     query = query.filter(models.MarketItem.status == 'active')
+
+    # Search
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                models.MarketItem.title.ilike(search_term),
+                models.MarketItem.description.ilike(search_term)
+            )
+        )
     
+    # ФИЛЬТРЫ
     if category and category != 'all':
         query = query.filter(models.MarketItem.category == category)
     
@@ -1029,7 +1045,8 @@ def get_market_items(
         query = query.filter(models.MarketItem.price <= price_max)
     
     if condition:
-        query = query.filter(models.MarketItem.condition == condition)
+        conditions = condition.split(',')
+        query = query.filter(models.MarketItem.condition.in_(conditions))
     
     if university and university != 'all':
         query = query.filter(models.MarketItem.university == university)
@@ -1039,11 +1056,13 @@ def get_market_items(
     
     total = query.count()
     
-    if sort == 'cheapest':
+    if sort == 'price_asc':
         query = query.order_by(models.MarketItem.price.asc())
-    elif sort == 'expensive':
+    elif sort == 'price_desc':
         query = query.order_by(models.MarketItem.price.desc())
-    else:
+    elif sort == 'oldest':
+        query = query.order_by(models.MarketItem.created_at.asc())
+    else: # 'newest' и дефолт
         query = query.order_by(models.MarketItem.created_at.desc())
     
     items = query.offset(skip).limit(limit).all()

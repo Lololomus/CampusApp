@@ -1,4 +1,4 @@
-// ===== src/components/shared/AppHeader.js =====
+// ===== 📄 ФАЙЛ: src/components/shared/AppHeader.js =====
 
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Search, Filter, X } from 'lucide-react';
@@ -26,6 +26,7 @@ const AppHeader = ({
   rightActions = [],
   transparent = false,
   children = null,
+  accentColor, // ✅ НОВЫЙ ПРОП: для перекраски в зеленый
 }) => {
   // ===== STATE =====
   const [searchFocused, setSearchFocused] = useState(false);
@@ -44,7 +45,10 @@ const AppHeader = ({
   // Состояние высот для точной синхронизации
   const [dimensions, setDimensions] = useState({ sticky: 56, collapsible: 0 });
 
-  // ===== 1. ИЗМЕРЕНИЕ ВЫСОТЫ =====
+  // ✅ ОПРЕДЕЛЯЕМ АКТИВНЫЙ ЦВЕТ
+  const effectiveAccentColor = accentColor || theme.colors.primary;
+
+  // ===== 1. ИЗМЕРЕНИЕ ВЫСОТЫ (ТВОЯ ОРИГИНАЛЬНАЯ ЛОГИКА) =====
   useLayoutEffect(() => {
     const updateDimensions = () => {
       const sticky = stickyRef.current ? stickyRef.current.offsetHeight : 56;
@@ -52,7 +56,6 @@ const AppHeader = ({
       
       setDimensions({ sticky, collapsible });
       
-      // Записываем высоту липкой части для позиционирования выпадающего меню
       document.documentElement.style.setProperty('--sticky-height', `${sticky}px`);
     };
 
@@ -64,10 +67,8 @@ const AppHeader = ({
     return () => observer.disconnect();
   }, [children, showSearch, categories]);
 
-  // ===== 2. УМНЫЙ ОТСТУП (SYNC PADDING) =====
+  // ===== 2. УМНЫЙ ОТСТУП =====
   useEffect(() => {
-    // Если меню открыто: отступ = липкая часть + выпадающая
-    // Если меню скрыто: отступ = только липкая часть
     const totalHeight = collapsibleVisible 
       ? dimensions.sticky + dimensions.collapsible 
       : dimensions.sticky;
@@ -83,10 +84,8 @@ const AppHeader = ({
       if (currentScrollY < 10) {
         setCollapsibleVisible(true);
       } else if (currentScrollY > lastScrollY) {
-        // Скролл вниз - скрываем
         setCollapsibleVisible(false);
       } else if (currentScrollY < lastScrollY) {
-        // Скролл вверх - показываем
         setCollapsibleVisible(true);
       }
       
@@ -99,53 +98,31 @@ const AppHeader = ({
 
   // ===== DEBOUNCE SEARCH =====
   useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     if (localSearchValue !== searchValue && onSearchChange) {
-      searchTimeoutRef.current = setTimeout(() => {
-        onSearchChange(localSearchValue);
-      }, 300);
+      searchTimeoutRef.current = setTimeout(() => onSearchChange(localSearchValue), 300);
     }
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
+    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
   }, [localSearchValue, searchValue, onSearchChange]);
 
-  // ===== SYNC EXTERNAL SEARCH VALUE =====
   useEffect(() => {
     setLocalSearchValue(searchValue);
   }, [searchValue]);
 
   // ===== HANDLERS =====
-  const handleSearchInputChange = (e) => {
-    setLocalSearchValue(e.target.value);
-  };
-
+  const handleSearchInputChange = (e) => setLocalSearchValue(e.target.value);
   const handleClearSearch = () => {
     hapticFeedback('light');
     setLocalSearchValue('');
-    if (onSearchChange) {
-      onSearchChange('');
-    }
+    if (onSearchChange) onSearchChange('');
   };
-
-  const handleCategoryClick = (categoryId) => {
+  const handleCategoryClick = (id) => {
     hapticFeedback('light');
-    if (onCategoryChange) {
-      onCategoryChange(categoryId);
-    }
+    if (onCategoryChange) onCategoryChange(id);
   };
-
   const handleFiltersClick = () => {
     hapticFeedback('medium');
-    if (onFiltersClick) {
-      onFiltersClick();
-    }
+    if (onFiltersClick) onFiltersClick();
   };
 
   const showClearButton = localSearchValue && localSearchValue.length > 0;
@@ -165,7 +142,6 @@ const AppHeader = ({
       WebkitBackdropFilter: transparent ? 'blur(20px)' : 'none',
       borderBottom: `1px solid ${theme.colors.border}`,
       paddingTop: 'env(safe-area-inset-top, 0px)',
-      // Плавная анимация для sticky части
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     },
     
@@ -178,46 +154,20 @@ const AppHeader = ({
       position: 'relative',
     },
     
-    titleBlock: {
-      textAlign: 'center',
-      flex: 1,
-    },
+    titleBlock: { textAlign: 'center', flex: 1 },
+    title: { fontSize: 20, fontWeight: 600, color: theme.colors.text, margin: 0, lineHeight: '24px' },
+    subtitle: { fontSize: 13, fontWeight: 400, color: theme.colors.textSecondary, margin: '2px 0 0 0' },
     
-    title: {
-      fontSize: 20,
-      fontWeight: 600,
-      color: theme.colors.text,
-      margin: 0,
-      lineHeight: '24px',
-    },
-    
-    subtitle: {
-      fontSize: 13,
-      fontWeight: 400,
-      color: theme.colors.textSecondary,
-      margin: '2px 0 0 0',
-    },
-    
-    rightActions: {
-      position: 'absolute',
-      right: 8,
-      display: 'flex',
-      gap: 4,
-    },
-
-    childrenContainer: {
-      display: children ? 'block' : 'none',
-    },
+    rightActions: { position: 'absolute', right: 8, display: 'flex', gap: 4 },
+    childrenContainer: { display: children ? 'block' : 'none' },
 
     collapsibleWrapper: {
       position: 'fixed',
-      // Привязываемся к высоте sticky части
       top: 'var(--sticky-height, 56px)',
       left: 0,
       right: 0,
       zIndex: 999,
       backgroundColor: theme.colors.bgSecondary,
-      // Анимация: сдвиг + прозрачность
       transform: collapsibleVisible ? 'translateY(0)' : 'translateY(-100%)',
       opacity: collapsibleVisible ? 1 : 0,
       pointerEvents: collapsibleVisible ? 'auto' : 'none',
@@ -225,25 +175,15 @@ const AppHeader = ({
       borderBottom: `1px solid ${theme.colors.border}`,
     },
 
-    searchRow: {
-      display: showSearch ? 'flex' : 'none',
-      alignItems: 'center',
-      padding: '8px 12px',
-      gap: 8,
-    },
-    
-    searchContainer: {
-      flex: 1,
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-    },
+    searchRow: { display: showSearch ? 'flex' : 'none', alignItems: 'center', padding: '8px 12px', gap: 8 },
+    searchContainer: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
     
     searchInput: {
       width: '100%',
       height: 40,
       backgroundColor: theme.colors.bg,
-      border: `1px solid ${searchFocused ? theme.colors.primary : theme.colors.border}`,
+      // ✅ ИСПОЛЬЗУЕМ effectiveAccentColor ДЛЯ ФОКУСА
+      border: `1px solid ${searchFocused ? effectiveAccentColor : theme.colors.border}`,
       borderRadius: theme.radius.md,
       padding: '0 36px',
       fontSize: 15,
@@ -252,39 +192,23 @@ const AppHeader = ({
       transition: 'border-color 0.2s ease',
     },
     
-    searchIcon: {
-      position: 'absolute',
-      left: 10,
-      color: theme.colors.textSecondary,
-      pointerEvents: 'none',
-    },
+    searchIcon: { position: 'absolute', left: 10, color: theme.colors.textSecondary, pointerEvents: 'none' },
     
     clearButton: {
-      position: 'absolute',
-      right: 6,
-      width: 24,
-      height: 24,
+      position: 'absolute', right: 6, width: 24, height: 24,
       display: showClearButton ? 'flex' : 'none',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: theme.colors.border,
-      borderRadius: theme.radius.full,
-      border: 'none',
-      cursor: 'pointer',
-      color: theme.colors.text,
-      opacity: 0.6,
-      transition: 'opacity 0.2s ease',
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: theme.colors.border, borderRadius: theme.radius.full,
+      border: 'none', cursor: 'pointer', color: theme.colors.text, opacity: 0.6, transition: 'opacity 0.2s ease',
     },
     
     filterButton: {
-      position: 'relative',
-      width: 40,
-      height: 40,
+      position: 'relative', width: 40, height: 40,
       display: showFilters ? 'flex' : 'none',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: activeFiltersCount > 0 ? theme.colors.primary : theme.colors.bg,
-      border: `1px solid ${activeFiltersCount > 0 ? theme.colors.primary : theme.colors.border}`,
+      alignItems: 'center', justifyContent: 'center',
+      // ✅ ИСПОЛЬЗУЕМ effectiveAccentColor ДЛЯ АКТИВНОГО ФОНА
+      backgroundColor: activeFiltersCount > 0 ? effectiveAccentColor : theme.colors.bg,
+      border: `1px solid ${activeFiltersCount > 0 ? effectiveAccentColor : theme.colors.border}`,
       borderRadius: theme.radius.md,
       cursor: 'pointer',
       color: activeFiltersCount > 0 ? '#fff' : theme.colors.textSecondary,
@@ -292,87 +216,50 @@ const AppHeader = ({
     },
     
     filterBadge: {
-      position: 'absolute',
-      top: -4,
-      right: -4,
-      minWidth: 18,
-      height: 18,
-      backgroundColor: theme.colors.error,
+      position: 'absolute', top: -4, right: -4,
+      minWidth: 18, height: 18,
+      backgroundColor: theme.colors.error, // Бейдж счетчика оставляем красным или меняем на акцент?
       borderRadius: theme.radius.full,
       display: activeFiltersCount > 0 ? 'flex' : 'none',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: 11,
-      fontWeight: 600,
-      color: '#fff',
-      padding: '0 5px',
+      alignItems: 'center', justifyContent: 'center',
+      fontSize: 11, fontWeight: 600, color: '#fff', padding: '0 5px',
     },
 
     categoriesRow: {
-      display: categories ? 'flex' : 'none',
-      alignItems: 'center',
-      overflowX: 'auto',
-      overflowY: 'hidden',
-      padding: '4px 12px 8px',
-      gap: 6,
-      scrollbarWidth: 'none',
-      msOverflowStyle: 'none',
-      WebkitOverflowScrolling: 'touch',
+      display: categories ? 'flex' : 'none', alignItems: 'center',
+      overflowX: 'auto', overflowY: 'hidden', padding: '4px 12px 8px', gap: 6,
+      scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch',
     },
     
+    // ✅ ИСПОЛЬЗУЕМ effectiveAccentColor ДЛЯ ТЕГОВ
     categoryPill: (isActive) => ({
-      display: 'flex',
-      alignItems: 'center',
-      gap: 6,
-      padding: '6px 14px',
-      backgroundColor: isActive ? theme.colors.primary : theme.colors.bg,
-      border: `1px solid ${isActive ? theme.colors.primary : theme.colors.border}`,
+      display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px',
+      backgroundColor: isActive ? effectiveAccentColor : theme.colors.bg,
+      border: `1px solid ${isActive ? effectiveAccentColor : theme.colors.border}`,
       borderRadius: theme.radius.full,
-      fontSize: 14,
-      fontWeight: isActive ? 600 : 500,
+      fontSize: 14, fontWeight: isActive ? 600 : 500,
       color: theme.colors.text,
-      cursor: 'pointer',
-      whiteSpace: 'nowrap',
-      flexShrink: 0,
-      transition: 'all 0.2s ease',
+      cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'all 0.2s ease',
     }),
 
     actionButton: {
-      position: 'relative',
-      width: 40,
-      height: 40,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'transparent',
-      border: 'none',
-      borderRadius: theme.radius.md,
-      cursor: 'pointer',
-      color: theme.colors.text,
-      transition: 'background-color 0.2s ease',
+      position: 'relative', width: 40, height: 40,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backgroundColor: 'transparent', border: 'none', borderRadius: theme.radius.md,
+      cursor: 'pointer', color: theme.colors.text, transition: 'background-color 0.2s ease',
     },
     
     actionBadge: {
-      position: 'absolute',
-      top: 4,
-      right: 4,
-      minWidth: 16,
-      height: 16,
-      backgroundColor: theme.colors.error,
-      borderRadius: theme.radius.full,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: 10,
-      fontWeight: 600,
-      color: '#fff',
-      padding: '0 4px',
+      position: 'absolute', top: 4, right: 4, minWidth: 16, height: 16,
+      backgroundColor: theme.colors.error, borderRadius: theme.radius.full,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 10, fontWeight: 600, color: '#fff', padding: '0 4px',
     },
   };
 
   return (
     <>
-      {/* STICKY HEADER (TITLE + CHILDREN - ВСЕГДА ВИДНЫ!) */}
+      {/* STICKY HEADER */}
       <div ref={stickyRef} style={styles.stickyHeader}>
         <div style={styles.titleRow}>
           <div style={styles.titleBlock}>
@@ -387,13 +274,9 @@ const AppHeader = ({
                   key={index}
                   style={styles.actionButton}
                   onClick={action.onClick}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.colors.bg}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   {action.icon}
-                  {action.badge && (
-                    <span style={styles.actionBadge}>{action.badge}</span>
-                  )}
+                  {action.badge && <span style={styles.actionBadge}>{action.badge}</span>}
                 </button>
               ))}
             </div>
@@ -401,14 +284,10 @@ const AppHeader = ({
         </div>
 
         {/* CHILDREN (MAINTABS) */}
-        {children && (
-          <div style={styles.childrenContainer}>
-            {children}
-          </div>
-        )}
+        {children && <div style={styles.childrenContainer}>{children}</div>}
       </div>
 
-      {/* COLLAPSIBLE (SEARCH + PILLS - СКРЫВАЮТСЯ!) */}
+      {/* COLLAPSIBLE (SEARCH + PILLS) */}
       {(showSearch || categories) && (
         <div ref={collapsibleRef} style={styles.collapsibleWrapper}>
           {showSearch && (
@@ -424,12 +303,7 @@ const AppHeader = ({
                   placeholder={searchPlaceholder}
                   style={styles.searchInput}
                 />
-                <button
-                  style={styles.clearButton}
-                  onClick={handleClearSearch}
-                  onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-                  onMouseLeave={(e) => e.currentTarget.style.opacity = 0.6}
-                >
+                <button style={styles.clearButton} onClick={handleClearSearch}>
                   <X size={14} />
                 </button>
               </div>
@@ -438,16 +312,6 @@ const AppHeader = ({
                 <button
                   style={styles.filterButton}
                   onClick={handleFiltersClick}
-                  onMouseEnter={(e) => {
-                    if (activeFiltersCount === 0) {
-                      e.currentTarget.style.backgroundColor = theme.colors.border;
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeFiltersCount === 0) {
-                      e.currentTarget.style.backgroundColor = theme.colors.bg;
-                    }
-                  }}
                 >
                   <Filter size={18} />
                   {activeFiltersCount > 0 && (
@@ -459,25 +323,12 @@ const AppHeader = ({
           )}
 
           {categories && (
-            <div 
-              ref={categoriesRef}
-              style={styles.categoriesRow}
-            >
+            <div ref={categoriesRef} style={styles.categoriesRow}>
               {categories.map((category) => (
                 <button
                   key={category.id}
                   style={styles.categoryPill(selectedCategory === category.id)}
                   onClick={() => handleCategoryClick(category.id)}
-                  onMouseEnter={(e) => {
-                    if (selectedCategory !== category.id) {
-                      e.currentTarget.style.backgroundColor = theme.colors.border;
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedCategory !== category.id) {
-                      e.currentTarget.style.backgroundColor = theme.colors.bg;
-                    }
-                  }}
                 >
                   {category.emoji && <span>{category.emoji}</span>}
                   {category.icon && category.icon}

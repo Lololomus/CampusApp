@@ -49,6 +49,19 @@ function Navigation() {
     setActiveTab(tabId);
   };
 
+  // ✅ ОПРЕДЕЛЯЕМ, АКТИВЕН ЛИ РЕЖИМ БАРАХОЛКИ
+  const isMarketContext = activeTab === 'market';
+  
+  // Цвета для маркета (зеленые)
+  const marketColor = theme.colors.market || '#10b981';
+  const marketGradient = `linear-gradient(135deg, ${theme.colors.marketGradientStart || '#059669'} 0%, ${theme.colors.marketGradientEnd || '#10b981'} 100%)`;
+  const marketShadow = `0 8px 24px rgba(16, 185, 129, 0.4)`;
+
+  // Цвета стандартные (фиолетовые)
+  const primaryColor = theme.colors.primary;
+  const primaryGradient = `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`;
+  const primaryShadow = `0 8px 24px rgba(135, 116, 225, 0.4)`;
+
   return (
     <nav style={styles.nav}>
       {tabs.map((tab) => {
@@ -61,7 +74,13 @@ function Navigation() {
             <div key={tab.id} style={styles.createButtonWrapper}>
               <button
                 onClick={() => handleTabClick(tab.id)}
-                style={styles.createButton}
+                style={{
+                  ...styles.createButton,
+                  // ✅ Динамическая смена цвета кнопки "+"
+                  background: isMarketContext ? marketGradient : primaryGradient,
+                  boxShadow: isMarketContext ? marketShadow : primaryShadow,
+                  borderColor: theme.colors.bgSecondary, // Явно указываем цвет границы, чтобы не было конфликтов
+                }}
               >
                 <Icon size={28} />
               </button>
@@ -69,17 +88,31 @@ function Navigation() {
           );
         }
 
+        // ✅ Определение цвета активной иконки
+        // Если это таб маркета и он активен -> зеленый. Иначе -> стандартный primary.
+        const activeColor = tab.id === 'market' ? marketColor : primaryColor;
+
         return (
           <button
             key={tab.id}
             onClick={() => handleTabClick(tab.id)}
             style={{
               ...styles.button,
-              color: isActive ? theme.colors.primary : theme.colors.textDisabled
+              color: isActive ? activeColor : theme.colors.textDisabled
             }}
           >
             <Icon size={24} />
-            {tab.label && <span style={styles.label}>{tab.label}</span>}
+            {tab.label && (
+              <span 
+                style={{
+                  ...styles.label,
+                  // Жирность шрифта для активного таба
+                  fontWeight: isActive ? 700 : 500 
+                }}
+              >
+                {tab.label}
+              </span>
+            )}
           </button>
         );
       })}
@@ -118,7 +151,7 @@ const styles = {
 
   label: {
     fontSize: 11,
-    fontWeight: theme.fontWeight.medium
+    transition: 'font-weight 0.2s ease', // Плавный переход жирности
   },
 
   createButtonWrapper: {
@@ -133,14 +166,14 @@ const styles = {
     width: 56,
     height: 56,
     borderRadius: theme.radius.full,
-    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
-    border: `4px solid ${theme.colors.bgSecondary}`,
-    color: theme.colors.text,
+    // background и boxShadow теперь задаются инлайново в компоненте
+    borderWidth: 4,
+    borderStyle: 'solid',
+    color: '#ffffff', // Всегда белый цвет иконки внутри
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    boxShadow: `0 8px 24px rgba(135, 116, 225, 0.4)`,
     transition: theme.transitions.normal
   }
 };

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { 
   Edit2, GraduationCap, Grid, ShoppingBag, 
   FileText, List, QrCode, Share2,
-  Heart, MessageCircle, Calendar, ChevronRight
+  Heart, MessageCircle, Calendar, ChevronRight, LogOut
 } from 'lucide-react';
 
 import { useStore } from '../store';
@@ -35,7 +35,7 @@ const TAB_COLORS = {
 };
 
 function Profile() {
-  const { user, setUser, datingProfile, setDatingProfile, setShowEditModal, setShowUserPosts } = useStore();
+  const { user, setUser, datingProfile, setDatingProfile, setShowEditModal, setShowUserPosts, logout } = useStore();
   
   const [activeTab, setActiveTab] = useState('about');
   const [loading, setLoading] = useState(false);
@@ -113,6 +113,12 @@ function Profile() {
       }
   };
 
+  const handleLogout = () => {
+    if (window.confirm("Сбросить кэш и выйти?")) {
+        logout();
+    }
+  };
+
   return (
     <div style={styles.container}>
       
@@ -182,14 +188,28 @@ function Profile() {
           </div>
         </div>
 
-        {/* Кнопка Редактировать */}
+        {/* Кнопки действий */}
         <div style={styles.actionContainer}>
+            {/* Старая кнопка редактирования */}
             <button 
                 style={styles.editButton} 
                 onClick={() => { hapticFeedback('light'); setShowEditModal(true); }}
             >
                 <Edit2 size={16} />
                 <span>Редактировать профиль</span>
+            </button>
+
+            <button 
+                style={{
+                    ...styles.editButton, 
+                    marginTop: 10, 
+                    borderColor: 'rgba(239, 68, 68, 0.3)', 
+                    color: '#ef4444'
+                }} 
+                onClick={handleLogout}
+            >
+                <LogOut size={16} />
+                <span>Выйти (Dev Reset)</span>
             </button>
         </div>
 

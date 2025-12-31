@@ -699,8 +699,7 @@ export async function getWhoLikedMe(limit = 20, offset = 0) {
 export async function updateDatingSettings(settings) {
   try {
     const telegram_id = getTelegramId();
-    // settings = { show_in_dating: true/false, ... }
-    const response = await api.patch('/me/dating-settings', settings, {
+    const response = await api.patch('/dating/settings', settings, {
       params: { telegram_id }
     });
     return response.data;
