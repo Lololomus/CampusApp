@@ -759,8 +759,8 @@ def get_dating_feed(
     """
     
     # ID тех, кого я уже лайкнул/скипнул
-    liked_ids = db.query(models.Like.liked_id).filter(
-        models.Like.liker_id == current_user_id
+    liked_ids = db.query(models.DatingLike.whom_liked_id).filter(
+        models.DatingLike.who_liked_id == current_user_id
     ).subquery()
     
     # Базовый запрос: Джойним User и DatingProfile
@@ -819,23 +819,24 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
         return {"success": False, "error": "Нельзя лайкнуть себя"}
     
     # 1. Проверяем, не лайкали ли уже
-    existing = db.query(models.Like).filter(
-        models.Like.liker_id == liker_id,
-        models.Like.liked_id == liked_id
+    existing = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == liker_id,
+        models.DatingLike.whom_liked_id == liked_id
     ).first()
     
     if existing:
         return {"success": True, "is_match": False, "already_liked": True} # Не ошибка, просто игнор
     
     # 2. Создаем лайк
-    new_like = models.Like(liker_id=liker_id, liked_id=liked_id)
+    new_like = models.DatingLike(who_liked_id=liker_id, whom_liked_id=liked_id, is_like=True)
     db.add(new_like)
     db.commit()
     
     # 3. Проверяем ВЗАИМНОСТЬ (Ищет лайк в обратную сторону)
-    reverse_like = db.query(models.Like).filter(
-        models.Like.liker_id == liked_id,
-        models.Like.liked_id == liker_id
+    reverse_like = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == liked_id,
+        models.DatingLike.whom_liked_id == liker_id,
+        models.DatingLike.is_like == True
     ).first()
     
     is_match = False
@@ -871,19 +872,53 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
         "matched_user": matched_user
     }
 
+def create_dislike(db: Session, disliker_id: int, disliked_id: int) -> dict:
+    """
+    Создать дизлайк (skip).
+    Не создаёт матч, просто помечает "не показывать больше".
+    """
+    if disliker_id == disliked_id:
+        return {"success": False, "error": "Нельзя дизлайкнуть себя"}
+    
+    # Проверяем существующий лайк/дизлайк
+    existing = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == disliker_id,
+        models.DatingLike.whom_liked_id == disliked_id
+    ).first()
+    
+    if existing:
+        # Обновляем на dislike
+        existing.is_like = False
+        db.commit()
+        return {"success": True, "updated": True}
+    
+    # Создаём новый dislike
+    new_dislike = models.DatingLike(
+        who_liked_id=disliker_id,
+        whom_liked_id=disliked_id,
+        is_like=False  # Ключевое отличие от like
+    )
+    db.add(new_dislike)
+    db.commit()
+    
+    return {"success": True, "updated": False}
+
 def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.User]:
     """Кто лайкнул меня, но кого я ЕЩЕ НЕ лайкнул в ответ (чтобы не показывать матчи в лайках)"""
     
     # Мои лайки (кого я уже оценил)
-    my_likes = db.query(models.Like.liked_id).filter(models.Like.liker_id == user_id).subquery()
+    my_likes = db.query(models.DatingLike.whom_liked_id).filter(
+    models.DatingLike.who_liked_id == user_id
+    ).subquery()
     
     # Те кто лайкнул меня
-    users = db.query(models.User).join(models.Like, models.Like.liker_id == models.User.id)\
-        .filter(
-            models.Like.liked_id == user_id,
+    users = db.query(models.User).join(models.DatingLike, models.DatingLike.who_liked_id == models.User.id)\
+    .filter(
+        models.DatingLike.whom_liked_id == user_id,
+        models.DatingLike.is_like == True,
             models.User.id.notin_(my_likes) # Исключаем тех, кого я уже лайкнул (это уже матчи)
         )\
-        .order_by(models.Like.created_at.desc())\
+        .order_by(models.DatingLike.created_at.desc())\
         .offset(offset)\
         .limit(limit)\
         .all()
@@ -893,11 +928,14 @@ def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0
 def get_dating_stats(db: Session, user_id: int) -> dict:
     """Счетчики лайков и матчей"""
     # Входящие лайки (без моих ответов)
-    my_likes = db.query(models.Like.liked_id).filter(models.Like.liker_id == user_id).subquery()
-    
-    likes_count = db.query(func.count(models.Like.id)).filter(
-        models.Like.liked_id == user_id,
-        models.Like.liker_id.notin_(my_likes)
+    my_likes = db.query(models.DatingLike.whom_liked_id).filter(
+        models.DatingLike.who_liked_id == user_id
+    ).subquery()
+
+    likes_count = db.query(func.count(models.DatingLike.id)).filter(
+        models.DatingLike.whom_liked_id == user_id,
+        models.DatingLike.is_like == True,  # Только лайки
+        models.DatingLike.who_liked_id.notin_(my_likes)
     ).scalar()
     
     matches_count = db.query(func.count(models.Match.id)).filter(

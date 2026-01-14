@@ -15,43 +15,6 @@ export const useStore = create(
       setUser: (user) => set({ user, isRegistered: true }),
       logout: () => set({ user: {}, isRegistered: false }),
 
-      // ===== DATING STATE (ЗНАКОМСТВА) =====
-      datingProfile: null, // null = не зарегистрирован в знакомствах
-      setDatingProfile: (profile) => set({ datingProfile: profile }),
-      
-      // Очередь анкет (Свайпы)
-      profilesQueue: [],
-      currentProfile: null,
-      
-      setCurrentProfile: (profile) => set({ currentProfile: profile }),
-      
-      addProfilesToQueue: (newProfiles) => set((state) => ({
-        profilesQueue: [...state.profilesQueue, ...newProfiles]
-      })),
-      
-      removeCurrentProfile: () => set((state) => {
-        // Удаляем текущий, берем следующий из очереди
-        const [removed, ...rest] = state.profilesQueue; 
-        const next = rest.length > 0 ? rest[0] : null; 
-        return { 
-          profilesQueue: rest,
-          currentProfile: next 
-        };
-      }),
-      
-      clearProfilesQueue: () => set({ profilesQueue: [], currentProfile: null }),
-
-      // Лайки, Мэтчи и Статистика
-      likesCount: 0,
-      whoLikedMe: [], // Список людей в табе "Симпатии"
-      setWhoLikedMe: (users) => set({ whoLikedMe: users }),
-      
-      matchedUser: null,
-      showMatchModal: false,
-      setShowMatchModal: (show, user = null) => set({ showMatchModal: show, matchedUser: user }),
-      
-      updateDatingStats: (stats) => set({ likesCount: stats.likes_count || 0 }),
-
       // ===== NAVIGATION STATE =====
       activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile' | 'market'
       feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
@@ -157,14 +120,29 @@ export const useStore = create(
       
       clearRequestDraft: () => set({ requestDraft: {} }),
 
-      // ===== DATING STATE =====
-      // Профили (карточки)
+      // ===== DATING STATE (БЕЗ ДУБЛЕЙ) =====
+      
+      // Dating Profile
+      datingProfile: null, // null = не зарегистрирован в знакомствах
+      setDatingProfile: (profile) => set({ datingProfile: profile }),
+      
+      // Профили (карточки для свайпа)
       currentProfile: null,
       profilesQueue: [],
+      isLoadingProfiles: false, // ✅ NEW: флаг загрузки
+      hasMoreProfiles: true, // ✅ NEW: есть ли ещё анкеты
+      
       setCurrentProfile: (profile) => set({ currentProfile: profile }),
+      
+      setIsLoadingProfiles: (isLoading) => set({ isLoadingProfiles: isLoading }),
+      
+      setHasMoreProfiles: (hasMore) => set({ hasMoreProfiles: hasMore }),
+      
       addProfilesToQueue: (profiles) => set((state) => ({
         profilesQueue: [...state.profilesQueue, ...profiles],
       })),
+      
+      // ✅ УЛУЧШЕНО: removeCurrentProfile с prefetch логикой
       removeCurrentProfile: () => set((state) => {
         console.log('🔄 removeCurrentProfile вызван');
         console.log('📊 До: currentProfile =', state.currentProfile?.id, ', queue length =', state.profilesQueue.length);
@@ -174,16 +152,39 @@ export const useStore = create(
         
         console.log('📊 После: newCurrent =', newCurrent?.id, ', newQueue length =', newQueue.length);
         
+        // ✅ PREFETCH: если осталось < 3 анкет и не идёт загрузка
+        if (newQueue.length < 3 && !state.isLoadingProfiles && state.hasMoreProfiles) {
+          console.log('⚡ PREFETCH TRIGGERED: осталось', newQueue.length, 'анкет');
+          // Вызываем loadMore через callback (будет реализовано в DatingFeed.js)
+          // Здесь только устанавливаем флаг
+          setTimeout(() => {
+            const currentState = get();
+            if (currentState.onPrefetchNeeded) {
+              currentState.onPrefetchNeeded();
+            }
+          }, 0);
+        }
+        
         return {
           currentProfile: newCurrent,
           profilesQueue: newQueue,
         };
       }),
-      clearProfilesQueue: () => set({ profilesQueue: [], currentProfile: null }),
+      
+      clearProfilesQueue: () => set({ 
+        profilesQueue: [], 
+        currentProfile: null,
+        hasMoreProfiles: true 
+      }),
+      
+      // ✅ NEW: Callback для prefetch (устанавливается в DatingFeed.js)
+      onPrefetchNeeded: null,
+      setOnPrefetchNeeded: (callback) => set({ onPrefetchNeeded: callback }),
 
       // Likes & Matches
       whoLikedMe: [],
       setWhoLikedMe: (users) => set({ whoLikedMe: users }),
+      
       myMatches: [],
       setMyMatches: (matches) => set({ myMatches: matches }),
 
@@ -193,6 +194,7 @@ export const useStore = create(
       matchedUser: null,
       
       setShowLikesModal: (show) => set({ showLikesModal: show }),
+      
       setShowMatchModal: (show, user = null) => set({
         showMatchModal: show,
         matchedUser: user,
@@ -201,6 +203,7 @@ export const useStore = create(
       // Stats
       likesCount: 0,
       matchesCount: 0,
+      
       updateDatingStats: (stats) => set({
         likesCount: stats.likes_count || 0,
         matchesCount: stats.matches_count || 0,
@@ -223,7 +226,7 @@ export const useStore = create(
       myMarketItems: [], // Мои объявления
       marketFavorites: [], // Избранные товары
       currentMarketItem: null, // Открытый товар (детальная модалка)
-      editingMarketItem: null, // ✅ NEW: Товар, который редактируется
+      editingMarketItem: null, // Товар, который редактируется
       
       marketFilters: {
         category: 'all',
@@ -238,7 +241,6 @@ export const useStore = create(
       // Market Actions
       setMarketItems: (items) => set({ marketItems: items }),
       
-      // ✅ NEW: Установить редактируемый товар
       setEditingMarketItem: (item) => set({ editingMarketItem: item }),
 
       addMarketItem: (newItem) => set((state) => ({

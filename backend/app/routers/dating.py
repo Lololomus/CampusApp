@@ -62,10 +62,37 @@ async def create_or_update_dating_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # === ВАЛИДАЦИЯ БИО ===
+    if bio:
+        # 1. Проверка длины
+        if len(bio) < 10:
+            raise HTTPException(400, detail="Минимум 10 символов в био")
+        if len(bio) > 200:
+            raise HTTPException(400, detail="Максимум 200 символов в био")
+        
+        # 2. Проверка что не только эмодзи
+        import re
+        bio_without_emoji = re.sub(r'[\U00010000-\U0010ffff]', '', bio, flags=re.UNICODE)
+        bio_letters_only = re.sub(r'[^\w\s]', '', bio_without_emoji, flags=re.UNICODE)
+        if len(bio_letters_only.strip()) < 10:
+            raise HTTPException(400, detail="Напиши хотя бы пару слов 😊")
+
     saved_photos_meta = []
     if photos:
         saved_photos_meta = await save_dating_photos(photos)
-    
+
+    # === ВАЛИДАЦИЯ ФОТО ===
+    # Проверяем: либо загрузили новые фото, либо уже есть в профиле
+    profile = crud.get_dating_profile(db, user.id)
+
+    # Если это НОВЫЙ профиль и нет фото → ошибка
+    if not profile and not saved_photos_meta:
+        raise HTTPException(400, detail="Минимум 1 фото обязательно")
+
+    # Если это UPDATE и удаляют все фото → ошибка
+    if profile and not saved_photos_meta and not profile.photos:
+        raise HTTPException(400, detail="Минимум 1 фото обязательно")
+
     profile = crud.get_dating_profile(db, user.id)
     goals_list = json.loads(goals) if goals else []
     
@@ -135,6 +162,32 @@ def like_user(
         response["matched_user"] = schemas.UserShort.from_orm(result["matched_user"])
         
     return response
+
+@router.post("/{target_user_id}/dislike")
+def dislike_user(
+    target_user_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Дизлайк (skip) пользователя.
+    Записываем в DatingLike с is_like=False
+    """
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(404, detail="Пользователь не найден")
+    
+    # Проверка что не себя
+    if target_user_id == user.id:
+        raise HTTPException(400, detail="Нельзя дизлайкнуть себя")
+    
+    # Создаём запись (или обновляем)
+    result = crud.create_dislike(db, user.id, target_user_id)
+    
+    if not result["success"]:
+        raise HTTPException(400, detail=result.get("error"))
+    
+    return {"success": True}
 
 @router.get("/likes-received", response_model=List[schemas.DatingProfile])
 def get_likes_received(

@@ -1,9 +1,10 @@
 // ===== 📄 ФАЙЛ: src/components/dating/DatingFeed.js =====
 
 import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Heart, X, ChevronLeft } from 'lucide-react';
 import { useStore } from '../../store';
-import { getDatingFeed, likeUser, getDatingStats, getWhoLikedMe, getMyDatingProfile } from '../../api';
+import { getDatingFeed, likeUser, dislikeUser, getDatingStats, getWhoLikedMe, getMyDatingProfile } from '../../api';
 import AppHeader from '../shared/AppHeader';
 import ProfileCard from './ProfileCard';
 import MatchModal from './MatchModal';
@@ -75,6 +76,11 @@ function DatingFeed() {
     setShowMatchModal,
     whoLikedMe,
     setWhoLikedMe,
+    isLoadingProfiles,
+    setIsLoadingProfiles,
+    hasMoreProfiles,
+    setHasMoreProfiles,
+    setOnPrefetchNeeded,
   } = useStore();
 
   // ===== STATE =====
@@ -126,6 +132,8 @@ function DatingFeed() {
     if (isLoadingRef.current) return;
     try {
       isLoadingRef.current = true;
+      setIsLoadingProfiles(true); // ✅ Устанавливаем флаг
+      
       if (reset) {
         setLoading(true);
         offset.current = 0;
@@ -134,13 +142,14 @@ function DatingFeed() {
       let profiles = [];
       if (USE_MOCK_DATA) {
         await new Promise(r => setTimeout(r, 600)); 
-        profiles = reset ? MOCK_PROFILES : []; 
+        profiles = reset ? MOCK_PROFILES : []; // При reset даём моки, иначе пусто
       } else {
-        // API должно уметь отдавать профили даже гостям (или используем мок)
         profiles = await getDatingFeed(10, offset.current);
       }
 
+      // ✅ Проверка на конец
       if (profiles.length === 0) {
+        setHasMoreProfiles(false);
         if (reset) setCurrentProfile(null);
       } else if (reset || !currentProfile) {
         setCurrentProfile(profiles[0]);
@@ -154,6 +163,7 @@ function DatingFeed() {
       console.error('Error loading profiles:', error);
     } finally {
       setLoading(false);
+      setIsLoadingProfiles(false); // ✅ Сбрасываем флаг
       isLoadingRef.current = false;
     }
   };
@@ -183,6 +193,14 @@ function DatingFeed() {
     }
   }, [checkingProfile]); // Запускаем как только проверили статус
 
+  // ✅ Регистрируем prefetch callback
+  useEffect(() => {
+    setOnPrefetchNeeded(() => {
+      console.log('🔥 Prefetch triggered from store!');
+      loadProfiles(false); // Догружаем без reset
+    });
+  }, [setOnPrefetchNeeded]);
+
   useEffect(() => {
     if (activeTab === 'likes' && !isGuestMode) loadLikes();
   }, [activeTab]);
@@ -209,16 +227,25 @@ function DatingFeed() {
     }
   };
 
-  const handleSkip = () => {
-    // Гость МОЖЕТ свайпать влево (смотреть следующего), 
-    // но давай для агрессивности тоже покажем онбординг?
-    // Или дадим посмотреть пару анкет?
-    // Решение: Свайп влево (Крестик) работает (пусть смотрят), но свайп вправо (Лайк) триггерит.
-    
+  const handleSkip = async () => {
     if (isAnimating) return;
     haptic('light');
     setSwipeDirection('left');
     setIsAnimating(true);
+    
+    // ✅ Отправляем dislike (если не гость)
+    if (!isGuestMode && currentProfile?.id) {
+      try {
+        if (USE_MOCK_DATA) {
+          console.log('🔴 Mock: Disliked user', currentProfile.id);
+        } else {
+          await dislikeUser(currentProfile.id);
+        }
+      } catch (e) {
+        console.error('Ошибка dislike:', e);
+      }
+    }
+    
     setTimeout(() => {
       removeCurrentProfile();
       setIsAnimating(false);
@@ -319,22 +346,24 @@ function DatingFeed() {
         {activeTab === 'profiles' && !viewingProfile && (
           <>
             <div style={styles.cardWrapper}>
-              {loading ? <ProfileCardSkeleton /> : currentProfile ? (
+              {loading ? (
+                <ProfileCardSkeleton />
+              ) : !currentProfile ? (
+                <div style={styles.emptyState}>
+                  <div style={styles.emptyEmoji}>😴</div>
+                  <div style={styles.emptyTitle}>Анкеты закончились</div>
+                </div>
+              ) : (
                 <ProfileCard
                   profile={currentProfile}
                   onSkip={handleSkip}
                   onAction={handleLike}
                   isAnimating={isAnimating}
                   swipeDirection={swipeDirection}
-                  // ✨ ГЛАВНАЯ МАГИЯ: БЛЮР ЕСЛИ ГОСТЬ
-                  isBlurred={isGuestMode} 
+                  isBlurred={isGuestMode}
                   onRegisterTrigger={triggerOnboarding}
+                  isInteractive={true}
                 />
-              ) : (
-                <div style={styles.emptyState}>
-                  <div style={styles.emptyEmoji}>😴</div>
-                  <div style={styles.emptyTitle}>Анкеты закончились</div>
-                </div>
               )}
             </div>
 
@@ -418,8 +447,14 @@ const styles = {
   badge: { backgroundColor: '#fff', color: '#f5576c', fontSize: 11, fontWeight: 800, padding: '1px 6px', borderRadius: 10, minWidth: 18 },
 
   content: { display: 'flex', flexDirection: 'column', height: '100%', paddingTop: 'calc(var(--header-padding, 104px) + 16px)', transition: 'padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1)' },
-  cardWrapper: { flex: 1, padding: '0 12px 160px 12px', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)' },
-  
+  cardWrapper: { 
+    position: 'relative',
+    flex: 1, 
+    padding: '0 12px 160px 12px',
+    height: 'calc(100vh - 180px)',
+    overflow: 'hidden',
+  },
+
   actionsContainer: { position: 'fixed', bottom: 110, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 24, zIndex: 20, pointerEvents: 'none' },
   actionButtonSkip: { width: 64, height: 64, borderRadius: '50%', border: 'none', background: theme.colors.card, color: theme.colors.error, boxShadow: theme.shadows.lg, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', pointerEvents: 'auto', transition: 'transform 0.1s' },
   actionButtonLike: { width: 64, height: 64, borderRadius: '50%', border: 'none', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: '#fff', boxShadow: '0 4px 20px rgba(245, 87, 108, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', pointerEvents: 'auto', transition: 'transform 0.1s' },

@@ -677,6 +677,15 @@ export async function likeUser(targetUserId) {
   return response.data;
 }
 
+// 5.5. Дизлайк (Skip)
+export async function dislikeUser(targetUserId) {
+  const telegram_id = getTelegramId();
+  const response = await api.post(`/dating/${targetUserId}/dislike`, null, { 
+    params: { telegram_id } 
+  });
+  return response.data;
+}
+
 // 6. Статистика
 export async function getDatingStats() {
   const telegram_id = getTelegramId();

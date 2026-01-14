@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, X, Heart, ChevronRight } from 'lucide-react';
 import { useStore } from '../../store';
 import { createDatingProfile } from '../../api';
-import { processImageFiles } from '../../utils/media';
+import { processImageFiles, revokeObjectURLs } from '../../utils/media';
 import { hapticFeedback } from '../../utils/telegram';
 
 // Z-Index для перекрытия (как в основном онбординге)
@@ -25,6 +25,16 @@ function DatingOnboarding() {
   const [goals, setGoals] = useState([]);
 
   const fileInputRef = useRef(null);
+
+  // ✅ Cleanup превью при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      if (previews.length > 0) {
+        console.log('🧹 Очистка', previews.length, 'превью');
+        revokeObjectURLs(previews);
+      }
+    };
+  }, [previews]);
 
   // ===== НАВИГАЦИЯ (с анимациями как в Onboarding.js) =====
 
@@ -78,9 +88,31 @@ function DatingOnboarding() {
   // ===== ОТПРАВКА =====
 
   const handleSubmit = async () => {
+    // ✅ Валидация фото
     if (photos.length === 0) {
       alert('Загрузите хотя бы одно фото');
       return;
+    }
+
+    // ✅ Валидация био
+    if (bio.trim().length > 0) {
+      // Проверка длины
+      if (bio.trim().length < 10) {
+        alert('Био должно содержать минимум 10 символов');
+        return;
+      }
+      if (bio.trim().length > 200) {
+        alert('Био должно содержать максимум 200 символов');
+        return;
+      }
+
+      // Проверка что не только эмодзи
+      const bioWithoutEmoji = bio.replace(/[\u{1F300}-\u{1F9FF}]/gu, '');
+      const lettersOnly = bioWithoutEmoji.replace(/[^\wа-яА-ЯёЁ]/g, '');
+      if (lettersOnly.length < 10) {
+        alert('Напиши хотя бы пару слов 😊');
+        return;
+      }
     }
 
     setLoading(true);
@@ -92,7 +124,7 @@ function DatingOnboarding() {
       const profileData = {
         gender,
         looking_for: lookingFor,
-        bio,
+        bio: bio.trim() || undefined, // Отправляем только если есть
         goals,
         photos
       };
@@ -102,7 +134,9 @@ function DatingOnboarding() {
       
     } catch (error) {
       console.error(error);
-      alert('Ошибка создания анкеты');
+      // ✅ Показываем ошибку от сервера
+      const errorMsg = error.response?.data?.detail || 'Ошибка создания анкеты';
+      alert(errorMsg);
       setStep(4); // Вернуть назад
       setLoading(false);
     }
@@ -255,16 +289,16 @@ function DatingOnboarding() {
             <div style={styles.stepSubtitle}>Шаг 4 из 4 · Финал</div>
 
             <div className="fade-in-up">
-              <label style={styles.label}>Пару слов о себе</label>
+              <label style={styles.label}>Пару слов о себе (минимум 10 символов)</label>
               <textarea
                 placeholder="Учусь на архитектора, люблю техно..."
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 style={styles.textarea}
                 rows={4}
-                maxLength={300}
+                maxLength={200}
               />
-              <div style={styles.charCount}>{bio.length}/300</div>
+              <div style={styles.charCount}>{bio.length}/200</div>
             </div>
 
             <div className="fade-in-up" style={{ animationDelay: '0.1s', marginTop: 20 }}>
@@ -455,6 +489,7 @@ const styles = {
     boxSizing: 'border-box', fontFamily: 'inherit'
   },
   charCount: { fontSize: '12px', color: '#666', textAlign: 'right', marginTop: '4px' },
+  hint: { fontSize: '12px', color: '#f5576c', marginTop: '4px' },
   tagsContainer: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   tag: {
     padding: '8px 16px', borderRadius: 20,
