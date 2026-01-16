@@ -639,6 +639,20 @@ export async function createDatingProfile(data) {
   if (data.bio) formData.append('bio', data.bio);
   if (data.goals) formData.append('goals', JSON.stringify(data.goals));
   
+  // Новые поля: lifestyle и prompt
+  if (data.lifestyle && data.lifestyle.length > 0) {
+    formData.append('lifestyle', JSON.stringify(data.lifestyle.slice(0, 2))); // макс 2
+  } else {
+    formData.append('lifestyle', '[]');
+  }
+  
+  if (data.prompt_question) {
+    formData.append('prompt_question', data.prompt_question);
+  }
+  if (data.prompt_answer) {
+    formData.append('prompt_answer', data.prompt_answer);
+  }
+  
   if (data.photos && data.photos.length > 0) {
     data.photos.forEach((file) => {
       formData.append('photos', file);
@@ -652,11 +666,22 @@ export async function createDatingProfile(data) {
   return response.data;
 }
 
+
 // 3. Обновление анкеты
-export async function updateDatingProfile(data) {
-  const telegram_id = getTelegramId();
-  const response = await api.patch('/dating/profile', data, { params: { telegram_id } });
-  return response.data;
+export async function updateDatingProfile(formData) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.post('/dating/profile', formData, {
+      params: { telegram_id },
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка обновления dating профиля:', error);
+    throw error;
+  }
 }
 
 // 4. Получение ленты

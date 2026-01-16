@@ -357,7 +357,6 @@ export const useStore = create(
         user: state.user,
         activeTab: state.activeTab,
         feedMode: state.feedMode,
-        datingProfile: state.datingProfile,
         feedSubTab: state.feedSubTab,
         likedPosts: state.likedPosts,
         requestDraft: state.requestDraft,

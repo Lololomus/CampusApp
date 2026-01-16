@@ -118,3 +118,10 @@ export const MOCK_COMMENTS = [
  * @property {string} matched_at
  * @property {Object} matched_user
  */
+
+// ========== ONBOARDING КОНСТАНТЫ ==========
+export const UNIVERSITIES = ['МГСУ', 'РУК', 'МГУ', 'ВШЭ', 'МГТУ', 'РАНХиГС', 'Другой'];
+
+export const INSTITUTES = ['ИЦИТ', 'ИСА', 'ИЭУИС', 'Юридический', 'Экономический', 'Менеджмент', 'Гостиничный сервис', 'Другой'];
+
+export const COURSES = [1, 2, 3, 4, 5, 6];

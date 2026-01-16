@@ -596,6 +596,9 @@ class DatingProfileCreate(BaseModel):
     looking_for: str
     bio: Optional[str] = None
     goals: List[str] = []
+    lifestyle: List[str] = Field(default=[], max_length=2)  # макс 2 элемента
+    prompt_question: Optional[str] = Field(None, max_length=100)
+    prompt_answer: Optional[str] = Field(None, max_length=100)
     # Фотографии загружаются отдельным списком файлов (UploadFile), 
     # но здесь мы можем принимать метаданные, если нужно.
 
@@ -616,6 +619,8 @@ class DatingProfileResponse(BaseModel):
     bio: Optional[str] = None
     goals: List[str] = []
     photos: List[Any] = [] # List[ImageMeta] или List[str]
+    lifestyle: List[str] = []
+    prompts: Optional[Dict[str, str]] = None  # {"question": "...", "answer": "..."}
     is_active: bool
     
     # Данные пользователя (для удобства)
@@ -625,7 +630,7 @@ class DatingProfileResponse(BaseModel):
     institute: str
     course: Optional[int] = None
 
-    @field_validator('photos', 'goals', mode='before')
+    @field_validator('photos', 'goals', 'lifestyle', 'prompts', mode='before')
     @classmethod
     def parse_json(cls, v):
         if isinstance(v, str):
@@ -633,8 +638,8 @@ class DatingProfileResponse(BaseModel):
             try:
                 return json.loads(v)
             except:
-                return []
-        return v or []
+                return [] if v != 'prompts' else None
+        return v or ([] if v != 'prompts' else None)
 
     class Config:
         from_attributes = True

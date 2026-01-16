@@ -3,12 +3,15 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Any
 import json
 
+
 from app.database import get_db
 from app import models, schemas, crud
 from app.utils import process_image_sync, get_image_urls
 
+
 # Префикс пустой, так как подключаем как "/dating" в main
 router = APIRouter(prefix="/dating", tags=["dating"])
+
 
 # --- Helper ---
 async def save_dating_photos(files: List[UploadFile]) -> List[dict]:
@@ -24,7 +27,9 @@ async def save_dating_photos(files: List[UploadFile]) -> List[dict]:
             print(f"Error processing image: {e}")
     return saved_photos
 
+
 # --- Endpoints ---
+
 
 @router.get("/profile/me", response_model=Optional[schemas.DatingProfileResponse])
 def get_my_dating_profile(telegram_id: int, db: Session = Depends(get_db)):
@@ -36,6 +41,14 @@ def get_my_dating_profile(telegram_id: int, db: Session = Depends(get_db)):
     if not profile:
         return None 
     
+    # Парсим prompts из JSON строки в dict
+    prompts_dict = None
+    if profile.prompts:
+        try:
+            prompts_dict = json.loads(profile.prompts)
+        except:
+            prompts_dict = None
+    
     return {
         **profile.__dict__,
         "user_id": user.id,
@@ -45,8 +58,11 @@ def get_my_dating_profile(telegram_id: int, db: Session = Depends(get_db)):
         "institute": user.institute,
         "course": user.course,
         "photos": get_image_urls(profile.photos) if profile.photos else [],
-        "goals": json.loads(profile.goals) if profile.goals else []
+        "goals": json.loads(profile.goals) if profile.goals else [],
+        "lifestyle": json.loads(profile.lifestyle) if profile.lifestyle else [],
+        "prompts": prompts_dict
     }
+
 
 @router.post("/profile")
 async def create_or_update_dating_profile(
@@ -55,7 +71,11 @@ async def create_or_update_dating_profile(
     looking_for: str = Form(...),
     bio: Optional[str] = Form(None),
     goals: str = Form("[]"),
+    lifestyle: str = Form("[]"),
+    prompt_question: Optional[str] = Form(None),
+    prompt_answer: Optional[str] = Form(None),
     photos: List[UploadFile] = File(None),
+    keep_photos: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -64,45 +84,64 @@ async def create_or_update_dating_profile(
 
     # === ВАЛИДАЦИЯ БИО ===
     if bio:
-        # 1. Проверка длины
         if len(bio) < 10:
             raise HTTPException(400, detail="Минимум 10 символов в био")
         if len(bio) > 200:
             raise HTTPException(400, detail="Максимум 200 символов в био")
         
-        # 2. Проверка что не только эмодзи
         import re
         bio_without_emoji = re.sub(r'[\U00010000-\U0010ffff]', '', bio, flags=re.UNICODE)
         bio_letters_only = re.sub(r'[^\w\s]', '', bio_without_emoji, flags=re.UNICODE)
         if len(bio_letters_only.strip()) < 10:
             raise HTTPException(400, detail="Напиши хотя бы пару слов 😊")
 
+    # 1. НОВЫЕ ФОТО
     saved_photos_meta = []
     if photos:
         saved_photos_meta = await save_dating_photos(photos)
-
-    # === ВАЛИДАЦИЯ ФОТО ===
-    # Проверяем: либо загрузили новые фото, либо уже есть в профиле
-    profile = crud.get_dating_profile(db, user.id)
-
-    # Если это НОВЫЙ профиль и нет фото → ошибка
-    if not profile and not saved_photos_meta:
+    
+    # 2. СТАРЫЕ ФОТО
+    keep_photos_list = []
+    if keep_photos:
+        try:
+            keep_photos_list = json.loads(keep_photos)
+            print(f"📸 Сохраняем старые фото: {len(keep_photos_list)}")
+        except Exception as e:
+            print(f"⚠️ Ошибка парсинга keep_photos: {e}")
+    
+    # 3. ОБЪЕДИНЯЕМ
+    final_photos = keep_photos_list + saved_photos_meta
+    print(f"📤 Итого фото: {len(final_photos)}")
+    
+    # 4. ВАЛИДАЦИЯ
+    if not final_photos:
         raise HTTPException(400, detail="Минимум 1 фото обязательно")
 
-    # Если это UPDATE и удаляют все фото → ошибка
-    if profile and not saved_photos_meta and not profile.photos:
-        raise HTTPException(400, detail="Минимум 1 фото обязательно")
-
+    # 5. СОХРАНЕНИЕ
     profile = crud.get_dating_profile(db, user.id)
     goals_list = json.loads(goals) if goals else []
+    lifestyle_list = json.loads(lifestyle) if lifestyle else []
+    
+    # Валидация lifestyle (макс 2)
+    if len(lifestyle_list) > 2:
+        lifestyle_list = lifestyle_list[:2]
+    
+    # Формируем prompts
+    prompts_dict = None
+    if prompt_question and prompt_answer:
+        prompts_dict = {
+            "question": prompt_question[:100],  # макс 100 символов
+            "answer": prompt_answer[:100]
+        }
     
     if profile:
         profile.gender = gender
         profile.looking_for = looking_for
         profile.bio = bio
         profile.goals = json.dumps(goals_list)
-        if saved_photos_meta:
-            profile.photos = json.dumps(saved_photos_meta)
+        profile.photos = json.dumps(final_photos)
+        profile.lifestyle = json.dumps(lifestyle_list)
+        profile.prompts = json.dumps(prompts_dict) if prompts_dict else None
         profile.is_active = True
         user.show_in_dating = True 
     else:
@@ -112,15 +151,40 @@ async def create_or_update_dating_profile(
             looking_for=looking_for,
             bio=bio,
             goals=json.dumps(goals_list),
-            photos=json.dumps(saved_photos_meta) if saved_photos_meta else "[]",
+            photos=json.dumps(final_photos),
+            lifestyle=json.dumps(lifestyle_list),
+            prompts=json.dumps(prompts_dict) if prompts_dict else None,
             is_active=True
         )
         db.add(profile)
-        user.show_in_dating = True 
+        user.show_in_dating = True
+
 
     db.commit()
     db.refresh(profile)
-    return {"status": "ok", "profile_id": profile.id}
+    
+    # ✅ ВОЗВРАЩАЕМ ПОЛНЫЙ ПРОФИЛЬ (КАК В GET /profile/me)
+    prompts_dict = None
+    if profile.prompts:
+        try:
+            prompts_dict = json.loads(profile.prompts)
+        except:
+            prompts_dict = None
+    
+    return {
+        **profile.__dict__,
+        "user_id": user.id,
+        "name": user.name,
+        "age": user.age,
+        "university": user.university,
+        "institute": user.institute,
+        "course": user.course,
+        "photos": get_image_urls(profile.photos) if profile.photos else [],
+        "goals": json.loads(profile.goals) if profile.goals else [],
+        "lifestyle": json.loads(profile.lifestyle) if profile.lifestyle else [],
+        "prompts": prompts_dict
+    }
+
 
 @router.get("/feed")
 def get_dating_feed(
@@ -137,6 +201,7 @@ def get_dating_feed(
     looking_for = my_profile.looking_for if my_profile else None
 
     return crud.get_dating_feed(db, user.id, limit, offset, looking_for)
+
 
 @router.post("/{target_user_id}/like", response_model=schemas.LikeResult)
 def like_user(
@@ -163,6 +228,7 @@ def like_user(
         
     return response
 
+
 @router.post("/{target_user_id}/dislike")
 def dislike_user(
     target_user_id: int,
@@ -188,6 +254,7 @@ def dislike_user(
         raise HTTPException(400, detail=result.get("error"))
     
     return {"success": True}
+
 
 @router.get("/likes-received", response_model=List[schemas.DatingProfile])
 def get_likes_received(
@@ -220,12 +287,13 @@ def get_likes_received(
             "photos": photos,
             "university": u.university,
             "institute": u.institute,
-            "course": u.course, # Приватность учтена во фронтенде или здесь? Сделаем здесь
+            "course": u.course,
             "group": None if u.hide_course_group else u.group,
             "interests": interests_list,
-            "user_id": u.id # Schema может требовать
+            "user_id": u.id
         })
     return result
+
 
 @router.get("/matches", response_model=List[schemas.MatchResponse])
 def get_my_matches(
@@ -250,6 +318,7 @@ def get_my_matches(
         })
     return result
 
+
 @router.get("/stats", response_model=schemas.DatingStatsResponse)
 def get_dating_stats(
     telegram_id: int = Query(...),
@@ -259,6 +328,7 @@ def get_dating_stats(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return crud.get_dating_stats(db, user.id)
+
 
 @router.patch("/settings", response_model=schemas.UserResponse)
 def update_dating_settings(

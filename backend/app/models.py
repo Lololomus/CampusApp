@@ -355,6 +355,8 @@ class DatingProfile(Base):
     bio = Column(Text, nullable=True)
     goals = Column(Text, nullable=True)                # JSON string: ["relationship", "friends"]
     photos = Column(Text, nullable=True)               # JSON string: [{"url": "...", "w": 1000, "h": 1000}]
+    lifestyle = Column(Text, nullable=True)            # JSON string: ["night_owl", "coffee_lover"]
+    prompts = Column(Text, nullable=True)              # JSON string: {"question": "...", "answer": "..."}
     
     # Статус
     location = Column(String(255), nullable=True)
