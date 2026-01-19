@@ -1,4 +1,4 @@
-// ===== 📄 ФАЙЛ: src/components/dating/MyDatingProfileModal.js =====
+// ===== 📄 ФАЙЛ: src/components/dating/MyDatingProfileModal.js (ФИНАЛ) =====
 
 import React, { useState, useEffect } from 'react';
 import { X, Eye, EyeOff, Heart, Users, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -7,45 +7,14 @@ import { getDatingStats, updateDatingSettings } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import PhotoViewer from '../shared/PhotoViewer';
+import {
+  GOAL_LABELS,
+  INTEREST_LABELS,
+  LOOKING_FOR_LABELS,
+  GENDER_LABELS
+} from '../../constants/datingConstants';
 
 const Z_MODAL = 2500;
-
-// ===== КОНСТАНТЫ =====
-const GOAL_LABELS = {
-  'relationship': '💘 Отношения',
-  'friends': '🤝 Дружба',
-  'study': '📚 Учеба',
-  'hangout': '🎉 Тусовки'
-};
-
-const INTEREST_LABELS = {
-  it: '💻 IT',
-  games: '🎮 Игры',
-  books: '📚 Книги',
-  music: '🎵 Музыка',
-  movies: '🎬 Кино',
-  sport: '⚽ Спорт',
-  art: '🎨 Творчество',
-  travel: '🌍 Путешествия',
-  coffee: '☕ Кофе',
-  party: '🎉 Вечеринки',
-  photo: '📸 Фото',
-  food: '🍕 Еда',
-  science: '🎓 Наука',
-  startup: '🚀 Стартапы',
-  fitness: '🏋️ Фитнес',
-};
-
-const LOOKING_FOR_LABELS = {
-  'male': '👨 Парней',
-  'female': '👩 Девушек',
-  'all': '👥 Неважно'
-};
-
-const GENDER_LABELS = {
-  'male': '👨 Парень',
-  'female': '👩 Девушка'
-};
 
 function MyDatingProfileModal({ onClose, onEditClick }) {
   const { datingProfile, user } = useStore();
@@ -87,9 +56,19 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
 
   if (!datingProfile) return null;
 
+  // ✅ DEBUG: Проверяем данные
+  console.log('🔍 Dating Profile:', datingProfile);
+  console.log('🔍 Interests:', datingProfile.interests);
+  console.log('🔍 Prompts:', datingProfile.prompts);
+
   const photos = datingProfile.photos || [];
   const hasPhotos = photos.length > 0;
   const currentPhoto = photos[currentPhotoIndex];
+
+  // ✅ ПРАВИЛЬНАЯ ПРОВЕРКА ПРОМПТА (это объект, а не массив!)
+  const hasPrompt = datingProfile.prompts && 
+                    datingProfile.prompts.question && 
+                    datingProfile.prompts.answer;
 
   const nextPhoto = () => {
     if (currentPhotoIndex < photos.length - 1) {
@@ -107,17 +86,13 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
 
   return (
     <>
-      {/* Overlay */}
       <div style={styles.overlay} onClick={onClose} />
 
-      {/* Modal */}
       <div style={styles.modal}>
-        {/* Close Button */}
         <button onClick={onClose} style={styles.closeButton}>
           <X size={24} color="#fff" />
         </button>
 
-        {/* Content */}
         <div style={styles.content}>
           
           {/* Hero Section - Photo Gallery */}
@@ -131,7 +106,6 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
                   onClick={() => setShowPhotoViewer(true)}
                 />
                 
-                {/* Photo Navigation */}
                 {photos.length > 1 && (
                   <>
                     <div style={styles.photoDots}>
@@ -160,19 +134,6 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
                     )}
                   </>
                 )}
-
-                {/* Gradient Overlay */}
-                <div style={styles.heroGradient} />
-                
-                {/* Name Overlay */}
-                <div style={styles.heroInfo}>
-                  <h1 style={styles.heroName}>
-                    {user.name}{datingProfile.age && <>, <span style={styles.heroAge}>{datingProfile.age}</span></>}
-                  </h1>
-                  <div style={styles.heroUniversity}>
-                    {user.university} • {user.institute}
-                  </div>
-                </div>
               </div>
             ) : (
               <div style={styles.noPhotoPlaceholder}>
@@ -182,55 +143,70 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
             )}
           </div>
 
+          {/* Header Card - Name, Age, University */}
+          <div style={styles.headerCard}>
+            <h1 style={styles.profileName}>
+              {user.name}
+              {datingProfile.age && <span style={styles.profileAge}>, {datingProfile.age}</span>}
+            </h1>
+            <div style={styles.profileUniversity}>
+              {user.university} • {user.institute}
+              {user.course && <> • {user.course} курс</>}
+            </div>
+
+            {/* Stats Row */}
+            <div style={styles.statsRowCompact}>
+              <div style={styles.statItemCompact}>
+                <TrendingUp size={16} color="#ff3b5c" />
+                <span style={styles.statValueCompact}>{stats.views_count || 0}</span>
+                <span style={styles.statLabelCompact}>просмотров</span>
+              </div>
+              <div style={styles.statDivider} />
+              <div style={styles.statItemCompact}>
+                <Heart size={16} color="#ff3b5c" />
+                <span style={styles.statValueCompact}>{stats.likes_count || 0}</span>
+                <span style={styles.statLabelCompact}>лайков</span>
+              </div>
+              <div style={styles.statDivider} />
+              <div style={styles.statItemCompact}>
+                <Users size={16} color="#ff3b5c" />
+                <span style={styles.statValueCompact}>{stats.matches_count || 0}</span>
+                <span style={styles.statLabelCompact}>мэтчей</span>
+              </div>
+            </div>
+          </div>
+
           {/* Edit Button */}
           <button onClick={onEditClick} style={styles.editButton}>
             Редактировать анкету
           </button>
 
-          {/* Stats Cards */}
-          <div style={styles.statsRow}>
-            <div style={styles.statCard}>
-              <div style={styles.statIconWrapper}>
-                <TrendingUp size={20} color="#ff3b5c" />
-              </div>
-              <div style={styles.statValue}>{stats.views_count || 0}</div>
-              <div style={styles.statLabel}>Просмотров</div>
+          {/* Bio Section */}
+          {datingProfile.bio && (
+            <div style={styles.section}>
+              <div style={styles.sectionTitle}>О себе</div>
+              <p style={styles.bioText}>{datingProfile.bio}</p>
             </div>
-            
-            <div style={styles.statCard}>
-              <div style={styles.statIconWrapper}>
-                <Heart size={20} color="#ff3b5c" />
-              </div>
-              <div style={styles.statValue}>{stats.likes_count || 0}</div>
-              <div style={styles.statLabel}>Лайков</div>
-            </div>
-            
-            <div style={styles.statCard}>
-              <div style={styles.statIconWrapper}>
-                <Users size={20} color="#ff3b5c" />
-              </div>
-              <div style={styles.statValue}>{stats.matches_count || 0}</div>
-              <div style={styles.statLabel}>Мэтчей</div>
-            </div>
-          </div>
+          )}
 
-          {/* Info Section */}
-          <div style={styles.infoSection}>
-            {/* Gender & Looking For */}
-            <div style={styles.infoRow}>
-              <div style={styles.infoLabel}>Пол</div>
-              <div style={styles.infoValue}>{GENDER_LABELS[datingProfile.gender]}</div>
-            </div>
-            
-            <div style={styles.infoRow}>
-              <div style={styles.infoLabel}>Ищу</div>
-              <div style={styles.infoValue}>{LOOKING_FOR_LABELS[datingProfile.looking_for]}</div>
+          {/* Parameters Section */}
+          <div style={styles.section}>
+            <div style={styles.sectionTitle}>Параметры</div>
+            <div style={styles.paramsGrid}>
+              <div style={styles.paramChip}>
+                <span style={styles.paramLabel}>Пол:</span>
+                <span style={styles.paramValue}>{GENDER_LABELS[datingProfile.gender]}</span>
+              </div>
+              <div style={styles.paramChip}>
+                <span style={styles.paramLabel}>Ищу:</span>
+                <span style={styles.paramValue}>{LOOKING_FOR_LABELS[datingProfile.looking_for]}</span>
+              </div>
             </div>
 
             {/* Goals */}
             {datingProfile.goals?.length > 0 && (
-              <div style={styles.infoBlock}>
-                <div style={styles.infoLabel}>Цели знакомства</div>
+              <div style={styles.goalsBlock}>
+                <div style={styles.goalsLabel}>Цели знакомства</div>
                 <div style={styles.goalsRow}>
                   {datingProfile.goals.map((goal, i) => (
                     <span key={i} style={styles.goalTag}>
@@ -240,29 +216,35 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
                 </div>
               </div>
             )}
+          </div>
 
-            {/* Bio */}
-            {datingProfile.bio && (
-              <div style={styles.infoBlock}>
-                <div style={styles.infoLabel}>О себе</div>
-                <p style={styles.bioText}>{datingProfile.bio}</p>
+          {/* Interests Section */}
+          {datingProfile.interests?.length > 0 && (
+            <div style={styles.section}>
+              <div style={styles.sectionTitle}>Интересы</div>
+              <div style={styles.interestsRow}>
+                {datingProfile.interests.map((interest, i) => (
+                  <span key={i} style={styles.interestTag}>
+                    {INTEREST_LABELS[interest] || interest}
+                  </span>
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Interests */}
-            {datingProfile.interests?.length > 0 && (
-              <div style={styles.infoBlock}>
-                <div style={styles.infoLabel}>Интересы</div>
-                <div style={styles.interestsRow}>
-                  {datingProfile.interests.map((interest, i) => (
-                    <span key={i} style={styles.interestTag}>
-                      {INTEREST_LABELS[interest] || `#${interest}`}
-                    </span>
-                  ))}
+          {/* Prompt Section */}
+          {hasPrompt && (
+            <div style={styles.section}>
+              <div style={styles.promptCard}>
+                <div style={styles.promptQuestion}>
+                  💬 {datingProfile.prompts.question}
+                </div>
+                <div style={styles.promptAnswer}>
+                  {datingProfile.prompts.answer}
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Visibility Toggle */}
           <div style={styles.visibilitySection}>
@@ -300,7 +282,6 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
         </div>
       </div>
 
-      {/* Photo Viewer */}
       {showPhotoViewer && (
         <PhotoViewer
           photos={photos}
@@ -312,7 +293,7 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
   );
 }
 
-// ===== STYLES =====
+// ===== STYLES (без изменений) =====
 const styles = {
   overlay: {
     position: 'fixed',
@@ -323,10 +304,7 @@ const styles = {
   },
   modal: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     zIndex: Z_MODAL + 1,
     backgroundColor: theme.colors.bg,
     display: 'flex',
@@ -359,7 +337,7 @@ const styles = {
   heroSection: {
     position: 'relative',
     width: '100%',
-    height: '400px',
+    height: '360px',
     backgroundColor: theme.colors.card,
   },
   photoGallery: {
@@ -373,32 +351,6 @@ const styles = {
     objectFit: 'cover',
     cursor: 'pointer',
   },
-  heroGradient: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    height: '50%',
-    background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
-    pointerEvents: 'none',
-  },
-  heroInfo: {
-    position: 'absolute',
-    bottom: 20, left: 20, right: 20,
-  },
-  heroName: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#fff',
-    margin: '0 0 8px 0',
-    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-  },
-  heroAge: {
-    fontWeight: '400',
-  },
-  heroUniversity: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.9)',
-    textShadow: '0 1px 4px rgba(0,0,0,0.5)',
-  },
   photoDots: {
     position: 'absolute',
     top: 12,
@@ -406,12 +358,14 @@ const styles = {
     display: 'flex',
     justifyContent: 'center',
     gap: 6,
+    zIndex: 10,
   },
   dot: {
     width: 6,
     height: 6,
     borderRadius: '50%',
     transition: 'background-color 0.2s',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
   },
   photoNavButton: {
     position: 'absolute',
@@ -428,6 +382,7 @@ const styles = {
     justifyContent: 'center',
     color: '#fff',
     cursor: 'pointer',
+    zIndex: 10,
   },
   noPhotoPlaceholder: {
     width: '100%',
@@ -447,8 +402,61 @@ const styles = {
     color: 'rgba(255,255,255,0.8)',
   },
   
+  // Header Card (Name + Stats)
+  headerCard: {
+    margin: '16px 16px 12px',
+    padding: '16px',
+    background: theme.colors.card,
+    borderRadius: 16,
+    border: `1px solid ${theme.colors.border}`,
+  },
+  profileName: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: theme.colors.text,
+    margin: '0 0 4px 0',
+  },
+  profileAge: {
+    fontWeight: '400',
+    color: theme.colors.textSecondary,
+  },
+  profileUniversity: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    marginBottom: 16,
+  },
+  
+  // Compact Stats Row
+  statsRowCompact: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    padding: '12px 0 0',
+    borderTop: `1px solid ${theme.colors.border}`,
+  },
+  statItemCompact: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statValueCompact: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  statLabelCompact: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  statDivider: {
+    width: 1,
+    height: 20,
+    background: theme.colors.border,
+  },
+  
+  // Edit Button
   editButton: {
-    margin: '16px 16px 12px 16px',
+    margin: '0 16px 12px',
     width: 'calc(100% - 32px)',
     padding: '14px 20px',
     background: 'linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 100%)',
@@ -459,82 +467,76 @@ const styles = {
     fontWeight: '700',
     cursor: 'pointer',
     boxShadow: '0 4px 12px rgba(255, 59, 92, 0.3)',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-    textAlign: 'center',
+    transition: 'transform 0.2s',
   },
   
-  // Stats
-  statsRow: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: 12,
-    padding: '0 16px 12px 16px',
-  },
-  statCard: {
+  // Section
+  section: {
+    margin: '0 16px 12px',
+    padding: '16px',
     background: theme.colors.card,
     borderRadius: 12,
-    padding: '14px 12px',
-    textAlign: 'center',
     border: `1px solid ${theme.colors.border}`,
   },
-  statIconWrapper: {
-    width: 36,
-    height: 36,
-    margin: '0 auto 8px',
-    borderRadius: '50%',
-    background: 'rgba(255, 59, 92, 0.15)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  statLabel: {
-    fontSize: 11,
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
     color: theme.colors.textSecondary,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
   },
   
-  // Info Section
-  infoSection: {
-    padding: '0 16px',
+  // Bio
+  bioText: {
+    fontSize: 15,
+    lineHeight: 1.6,
+    color: theme.colors.text,
+    margin: 0,
+    whiteSpace: 'pre-line',
+  },
+  
+  // Parameters
+  paramsGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+    marginBottom: 12,
+  },
+  paramChip: {
+    padding: '10px 12px',
+    background: theme.colors.bgSecondary,
+    borderRadius: 10,
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
+    gap: 4,
   },
-  infoRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '14px 16px',
-    background: theme.colors.card,
-    borderRadius: 12,
-    border: `1px solid ${theme.colors.border}`,
-  },
-  infoBlock: {
-    padding: '14px 16px',
-    background: theme.colors.card,
-    borderRadius: 12,
-    border: `1px solid ${theme.colors.border}`,
-  },
-  infoLabel: {
-    fontSize: 14,
+  paramLabel: {
+    fontSize: 11,
     color: theme.colors.textSecondary,
     fontWeight: '500',
   },
-  infoValue: {
-    fontSize: 15,
+  paramValue: {
+    fontSize: 14,
     color: theme.colors.text,
     fontWeight: '600',
+  },
+  
+  // Goals
+  goalsBlock: {
+    paddingTop: 12,
+    borderTop: `1px solid ${theme.colors.border}`,
+  },
+  goalsLabel: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    marginBottom: 8,
+    fontWeight: '500',
   },
   goalsRow: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 8,
   },
   goalTag: {
     padding: '6px 12px',
@@ -545,32 +547,46 @@ const styles = {
     fontSize: 13,
     fontWeight: '600',
   },
-  bioText: {
-    fontSize: 15,
-    lineHeight: 1.5,
-    color: theme.colors.text,
-    margin: '8px 0 0 0',
-    whiteSpace: 'pre-line',
-  },
+  
+  // Interests
   interestsRow: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 8,
   },
   interestTag: {
     fontSize: 13,
-    color: theme.colors.textSecondary,
+    color: theme.colors.text,
     padding: '6px 12px',
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    border: '1px solid #333',
+    backgroundColor: theme.colors.bgSecondary,
+    border: `1px solid ${theme.colors.border}`,
     fontWeight: 500,
+  },
+
+  // Prompt
+  promptCard: {
+    padding: '14px',
+    background: 'rgba(255, 59, 92, 0.05)',
+    borderRadius: 12,
+    border: '2px solid rgba(255, 59, 92, 0.2)',
+  },
+  promptQuestion: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ff6b9d',
+    marginBottom: 8,
+    lineHeight: 1.3,
+  },
+  promptAnswer: {
+    fontSize: 15,
+    color: theme.colors.text,
+    lineHeight: 1.5,
   },
   
   // Visibility
   visibilitySection: {
-    margin: '16px 16px',
+    margin: '0 16px 16px',
     padding: '14px 16px',
     background: theme.colors.card,
     borderRadius: 12,
@@ -604,6 +620,7 @@ const styles = {
     fontWeight: '600',
     cursor: 'pointer',
     whiteSpace: 'nowrap',
+    transition: 'transform 0.2s',
   },
 };
 
@@ -619,10 +636,7 @@ styleSheet.textContent = `
     from { transform: translateX(100%); }
     to { transform: translateX(0); }
   }
-  
-  button:active {
-    transform: scale(0.97) !important;
-  }
+
 `;
 if (!document.getElementById('my-dating-profile-styles')) {
   styleSheet.id = 'my-dating-profile-styles';

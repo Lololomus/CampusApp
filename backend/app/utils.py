@@ -189,27 +189,30 @@ def get_image_urls(images_json: str) -> List[Dict[str, Union[str, int]]]:
     """
     if not images_json:
         return []
-
+    
     try:
         raw_data = json.loads(images_json)
         result = []
         
         for item in raw_data:
             if isinstance(item, str):
-                # Старый формат: возвращаем заглушки размеров
+                # Очищаем от путей, оставляем только filename
+                filename = item.replace('/uploads/images/', '').split('/')[-1]
                 result.append({
-                    "url": f"{BASE_URL}/uploads/images/{item}",
+                    "url": f"{BASE_URL}/uploads/images/{filename}",
                     "w": 1000,
                     "h": 1000
                 })
             elif isinstance(item, dict):
-                # Новый формат
+                # Очищаем URL от путей
+                url = item.get('url', '')
+                filename = url.replace('/uploads/images/', '').split('/')[-1]
                 result.append({
-                    "url": f"{BASE_URL}/uploads/images/{item['url']}",
+                    "url": f"{BASE_URL}/uploads/images/{filename}",
                     "w": item.get('w', 1000),
                     "h": item.get('h', 1000)
                 })
-                
+        
         return result
     except Exception as e:
         print(f"Ошибка парсинга JSON изображений: {e}")

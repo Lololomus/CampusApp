@@ -93,7 +93,6 @@ code {
   animation: slideDown 0.3s ease-out;
 }
 
-/* ✅ SMOOTH SCROLL */
 html {
   scroll-behavior: smooth;
 }
@@ -177,4 +176,19 @@ button {
 
 .fade-in {
   animation: fade-in 0.2s ease;
+}
+
+/* ===== ФИКС: Кнопки навигации фото НЕ ДЁРГАЮТСЯ ===== */
+button[style*="navButton"],
+button[style*="translateY(-50%)"] {
+  transform: translateY(-50%) !important;
+  transition: none !important;
+}
+
+button[style*="navButton"]:active,
+button[style*="translateY(-50%)"]:active,
+button[style*="navButton"]:hover,
+button[style*="translateY(-50%)"]:hover {
+  transform: translateY(-50%) !important;
+  transition: none !important;
 }

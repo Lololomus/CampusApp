@@ -1,5 +1,3 @@
-// ===== 📄 ФАЙЛ: src/store.js =====
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { registerUser } from './api';
@@ -12,8 +10,47 @@ export const useStore = create(
       // ===== AUTH STATE =====
       isRegistered: false,
       user: {},
-      setUser: (user) => set({ user, isRegistered: true }),
-      logout: () => set({ user: {}, isRegistered: false }),
+      
+      // ✅ ОБНОВЛЕНО: setUser с автозагрузкой dating профиля
+      setUser: (user) => {
+        const state = get();
+        
+        if (!user) {
+          // Logout/новый профиль → очистить всё
+          set({ 
+            user: {}, 
+            datingProfile: null,
+            currentProfile: null,
+            profilesQueue: [],
+            isRegistered: false 
+          });
+        } else {
+          set({ user, isRegistered: true });
+          
+          // ✅ НОВОЕ: автозагрузка dating профиля при входе
+          if (user.show_in_dating) {
+            import('./api').then(({ getMyDatingProfile }) => {
+              getMyDatingProfile()
+                .then(profile => {
+                  if (profile) {
+                    state.setDatingProfile(profile);
+                  }
+                })
+                .catch(() => {
+                  // Профиль не найден — это нормально
+                });
+            });
+          }
+        }
+      },
+      
+      logout: () => set({ 
+        user: {}, 
+        datingProfile: null,
+        currentProfile: null,
+        profilesQueue: [],
+        isRegistered: false 
+      }),
 
       // ===== NAVIGATION STATE =====
       activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile' | 'market'
@@ -120,17 +157,25 @@ export const useStore = create(
       
       clearRequestDraft: () => set({ requestDraft: {} }),
 
-      // ===== DATING STATE (БЕЗ ДУБЛЕЙ) =====
+      // ===== DATING STATE =====
       
       // Dating Profile
       datingProfile: null, // null = не зарегистрирован в знакомствах
       setDatingProfile: (profile) => set({ datingProfile: profile }),
       
+      // ✅ НОВОЕ: очистка dating профиля
+      clearDatingProfile: () => set({ 
+        datingProfile: null,
+        currentProfile: null,
+        profilesQueue: [],
+        hasMoreProfiles: true,
+      }),
+      
       // Профили (карточки для свайпа)
       currentProfile: null,
       profilesQueue: [],
-      isLoadingProfiles: false, // ✅ NEW: флаг загрузки
-      hasMoreProfiles: true, // ✅ NEW: есть ли ещё анкеты
+      isLoadingProfiles: false,
+      hasMoreProfiles: true,
       
       setCurrentProfile: (profile) => set({ currentProfile: profile }),
       
@@ -142,7 +187,6 @@ export const useStore = create(
         profilesQueue: [...state.profilesQueue, ...profiles],
       })),
       
-      // ✅ УЛУЧШЕНО: removeCurrentProfile с prefetch логикой
       removeCurrentProfile: () => set((state) => {
         console.log('🔄 removeCurrentProfile вызван');
         console.log('📊 До: currentProfile =', state.currentProfile?.id, ', queue length =', state.profilesQueue.length);
@@ -152,11 +196,9 @@ export const useStore = create(
         
         console.log('📊 После: newCurrent =', newCurrent?.id, ', newQueue length =', newQueue.length);
         
-        // ✅ PREFETCH: если осталось < 3 анкет и не идёт загрузка
+        // PREFETCH: если осталось < 3 анкет и не идёт загрузка
         if (newQueue.length < 3 && !state.isLoadingProfiles && state.hasMoreProfiles) {
           console.log('⚡ PREFETCH TRIGGERED: осталось', newQueue.length, 'анкет');
-          // Вызываем loadMore через callback (будет реализовано в DatingFeed.js)
-          // Здесь только устанавливаем флаг
           setTimeout(() => {
             const currentState = get();
             if (currentState.onPrefetchNeeded) {
@@ -177,16 +219,22 @@ export const useStore = create(
         hasMoreProfiles: true 
       }),
       
-      // ✅ NEW: Callback для prefetch (устанавливается в DatingFeed.js)
+      // Callback для prefetch (устанавливается в DatingFeed.js)
       onPrefetchNeeded: null,
       setOnPrefetchNeeded: (callback) => set({ onPrefetchNeeded: callback }),
 
       // Likes & Matches
       whoLikedMe: [],
       setWhoLikedMe: (users) => set({ whoLikedMe: users }),
-      
-      myMatches: [],
-      setMyMatches: (matches) => set({ myMatches: matches }),
+
+      // активные мэтчи (24 часа)
+      matches: [],
+      setMatches: (matches) => set({ matches }),
+
+      // удаление истёкшего мэтча
+      removeMatch: (userId) => set((state) => ({
+        matches: state.matches.filter(m => m.user_id !== userId)
+      })),
 
       // Dating Modal states
       showLikesModal: false,
@@ -355,6 +403,7 @@ export const useStore = create(
       partialize: (state) => ({
         isRegistered: state.isRegistered,
         user: state.user,
+        datingProfile: state.datingProfile, // ✅ ДОБАВЛЕНО: сохранение dating профиля
         activeTab: state.activeTab,
         feedMode: state.feedMode,
         feedSubTab: state.feedSubTab,

@@ -1,12 +1,7 @@
-// ===== 📄 ФАЙЛ: src/api.js (ИСПРАВЛЕННЫЙ) =====
-
 import axios from 'axios';
 
-// Базовый URL твоего backend сервера
 const API_BASE_URL = 'http://localhost:8000';
-const API_URL = API_BASE_URL;
 
-// Создаём экземпляр axios с настройками
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -14,27 +9,20 @@ const api = axios.create({
   },
 });
 
-// ===== HELPER ФУНКЦИИ =====
-
-// Получить telegram_id из Telegram Web App
 function getTelegramId() {
   if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
     return window.Telegram.WebApp.initDataUnsafe.user.id;
   }
-  // Для тестирования без Telegram возвращаем фейковый ID
   return 999999;
 }
-
-// ===== AUTH (Авторизация) =====
 
 export async function authWithTelegram(initData) {
   try {
     const telegram_id = getTelegramId();
     const response = await api.post('/auth/telegram', { telegram_id });
-    return response.data; // Вернёт пользователя если он зарегистрирован
+    return response.data;
   } catch (error) {
     if (error.response?.status === 404) {
-      // Пользователь не найден - нужна регистрация
       return null;
     }
     throw error;
@@ -55,8 +43,6 @@ export async function registerUser(userData) {
     throw error;
   }
 }
-
-// ===== USERS (Пользователи) =====
 
 export async function getCurrentUser() {
   try {
@@ -107,8 +93,6 @@ export async function getUserStats(userId) {
   }
 }
 
-// ===== POSTS (Посты) =====
-
 export async function getPosts({ category, university, course } = {}) {
   try {
     const telegram_id = getTelegramId();
@@ -125,7 +109,7 @@ export async function getPosts({ category, university, course } = {}) {
     }
 
     const response = await api.get('/posts/feed', { params });
-    return response.data; // Возвращает { items: [], total, has_more }
+    return response.data;
   } catch (error) {
     console.error('Ошибка получения постов:', error);
     return { items: [], total: 0, has_more: false };
@@ -168,7 +152,6 @@ export async function createPost(postData, onProgress = null) {
   }
 }
 
-
 export async function updatePost(postId, postData, onProgress = null) {
   try {
     const telegram_id = getTelegramId();
@@ -191,7 +174,6 @@ export async function updatePost(postId, postData, onProgress = null) {
     throw error;
   }
 }
-
 
 export async function deletePost(postId) {
   try {
@@ -219,18 +201,16 @@ export async function likePost(postId) {
   }
 }
 
-// ===== COMMENTS (Комментарии) =====
-
 export async function getPostComments(postId) {
   try {
     const telegram_id = getTelegramId();
     const response = await api.get(`/posts/${postId}/comments`, {
       params: { telegram_id }
     });
-    return response.data.items || []; 
+    return response.data.items || [];
   } catch (error) {
     console.error('Ошибка получения комментариев:', error);
-    return []; 
+    return [];
   }
 }
 
@@ -316,8 +296,6 @@ export async function reportComment(commentId, reason, description = null) {
   }
 }
 
-// ===== REQUESTS (Запросы) =====
-
 export async function createRequest(requestData) {
   try {
     const telegram_id = getTelegramId();
@@ -340,7 +318,7 @@ export async function getRequestsFeed(category = null, limit = 20, offset = 0) {
     if (category && category !== 'all') params.category = category;
     
     const response = await api.get('/api/requests/feed', { params });
-    return response.data; 
+    return response.data;
   } catch (error) {
     console.error('Ошибка получения запросов:', error);
     return { items: [], total: 0, has_more: false };
@@ -441,41 +419,36 @@ export async function deleteResponse(responseId) {
   }
 }
 
-// ===== MARKET API (Барахолка) =====
-
 export async function getMarketItems(filters = {}) {
   try {
     const telegram_id = getTelegramId();
     const skip = filters.skip || 0;
     const limit = filters.limit || 20;
 
-    // 1. Избранное
     if (filters.favorites_only) {
       const response = await api.get('/market/favorites', {
-        params: { telegram_id, limit, offset: skip } 
+        params: { telegram_id, limit, offset: skip }
       });
       const items = response.data || [];
-      return { 
-        items, 
-        total: items.length, 
-        has_more: items.length === limit 
+      return {
+        items,
+        total: items.length,
+        has_more: items.length === limit
       };
     }
 
-    // 2. Мои товары
     if (filters.seller_id) {
       const response = await api.get('/market/my-items', {
         params: { telegram_id, limit, offset: skip }
       });
       const items = response.data || [];
-      return { 
-        items, 
-        total: items.length, 
-        has_more: items.length === limit 
+      return {
+        items,
+        total: items.length,
+        has_more: items.length === limit
       };
     }
 
-    // 3. Стандартная лента
     const params = { telegram_id, skip, limit };
     
     if (filters.category && filters.category !== 'all') params.category = filters.category;
@@ -485,7 +458,7 @@ export async function getMarketItems(filters = {}) {
     if (filters.university && filters.university !== 'all') params.university = filters.university;
     if (filters.institute && filters.institute !== 'all') params.institute = filters.institute;
     if (filters.sort) params.sort = filters.sort;
-    if (filters.search) params.search = filters.search; 
+    if (filters.search) params.search = filters.search;
     
     const response = await api.get('/market/feed', { params });
     return response.data;
@@ -508,7 +481,6 @@ export async function getMarketItem(itemId) {
     throw error;
   }
 }
-
 
 export async function createMarketItem(itemData, onProgress = null) {
   try {
@@ -548,7 +520,6 @@ export async function updateMarketItem(itemId, itemData, onProgress = null) {
   }
 }
 
-
 export async function deleteMarketItem(itemId) {
   try {
     const telegram_id = getTelegramId();
@@ -561,7 +532,6 @@ export async function deleteMarketItem(itemId) {
     throw error;
   }
 }
-
 
 export async function toggleMarketFavorite(itemId) {
   try {
@@ -576,7 +546,6 @@ export async function toggleMarketFavorite(itemId) {
   }
 }
 
-
 export async function getMarketFavorites(limit = 20, offset = 0) {
   try {
     const telegram_id = getTelegramId();
@@ -589,7 +558,6 @@ export async function getMarketFavorites(limit = 20, offset = 0) {
     return [];
   }
 }
-
 
 export async function getMyMarketItems(limit = 20, offset = 0) {
   try {
@@ -604,7 +572,6 @@ export async function getMyMarketItems(limit = 20, offset = 0) {
   }
 }
 
-
 export async function getMarketCategories() {
   try {
     const response = await api.get('/market/categories');
@@ -615,9 +582,6 @@ export async function getMarketCategories() {
   }
 }
 
-// ===== 💘 DATING (ЗНАКОМСТВА) =====
-
-// 1. Проверка регистрации: Получить мой профиль
 export async function getMyDatingProfile() {
   try {
     const telegram_id = getTelegramId();
@@ -629,45 +593,45 @@ export async function getMyDatingProfile() {
   }
 }
 
-// 2. Создание анкеты
 export async function createDatingProfile(data) {
   const telegram_id = getTelegramId();
-  
   const formData = new FormData();
+
   formData.append('gender', data.gender);
   formData.append('looking_for', data.looking_for);
-  if (data.bio) formData.append('bio', data.bio);
-  if (data.goals) formData.append('goals', JSON.stringify(data.goals));
+  formData.append('age', data.age);
   
-  // Новые поля: lifestyle и prompt
-  if (data.lifestyle && data.lifestyle.length > 0) {
-    formData.append('lifestyle', JSON.stringify(data.lifestyle.slice(0, 2))); // макс 2
-  } else {
-    formData.append('lifestyle', '[]');
+  if (data.bio) {
+    formData.append('bio', data.bio);
   }
-  
-  if (data.prompt_question) {
+
+  if (data.goals) {
+    formData.append('goals', JSON.stringify(data.goals));
+  }
+
+  if (data.interests) {
+    formData.append('interests', JSON.stringify(data.interests));
+  }
+
+  if (data.prompt_question && data.prompt_answer) {
     formData.append('prompt_question', data.prompt_question);
-  }
-  if (data.prompt_answer) {
     formData.append('prompt_answer', data.prompt_answer);
   }
-  
+
   if (data.photos && data.photos.length > 0) {
-    data.photos.forEach((file) => {
+    data.photos.forEach(file => {
       formData.append('photos', file);
     });
   }
 
   const response = await api.post('/dating/profile', formData, {
     params: { telegram_id },
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
   });
+
   return response.data;
 }
 
-
-// 3. Обновление анкеты
 export async function updateDatingProfile(formData) {
   try {
     const telegram_id = getTelegramId();
@@ -684,52 +648,67 @@ export async function updateDatingProfile(formData) {
   }
 }
 
-// 4. Получение ленты
 export async function getDatingFeed(limit = 10, offset = 0) {
   const telegram_id = getTelegramId();
-  const response = await api.get('/dating/feed', { 
-    params: { telegram_id, limit, offset } 
+  const response = await api.get('/dating/feed', {
+    params: { telegram_id, limit, offset }
   });
   return response.data;
 }
 
-// 5. Лайк / Скип
 export async function likeUser(targetUserId) {
   const telegram_id = getTelegramId();
-  const response = await api.post(`/dating/${targetUserId}/like`, null, { 
-    params: { telegram_id } 
+  const response = await api.post(`/dating/${targetUserId}/like`, null, {
+    params: { telegram_id }
   });
   return response.data;
 }
 
-// 5.5. Дизлайк (Skip)
 export async function dislikeUser(targetUserId) {
   const telegram_id = getTelegramId();
-  const response = await api.post(`/dating/${targetUserId}/dislike`, null, { 
-    params: { telegram_id } 
+  const response = await api.post(`/dating/${targetUserId}/dislike`, null, {
+    params: { telegram_id }
   });
   return response.data;
 }
 
-// 6. Статистика
 export async function getDatingStats() {
   const telegram_id = getTelegramId();
   const response = await api.get('/dating/stats', { params: { telegram_id } });
   return response.data;
 }
 
-// 7. Кто меня лайкнул
 export async function getWhoLikedMe(limit = 20, offset = 0) {
   const telegram_id = getTelegramId();
-  const response = await api.get('/dating/likes-received', { 
-    params: { telegram_id, limit, offset } 
+  const response = await api.get('/dating/likes-received', {
+    params: { telegram_id, limit, offset }
   });
   return response.data;
 }
 
-/**
- * Обновление настроек знакомств (скрыть/показать анкету, интересы и т.д.)
- */
+export async function getMyMatches() {
+  try {
+    const telegram_id = getTelegramId();
+    console.log('🔍 getMyMatches вызван, telegram_id:', telegram_id);
+    
+    const response = await api.get('/dating/matches-active', {
+      params: { telegram_id }
+    });
+    
+    console.log('✅ Matches получены:', response.data);
+    console.log('📊 Количество матчей:', response.data?.length);
+    
+    return response.data;
+  } catch (error) {
+    console.error('❌ ОШИБКА getMyMatches:', error);
+    console.error('📍 Response:', error.response?.data);
+    console.error('📍 Status:', error.response?.status);
+    
+    // ⚠️ НЕ СКРЫВАЙ ОШИБКУ - пробрось её выше
+    throw error; // Вместо return []
+  }
+}
+
 export async function updateDatingSettings(settings) {
   try {
     const telegram_id = getTelegramId();

@@ -1135,114 +1135,291 @@ def generate_mock_dating_data(
     db: Session = Depends(get_db)
 ):
     """Генерация мок-данных для dating (только для разработки!)"""
+    from datetime import datetime, timedelta
+    
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    # Создаём мок-пользователей
     mock_users = [
-        {"telegram_id": 999000001, "name": "Алексей", "age": 19, "bio": "Программист", "university": user.university, "institute": user.institute, "course": 2, "group": "ИВТ-23", "interests": '["python","музыка","спорт"]', "show_in_dating": True},
-        {"telegram_id": 999000002, "name": "Мария", "age": 21, "bio": "Дизайнер. Люблю рисовать и путешествовать!", "university": user.university, "institute": user.institute, "course": 3, "group": "ДИЗ-31", "interests": '["дизайн","арт","кофе"]', "show_in_dating": True},
-        {"telegram_id": 999000003, "name": "Дмитрий", "age": 20, "bio": "Увлекаюсь ML и AI", "university": user.university, "institute": user.institute, "course": 2, "group": "ИВТ-22", "interests": '["python","ML","AI"]', "show_in_dating": True},
-        {"telegram_id": 999000004, "name": "Анна", "age": 22, "bio": "Обожаю спорт и активный отдых. Давайте в зал!", "university": user.university, "institute": user.institute, "course": 4, "group": "ФК-41", "interests": '["спорт","фитнес","travel"]', "show_in_dating": True},
-        {"telegram_id": 999000005, "name": "Игорь", "age": 19, "bio": "Люблю читать книги", "university": user.university, "institute": user.institute, "course": 1, "group": "ФИЛ-13", "interests": '["книги","литература"]', "show_in_dating": True},
+        {
+            "telegram_id": 999000001, 
+            "name": "Алексей", 
+            "age": 19, 
+            "bio": "Программист, люблю Python и музыку", 
+            "university": user.university, 
+            "institute": user.institute, 
+            "course": 2, 
+            "group": "ИВТ-23", 
+            "interests": '["it","music","games"]', 
+            "show_in_dating": True
+        },
+        {
+            "telegram_id": 999000002, 
+            "name": "Мария", 
+            "age": 21, 
+            "bio": "Дизайнер. Люблю рисовать и путешествовать!", 
+            "university": user.university, 
+            "institute": user.institute, 
+            "course": 3, 
+            "group": "ДИЗ-31", 
+            "interests": '["art","travel","coffee"]', 
+            "show_in_dating": True
+        },
+        {
+            "telegram_id": 999000003, 
+            "name": "Дмитрий", 
+            "age": 20, 
+            "bio": "Увлекаюсь ML и AI", 
+            "university": user.university, 
+            "institute": user.institute, 
+            "course": 2, 
+            "group": "ИВТ-22", 
+            "interests": '["it","science","books"]', 
+            "show_in_dating": True
+        },
+        {
+            "telegram_id": 999000004, 
+            "name": "Анна", 
+            "age": 22, 
+            "bio": "Обожаю спорт и активный отдых. Давайте в зал!", 
+            "university": user.university, 
+            "institute": user.institute, 
+            "course": 4, 
+            "group": "ФК-41", 
+            "interests": '["sport","fitness","travel"]', 
+            "show_in_dating": True
+        },
+        {
+            "telegram_id": 999000005, 
+            "name": "Игорь", 
+            "age": 19, 
+            "bio": "Люблю читать книги и философствовать", 
+            "university": user.university, 
+            "institute": user.institute, 
+            "course": 1, 
+            "group": "ФИЛ-13", 
+            "interests": '["books","coffee","art"]', 
+            "show_in_dating": True
+        },
     ]
     
     created_users = []
+    created_profiles = []
+    
+    # Создаём пользователей
     for mock_data in mock_users:
         existing = crud.get_user_by_telegram_id(db, mock_data["telegram_id"])
+        
         if not existing:
             new_user = models.User(**mock_data)
             db.add(new_user)
             db.commit()
             db.refresh(new_user)
-            created_users.append(new_user.name)
+            created_users.append(new_user)
         else:
-            created_users.append(f"{existing.name} (уже был)")
+            created_users.append(existing)
+    
+    # Создаём dating профили
+    for mock_user in created_users:
+        existing_profile = db.query(models.DatingProfile).filter(
+            models.DatingProfile.user_id == mock_user.id
+        ).first()
+        
+        if not existing_profile:
+            dating_profile = models.DatingProfile(
+                user_id=mock_user.id,
+                gender='male' if mock_user.name in ['Алексей', 'Дмитрий', 'Игорь'] else 'female',
+                age=mock_user.age,
+                looking_for='anyone',
+                bio=mock_user.bio,
+                goals='["friends","study"]',
+                photos='[]',
+                is_active=True
+            )
+            db.add(dating_profile)
+            db.commit()
+            created_profiles.append(mock_user.name)
+    
+    # ✅ СОЗДАЁМ МЭТЧИ
+    now = datetime.utcnow()
+    matches_created = []
+    
+    # Мэтч 1: Алексей (истекает через 2 часа)
+    user1 = created_users[0]
+    match_time_1 = now - timedelta(hours=22)
+    user_a_1 = min(user.id, user1.id)
+    user_b_1 = max(user.id, user1.id)
+    
+    existing_match_1 = db.query(models.Match).filter(
+        models.Match.user_a_id == user_a_1,
+        models.Match.user_b_id == user_b_1
+    ).first()
+    
+    if not existing_match_1:
+        match1 = models.Match(
+            user_a_id=user_a_1,
+            user_b_id=user_b_1,
+            matched_at=match_time_1
+        )
+        db.add(match1)
+        matches_created.append(f"{user1.name} (2ч)")
+    
+    # ✅ ИСПРАВЛЕНО: Правильные названия полей
+    existing_like_1a = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == user.id,
+        models.DatingLike.whom_liked_id == user1.id
+    ).first()
+    if not existing_like_1a:
+        like1a = models.DatingLike(
+            who_liked_id=user.id,
+            whom_liked_id=user1.id,
+            is_like=True,
+            matched_at=match_time_1
+        )
+        db.add(like1a)
+    
+    existing_like_1b = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == user1.id,
+        models.DatingLike.whom_liked_id == user.id
+    ).first()
+    if not existing_like_1b:
+        like1b = models.DatingLike(
+            who_liked_id=user1.id,
+            whom_liked_id=user.id,
+            is_like=True,
+            matched_at=match_time_1
+        )
+        db.add(like1b)
+    
+    # Мэтч 2: Мария (истекает через 6 часов)
+    user2 = created_users[1]
+    match_time_2 = now - timedelta(hours=18)
+    user_a_2 = min(user.id, user2.id)
+    user_b_2 = max(user.id, user2.id)
+    
+    existing_match_2 = db.query(models.Match).filter(
+        models.Match.user_a_id == user_a_2,
+        models.Match.user_b_id == user_b_2
+    ).first()
+    
+    if not existing_match_2:
+        match2 = models.Match(
+            user_a_id=user_a_2,
+            user_b_id=user_b_2,
+            matched_at=match_time_2
+        )
+        db.add(match2)
+        matches_created.append(f"{user2.name} (6ч)")
+    
+    existing_like_2a = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == user.id,
+        models.DatingLike.whom_liked_id == user2.id
+    ).first()
+    if not existing_like_2a:
+        like2a = models.DatingLike(
+            who_liked_id=user.id,
+            whom_liked_id=user2.id,
+            is_like=True,
+            matched_at=match_time_2
+        )
+        db.add(like2a)
+    
+    existing_like_2b = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == user2.id,
+        models.DatingLike.whom_liked_id == user.id
+    ).first()
+    if not existing_like_2b:
+        like2b = models.DatingLike(
+            who_liked_id=user2.id,
+            whom_liked_id=user.id,
+            is_like=True,
+            matched_at=match_time_2
+        )
+        db.add(like2b)
+    
+    # Мэтч 3: Дмитрий (истекает через 15 часов)
+    user3 = created_users[2]
+    match_time_3 = now - timedelta(hours=9)
+    user_a_3 = min(user.id, user3.id)
+    user_b_3 = max(user.id, user3.id)
+    
+    existing_match_3 = db.query(models.Match).filter(
+        models.Match.user_a_id == user_a_3,
+        models.Match.user_b_id == user_b_3
+    ).first()
+    
+    if not existing_match_3:
+        match3 = models.Match(
+            user_a_id=user_a_3,
+            user_b_id=user_b_3,
+            matched_at=match_time_3
+        )
+        db.add(match3)
+        matches_created.append(f"{user3.name} (15ч)")
+    
+    existing_like_3a = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == user.id,
+        models.DatingLike.whom_liked_id == user3.id
+    ).first()
+    if not existing_like_3a:
+        like3a = models.DatingLike(
+            who_liked_id=user.id,
+            whom_liked_id=user3.id,
+            is_like=True,
+            matched_at=match_time_3
+        )
+        db.add(like3a)
+    
+    existing_like_3b = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == user3.id,
+        models.DatingLike.whom_liked_id == user.id
+    ).first()
+    if not existing_like_3b:
+        like3b = models.DatingLike(
+            who_liked_id=user3.id,
+            whom_liked_id=user.id,
+            is_like=True,
+            matched_at=match_time_3
+        )
+        db.add(like3b)
+    
+    # Обычные лайки (не мэтчи)
+    user4 = created_users[3]
+    existing_like_4 = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == user4.id,
+        models.DatingLike.whom_liked_id == user.id
+    ).first()
+    if not existing_like_4:
+        like4 = models.DatingLike(
+            who_liked_id=user4.id,
+            whom_liked_id=user.id,
+            is_like=True
+        )
+        db.add(like4)
+    
+    user5 = created_users[4]
+    existing_like_5 = db.query(models.DatingLike).filter(
+        models.DatingLike.who_liked_id == user5.id,
+        models.DatingLike.whom_liked_id == user.id
+    ).first()
+    if not existing_like_5:
+        like5 = models.DatingLike(
+            who_liked_id=user5.id,
+            whom_liked_id=user.id,
+            is_like=True
+        )
+        db.add(like5)
+    
+    db.commit()
     
     return {
         "success": True,
-        "message": f"Создано/проверено {len(created_users)} пользователей",
-        "users": created_users
-    }
-
-# ==================== MARKET ENDPOINTS ====================
-
-@app.get("/market/feed", response_model=schemas.MarketFeedResponse)
-def get_market_feed_endpoint(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=50),
-    category: Optional[str] = Query(None),
-    price_min: Optional[int] = Query(None, ge=0),
-    price_max: Optional[int] = Query(None, ge=0),
-    condition: Optional[str] = Query(None),
-    university: Optional[str] = Query(None),
-    institute: Optional[str] = Query(None),
-    sort: str = Query("newest"),
-    search: Optional[str] = Query(None),
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Лента товаров барахолки"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    feed_data = crud.get_market_items(
-        db, skip, limit,
-        category=category,
-        price_min=price_min,
-        price_max=price_max,
-        condition=condition,
-        university=university,
-        institute=institute,
-        sort=sort,
-        search=search,
-        current_user_id=user.id
-    )
-    
-    result = []
-    for item in feed_data['items']:
-        images = get_image_urls(item.images) if item.images else []
-        
-        seller_data = schemas.MarketSeller(
-            id=item.seller.id,
-            name=item.seller.name,
-            username=item.seller.username,
-            university=item.seller.university,
-            institute=item.seller.institute,
-            course=item.seller.course
-        )
-        
-        is_favorited = crud.is_item_favorited(db, item.id, user.id)
-        is_seller = item.seller_id == user.id
-        
-        item_dict = {
-            "id": item.id,
-            "seller_id": item.seller_id,
-            "seller": seller_data,
-            "category": item.category,
-            "title": item.title,
-            "description": item.description,
-            "price": item.price,
-            "condition": item.condition,
-            "location": item.location,
-            "images": images,
-            "status": item.status,
-            "university": item.university,
-            "institute": item.institute,
-            "views_count": item.views_count,
-            "favorites_count": item.favorites_count,
-            "created_at": item.created_at,
-            "updated_at": item.updated_at,
-            "is_seller": is_seller,
-            "is_favorited": is_favorited
-        }
-        result.append(item_dict)
-    
-    return {
-        "items": result,
-        "total": feed_data['total'],
-        "has_more": feed_data['has_more']
+        "message": f"Создано {len(created_profiles)} профилей и {len(matches_created)} мэтчей",
+        "profiles": created_profiles,
+        "matches": matches_created,
+        "regular_likes": ["Анна", "Игорь"]
     }
 
 @app.get("/market/{item_id}", response_model=schemas.MarketItemResponse)

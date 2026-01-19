@@ -342,30 +342,25 @@ class MarketFavorite(Base):
 # ===== DATING MODELS =====
 
 class DatingProfile(Base):
-    __tablename__ = 'dating_profiles'
+    __tablename__ = 'datingprofiles'
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
-    
-    # Основные параметры поиска
-    gender = Column(String(50), nullable=False)        # 'male', 'female'
-    looking_for = Column(String(50), nullable=False)   # 'male', 'female', 'all'
-    
-    # Контент
+    gender = Column(String(50), nullable=False)  # 'male' | 'female'
+    age = Column(Integer, nullable=False)  # 16-50
+    looking_for = Column(String(50), nullable=False)  # 'male' | 'female' | 'all'
     bio = Column(Text, nullable=True)
-    goals = Column(Text, nullable=True)                # JSON string: ["relationship", "friends"]
-    photos = Column(Text, nullable=True)               # JSON string: [{"url": "...", "w": 1000, "h": 1000}]
-    lifestyle = Column(Text, nullable=True)            # JSON string: ["night_owl", "coffee_lover"]
-    prompts = Column(Text, nullable=True)              # JSON string: {"question": "...", "answer": "..."}
+    goals = Column(Text, nullable=True)  # JSON string ["relationship", "friends"]
+    photos = Column(Text, nullable=True)  # JSON string [{"url": "...", "w": 1000, "h": 1000}]
+    lifestyle = Column(Text, nullable=True)  # JSON string ["nightowl", "coffeelover"]
+    prompts = Column(Text, nullable=True)  # JSON string [{"question": "...", "answer": "..."}]
     
-    # Статус
-    location = Column(String(255), nullable=True)
-    is_active = Column(Boolean, default=True)          # Можно ли искать этого человека
+    is_active = Column(Boolean, default=True)
     
-    # Метаданные
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Связь с юзером
+    # Relationship
     user = relationship("User", back_populates="dating_profile")
 
 class DatingLike(Base):
@@ -376,3 +371,4 @@ class DatingLike(Base):
     whom_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     is_like = Column(Boolean, default=True)  # True = лайк, False = дизлайк/скип
     created_at = Column(DateTime, default=datetime.utcnow)
+    matched_at = Column(DateTime, nullable=True)

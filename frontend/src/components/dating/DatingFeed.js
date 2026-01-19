@@ -1,21 +1,19 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/dating/DatingFeed.js (ИСПРАВЛЕНО) =====
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GraduationCap, Calendar, ChevronUp, Heart } from 'lucide-react';
+import { GraduationCap, ChevronUp, Heart } from 'lucide-react';
 import { useStore } from '../../store';
 import { getDatingFeed, likeUser, dislikeUser, getDatingStats, getWhoLikedMe, getMyDatingProfile } from '../../api';
 import AppHeader from '../shared/AppHeader';
 import ProfileCard from './ProfileCard';
 import MatchModal from './MatchModal';
-import ProfileCardSkeleton from './ProfileCardSkeleton';
+import { FeedCardSkeleton, FeedInfoBarSkeleton } from './DatingSkeletons';
 import DatingOnboarding from './DatingOnboarding';
 import MyDatingProfileModal from './MyDatingProfileModal';
 import EditDatingProfileModal from './EditDatingProfileModal';
+import LikesTab from './LikesTab';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 
-// ===== КОНСТАНТЫ =====
 const GOAL_ICONS = {
   relationship: '💘 Отношения',
   friends: '🤝 Дружба',
@@ -41,7 +39,24 @@ const INTEREST_LABELS = {
   fitness: '🏋️ Фитнес',
 };
 
-// ===== MOCK DATA =====
+const INTEREST_EMOJIS = {
+  it: '💻',
+  games: '🎮',
+  books: '📚',
+  music: '🎵',
+  movies: '🎬',
+  sport: '⚽',
+  art: '🎨',
+  travel: '🌍',
+  coffee: '☕',
+  party: '🎉',
+  photo: '📸',
+  food: '🍕',
+  science: '🎓',
+  startup: '🚀',
+  fitness: '🏋️',
+};
+
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.REACT_APP_USE_MOCK === 'true';
 
 const MOCK_PROFILES = [
@@ -49,12 +64,16 @@ const MOCK_PROFILES = [
     id: 1, 
     name: 'Алексей', 
     age: 22, 
-    bio: 'Ищу напарника на хакатон 💻\n\nЛюблю кодить по ночам, пить кофе литрами и участвовать в хакатонах.',
+    bio: 'Люблю кодить по ночам, пить кофе литрами и участвовать в хакатонах.',
     university: 'МГУ', 
     institute: 'ВМК', 
     course: 3,
     interests: ['it', 'games', 'coffee', 'startup', 'music'],
     goals: ['relationship', 'study'],
+    prompts: {
+      question: 'Идеальное свидание?',
+      answer: 'Ночной хакатон с пиццей и Red Bull, потом встретить рассвет на крыше 🌅'
+    },
     photos: [
       { url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=1000&auto=format&fit=crop' },
       { url: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=1000&auto=format&fit=crop' }
@@ -70,6 +89,10 @@ const MOCK_PROFILES = [
     course: 2,
     interests: ['photo', 'art', 'music', 'coffee', 'books'],
     goals: ['friends', 'hangout'],
+    prompts: {
+      question: 'Что не могу пропустить?',
+      answer: 'Закат в красивом месте — всегда беру камеру и ловлю момент'
+    },
     photos: [
       { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=1000&auto=format&fit=crop' },
     ] 
@@ -84,6 +107,10 @@ const MOCK_PROFILES = [
     course: 4,
     interests: ['music', 'party', 'sport', 'travel'],
     goals: ['friends', 'hangout'],
+    prompts: {
+      question: 'Мой студенческий лайфхак',
+      answer: 'Гитара на общаге = автоматически +100 к популярности'
+    },
     photos: [
       { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop' },
     ] 
@@ -98,6 +125,10 @@ const MOCK_PROFILES = [
     course: 3,
     interests: ['fitness', 'sport', 'food', 'travel', 'music'],
     goals: ['friends', 'relationship'],
+    prompts: {
+      question: 'После пар я...',
+      answer: 'Сразу в зал! А потом протеиновый смузи и планы на вечер'
+    },
     photos: [
       { url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=1000&auto=format&fit=crop' },
     ] 
@@ -107,11 +138,15 @@ const MOCK_PROFILES = [
     name: 'Максим', 
     age: 24, 
     bio: 'Стартапер, работаю над AI проектом 🚀\n\nВсегда рад новым знакомствам и нетворкингу.',
-    university: 'РУК', 
+    university: 'РЭУ', 
     institute: 'Экономический', 
     course: 5,
     interests: ['startup', 'it', 'coffee', 'books', 'travel'],
     goals: ['study', 'friends'],
+    prompts: {
+      question: 'Мечта на стажировку',
+      answer: 'Google в Калифорнии или OpenAI — хочу быть там, где создаётся будущее'
+    },
     photos: [
       { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1000&auto=format&fit=crop' },
     ] 
@@ -119,31 +154,257 @@ const MOCK_PROFILES = [
 ];
 
 const MOCK_LIKES = [
-  { 
-    id: 101, 
-    name: 'Анна', 
-    age: 19, 
-    university: 'МГУ', 
+  {
+    id: 101,
+    name: 'Анна',
+    age: 19,
+    university: 'МГУ',
     institute: 'Журфак',
     course: 1,
-    bio: 'Люблю театры и литературу 🎭',
-    avatar: null,
-    interests: ['books', 'art', 'movies'],
-    goals: ['friends', 'hangout']
+    bio: 'Люблю театры и литературу 🎭\n\nМечтаю стать журналистом и писать о культуре.',
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=800' },
+      { url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=800' },
+      { url: 'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?q=80&w=800' },
+    ],
+    interests: ['books', 'art', 'movies', 'coffee'],
+    goals: ['friends', 'hangout'],
+    icebreaker: 'Какую последнюю книгу прочитал?',
   },
-  { 
-    id: 102, 
-    name: 'Илья', 
-    age: 22, 
-    university: 'МФТИ', 
+  {
+    id: 102,
+    name: 'Илья',
+    age: 22,
+    university: 'МФТИ',
     institute: 'ФРКТ',
     course: 4,
-    bio: 'Физтех, люблю математику и шахматы ♟️',
-    avatar: null,
-    interests: ['science', 'books', 'games'],
-    goals: ['study', 'friends']
+    bio: 'Физтех, люблю математику и шахматы ♟️\n\nРешаю олимпиадные задачи для души.',
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=800' },
+      { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=800' },
+    ],
+    interests: ['science', 'books', 'games', 'coffee'],
+    goals: ['study', 'friends'],
+  },
+  {
+    id: 103,
+    name: 'Катя',
+    age: 20,
+    university: 'ВШЭ',
+    institute: 'Дизайн',
+    course: 2,
+    bio: 'UI/UX дизайнер и художник 🎨\n\nРисую акварелью и делаю крутые интерфейсы.',
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=800' },
+      { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=800' },
+      { url: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?q=80&w=800' },
+    ],
+    interests: ['art', 'photo', 'coffee', 'music', 'travel'],
+    goals: ['friends', 'relationship'],
+    icebreaker: 'Figma или Adobe XD? 🤔',
+  },
+  {
+    id: 104,
+    name: 'Даниил',
+    age: 23,
+    university: 'МГТУ',
+    institute: 'ИБ',
+    course: 4,
+    bio: 'Гитарист и меломан 🎸\n\nИграю в группе, пишу свою музыку.',
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=800' },
+    ],
+    interests: ['music', 'party', 'sport', 'coffee'],
+    goals: ['friends', 'hangout'],
+  },
+  {
+    id: 105,
+    name: 'Полина',
+    age: 21,
+    university: 'МГСУ',
+    institute: 'ИЦИТ',
+    course: 3,
+    bio: 'Спортсменка и фитнес-тренер 💪\n\nЗОЖ - мой образ жизни!',
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=800' },
+      { url: 'https://images.unsplash.com/photo-1518459031867-a89b944bffe4?q=80&w=800' },
+      { url: 'https://images.unsplash.com/photo-1548690312-e3b507d8c110?q=80&w=800' },
+    ],
+    interests: ['fitness', 'sport', 'food', 'travel', 'music'],
+    goals: ['friends', 'relationship'],
+    icebreaker: 'Зал или пробежка утром?',
+  },
+  {
+    id: 106,
+    name: 'Артём',
+    age: 24,
+    university: 'РЭУ',
+    institute: 'Экономический',
+    course: 5,
+    bio: 'Запускаю EdTech стартап 🚀\n\nВсегда рад новым знакомствам и идеям.',
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=800' },
+      { url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=800' },
+    ],
+    interests: ['startup', 'it', 'coffee', 'books', 'travel'],
+    goals: ['study', 'friends'],
   },
 ];
+
+function ViewingProfileModal({ profile, onClose, onLike }) {
+  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
+  
+  const photos = profile?.photos || [];
+  const hasPhotos = photos.length > 0;
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  const handlePhotoClick = () => {
+    if (photos.length > 1) {
+      setCurrentPhotoIndex((prev) => (prev + 1) % photos.length);
+      hapticFeedback('light');
+    }
+  };
+
+  const handleScroll = (e) => {
+    setScrollY(e.target.scrollTop);
+  };
+
+  const headerOpacity = Math.min(scrollY / 100, 0.95);
+
+  return (
+    <div style={styles.viewingOverlay} onScroll={handleScroll}>
+      <div 
+        style={{
+          ...styles.viewingHeader,
+          background: `linear-gradient(to bottom, rgba(10, 10, 10, ${headerOpacity}) 0%, rgba(10, 10, 10, ${headerOpacity * 0.8}) 80%, transparent 100%)`,
+          backdropFilter: scrollY > 20 ? 'blur(12px)' : 'none',
+        }}
+      >
+        <button style={styles.backButtonNew} onClick={onClose}>
+          ← Назад
+        </button>
+      </div>
+
+      <div style={styles.viewingContent}>
+        <div style={styles.viewingPhotoSection} onClick={handlePhotoClick}>
+          {hasPhotos ? (
+            <>
+              {photos.map((photo, idx) => (
+                <img
+                  key={idx}
+                  src={photo?.url || photo}
+                  alt={profile.name}
+                  style={{
+                    ...styles.viewingPhoto,
+                    opacity: idx === currentPhotoIndex ? 1 : 0,
+                    zIndex: idx === currentPhotoIndex ? 1 : 0,
+                  }}
+                />
+              ))}
+              
+              {photos.length > 1 && (
+                <div style={styles.photoIndicatorsViewing}>
+                  {photos.map((_, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        ...styles.indicatorViewing,
+                        backgroundColor: idx === currentPhotoIndex 
+                          ? 'rgba(255, 255, 255, 0.95)' 
+                          : 'rgba(255, 255, 255, 0.3)',
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : profile.avatar ? (
+            <img src={profile.avatar} alt={profile.name} style={styles.viewingPhoto} />
+          ) : (
+            <div style={styles.viewingPhotoPlaceholder}>
+              {profile.name?.charAt(0) || '?'}
+            </div>
+          )}
+          <div style={styles.viewingPhotoOverlay} />
+        </div>
+
+        <div style={styles.viewingInfo}>
+          <h2 style={styles.viewingName}>
+            {profile.name}
+            {profile.age && <span style={styles.viewingAge}>, {profile.age}</span>}
+          </h2>
+
+          {profile.university && (
+            <div style={styles.viewingUniversity}>
+              <GraduationCap size={16} color={theme.colors.textSecondary} />
+              <span>
+                {profile.university}
+                {profile.institute && ` • ${profile.institute}`}
+                {profile.course && ` • ${profile.course} курс`}
+              </span>
+            </div>
+          )}
+
+          {profile.icebreaker && (
+            <div style={styles.viewingSection}>
+              <div style={styles.icebreakerCard}>
+                <div style={styles.icebreakerIcon}>💬</div>
+                <div style={styles.icebreakerText}>{profile.icebreaker}</div>
+              </div>
+            </div>
+          )}
+
+          {profile.goals && profile.goals.length > 0 && (
+            <div style={styles.viewingSection}>
+              <div style={styles.viewingSectionTitle}>Цели</div>
+              <div style={styles.viewingGoals}>
+                {profile.goals.map((goal) => (
+                  <span key={goal} style={styles.viewingGoalTag}>
+                    {GOAL_ICONS[goal] || goal}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {profile.bio && (
+            <div style={styles.viewingSection}>
+              <div style={styles.viewingSectionTitle}>О себе</div>
+              <p style={styles.viewingBio}>{profile.bio}</p>
+            </div>
+          )}
+
+          {profile.interests && profile.interests.length > 0 && (
+            <div style={styles.viewingSection}>
+              <div style={styles.viewingSectionTitle}>Интересы</div>
+              <div style={styles.viewingInterests}>
+                {profile.interests.map((interest) => (
+                  <span key={interest} style={styles.viewingInterestTag}>
+                    {INTEREST_LABELS[interest] || interest}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={styles.viewingActions}>
+        <button style={styles.viewingLikeButton} onClick={onLike}>
+          <Heart size={24} fill="#fff" strokeWidth={0} />
+          <span>Лайкнуть</span>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function DatingFeed() {
   const {
@@ -167,7 +428,6 @@ function DatingFeed() {
     setOnPrefetchNeeded,
   } = useStore();
 
-  // ===== STATE =====
   const [checkingProfile, setCheckingProfile] = useState(!datingProfile);
   const isGuestMode = !datingProfile; 
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -177,12 +437,9 @@ function DatingFeed() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(null);
   const [viewingProfile, setViewingProfile] = useState(null);
-  const [showTutorial, setShowTutorial] = useState(false);
   const [showMyProfile, setShowMyProfile] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [infoExpanded, setInfoExpanded] = useState(false);
-  
-  // Drag state
   const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   
@@ -190,28 +447,39 @@ function DatingFeed() {
   const offset = useRef(0);
   const swipeThreshold = 100;
 
-  // ===== 1. INITIAL CHECK & LOAD =====
+  useEffect(() => {
+    if (currentProfile?.id) {
+      setInfoExpanded(false);
+    }
+  }, [currentProfile?.id]);
+
   useEffect(() => {
     const checkRegistration = async () => {
-      if (datingProfile) {
-        setCheckingProfile(false);
-        return;
-      }
+      setCheckingProfile(true);
+      
       try {
         if (USE_MOCK_DATA) {
           setCheckingProfile(false);
+          return;
+        }
+        
+        const profile = await getMyDatingProfile();
+        
+        if (profile) {
+          setDatingProfile(profile);
         } else {
-          const profile = await getMyDatingProfile();
-          if (profile) setDatingProfile(profile);
+          setDatingProfile(null);
         }
       } catch (e) {
-        console.log('Guest mode');
+        console.log('Guest mode или ошибка:', e);
+        setDatingProfile(null);
       } finally {
         setCheckingProfile(false);
       }
     };
+    
     checkRegistration();
-  }, [datingProfile, setDatingProfile]);
+  }, []);
 
   useEffect(() => {
     if (checkingProfile) return;
@@ -226,10 +494,8 @@ function DatingFeed() {
       if (USE_MOCK_DATA) updateDatingStats({ likes_count: MOCK_LIKES.length });
       else getDatingStats().then(updateDatingStats).catch(console.error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkingProfile]);
 
-  // ===== 2. LOAD DATA =====
   const loadProfiles = useCallback(async (reset = false) => {
     if (isLoadingRef.current) return;
     
@@ -300,8 +566,7 @@ function DatingFeed() {
       if (USE_MOCK_DATA) updateDatingStats({ likes_count: MOCK_LIKES.length });
       else getDatingStats().then(updateDatingStats).catch(console.error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkingProfile]); 
+  }, [checkingProfile]);
 
   useEffect(() => {
     setOnPrefetchNeeded(() => {
@@ -312,26 +577,11 @@ function DatingFeed() {
 
   useEffect(() => {
     if (activeTab === 'likes' && !isGuestMode) loadLikes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, isGuestMode]);
 
-  useEffect(() => {
-    const hasSeenTutorial = localStorage.getItem('datingTutorialSeen');
-    if (!hasSeenTutorial && !isGuestMode && currentProfile && !loading) {
-      setTimeout(() => setShowTutorial(true), 800);
-    }
-  }, [currentProfile, isGuestMode, loading]);
-
-  // ===== HANDLERS =====
   const triggerOnboarding = () => {
     hapticFeedback('medium');
     setShowOnboarding(true);
-  };
-
-  const closeTutorial = () => {
-    localStorage.setItem('datingTutorialSeen', 'true');
-    setShowTutorial(false);
-    hapticFeedback('medium');
   };
 
   const handleTabSwitch = (tab) => {
@@ -346,7 +596,6 @@ function DatingFeed() {
     }
   };
 
-  // ===== SWIPE LOGIC =====
   const handleSwipeStart = () => {
     setIsDragging(true);
   };
@@ -461,12 +710,10 @@ function DatingFeed() {
     setShowMatchModal(true, user);
   };
 
-  // ===== RENDER =====
   if (checkingProfile) {
     return <div style={styles.centerContainer}><div style={styles.spinner}></div></div>;
   }
 
-  // ✅ Онбординг показывается ТОЛЬКО когда явно вызван
   if (showOnboarding) {
     return (
       <DatingOnboarding 
@@ -494,7 +741,7 @@ function DatingFeed() {
               <div 
                 style={{
                   ...styles.activeIndicator,
-                  transform: `translateX(${activeTab === 'profiles' ? '0%' : 'calc(100% + 52px)'})`,
+                  transform: `translateX(${activeTab === 'profiles' ? '0%' : 'calc(100% + 80px)'})`
                 }} 
               />
               
@@ -557,7 +804,7 @@ function DatingFeed() {
           <>
             <div style={styles.cardWrapper}>
               {loading ? (
-                <ProfileCardSkeleton />
+                <FeedCardSkeleton />
               ) : !currentProfile ? (
                 <div style={styles.emptyState}>
                   <div style={styles.emptyEmoji}>😴</div>
@@ -567,7 +814,7 @@ function DatingFeed() {
                 <AnimatePresence initial={false} mode="popLayout">
                   {[currentProfile, ...profilesQueue]
                     .filter((p, i, self) => p && self.findIndex(t => t.id === p.id) === i)
-                    .slice(0, 3) 
+                    .slice(0, 2)
                     .map((profile, index) => {
                       const isActive = index === 0;
                       const zIndex = 10 - index;
@@ -641,12 +888,21 @@ function DatingFeed() {
               )}
             </div>
 
+            {loading && (
+              <div style={styles.infoBarSkeleton}>
+                <FeedInfoBarSkeleton />
+              </div>
+            )}
+
+            {/* ✅ РЕАЛЬНАЯ ШТОРКА (с анимацией) */}
             {currentProfile && !loading && (
-              <div style={{
-                ...styles.infoBar,
-                height: infoExpanded ? 'auto' : '170px',
-                maxHeight: infoExpanded ? '60vh' : '170px',
-              }}>
+              <motion.div 
+                key={currentProfile.id}
+                style={styles.infoBar}
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                transition={{ y: { type: 'spring', stiffness: 300, damping: 30, duration: 0.4 } }}
+              >
                 <button 
                   style={styles.expandButton} 
                   onClick={() => { 
@@ -660,58 +916,86 @@ function DatingFeed() {
                     style={{
                       transform: infoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                       transition: 'transform 0.3s',
+                      color: theme.colors.textSecondary,
                     }}
                   />
                 </button>
 
                 <div style={styles.infoContent}>
-                  <div style={styles.header}>
+                  <div style={styles.nameSection}>
                     <h2 style={styles.name}>
                       {currentProfile.name}, <span style={styles.age}>{currentProfile.age}</span>
                     </h2>
+                    <div style={styles.universityRow}>
+                      🎓 {currentProfile.university}
+                      {currentProfile.institute && ` • ${currentProfile.institute}`}
+                      {currentProfile.course && ` • ${currentProfile.course} курс`}
+                    </div>
                   </div>
-                  
-                  {/* ===== ВУЗ НА ОДНОЙ СТРОКЕ ===== */}
-                  <div style={styles.universityRow}>
-                    🎓 {currentProfile.university} • {currentProfile.institute}
-                    {currentProfile.course && ` • ${currentProfile.course} курс`}
-                  </div>
 
-                  {/* ===== GOALS В ЗАКРЫТОЙ ШТОРКЕ ===== */}
-                  {!infoExpanded && currentProfile.goals?.length > 0 && (
-                    <div style={styles.goalsRow}>
-                      {currentProfile.goals.slice(0, 2).map((goal, i) => (
-                        <span key={i} style={styles.goalTag}>
-                          {GOAL_ICONS[goal] || goal}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <motion.div 
+                    style={styles.collapsedView}
+                    animate={{
+                      opacity: infoExpanded ? 0 : 1,
+                      maxHeight: infoExpanded ? 0 : '100px',
+                    }}
+                    transition={{
+                      duration: infoExpanded ? 0 : 0.25,
+                      ease: [0.4, 0, 0.6, 1]
+                    }}
+                  >
+                    {currentProfile.goals?.length > 0 && (
+                      <div style={styles.goalsRowCollapsed}>
+                        {currentProfile.goals.slice(0, 2).map((goal, i) => (
+                          <span key={i} style={styles.goalChip}>
+                            {GOAL_ICONS[goal] || goal}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                  {/* ===== ИНТЕРЕСЫ В ЗАКРЫТОЙ ШТОРКЕ ===== */}
-                  {!infoExpanded && currentProfile.interests?.length > 0 && (
-                    <div style={styles.interestsRowCollapsed}>
-                      {currentProfile.interests.slice(0, 3).map((interest, i) => (
-                        <span key={i} style={styles.interestTagSmall}>
-                          {INTEREST_LABELS[interest] || interest}
-                        </span>
-                      ))}
-                      {currentProfile.interests.length > 3 && (
-                        <span style={styles.interestTagSmall}>+{currentProfile.interests.length - 3}</span>
-                      )}
-                    </div>
-                  )}
+                    {currentProfile.interests?.length > 0 && (
+                      <div style={styles.interestsEmojiRow}>
+                        {currentProfile.interests.slice(0, 5).map((interest, i) => (
+                          <span key={i} style={styles.emojiOnly}>
+                            {INTEREST_EMOJIS[interest] || '❓'}
+                          </span>
+                        ))}
+                        {currentProfile.interests.length > 5 && (
+                          <span style={styles.moreText}>+{currentProfile.interests.length - 5}</span>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
 
-                  {!infoExpanded && currentProfile.bio && (
-                    <div style={styles.bioCollapsed}>
-                      <p style={styles.bioTextCollapsed}>{currentProfile.bio}</p>
-                      <div style={styles.fadeGradient} />
-                    </div>
-                  )}
+                  <motion.div 
+                    style={{
+                      ...styles.expandedView,
+                      overflow: infoExpanded ? 'visible' : 'hidden',
+                    }}
+                    animate={{
+                      opacity: infoExpanded ? 1 : 0,
+                      maxHeight: infoExpanded ? '600px' : '0px',
+                    }}
+                    transition={{
+                      opacity: { duration: infoExpanded ? 0.25 : 0.2, delay: infoExpanded ? 0.05 : 0 },
+                      maxHeight: { duration: infoExpanded ? 0 : 0.3, ease: [0.4, 0, 0.6, 1] }
+                    }}
+                  >
+                    {currentProfile.prompts?.question && currentProfile.prompts?.answer && (
+                      <div style={styles.promptCard}>
+                        <div style={styles.promptHeader}>
+                          {currentProfile.prompts.question}
+                        </div>
+                        <div style={styles.promptAnswer}>
+                          {currentProfile.prompts.answer}
+                        </div>
+                      </div>
+                    )}
 
-                  {infoExpanded && (
-                    <div style={styles.expandedContent}>
-                      {currentProfile.goals?.length > 0 && (
+                    {currentProfile.goals?.length > 0 && (
+                      <div style={styles.section}>
+                        <div style={styles.sectionTitle}>ИЩЕТ</div>
                         <div style={styles.goalsRow}>
                           {currentProfile.goals.map((goal, i) => (
                             <span key={i} style={styles.goalTag}>
@@ -719,84 +1003,60 @@ function DatingFeed() {
                             </span>
                           ))}
                         </div>
-                      )}
-                      {currentProfile.bio && (
-                        <div style={styles.bioSection}>
-                          <p style={styles.bioText}>{currentProfile.bio}</p>
-                        </div>
-                      )}
-                      {currentProfile.interests?.length > 0 && (
-                        <div style={styles.interestsRow}>
+                      </div>
+                    )}
+
+                    {currentProfile.bio && (
+                      <div style={styles.section}>
+                        <div style={styles.sectionTitle}>О СЕБЕ</div>
+                        <p style={styles.bioText}>{currentProfile.bio}</p>
+                      </div>
+                    )}
+
+                    {currentProfile.interests?.length > 0 && (
+                      <div style={styles.section}>
+                        <div style={styles.sectionTitle}>ИНТЕРЕСЫ</div>
+                        <div style={styles.interestsGrid}>
                           {currentProfile.interests.map((interest, i) => (
-                            <span key={i} style={styles.interestTag}>
+                            <span key={i} style={styles.interestChip}>
                               {INTEREST_LABELS[interest] || interest}
                             </span>
                           ))}
                         </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </motion.div>
                 </div>
-              </div>
+              </motion.div>
             )}
           </>
         )}
 
         {activeTab === 'likes' && !viewingProfile && (
-          <div style={styles.likesList}>
-            {loadingLikes ? (
-              <div style={styles.loader}>Загрузка...</div>
-            ) : whoLikedMe.length === 0 ? (
-              <div style={styles.emptyState}>
-                <div style={styles.emptyEmoji}>💔</div>
-                <div style={styles.emptyTitle}>Пока пусто</div>
-              </div>
-            ) : (
-              whoLikedMe.map((user, idx) => (
-                <div 
-                  key={user.id} 
-                  style={{...styles.likeCard, animationDelay: `${idx * 0.05}s`}} 
-                  onClick={() => { 
-                    hapticFeedback('light'); 
-                    setViewingProfile(user); 
-                  }}
-                >
-                  <div style={styles.likeCardAvatar}>
-                    {user.avatar ? (
-                      <img src={user.avatar} style={styles.avatarImg} alt="" />
-                    ) : (
-                      <div style={styles.avatarPlaceholder}>{user.name[0]}</div>
-                    )}
-                  </div>
-                  <div style={styles.likeCardInfo}>
-                    <div style={styles.likeCardName}>{user.name}, {user.age}</div>
-                    <div style={styles.likeCardUni}>{user.university}</div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <LikesTab
+            users={whoLikedMe}
+            loading={loadingLikes}
+            onViewProfile={(user) => {
+              hapticFeedback('light');
+              setViewingProfile(user);
+            }}
+            onQuickLike={(userId) => handleLike(userId)}
+            onEmptyAction={() => {
+              setShowEditProfile(true);
+            }}
+          />
         )}
       </div>
 
-      {showTutorial && (
-        <div style={styles.tutorialOverlay} onClick={closeTutorial}>
-          <div style={styles.tutorialContent} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.tutorialIcon}>👆</div>
-            <h3 style={styles.tutorialTitle}>Как это работает</h3>
-            <div style={styles.tutorialRow}>
-              <div style={styles.tutorialItem}>
-                <div style={styles.arrowLeft}>←</div>
-                <p style={styles.tutorialText}>Свайп влево<br/><strong>Нет</strong></p>
-              </div>
-              <div style={styles.tutorialItem}>
-                <div style={styles.arrowRight}>→</div>
-                <p style={styles.tutorialText}>Свайп вправо<br/><strong>Лайк</strong></p>
-              </div>
-            </div>
-            <button onClick={closeTutorial} style={styles.tutorialButton}>Понятно!</button>
-          </div>
-        </div>
+      {activeTab === 'likes' && viewingProfile && (
+        <ViewingProfileModal
+          profile={viewingProfile}
+          onClose={() => {
+            hapticFeedback('light');
+            setViewingProfile(null);
+          }}
+          onLike={() => handleLike(viewingProfile.id)}
+        />
       )}
 
       {showMyProfile && (
@@ -823,7 +1083,6 @@ function DatingFeed() {
   );
 }
 
-// ===== STYLES =====
 const styles = {
   container: { 
     flex: 1, 
@@ -848,56 +1107,57 @@ const styles = {
   },
   
   tabsWrapper: { 
-    padding: '0 8px 12px 8px'
+    padding: '0 8px 12px 8px',
+    overflow: 'visible',
   },
-  tabsContainer: { 
-    position: 'relative', 
-    display: 'flex', 
+  tabsContainer: {
+    position: 'relative',
+    display: 'flex',
     alignItems: 'center',
-    backgroundColor: theme.colors.bg, 
-    borderRadius: theme.radius.lg, 
-    padding: '4px', 
-    height: 44, 
-    border: `1px solid ${theme.colors.border}` 
+    backgroundColor: theme.colors.bg,
+    borderRadius: theme.radius.lg,
+    padding: 4,
+    height: 44,
+    border: `1px solid ${theme.colors.border}`,
+    overflow: 'visible',
   },
-  activeIndicator: { 
-    position: 'absolute', 
-    top: 4, 
-    bottom: 4, 
-    left: 4, 
-    width: 'calc((100% - 52px) / 2 - 4px)',
-    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', 
-    borderRadius: theme.radius.md, 
-    boxShadow: '0 2px 8px rgba(245, 87, 108, 0.4)', 
-    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)', 
-    zIndex: 1 
+  activeIndicator: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 4,
+    width: 'calc((100% - 88px) / 2)',
+    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    borderRadius: theme.radius.md,
+    boxShadow: '0 2px 8px rgba(245, 87, 108, 0.4)',
+    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    zIndex: 1
   },
-
-  tabButton: { 
-    flex: 1, 
-    position: 'relative', 
-    zIndex: 2, 
-    background: 'transparent', 
-    border: 'none', 
-    fontSize: 15, 
-    fontWeight: 600, 
-    cursor: 'pointer', 
-    transition: 'color 0.2s ease', 
-    display: 'flex', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
+  tabButton: {
+    flex: 1,
+    position: 'relative',
+    zIndex: 2,
+    background: 'transparent',
+    border: 'none',
+    fontSize: 15,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'color 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    padding: '0 8px',
+    padding: '0 4px',
     height: '100%',
   },
-  badge: { 
-    backgroundColor: '#fff', 
-    color: '#f5576c', 
-    fontSize: 11, 
-    fontWeight: 800, 
-    padding: '1px 6px', 
-    borderRadius: 10, 
-    minWidth: 18 
+  badge: {
+    backgroundColor: '#fff',
+    color: '#f5576c',
+    fontSize: 11,
+    fontWeight: 800,
+    padding: '1px 6px',
+    borderRadius: 10,
+    minWidth: 18
   },
   avatarImg: {
     width: '100%',
@@ -916,39 +1176,46 @@ const styles = {
     fontWeight: 700,
   },
   avatarButtonCenter: {
-    width: 32,
-    height: 32,
+    width: 56,
+    height: 56,
     borderRadius: '50%',
-    border: '2px solid #8774e1',
+    border: '2px solid transparent',
+    backgroundImage: `linear-gradient(#0a0a0a, #0a0a0a), linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 50%, #f093fb 100%)`,
+    backgroundOrigin: 'border-box',
+    backgroundClip: 'padding-box, border-box',
     padding: 0,
     overflow: 'hidden',
     cursor: 'pointer',
     flexShrink: 0,
-    backgroundColor: theme.colors.card,
     transition: 'transform 0.2s, box-shadow 0.2s',
-    margin: '0 10px',
-    boxShadow: '0 2px 8px rgba(135, 116, 225, 0.3)',
-  },
-
-  content: { 
-    display: 'flex', 
-    flexDirection: 'column', 
-    minHeight: '100vh', 
-    paddingTop: 'calc(var(--header-padding, 104px) + 16px)', 
-    paddingBottom: '180px' 
-  },
-  cardWrapper: { 
+    margin: '0 12px',
+    boxShadow: '0 4px 16px rgba(255, 59, 92, 0.4), 0 0 24px rgba(240, 147, 251, 0.3)',
     position: 'relative',
-    flex: 1, 
+    transform: 'translateY(0px)',
+    zIndex: 10,
+  },
+  
+  content: {
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
+    paddingTop: 'calc(var(--header-padding, 104px) + 16px)',
+    paddingBottom: '100px',
+  },
+  cardWrapper: {
+    position: 'relative',
+    flex: 1,
     padding: '0 12px',
     minHeight: '500px',
-    maxHeight: 'calc(100vh - 360px)',
-    marginBottom: '16px',
+    maxHeight: 'calc(100vh - 380px)',
+    marginBottom: 12,
   },
-
   swipeOverlay: {
     position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -975,199 +1242,415 @@ const styles = {
     bottom: 0,
     left: 0,
     right: 0,
-    background: 'rgba(30, 30, 30, 0.98)',
-    backdropFilter: 'blur(20px)',
-    borderRadius: '24px 24px 0 0',
-    transition: 'height 0.4s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-    boxShadow: '0 -4px 20px rgba(0,0,0,0.5)',
+    background: 'linear-gradient(180deg, rgba(15, 15, 15, 0.97) 0%, rgba(10, 10, 10, 0.99) 100%)',
+    backdropFilter: 'blur(24px) saturate(180%)',
+    borderRadius: '28px 28px 0 0',
+    boxShadow: '0 -8px 40px rgba(0, 0, 0, 0.8), 0 -2px 16px rgba(245, 87, 108, 0.1)',
     zIndex: 100,
     overflow: 'hidden',
-    paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 60px)',
+    paddingBottom: `max(env(safe-area-inset-bottom, 0px), 60px)`,
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+    borderBottom: 'none',
   },
-
+  infoBarSkeleton: {
+    position: 'absolute',
+    bottom: 65,
+    left: 0,
+    right: 0,
+    background: 'linear-gradient(to top, rgba(10, 10, 10, 0.98) 0%, rgba(10, 10, 10, 0.95) 85%, transparent 100%)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: '20px 20px 24px',
+    zIndex: 30,
+    boxShadow: '0 -4px 20px rgba(0,0,0,0.3)',
+    maxHeight: '70vh',
+    overflowY: 'auto',
+  },
   expandButton: {
     width: '100%',
     height: 32,
     background: 'transparent',
     border: 'none',
-    color: theme.colors.textSecondary,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
   },
-
   infoContent: {
     padding: '0 20px 20px 20px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    gap: 0,
+    overflowY: 'auto',
+    maxHeight: 'calc(70vh - 32px)',
   },
-  header: { 
-    display: 'flex', 
-    alignItems: 'center', 
-    gap: 8 
+  nameSection: {
+    marginBottom: 14,
   },
-  name: { 
-    fontSize: 24, 
-    fontWeight: 800, 
-    color: theme.colors.text, 
-    margin: 0 
+  name: {
+    fontSize: 27,
+    fontWeight: 800,
+    color: '#ffffff',
+    margin: 0,
+    marginBottom: '6px',
+    letterSpacing: '-0.6px',
+    lineHeight: 1.1,
   },
-  age: { 
-    fontWeight: 400 
+  age: {
+    fontWeight: 500,
+    color: 'rgba(255, 255, 255, 0.65)',
   },
   universityRow: {
     fontSize: 14,
     fontWeight: 500,
-    color: theme.colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     lineHeight: 1.4,
-    marginBottom: 4
   },
-  bioCollapsed: {
-    position: 'relative',
-    maxHeight: '40px',
+  collapsedView: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
     overflow: 'hidden',
-    marginTop: 4,
   },
-  bioTextCollapsed: {
+  goalsRowCollapsed: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  goalChip: {
+    padding: '6px 13px',
+    borderRadius: 14,
+    background: 'linear-gradient(135deg, rgba(255, 59, 92, 0.18) 0%, rgba(255, 107, 157, 0.18) 100%)',
+    border: '1px solid rgba(255, 59, 92, 0.35)',
+    color: '#ff6b9d',
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  interestsEmojiRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emojiOnly: {
+    fontSize: 24,
+  },
+  moreText: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontWeight: 600,
+  },
+  expandedView: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 18,
+    paddingTop: 2,
+  },
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: 800,
+    color: 'rgba(255, 255, 255, 0.45)',
+    textTransform: 'uppercase',
+    letterSpacing: '1.2px',
+    marginBottom: '2px',
+  },
+  promptCard: {
+    background: 'rgba(255, 59, 92, 0.05)',
+    border: '2px solid rgba(255, 59, 92, 0.2)',
+    borderRadius: 16,
+    padding: '15px 16px',
+    boxShadow: '0 2px 12px rgba(255, 59, 92, 0.08)',
+  },
+  promptHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+    color: '#ff6b9d',
+    fontSize: 14,
+    fontWeight: 700,
+    lineHeight: 1.3,
+  },
+  promptAnswer: {
     fontSize: 15,
-    lineHeight: 1.4,
-    color: theme.colors.text,
-    margin: 0,
+    fontWeight: 500,
+    color: '#ffffff',
+    lineHeight: 1.55,
     whiteSpace: 'pre-line',
   },
-  fadeGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '20px',
-    background: 'linear-gradient(to bottom, transparent, rgba(30, 30, 30, 0.98))',
-    pointerEvents: 'none',
-  },
-  expandedContent: { display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 },
-  goalsRow: { 
-    display: 'flex', 
-    flexWrap: 'wrap', 
-    gap: 8,
-    marginTop: 8
-  },
-  goalTag: { 
-    padding: '6px 12px', 
-    borderRadius: 14, 
-    background: 'linear-gradient(135deg, rgba(255, 59, 92, 0.15) 0%, rgba(255, 107, 157, 0.15) 100%)', 
-    border: '1px solid rgba(255, 59, 92, 0.3)',
-    color: '#ff6b9d', 
-    fontSize: 13, 
-    fontWeight: 600 
-  },
-  interestsRowCollapsed: {
+  goalsRow: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
+    gap: 8,
   },
-  interestTagSmall: {
-    padding: '4px 10px',
-    borderRadius: 12,
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid #333',
-    color: theme.colors.textTertiary,
-    fontSize: 12,
-    fontWeight: 500,
+  goalTag: {
+    padding: '7px 14px',
+    borderRadius: 14,
+    background: 'linear-gradient(135deg, rgba(255, 59, 92, 0.18) 0%, rgba(255, 107, 157, 0.18) 100%)',
+    border: '1px solid rgba(255, 59, 92, 0.35)',
+    color: '#ff6b9d',
+    fontSize: 13,
+    fontWeight: 600,
   },
-  interestsRow: { 
-    display: 'flex', 
-    flexWrap: 'wrap', 
-    gap: 6 
-  },
-  interestTag: { 
-    fontSize: 13, 
-    color: theme.colors.textSecondary, 
-    padding: '6px 12px', 
-    borderRadius: 12, 
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    border: '1px solid #333',
-    fontWeight: 500
-  },
-  bioCollapsed: {
-    position: 'relative',
-    maxHeight: '40px',
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  bioTextCollapsed: {
+  bioText: {
     fontSize: 15,
-    lineHeight: 1.4,
-    color: theme.colors.text,
+    lineHeight: 1.6,
+    color: 'rgba(255, 255, 255, 0.85)',
     margin: 0,
     whiteSpace: 'pre-line',
   },
-  fadeGradient: {
+  interestsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: 7,
+  },
+  interestChip: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.75)',
+    padding: '7px 8px',
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    fontWeight: 500,
+    textAlign: 'center',
+  },
+
+  viewingOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: theme.colors.bg,
+    zIndex: 1000,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+  },
+  viewingHeader: {
+    position: 'sticky',
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: '12px 16px',
+    paddingTop: 'max(env(safe-area-inset-top, 12px), 12px)',
+    zIndex: 10,
+    transition: 'background 0.2s, backdrop-filter 0.2s',
+  },
+  backButtonNew: {
+    padding: '10px 16px',
+    background: 'rgba(28, 28, 28, 0.8)',
+    backdropFilter: 'blur(8px)',
+    border: `1px solid ${theme.colors.border}`,
+    borderRadius: 12,
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  viewingContent: {
+    minHeight: '100vh',
+    paddingBottom: '100px',
+  },
+  viewingPhotoSection: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: '3 / 4',
+    maxHeight: '70vh',
+    cursor: 'pointer',
+  },
+  viewingPhoto: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    transition: 'opacity 0.3s ease',
+  },
+  photoIndicatorsViewing: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    display: 'flex',
+    gap: 6,
+    zIndex: 3,
+  },
+  indicatorViewing: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    transition: 'background-color 0.3s ease',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+  },
+  viewingPhotoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 80,
+    fontWeight: 800,
+    color: '#fff',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  },
+  viewingPhotoOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '20px',
-    background: 'linear-gradient(to bottom, transparent, rgba(30, 30, 30, 0.98))',
+    height: 60,
+    background: `linear-gradient(to top, ${theme.colors.bg} 0%, transparent 100%)`,
     pointerEvents: 'none',
   },
-  expandedContent: { 
-    display: 'flex', 
-    flexDirection: 'column', 
-    gap: 12, 
-    marginTop: 8 
+  viewingInfo: {
+    padding: '20px 20px 40px 20px',
   },
-  bioSection: { 
-    marginTop: 4 
+  viewingName: {
+    fontSize: 32,
+    fontWeight: 800,
+    color: theme.colors.text,
+    margin: '0 0 8px 0',
+    lineHeight: 1.2,
   },
-  bioText: { 
-    fontSize: 15, 
-    lineHeight: 1.4, 
-    color: theme.colors.text, 
-    margin: 0, 
-    whiteSpace: 'pre-line' 
+  viewingAge: {
+    fontWeight: 400,
   },
-  bioSection: { marginTop: 4 },
-  bioText: { fontSize: 15, lineHeight: 1.4, color: theme.colors.text, margin: 0, whiteSpace: 'pre-line' },
-  interestsRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  interestTag: { fontSize: 12, color: theme.colors.textTertiary, padding: '4px 8px', borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.05)' },
+  viewingUniversity: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 15,
+    color: theme.colors.textSecondary,
+    marginBottom: 20,
+  },
+  viewingSection: {
+    marginBottom: 24,
+  },
+  viewingSectionTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: theme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    marginBottom: 12,
+  },
+  icebreakerCard: {
+    background: 'linear-gradient(135deg, rgba(255, 107, 157, 0.15) 0%, rgba(240, 147, 251, 0.15) 100%)',
+    border: '2px solid rgba(255, 107, 157, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  icebreakerIcon: {
+    fontSize: 24,
+    flexShrink: 0,
+  },
+  icebreakerText: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: theme.colors.text,
+    lineHeight: 1.5,
+  },
+  viewingGoals: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  viewingGoalTag: {
+    padding: '8px 14px',
+    borderRadius: 14,
+    fontSize: 14,
+    fontWeight: 600,
+    background: 'linear-gradient(135deg, rgba(255, 59, 92, 0.15) 0%, rgba(255, 107, 157, 0.15) 100%)',
+    border: '1px solid rgba(255, 59, 92, 0.3)',
+    color: '#ff6b9d',
+  },
+  viewingBio: {
+    fontSize: 16,
+    lineHeight: 1.6,
+    color: theme.colors.text,
+    margin: 0,
+    whiteSpace: 'pre-line',
+  },
+  viewingInterests: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  viewingInterestTag: {
+    padding: '7px 12px',
+    borderRadius: 12,
+    fontSize: 13,
+    fontWeight: 600,
+    backgroundColor: theme.colors.card,
+    border: `1px solid ${theme.colors.border}`,
+    color: theme.colors.text,
+  },
+  viewingActions: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: '12px 20px',
+    paddingBottom: `max(env(safe-area-inset-bottom), 16px)`,
+    background: 'linear-gradient(to top, rgba(10, 10, 10, 0.95) 0%, rgba(10, 10, 10, 0.9) 80%, transparent 100%)',
+    backdropFilter: 'blur(12px)',
+    borderTop: `1px solid ${theme.colors.border}`,
+    zIndex: 100,
+  },
+  viewingLikeButton: {
+    width: '100%',
+    padding: '16px',
+    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    border: 'none',
+    borderRadius: 16,
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: 700,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    boxShadow: '0 4px 20px rgba(245, 87, 108, 0.4)',
+  },
 
-  emptyState: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', marginTop: 60 },
-  emptyEmoji: { fontSize: 64, marginBottom: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: 700, color: theme.colors.text },
-  
-  likesList: { padding: '0 12px 100px', display: 'flex', flexDirection: 'column', gap: 12 },
-  likeCard: { display: 'flex', alignItems: 'center', gap: 12, background: theme.colors.card, padding: 12, borderRadius: 16, animation: 'fadeInUp 0.3s ease forwards', opacity: 0, cursor: 'pointer' },
-  likeCardAvatar: { flexShrink: 0 },
-  avatarPlaceholder: { width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 20 },
-  likeCardInfo: { flex: 1 },
-  likeCardName: { fontSize: 16, fontWeight: 700, color: theme.colors.text },
-  likeCardUni: { fontSize: 13, color: theme.colors.textSecondary },
-  loader: { textAlign: 'center', padding: 20, color: theme.colors.textSecondary },
-
-  tutorialOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.85)', zIndex: 2500, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.3s ease' },
-  tutorialContent: { background: theme.colors.card, borderRadius: 24, padding: '32px 24px', maxWidth: '320px', textAlign: 'center' },
-  tutorialIcon: { fontSize: 64, marginBottom: 16, animation: 'bounce 1s infinite' },
-  tutorialTitle: { fontSize: 20, fontWeight: 700, color: theme.colors.text, marginBottom: 24, margin: '0 0 24px 0' },
-  tutorialRow: { display: 'flex', gap: 24, marginBottom: 24 },
-  tutorialItem: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 },
-  tutorialText: { fontSize: 14, color: theme.colors.textSecondary, margin: 0, lineHeight: 1.4 },
-  arrowLeft: { fontSize: 40, color: theme.colors.error, fontWeight: 700 },
-  arrowRight: { fontSize: 40, color: '#f5576c', fontWeight: 700 },
-  tutorialButton: { width: '100%', padding: '14px', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: '#fff', border: 'none', borderRadius: 16, fontSize: 16, fontWeight: 700, cursor: 'pointer' },
+  emptyState: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    marginTop: 60
+  },
+  emptyEmoji: {
+    fontSize: 64,
+    marginBottom: 16
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: theme.colors.text
+  },
 };
 
 const styleSheet = document.createElement('style');
 styleSheet.textContent = `
-  @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-  @keyframes pulse { 
-    0%, 100% { transform: scale(1); box-shadow: 0 8px 32px rgba(240, 147, 251, 0.4); } 
-    50% { transform: scale(1.05); box-shadow: 0 12px 40px rgba(240, 147, 251, 0.6); } 
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 `;
 document.head.appendChild(styleSheet);
