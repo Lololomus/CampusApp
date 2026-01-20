@@ -15,7 +15,7 @@ import {
 } from '../api';
 import theme from '../theme';
 
-import PostCard from './PostCard';
+import PostCard from './posts/PostCard';
 import MarketCard from './market/MarketCard';
 import RequestCard from './requests/RequestCard';
 

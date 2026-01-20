@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, Image as ImageIcon, Trash2, Upload } from 'lucide-react';
-import { useStore } from '../store';
-import { createPost } from '../api';
-import { hapticFeedback } from '../utils/telegram';
-import theme from '../theme';
-import { Z_CREATE_POST } from '../constants/zIndex';
+import { useStore } from '../../store';
+import { createPost } from '../../api';
+import { hapticFeedback } from '../../utils/telegram';
+import theme from '../../theme';
+import { Z_CREATE_POST } from '../../constants/zIndex';
 import imageCompression from 'browser-image-compression';
 
 const CATEGORIES = [

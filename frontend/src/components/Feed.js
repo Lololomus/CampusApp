@@ -1,12 +1,12 @@
 // ===== src/components/Feed/Feed.js =====
 
 import React, { useEffect, useState, useCallback } from 'react';
-import PostCard from './PostCard';
+import PostCard from './posts/PostCard';
 import RequestsFeed from './requests/RequestsFeed';
-import CreatePost from './CreatePost';
+import CreatePost from './posts/CreatePost';
 import { getPosts } from '../api';
 import { useStore } from '../store';
-import PostCardSkeleton from './PostCardSkeleton';
+import PostCardSkeleton from './posts/PostCardSkeleton';
 import theme from '../theme';
 import AppHeader from './shared/AppHeader';
 

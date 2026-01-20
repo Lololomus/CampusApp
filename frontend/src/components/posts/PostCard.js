@@ -2,11 +2,11 @@
 
 import React, { useState, useRef } from 'react';
 import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight } from 'lucide-react';
-import { hapticFeedback } from '../utils/telegram';
-import { likePost, deletePost } from '../api';
-import { useStore } from '../store';
-import theme from '../theme';
-import DropdownMenu from './DropdownMenu';
+import { hapticFeedback } from '../../utils/telegram';
+import { likePost, deletePost } from '../../api';
+import { useStore } from '../../store';
+import theme from '../../theme';
+import DropdownMenu from '../DropdownMenu';
 import EditPost from './EditPost';
 
 // Константы для URL изображений

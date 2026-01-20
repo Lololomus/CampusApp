@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, Lock, Trash2 } from 'lucide-react';
-import { updatePost } from '../api';
-import { hapticFeedback } from '../utils/telegram';
-import theme from '../theme';
-import { Z_EDIT_POST } from '../constants/zIndex';
+import { updatePost } from '../../api';
+import { hapticFeedback } from '../../utils/telegram';
+import theme from '../../theme';
+import { Z_EDIT_POST } from '../../constants/zIndex';
 import imageCompression from 'browser-image-compression';
 
 // ===== КОНСТАНТЫ (DRY) =====

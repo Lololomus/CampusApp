@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical, MapPin, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment } from '../api';
-import { useStore } from '../store';
-import { hapticFeedback, showBackButton, hideBackButton } from '../utils/telegram';
-import BottomActionBar from './BottomActionBar';
-import DropdownMenu from './DropdownMenu';
-import { Z_MODAL_FORMS } from '../constants/zIndex';
-import theme from '../theme';
+import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment } from '../../api';
+import { useStore } from '../../store';
+import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/telegram';
+import BottomActionBar from '../BottomActionBar';
+import DropdownMenu from '../DropdownMenu';
+import { Z_MODAL_FORMS } from '../../constants/zIndex';
+import theme from '../../theme';
 
 // Константы
 const API_URL = 'http://localhost:8000'; 
