@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GraduationCap, ChevronUp, Heart } from 'lucide-react';
+import { GraduationCap, ChevronUp, Heart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStore } from '../../store';
-import { getDatingFeed, likeUser, dislikeUser, getDatingStats, getWhoLikedMe, getMyDatingProfile } from '../../api';
+import { getDatingFeed, likeUser, dislikeUser, getDatingStats, getWhoLikedMe, getMyDatingProfile, getMyMatches } from '../../api';
 import AppHeader from '../shared/AppHeader';
 import ProfileCard from './ProfileCard';
 import MatchModal from './MatchModal';
@@ -10,6 +10,7 @@ import { FeedCardSkeleton, FeedInfoBarSkeleton } from './DatingSkeletons';
 import DatingOnboarding from './DatingOnboarding';
 import MyDatingProfileModal from './MyDatingProfileModal';
 import EditDatingProfileModal from './EditDatingProfileModal';
+import PhotoViewer from '../shared/PhotoViewer';
 import LikesTab from './LikesTab';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
@@ -169,7 +170,10 @@ const MOCK_LIKES = [
     ],
     interests: ['books', 'art', 'movies', 'coffee'],
     goals: ['friends', 'hangout'],
-    icebreaker: 'Какую последнюю книгу прочитал?',
+    prompts: {
+      question: 'Какую последнюю книгу прочитал?',
+      answer: 'Перечитываю Достоевского — каждый раз нахожу что-то новое 📖'
+    },
   },
   {
     id: 102,
@@ -201,7 +205,10 @@ const MOCK_LIKES = [
     ],
     interests: ['art', 'photo', 'coffee', 'music', 'travel'],
     goals: ['friends', 'relationship'],
-    icebreaker: 'Figma или Adobe XD? 🤔',
+    prompts: {
+      question: 'Figma или Adobe XD?',
+      answer: 'Только Figma! Там все плагины которые нужны 🔥'
+    },
   },
   {
     id: 104,
@@ -232,7 +239,10 @@ const MOCK_LIKES = [
     ],
     interests: ['fitness', 'sport', 'food', 'travel', 'music'],
     goals: ['friends', 'relationship'],
-    icebreaker: 'Зал или пробежка утром?',
+    prompts: {
+      question: 'Зал или пробежка утром?',
+      answer: 'Зал всегда! Утренняя тренировка заряжает на весь день 💪'
+    },
   },
   {
     id: 106,
@@ -251,12 +261,101 @@ const MOCK_LIKES = [
   },
 ];
 
-function ViewingProfileModal({ profile, onClose, onLike }) {
+const MOCK_MATCHES = [
+  {
+    id: 201,
+    user_id: 2,
+    name: 'Анна',
+    age: 19,
+    bio: 'Люблю театры и литературу 🎭📚',
+    university: 'МГУ',
+    institute: 'Филологический',
+    course: 1,
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=800', w: 800, h: 1000 }
+    ],
+    interests: ['books', 'art', 'coffee'],
+    goals: ['friends', 'study'],
+    prompts: {
+      question: 'Моя суперспособность?',
+      answer: 'Могу процитировать "Мастера и Маргариту" целиком 📖'
+    },
+    matched_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + 22 * 60 * 60 * 1000).toISOString(),
+    hours_left: 2,
+    minutes_left: 0,
+  },
+  {
+    id: 202,
+    user_id: 3,
+    name: 'Илья',
+    age: 22,
+    bio: 'Физтех, люблю математику и шахматы ♟️',
+    university: 'МФТИ',
+    institute: 'ФПМИ',
+    course: 4,
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=800', w: 800, h: 1000 }
+    ],
+    interests: ['science', 'games', 'coffee'],
+    goals: ['study', 'friends'],
+    prompts: {
+      question: 'Идеальное свидание?',
+      answer: 'Партия в шахматы в Парке Горького + кофе'
+    },
+    matched_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + 18 * 60 * 60 * 1000).toISOString(),
+    hours_left: 18,
+    minutes_left: 0,
+  },
+  {
+    id: 203,
+    user_id: 4,
+    name: 'Катя',
+    age: 20,
+    bio: 'UI/UX дизайнер и художник 🎨',
+    university: 'ВШЭ',
+    institute: 'Дизайн',
+    course: 2,
+    photos: [
+      { url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=800', w: 800, h: 1000 }
+    ],
+    interests: ['art', 'photo', 'coffee', 'travel'],
+    goals: ['friends', 'relationship'],
+    prompts: {
+      question: 'Figma или Adobe XD?',
+      answer: 'Figma всегда! Collaborative design — это мощь 🔥'
+    },
+    matched_at: new Date(Date.now() - 15 * 60 * 60 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString(),
+    hours_left: 5,
+    minutes_left: 0,
+  },
+];
+
+function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage }) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [scrollY, setScrollY] = useState(0);
-  
+  const [isLiking, setIsLiking] = useState(false);
+
   const photos = profile?.photos || [];
   const hasPhotos = photos.length > 0;
+
+  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+
+  const nextPhoto = () => {
+    if (currentPhotoIndex < photos.length - 1) {
+      hapticFeedback('light');
+      setCurrentPhotoIndex(prev => prev + 1);
+    }
+  };
+
+  const prevPhoto = () => {
+    if (currentPhotoIndex > 0) {
+      hapticFeedback('light');
+      setCurrentPhotoIndex(prev => prev - 1);
+    }
+  };
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -265,22 +364,38 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
     };
   }, []);
 
-  const handlePhotoClick = () => {
-    if (photos.length > 1) {
-      setCurrentPhotoIndex((prev) => (prev + 1) % photos.length);
-      hapticFeedback('light');
-    }
-  };
-
   const handleScroll = (e) => {
     setScrollY(e.target.scrollTop);
   };
 
   const headerOpacity = Math.min(scrollY / 100, 0.95);
 
+  const handleLikeClick = async () => {
+    if (isLiking) return;
+    
+    setIsLiking(true);
+    hapticFeedback('medium');
+    
+    try {
+      if (onLike) {
+        await onLike();
+      }
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
+  const handleMessageClick = () => {
+    hapticFeedback('medium');
+    if (onMessage) {
+      onMessage();
+    }
+  };
+
   return (
     <div style={styles.viewingOverlay} onScroll={handleScroll}>
-      <div 
+      {/* Header */}
+      <div
         style={{
           ...styles.viewingHeader,
           background: `linear-gradient(to bottom, rgba(10, 10, 10, ${headerOpacity}) 0%, rgba(10, 10, 10, ${headerOpacity * 0.8}) 80%, transparent 100%)`,
@@ -292,8 +407,10 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
         </button>
       </div>
 
+      {/* Content */}
       <div style={styles.viewingContent}>
-        <div style={styles.viewingPhotoSection} onClick={handlePhotoClick}>
+        {/* Photo */}
+        <div style={styles.viewingPhotoSection} onClick={() => setShowPhotoViewer(true)}>
           {hasPhotos ? (
             <>
               {photos.map((photo, idx) => (
@@ -308,7 +425,6 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
                   }}
                 />
               ))}
-              
               {photos.length > 1 && (
                 <div style={styles.photoIndicatorsViewing}>
                   {photos.map((_, idx) => (
@@ -316,9 +432,7 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
                       key={idx}
                       style={{
                         ...styles.indicatorViewing,
-                        backgroundColor: idx === currentPhotoIndex 
-                          ? 'rgba(255, 255, 255, 0.95)' 
-                          : 'rgba(255, 255, 255, 0.3)',
+                        backgroundColor: idx === currentPhotoIndex ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.3)',
                       }}
                     />
                   ))}
@@ -332,16 +446,44 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
               {profile.name?.charAt(0) || '?'}
             </div>
           )}
-          <div style={styles.viewingPhotoOverlay} />
+          
+          {/* Навигация по фото */}
+          {photos.length > 1 && (
+            <>
+              {currentPhotoIndex > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    prevPhoto();
+                  }}
+                  style={{ ...styles.photoNavButton, left: 12 }}
+                >
+                  <ChevronLeft size={24} />
+                </button>
+              )}
+              {currentPhotoIndex < photos.length - 1 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    nextPhoto();
+                  }}
+                  style={{ ...styles.photoNavButton, right: 12 }}
+                >
+                  <ChevronRight size={24} />
+                </button>
+              )}
+            </>
+          )}
         </div>
 
+        {/* Info */}
         <div style={styles.viewingInfo}>
           <h2 style={styles.viewingName}>
             {profile.name}
             {profile.age && <span style={styles.viewingAge}>, {profile.age}</span>}
           </h2>
 
-          {profile.university && (
+          {(profile.university || profile.institute || profile.course) && (
             <div style={styles.viewingUniversity}>
               <GraduationCap size={16} color={theme.colors.textSecondary} />
               <span>
@@ -352,15 +494,21 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
             </div>
           )}
 
-          {profile.icebreaker && (
+          {/* Icebreaker / Prompts */}
+          {(profile.icebreaker || (profile.prompts?.question && profile.prompts?.answer)) && (
             <div style={styles.viewingSection}>
-              <div style={styles.icebreakerCard}>
-                <div style={styles.icebreakerIcon}>💬</div>
-                <div style={styles.icebreakerText}>{profile.icebreaker}</div>
+              <div style={styles.viewingPromptCard}>
+                <div style={styles.viewingPromptQuestion}>
+                  {profile.prompts?.question || 'Ледокол'}
+                </div>
+                <div style={styles.viewingPromptAnswer}>
+                  {profile.prompts?.answer || profile.icebreaker}
+                </div>
               </div>
             </div>
           )}
 
+          {/* Goals */}
           {profile.goals && profile.goals.length > 0 && (
             <div style={styles.viewingSection}>
               <div style={styles.viewingSectionTitle}>Цели</div>
@@ -374,6 +522,7 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
             </div>
           )}
 
+          {/* Bio */}
           {profile.bio && (
             <div style={styles.viewingSection}>
               <div style={styles.viewingSectionTitle}>О себе</div>
@@ -381,6 +530,7 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
             </div>
           )}
 
+          {/* Interests */}
           {profile.interests && profile.interests.length > 0 && (
             <div style={styles.viewingSection}>
               <div style={styles.viewingSectionTitle}>Интересы</div>
@@ -396,12 +546,40 @@ function ViewingProfileModal({ profile, onClose, onLike }) {
         </div>
       </div>
 
+      {/* Кнопка внизу (разная для match/like) */}
       <div style={styles.viewingActions}>
-        <button style={styles.viewingLikeButton} onClick={onLike}>
-          <Heart size={24} fill="#fff" strokeWidth={0} />
-          <span>Лайкнуть</span>
-        </button>
+        {profileType === 'match' ? (
+          <button 
+            style={styles.viewingMessageButton} 
+            onClick={handleMessageClick}
+            disabled={isLiking}
+          >
+            💬 <span>Написать сообщение</span>
+          </button>
+        ) : (
+          <button 
+            style={{
+              ...styles.viewingLikeButton,
+              opacity: isLiking ? 0.6 : 1,
+              cursor: isLiking ? 'not-allowed' : 'pointer',
+            }}
+            onClick={handleLikeClick}
+            disabled={isLiking}
+          >
+            <Heart size={24} fill="#fff" strokeWidth={0} />
+            <span>{isLiking ? 'Отправка...' : 'Лайкнуть в ответ'}</span>
+          </button>
+        )}
       </div>
+
+      {/* PhotoViewer */}
+      {showPhotoViewer && (
+        <PhotoViewer
+          photos={photos}
+          initialIndex={currentPhotoIndex}
+          onClose={() => setShowPhotoViewer(false)}
+        />
+      )}
     </div>
   );
 }
@@ -442,6 +620,8 @@ function DatingFeed() {
   const [infoExpanded, setInfoExpanded] = useState(false);
   const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [matches, setMatches] = useState([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
   
   const isLoadingRef = useRef(false);
   const offset = useRef(0);
@@ -557,6 +737,24 @@ function DatingFeed() {
     }
   };
 
+  const loadMatches = async () => {
+    if (isGuestMode) return;
+    setLoadingMatches(true);
+    try {
+      if (USE_MOCK_DATA) {
+        await new Promise(r => setTimeout(r, 500));
+        setMatches(MOCK_MATCHES);
+      } else {
+        const data = await getMyMatches();
+        setMatches(data || []);
+      }
+    } catch (error) { 
+      console.error(error); 
+    } finally { 
+      setLoadingMatches(false); 
+    }
+  };
+
   useEffect(() => {
     if (!checkingProfile && !currentProfile && hasMoreProfiles) {
       loadProfiles(true);
@@ -576,7 +774,10 @@ function DatingFeed() {
   }, [setOnPrefetchNeeded, loadProfiles]);
 
   useEffect(() => {
-    if (activeTab === 'likes' && !isGuestMode) loadLikes();
+    if (activeTab === 'likes' && !isGuestMode) {
+      loadLikes();
+      loadMatches();
+    }
   }, [activeTab, isGuestMode]);
 
   const triggerOnboarding = () => {
@@ -643,63 +844,78 @@ function DatingFeed() {
 
   const handleLike = async (profileId = null) => {
     const targetId = profileId || currentProfile?.id;
-    
+
     if (isGuestMode) {
       hapticFeedback('medium');
       triggerOnboarding();
-      return;
+      return { is_match: false };
     }
-    
-    if (!targetId || (isAnimating && !profileId)) return;
-    
+
+    if (!targetId || (isAnimating && !profileId)) {
+      return { is_match: false };
+    }
+
     hapticFeedback('medium');
-    
+
     if (!profileId) {
       setSwipeDirection('right');
       setIsAnimating(true);
-      
       removeCurrentProfile();
       setDragX(0);
-      
       setTimeout(() => {
         setIsAnimating(false);
         setSwipeDirection(null);
         setInfoExpanded(false);
       }, 500);
     }
-    
+
     try {
       let isMatch = false;
       let matchedUser = null;
-      
+
       if (USE_MOCK_DATA) {
         await new Promise(r => setTimeout(r, 300));
         isMatch = Math.random() > 0.3;
-        matchedUser = profileId 
+        
+        const baseUser = profileId 
           ? whoLikedMe.find(u => u.id === profileId) 
           : currentProfile;
+        
+        if (isMatch && baseUser) {
+          matchedUser = {
+            ...baseUser,
+            user_id: baseUser.id,
+            matched_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            hours_left: 24,
+            minutes_left: 0,
+          };
+        }
       } else {
         const res = await likeUser(targetId);
         isMatch = res.is_match;
         matchedUser = res.matched_user;
       }
-      
+
       if (profileId) {
-        setWhoLikedMe(prev => prev.filter(u => u.id !== targetId));
+        setWhoLikedMe(prev => (prev || []).filter(u => u.id !== targetId));
         setViewingProfile(null);
       }
-      
-      if (isMatch) {
+
+      if (isMatch && matchedUser) {
+        setMatches(prev => [matchedUser, ...(prev || [])]);
         handleMatch(matchedUser);
       }
+
+      return { is_match: isMatch, matched_user: matchedUser };
     } catch (e) {
       console.error('Like error:', e);
-      alert('Ошибка при лайке');
-      
+      alert(`Ошибка: ${e.message || 'Не удалось поставить лайк'}`);
       if (!profileId) {
         setSwipeDirection(null);
         setIsAnimating(false);
       }
+      return { is_match: false };
     }
   };
 
@@ -894,7 +1110,6 @@ function DatingFeed() {
               </div>
             )}
 
-            {/* ✅ РЕАЛЬНАЯ ШТОРКА (с анимацией) */}
             {currentProfile && !loading && (
               <motion.div 
                 key={currentProfile.id}
@@ -1034,33 +1249,54 @@ function DatingFeed() {
 
         {activeTab === 'likes' && !viewingProfile && (
           <LikesTab
+            matches={matches}
             users={whoLikedMe}
             loading={loadingLikes}
-            onViewProfile={(user) => {
+            matchesLoading={loadingMatches}
+            onViewProfile={(user, type) => {
               hapticFeedback('light');
-              setViewingProfile(user);
+              setViewingProfile({ user, type });
             }}
-            onQuickLike={(userId) => handleLike(userId)}
+            onQuickLike={async (userId) => {
+              const result = await handleLike(userId);
+              return result;
+            }}
+            onMessage={(user) => {
+              hapticFeedback('medium');
+              console.log('Open chat with', user);
+            }}
             onEmptyAction={() => {
               setShowEditProfile(true);
             }}
           />
         )}
+
+        {activeTab === 'likes' && viewingProfile && (
+          <ViewingProfileModal
+            profile={viewingProfile.user}
+            profileType={viewingProfile.type}
+            onClose={() => {
+              hapticFeedback('light');
+              setViewingProfile(null);
+            }}
+            onLike={() => {
+              if (viewingProfile.type === 'like') {
+                handleLike(viewingProfile.user.id);
+              }
+            }}
+            onMessage={() => {
+              if (viewingProfile.type === 'match') {
+                hapticFeedback('medium');
+                console.log('Open chat with', viewingProfile.user);
+                setViewingProfile(null);
+              }
+            }}
+          />
+        )}
       </div>
 
-      {activeTab === 'likes' && viewingProfile && (
-        <ViewingProfileModal
-          profile={viewingProfile}
-          onClose={() => {
-            hapticFeedback('light');
-            setViewingProfile(null);
-          }}
-          onLike={() => handleLike(viewingProfile.id)}
-        />
-      )}
-
       {showMyProfile && (
-        <MyDatingProfileModal
+        <MyDatingProfileModal 
           onClose={() => setShowMyProfile(false)}
           onEditClick={() => {
             setShowMyProfile(false);
@@ -1070,11 +1306,9 @@ function DatingFeed() {
       )}
 
       {showEditProfile && (
-        <EditDatingProfileModal
+        <EditDatingProfileModal 
           onClose={() => setShowEditProfile(false)}
-          onSuccess={() => {
-            console.log('✅ Профиль обновлен');
-          }}
+          onSuccess={() => console.log('✅')}
         />
       )}
 
@@ -1083,30 +1317,30 @@ function DatingFeed() {
   );
 }
 
+// STYLES
 const styles = {
-  container: { 
-    flex: 1, 
-    backgroundColor: theme.colors.bg, 
-    minHeight: '100vh', 
-    position: 'relative' 
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.bg,
+    minHeight: '100vh',
+    position: 'relative',
   },
-  centerContainer: { 
-    flex: 1, 
-    display: 'flex', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    height: '100vh' 
+  centerContainer: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
   },
-  spinner: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: '50%', 
-    border: '4px solid rgba(255,255,255,0.1)', 
-    borderTopColor: '#f5576c', 
-    animation: 'spin 1s linear infinite' 
+  spinner: {
+    width: 40,
+    height: 40,
+    borderRadius: '50%',
+    border: '4px solid rgba(255,255,255,0.1)',
+    borderTopColor: '#f5576c',
+    animation: 'spin 1s linear infinite',
   },
-  
-  tabsWrapper: { 
+  tabsWrapper: {
     padding: '0 8px 12px 8px',
     overflow: 'visible',
   },
@@ -1131,7 +1365,7 @@ const styles = {
     borderRadius: theme.radius.md,
     boxShadow: '0 2px 8px rgba(245, 87, 108, 0.4)',
     transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-    zIndex: 1
+    zIndex: 1,
   },
   tabButton: {
     flex: 1,
@@ -1157,7 +1391,7 @@ const styles = {
     fontWeight: 800,
     padding: '1px 6px',
     borderRadius: 10,
-    minWidth: 18
+    minWidth: 18,
   },
   avatarImg: {
     width: '100%',
@@ -1180,7 +1414,7 @@ const styles = {
     height: 56,
     borderRadius: '50%',
     border: '2px solid transparent',
-    backgroundImage: `linear-gradient(#0a0a0a, #0a0a0a), linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 50%, #f093fb 100%)`,
+    backgroundImage: 'linear-gradient(#0a0a0a, #0a0a0a), linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 50%, #f093fb 100%)',
     backgroundOrigin: 'border-box',
     backgroundClip: 'padding-box, border-box',
     padding: 0,
@@ -1194,19 +1428,18 @@ const styles = {
     transform: 'translateY(0px)',
     zIndex: 10,
   },
-  
   content: {
     display: 'flex',
     flexDirection: 'column',
     flex: 1,
     paddingTop: 'calc(var(--header-padding, 104px) + 16px)',
-    paddingBottom: '100px',
+    paddingBottom: 100,
   },
   cardWrapper: {
     position: 'relative',
     flex: 1,
     padding: '0 12px',
-    minHeight: '500px',
+    minHeight: 500,
     maxHeight: 'calc(100vh - 380px)',
     marginBottom: 12,
   },
@@ -1233,10 +1466,9 @@ const styles = {
   swipeLabelText: {
     fontSize: 28,
     fontWeight: 900,
-    letterSpacing: '4px',
+    letterSpacing: 4,
     textShadow: '0 2px 8px rgba(0,0,0,0.5)',
   },
-
   infoBar: {
     position: 'fixed',
     bottom: 0,
@@ -1420,7 +1652,6 @@ const styles = {
     fontWeight: 500,
     textAlign: 'center',
   },
-
   viewingOverlay: {
     position: 'fixed',
     top: 0,
@@ -1438,7 +1669,7 @@ const styles = {
     left: 0,
     right: 0,
     padding: '12px 16px',
-    paddingTop: 'max(env(safe-area-inset-top, 12px), 12px)',
+    paddingTop: `max(env(safe-area-inset-top, 12px), 12px)`,
     zIndex: 10,
     transition: 'background 0.2s, backdrop-filter 0.2s',
   },
@@ -1458,7 +1689,7 @@ const styles = {
   },
   viewingContent: {
     minHeight: '100vh',
-    paddingBottom: '100px',
+    paddingBottom: 100,
   },
   viewingPhotoSection: {
     position: 'relative',
@@ -1503,14 +1734,22 @@ const styles = {
     color: '#fff',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
   },
-  viewingPhotoOverlay: {
+  photoNavButton: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 60,
-    background: `linear-gradient(to top, ${theme.colors.bg} 0%, transparent 100%)`,
-    pointerEvents: 'none',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'rgba(0,0,0,0.5)',
+    backdropFilter: 'blur(10px)',
+    border: 'none',
+    borderRadius: '50%',
+    width: 40,
+    height: 40,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#fff',
+    cursor: 'pointer',
+    zIndex: 10,
   },
   viewingInfo: {
     padding: '20px 20px 40px 20px',
@@ -1544,22 +1783,21 @@ const styles = {
     letterSpacing: '0.5px',
     marginBottom: 12,
   },
-  icebreakerCard: {
-    background: 'linear-gradient(135deg, rgba(255, 107, 157, 0.15) 0%, rgba(240, 147, 251, 0.15) 100%)',
-    border: '2px solid rgba(255, 107, 157, 0.3)',
-    borderRadius: 16,
-    padding: 16,
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 12,
+  viewingPromptCard: {
+    padding: '14px 16px',
+    background: 'rgba(255, 59, 92, 0.05)',
+    borderRadius: 14,
+    border: '2px solid rgba(255, 59, 92, 0.2)',
   },
-  icebreakerIcon: {
-    fontSize: 24,
-    flexShrink: 0,
+  viewingPromptQuestion: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#ff6b9d',
+    marginBottom: 10,
+    lineHeight: 1.4,
   },
-  icebreakerText: {
+  viewingPromptAnswer: {
     fontSize: 15,
-    fontWeight: 600,
     color: theme.colors.text,
     lineHeight: 1.5,
   },
@@ -1604,15 +1842,14 @@ const styles = {
     left: 0,
     right: 0,
     padding: '12px 20px',
-    paddingBottom: `max(env(safe-area-inset-bottom), 16px)`,
-    background: 'linear-gradient(to top, rgba(10, 10, 10, 0.95) 0%, rgba(10, 10, 10, 0.9) 80%, transparent 100%)',
-    backdropFilter: 'blur(12px)',
+    paddingBottom: `max(env(safe-area-inset-bottom, 16px), 16px)`,
+    background: theme.colors.bg,
     borderTop: `1px solid ${theme.colors.border}`,
     zIndex: 100,
   },
   viewingLikeButton: {
     width: '100%',
-    padding: '16px',
+    padding: 16,
     background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
     border: 'none',
     borderRadius: 16,
@@ -1626,7 +1863,6 @@ const styles = {
     gap: 10,
     boxShadow: '0 4px 20px rgba(245, 87, 108, 0.4)',
   },
-
   emptyState: {
     flex: 1,
     display: 'flex',
@@ -1634,16 +1870,32 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     textAlign: 'center',
-    marginTop: 60
+    marginTop: 60,
   },
   emptyEmoji: {
     fontSize: 64,
-    marginBottom: 16
+    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: 700,
-    color: theme.colors.text
+    color: theme.colors.text,
+  },
+  viewingMessageButton: {
+    width: '100%',
+    padding: 16,
+    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    border: 'none',
+    borderRadius: 16,
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: 700,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    boxShadow: '0 4px 20px rgba(245, 87, 108, 0.4)',
   },
 };
 

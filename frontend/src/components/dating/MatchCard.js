@@ -10,14 +10,14 @@ const INTEREST_EMOJIS = {
   photo: '📷', food: '🍕', science: '🔬', startup: '🚀', fitness: '💪',
 };
 
-function MatchCard({ match, onMessage, onViewProfile }) {
+function MatchCard({ match, onClick, onMessage }) {
   const photo = match?.photos?.[0]?.url || match?.photos?.[0] || null;
-  const isCritical = match?.hours_left < 1;
-  const isUrgent = match?.hours_left <= 3 && match?.hours_left >= 1;
+  const isCritical = match?.hours_left < 3;
+  const isUrgent = match?.hours_left < 6;
 
   const getTimerColor = () => {
     if (isCritical) return '#ff3b5c';
-    if (isUrgent) return '#ff9800';
+    if (isUrgent) return '#ffc107';
     return '#4caf50';
   };
 
@@ -27,10 +27,10 @@ function MatchCard({ match, onMessage, onViewProfile }) {
         ...styles.card,
         ...(isCritical && styles.cardCritical),
       }}
-      onClick={() => {
+        onClick={() => {
         hapticFeedback('light');
-        if (onViewProfile) onViewProfile(match);
-      }}
+        if (onClick) onClick();
+        }}
     >
       {/* LEFT: Photo */}
       <div style={styles.photoSection}>

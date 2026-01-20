@@ -225,7 +225,11 @@ export const useStore = create(
 
       // Likes & Matches
       whoLikedMe: [],
-      setWhoLikedMe: (users) => set({ whoLikedMe: users }),
+      setWhoLikedMe: (usersOrUpdater) => set((state) => ({
+        whoLikedMe: typeof usersOrUpdater === 'function' 
+          ? usersOrUpdater(state.whoLikedMe) 
+          : usersOrUpdater
+      })),
 
       // активные мэтчи (24 часа)
       matches: [],
