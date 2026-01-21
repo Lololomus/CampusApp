@@ -1,7 +1,7 @@
 // ===== 📄 ФАЙЛ: PostDetail.js =====
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical, MapPin, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical, MapPin, Calendar, Clock, ChevronLeft, ChevronRight, Gift, Phone } from 'lucide-react';
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/telegram';
@@ -9,6 +9,8 @@ import BottomActionBar from '../BottomActionBar';
 import DropdownMenu from '../DropdownMenu';
 import { Z_MODAL_FORMS } from '../../constants/zIndex';
 import theme from '../../theme';
+import { REWARD_TYPE_ICONS } from '../../types';
+import PollView from './PollView';
 
 // Константы
 const API_URL = 'http://localhost:8000'; 
@@ -28,8 +30,6 @@ function PostDetail() {
   const [replyToName, setReplyToName] = useState('');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  // ❌ Removed imageHeight state (controlled by CSS aspect-ratio now)
-
   useEffect(() => {
     if (viewPostId) {
       loadPost();
@@ -44,8 +44,6 @@ function PostDetail() {
     try {
       const data = await getPost(viewPostId);
       
-      // Обработка изображений: парсим JSON если пришла строка, иначе берем как есть
-      // Это обеспечивает совместимость, если бэкенд отдал JSON-строку
       let imagesData = [];
       if (typeof data.images === 'string') {
         try {
@@ -92,7 +90,7 @@ function PostDetail() {
   const refreshPost = async () => {
     try {
       const fresh = await getPost(viewPostId);
-      // Сохраняем структуру картинок при обновлении
+      
       let imagesData = [];
       if (typeof fresh.images === 'string') {
         try {
@@ -166,14 +164,14 @@ function PostDetail() {
         ...post, 
         likes_count: result.likes,
         is_liked: result.is_liked,
-        images: post.images // Важно: сохраняем картинки при обновлении стейта
+        images: post.images 
       });
       
       if (setUpdatedPost && viewPostId) {
         setUpdatedPost(viewPostId, { 
-          comments_count: post.comments_count,
-          likes_count: result.likes,
-          views_count: post.views_count,
+          comments_count: post.comments_count, 
+          likes_count: result.likes, 
+          views_count: post.views_count, 
           is_liked: result.is_liked
         });
       }
@@ -300,7 +298,6 @@ function PostDetail() {
     }
   };
 
-  // Навигация по изображениям
   const handlePrevImage = (e) => {
     e.stopPropagation();
     hapticFeedback('light');
@@ -334,19 +331,12 @@ function PostDetail() {
     return roots;
   };
 
-
-  // ===== IMAGE HELPERS (The Holy Grail) =====
-  
-  // Получаем метаданные текущей картинки. Поддерживаем и объекты, и старые строки.
   const getCurrentImage = () => {
     if (!post || !post.images || post.images.length === 0) return null;
     const img = post.images[currentImageIndex];
-    
-    // Если объект (новый формат)
     if (typeof img === 'object' && img !== null) {
       return img;
     }
-    // Если строка (старый формат), создаем заглушку 1:1
     return { url: img, w: 1000, h: 1000 };
   };
 
@@ -358,7 +348,6 @@ function PostDetail() {
     return `${API_URL}/uploads/images/${meta.url}`;
   };
 
-  // Вычисляем соотношение сторон для текущего слайда
   const currentAspectRatio = (currentImgMeta && currentImgMeta.w && currentImgMeta.h) 
     ? currentImgMeta.w / currentImgMeta.h 
     : 1;
@@ -487,12 +476,21 @@ function PostDetail() {
         <h1 style={styles.title}>{post.title}</h1>
         <p style={styles.body}>{post.body}</p>
 
-        {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ (Holy Grail Fullscreen Logic) */}
+        {/* ✅ ОТОБРАЖЕНИЕ ОПРОСА */}
+        {post.poll && (
+          <div style={{marginBottom: theme.spacing.lg}}>
+            <PollView 
+              poll={post.poll} 
+              onVoteUpdate={refreshPost} 
+            />
+          </div>
+        )}
+
+        {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ */}
         {post.images && post.images.length > 0 && currentImgMeta && (
           <div style={{
             ...styles.imageContainer, 
             aspectRatio: `${currentAspectRatio}`,
-            // В деталях разрешаем любую высоту (чтобы видеть длинные скриншоты целиком)
             maxHeight: 'none', 
           }}>
             <img 
@@ -505,7 +503,6 @@ function PostDetail() {
               }}
             />
             
-            {/* Навигация и индикаторы */}
             {post.images.length > 1 && (
               <>
                 <div style={styles.imageCounter}>
@@ -545,6 +542,7 @@ function PostDetail() {
           </div>
         )}
 
+        {/* ✅ Lost & Found (с наградой) */}
         {post.category === 'lost_found' && (
           <div style={styles.additionalInfo}>
             <div style={styles.infoRow}>
@@ -559,10 +557,19 @@ function PostDetail() {
                 <span style={styles.infoValue}>{post.location}</span>
               </div>
             )}
+            {/* Награда */}
+            {post.reward_type && post.reward_type !== 'none' && (
+              <div style={styles.infoRow}>
+                <Gift size={16} style={{ color: theme.colors.success }} />
+                <span style={styles.infoValue}>
+                  {REWARD_TYPE_ICONS[post.reward_type]} {post.reward_value}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
-
+        {/* ✅ Events (с контактом) */}
         {post.category === 'events' && (
           <div style={styles.additionalInfo}>
             {post.event_name && (
@@ -581,6 +588,13 @@ function PostDetail() {
               <div style={styles.infoRow}>
                 <MapPin size={16} style={{ color: theme.colors.events }} />
                 <span style={styles.infoValue}>{post.event_location}</span>
+              </div>
+            )}
+            {/* Контакт */}
+            {post.event_contact && (
+              <div style={styles.infoRow}>
+                <Phone size={16} style={{ color: theme.colors.text }} />
+                <span style={styles.infoValue}>{post.event_contact}</span>
               </div>
             )}
           </div>

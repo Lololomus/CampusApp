@@ -53,7 +53,7 @@ class Post(Base):
     
     # НОВЫЕ категории (general/confessions/lost_found/news/events)
     category = Column(
-        Enum('general', 'confessions', 'lost_found', 'news', 'events', name='post_category_enum'),
+        Enum('general', 'confessions', 'lost_found', 'news', 'events', 'polls', name='post_category_enum'),
         nullable=False,
         index=True
     )
@@ -72,14 +72,22 @@ class Post(Base):
     item_description = Column(String(500), nullable=True)
     location = Column(String(200), nullable=True)
     
+    # ✅ НОВЫЕ ПОЛЯ (REFACTOR)
+    reward_type = Column(String(50), nullable=True)    # "money" | "gift" | "favor"
+    reward_value = Column(String(255), nullable=True)  # "500 руб" или описание
+    
     # Для events
     event_name = Column(String(200), nullable=True)
     event_date = Column(DateTime, nullable=True)
     event_location = Column(String(200), nullable=True)
     
+    # ✅ НОВЫЕ ПОЛЯ (REFACTOR)
+    event_contact = Column(String(255), nullable=True) # Telegram или email организатора
+    
     # Общее
     is_important = Column(Boolean, default=False)  # закреплённость (для news)
-    expires_at = Column(DateTime, nullable=True)  # для lost_found (7 дней)
+    
+    # ❌ УДАЛЕНО: expires_at (больше не используем автоудаление для lost_found)
     
     # Счётчики
     likes_count = Column(Integer, default=0)
@@ -92,6 +100,57 @@ class Post(Base):
     # Отношения
     author = relationship('User', back_populates='posts')
     comments = relationship('Comment', back_populates='post', cascade='all, delete-orphan')
+    
+    # ✅ НОВОЕ ОТНОШЕНИЕ (Polls)
+    poll = relationship("Poll", back_populates="post", uselist=False, cascade="all, delete-orphan")
+
+class Poll(Base):
+    """
+    Модель опроса для постов (НОВОЕ)
+    """
+    __tablename__ = "polls"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), unique=True, nullable=False)
+    
+    question = Column(String(500), nullable=False)
+    options = Column(Text, nullable=False)  # JSON: [{"text": "Вариант 1", "votes": 5}, ...]
+    
+    type = Column(String(20), default="regular")  # "regular" | "quiz"
+    correct_option = Column(Integer, nullable=True)  # Индекс правильного ответа для quiz
+    
+    allow_multiple = Column(Boolean, default=False)
+    is_anonymous = Column(Boolean, default=True)
+    
+    closes_at = Column(DateTime, nullable=True)
+    total_votes = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    post = relationship("Post", back_populates="poll")
+    votes = relationship("PollVote", back_populates="poll", cascade="all, delete-orphan")
+
+class PollVote(Base):
+    """
+    Голос пользователя в опросе (НОВОЕ)
+    """
+    __tablename__ = "poll_votes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    poll_id = Column(Integer, ForeignKey("polls.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    option_indices = Column(Text, nullable=False)  # JSON: [0, 2] (для множественного выбора)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    poll = relationship("Poll", back_populates="votes")
+    user = relationship("User")
+    
+    __table_args__ = (
+        UniqueConstraint('poll_id', 'user_id', name='unique_poll_vote'),
+    )
 
 class PostLike(Base):
     """

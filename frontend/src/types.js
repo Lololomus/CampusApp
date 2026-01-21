@@ -1,3 +1,5 @@
+// ===== 📄 ФАЙЛ: frontend/src/utils/types.js =====
+
 // Mock данные для разработки
 
 export const MOCK_USER = {
@@ -125,3 +127,54 @@ export const UNIVERSITIES = ['МГСУ', 'РУК', 'МГУ', 'ВШЭ', 'МГТУ
 export const INSTITUTES = ['ИЦИТ', 'ИСА', 'ИЭУИС', 'Юридический', 'Экономический', 'Менеджмент', 'Гостиничный сервис', 'Другой'];
 
 export const COURSES = [1, 2, 3, 4, 5, 6];
+
+// ========== ✅ НОВЫЕ КОНСТАНТЫ (POSTS & POLLS) ==========
+
+// Типы вознаграждений для Lost & Found
+export const REWARD_TYPES = {
+  MONEY: 'money',
+  GIFT: 'gift',
+  FAVOR: 'favor',
+  NONE: 'none'
+};
+
+export const REWARD_TYPE_LABELS = {
+  [REWARD_TYPES.MONEY]: 'Денежное вознаграждение',
+  [REWARD_TYPES.GIFT]: 'Подарок',
+  [REWARD_TYPES.FAVOR]: 'Услуга',
+  [REWARD_TYPES.NONE]: 'Без вознаграждения'
+};
+
+export const REWARD_TYPE_ICONS = {
+  [REWARD_TYPES.MONEY]: '💰',
+  [REWARD_TYPES.GIFT]: '🎁',
+  [REWARD_TYPES.FAVOR]: '🤝',
+  [REWARD_TYPES.NONE]: '❌'
+};
+
+// Типы опросов
+export const POLL_TYPES = {
+  REGULAR: 'regular',
+  QUIZ: 'quiz'
+};
+
+export const POLL_TYPE_LABELS = {
+  [POLL_TYPES.REGULAR]: 'Обычный опрос',
+  [POLL_TYPES.QUIZ]: 'Викторина (с правильным ответом)'
+};
+
+// ========== КАТЕГОРИИ ПОСТОВ ==========
+export const CATEGORIES = [
+  { value: 'news', label: 'Новости', icon: '📰' },
+  { value: 'events', label: 'События', icon: '🎉' },
+  { value: 'confessions', label: 'Признания', icon: '💭' },
+  { value: 'lost_found', label: 'Находки', icon: '🔍' },
+  { value: 'polls', label: 'Опросы', icon: '📊' },
+];
+
+// Цвета для опросов
+export const POLL_COLORS = {
+  primary: '#8B5CF6',
+  secondary: '#A78BFA',
+  gradient: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
+};

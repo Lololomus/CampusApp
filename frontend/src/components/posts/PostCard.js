@@ -8,6 +8,7 @@ import { useStore } from '../../store';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
 import EditPost from './EditPost';
+import PollWidget from './PollWidget';
 
 // Константы для URL изображений
 const API_URL = 'http://localhost:8000'; 
@@ -94,8 +95,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       return newIndex;
     });
   };
-
-  // ❌ handleImageLoad удален, так как высоту теперь задает CSS
 
   const handleMenuClick = (e) => {
     e.stopPropagation();
@@ -187,6 +186,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       events: theme.colors.events,
       confessions: theme.colors.confessions,
       lost_found: theme.colors.lostFound,
+      polls: theme.colors.polls || theme.colors.primary,
     };
     return colors[category] || theme.colors.textDisabled;
   };
@@ -197,6 +197,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       events: '🎉',
       confessions: '💭',
       lost_found: '🔍',
+      polls: '📊',
     };
     return icons[category] || '';
   };
@@ -207,6 +208,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       events: 'События',
       confessions: 'Признания',
       lost_found: 'Находки',
+      polls: 'Опросы',
     };
     return names[category] || category;
   };
@@ -303,16 +305,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         </div>
       </div>
 
-      {/* ЗАГОЛОВОК */}
-      <h3 style={styles.title}>{post.title}</h3>
+      {/* ЗАГОЛОВОК - ✅ СКРЫВАЕМ ДЛЯ POLLS */}
+      {post.category !== 'polls' && (
+        <h3 style={styles.title}>{post.title}</h3>
+      )}
 
       {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ (Holy Grail) */}
       {hasImages && (
         <div style={{
           ...styles.imageContainer, 
-          // 🔥 Тут магия: CSS задает высоту сразу, браузер не ждет загрузки картинки
           aspectRatio: `${safeRatio}`,
-          maxHeight: '500px' // Защита от слишком длинных экранов
+          maxHeight: '500px'
         }}>
           <img 
             src={getCurrentImageUrl()} 
@@ -322,7 +325,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
             onError={(e) => { e.target.style.display = 'none'; }}
           />
           
-          {/* Индикаторы и навигация (оставил как было у тебя) */}
           {images.length > 1 && (
             <>
               <div style={styles.imageCounter}>
@@ -360,10 +362,19 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         </div>
       )}
 
-      {/* ОПИСАНИЕ */}
-      <p style={styles.body}>
-        {truncateText(post.body, 180)}
-      </p>
+      {/* ОПИСАНИЕ - показываем только если есть и не пустое */}
+      {post.body && post.body.trim() && (
+        <p style={styles.body}>
+          {truncateText(post.body, 180)}
+        </p>
+      )}
+
+      {/* ✅ ОПРОС - с stopPropagation чтобы можно было кликать */}
+      {post.category === 'polls' && post.poll && (
+        <div onClick={(e) => e.stopPropagation()} style={styles.pollContainer}>
+          <PollWidget poll={post.poll} postId={post.id} />
+        </div>
+      )}
 
       {/* ДОП ИНФО */}
       {(post.event_name || post.event_date || post.item_description || post.location) && (
@@ -387,7 +398,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         </div>
       )}
 
-      {/* ТЕГИ */}
+      {/* ТЕГИ - ✅ УВЕЛИЧЕН РАЗМЕР И ОТСТУПЫ */}
       {post.tags && post.tags.length > 0 && (
         <div style={styles.tags}>
           {post.tags.slice(0, 3).map((tag, index) => (
@@ -521,24 +532,22 @@ const styles = {
     margin: '0 0 10px 0',
   },
   
-  // 🔥 НОВЫЕ СТИЛИ КОНТЕЙНЕРА (Holy Grail)
   imageContainer: {
     position: 'relative',
     width: '100%',
-    // minHeight/Height удалены, их заменит aspectRatio в inline-style
     borderRadius: `${theme.radius.lg}px`,
     overflow: 'hidden',
-    backgroundColor: '#000', // Чтобы не мигало белым
+    backgroundColor: '#000',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12, // Вернул отступ снизу
+    marginBottom: 12,
   },
   
   image: {
     width: '100%',
     height: '100%',
-    objectFit: 'cover', // Теперь cover безопасен, так как контейнер имеет правильные пропорции
+    objectFit: 'cover',
     display: 'block',
   },
   
@@ -583,7 +592,6 @@ const styles = {
     gap: 6,
     zIndex: 2,
   },
-  // Точка пагинации (я заменил имя стиля с dot на dotIndicator, чтобы не было конфликта с разделителем)
   dotIndicator: {
     width: 6,
     height: 6,
@@ -596,11 +604,16 @@ const styles = {
     fontSize: 14,
     color: theme.colors.textSecondary,
     lineHeight: 1.4,
-    marginBottom: 8,
+    marginBottom: 12,
     display: '-webkit-box',
     WebkitLineClamp: 3,
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
+  },
+  
+  // ✅ НОВЫЙ СТИЛЬ для опроса
+  pollContainer: {
+    marginBottom: 12,
   },
   
   metaInfo: {
@@ -616,16 +629,19 @@ const styles = {
     alignItems: 'center',
   },
   
+  // ✅ ИСПРАВЛЕНЫ СТИЛИ ТЕГОВ
   tags: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 12,
+    marginTop: 4,
   },
   tag: {
-    fontSize: 12,
+    fontSize: 13,        // было 12, увеличил
     color: theme.colors.primary,
-    fontWeight: 500,
+    fontWeight: 600,     // было 500, сделал жирнее
+    padding: '2px 0',    // добавил вертикальный отступ
   },
   
   footer: {

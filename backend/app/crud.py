@@ -1,10 +1,25 @@
+# ===== 📄 ФАЙЛ: backend/app/crud.py =====
+
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, not_, func, case
+from sqlalchemy import and_, or_, not_, func, case, desc
 from app import models, schemas
-from typing import Optional, List, Dict, Union
+from typing import Optional, List, Dict, Union, Any
 from datetime import datetime, timedelta
 import json
-from app.utils import process_base64_images, delete_images, get_image_urls
+from app.utils import process_base64_images, delete_images, get_image_urls, BASE_URL
+
+# ===== HELPERS =====
+
+def sanitize_json_field(value: Any) -> Optional[str]:
+    """Безопасная сериализация JSON с защитой от ошибок"""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
 
 # ===== USER CRUD =====
 
@@ -18,7 +33,15 @@ def get_user_by_id(db: Session, user_id: int) -> Optional[models.User]:
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     """Создать нового пользователя"""
-    db_user = models.User(**user.model_dump())
+    # Подготовка данных с дефолтными значениями
+    user_data = user.model_dump()
+    
+    db_user = models.User(
+        **user_data,
+        show_in_dating=True,
+        hide_course_group=False,
+        interests="[]"
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -33,10 +56,12 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> O
     update_data = user_update.model_dump(exclude_unset=True)
     
     if 'interests' in update_data:
-        update_data['interests'] = json.dumps(update_data['interests'])
+        update_data['interests'] = sanitize_json_field(update_data['interests'])
     
     for key, value in update_data.items():
         setattr(db_user, key, value)
+    
+    db_user.last_profile_edit = datetime.utcnow()
     
     db.commit()
     db.refresh(db_user)
@@ -52,22 +77,22 @@ def get_posts(
     university: Optional[str] = None,
     course: Optional[int] = None
 ) -> List[models.Post]:
-    """Получить список постов с фильтрами"""
-    query = db.query(models.Post).options(joinedload(models.Post.author))
-    
-    query = query.filter(
-        or_(
-            models.Post.expires_at == None,
-            models.Post.expires_at > datetime.utcnow()
-        )
+    """Получить список постов с фильтрами + Опросы"""
+    query = db.query(models.Post).options(
+        joinedload(models.Post.author),
+        joinedload(models.Post.poll).joinedload(models.Poll.votes) # ✅ Подгружаем опросы
     )
     
+    # Фильтр категорий
     if category and category != "all":
         query = query.filter(models.Post.category == category)
-    if university and university != "all":
+    
+    # Фильтры (если будут нужны для ленты университета)
+    # Примечание: В модели Post нет прямого поля university/course, 
+    # обычно фильтруют через author.university, но оставим как в твоем коде
+    # если ты добавил эти поля в Post. Если нет - этот код нужно убрать.
+    if hasattr(models.Post, 'university') and university and university != "all":
         query = query.filter(models.Post.university == university)
-    if course and course != "all":
-        query = query.filter(models.Post.course == course)
     
     return query.order_by(
         models.Post.is_important.desc(),
@@ -76,16 +101,28 @@ def get_posts(
 
 def get_post(db: Session, post_id: int) -> Optional[models.Post]:
     """Получить пост по ID"""
-    return db.query(models.Post).filter(models.Post.id == post_id).first()
+    return db.query(models.Post).options(
+        joinedload(models.Post.author),
+        joinedload(models.Post.poll).joinedload(models.Poll.votes)
+    ).filter(models.Post.id == post_id).first()
 
 async def create_post(db: Session, post: schemas.PostCreate, author_id: int, uploaded_files: List = None) -> models.Post:
     """
-    Создать новый пост (поддержка multipart files).
-    Сохраняет метаданные изображений (w, h) в JSON.
+    Создать новый пост (поддержка multipart files + Rate Limit + New Fields).
     """
     
+    # ✅ 1. Rate Limiting (10 постов в час)
+    recent_posts_count = db.query(func.count(models.Post.id)).filter(
+        models.Post.author_id == author_id,
+        models.Post.created_at > datetime.utcnow() - timedelta(hours=1)
+    ).scalar()
+    
+    if recent_posts_count >= 10:
+        raise ValueError("Превышен лимит создания постов (10 в час)")
+
     from app.utils import process_uploaded_files
     
+    # 2. Обработка изображений
     saved_images_meta = []
     
     if uploaded_files and len(uploaded_files) > 0:
@@ -99,26 +136,40 @@ async def create_post(db: Session, post: schemas.PostCreate, author_id: int, upl
         except Exception as e:
             raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
     
+    # 3. Создание записи
     db_post = models.Post(
         author_id=author_id,
         category=post.category,
         title=post.title,
         body=post.body,
-        tags=json.dumps(post.tags) if post.tags else None,
-        images=json.dumps(saved_images_meta) if saved_images_meta else None,
+        tags=sanitize_json_field(post.tags),
+        images=sanitize_json_field(saved_images_meta),
         is_anonymous=post.is_anonymous,
         enable_anonymous_comments=post.enable_anonymous_comments,
+        
+        # Lost & Found
         lost_or_found=post.lost_or_found,
         item_description=post.item_description,
         location=post.location,
+        reward_type=post.reward_type,      # ✅ NEW
+        reward_value=post.reward_value,    # ✅ NEW
+        
+        # Events
         event_name=post.event_name,
         event_date=post.event_date,
         event_location=post.event_location,
+        event_contact=post.event_contact,  # ✅ NEW
+        
+        # News
         is_important=post.is_important,
+        
+        # Счётчики
+        likes_count=0,
+        comments_count=0,
+        views_count=0
     )
     
-    if post.category == 'lost_found':
-        db_post.expires_at = datetime.utcnow() + timedelta(days=7)
+    # ❌ Удалена логика expires_at для lost_found (посты теперь бессрочные или удаляются вручную)
     
     try:
         db.add(db_post)
@@ -139,9 +190,7 @@ async def update_post(
 ) -> Optional[models.Post]:
     """
     Обновить пост (Smart Merge изображений).
-    Объединяет старые картинки (сохраняя их размеры) и новые.
     """
-    
     from app.utils import process_uploaded_files
     
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
@@ -151,8 +200,9 @@ async def update_post(
     update_data = post_update.model_dump(exclude_unset=True)
     
     if "tags" in update_data:
-        update_data['tags'] = json.dumps(update_data['tags'])
+        update_data['tags'] = sanitize_json_field(update_data['tags'])
     
+    # Логика объединения изображений (оставил твою реализацию, она хорошая)
     if new_files is not None or keep_filenames is not None:
         raw_old_images = json.loads(db_post.images) if db_post.images else []
         
@@ -187,7 +237,7 @@ async def update_post(
         if files_to_delete:
             delete_images(files_to_delete)
         
-        update_data['images'] = json.dumps(final_images_meta) if final_images_meta else None
+        update_data['images'] = sanitize_json_field(final_images_meta)
     
     for key, value in update_data.items():
         setattr(db_post, key, value)
@@ -221,6 +271,82 @@ def increment_post_views(db: Session, post_id: int):
     if db_post:
         db_post.views_count += 1
         db.commit()
+
+# ===== POLLS CRUD (✅ NEW) =====
+
+def create_poll(db: Session, post_id: int, poll_data: schemas.PollCreate) -> models.Poll:
+    """Создать опрос для поста"""
+    options_json = []
+    for option_text in poll_data.options:
+        options_json.append({
+            "text": option_text,
+            "votes": 0
+        })
+
+    db_poll = models.Poll(
+        post_id=post_id,
+        question=poll_data.question,
+        options=sanitize_json_field(options_json),
+        type=poll_data.type,
+        correct_option=poll_data.correct_option if poll_data.type == 'quiz' else None,
+        allow_multiple=poll_data.allow_multiple,
+        is_anonymous=poll_data.is_anonymous,
+        closes_at=poll_data.closes_at,
+        total_votes=0
+    )
+    
+    db.add(db_poll)
+    db.commit()
+    db.refresh(db_poll)
+    return db_poll
+
+def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]) -> Dict:
+    """Проголосовать в опросе"""
+    poll = db.query(models.Poll).filter(models.Poll.id == poll_id).first()
+    if not poll:
+        raise ValueError("Опрос не найден")
+    
+    if poll.closes_at and poll.closes_at < datetime.utcnow():
+        raise ValueError("Опрос закрыт")
+    
+    existing_vote = db.query(models.PollVote).filter(
+        models.PollVote.poll_id == poll_id,
+        models.PollVote.user_id == user_id
+    ).first()
+    
+    if existing_vote:
+        raise ValueError("Вы уже проголосовали")
+    
+    # Валидация
+    options_data = json.loads(poll.options)
+    for idx in option_indices:
+        if idx < 0 or idx >= len(options_data):
+            raise ValueError(f"Неверный индекс варианта: {idx}")
+    
+    if not poll.allow_multiple and len(option_indices) > 1:
+        raise ValueError("Множественный выбор запрещен")
+    
+    # Обновляем счётчики
+    for idx in option_indices:
+        options_data[idx]['votes'] += 1
+    
+    poll.options = sanitize_json_field(options_data)
+    poll.total_votes += 1
+    
+    # Создаём голос
+    db_vote = models.PollVote(
+        poll_id=poll_id,
+        user_id=user_id,
+        option_indices=sanitize_json_field(option_indices)
+    )
+    
+    db.add(db_vote)
+    db.commit()
+    
+    return {
+        "success": True,
+        "is_correct": option_indices[0] == poll.correct_option if poll.type == 'quiz' else None
+    }
 
 # ===== POST LIKES =====
 
@@ -448,7 +574,7 @@ def create_request(db: Session, request: schemas.RequestCreate, author_id: int) 
         category=request.category,
         title=request.title,
         body=request.body,
-        tags=json.dumps(request.tags) if request.tags else None,
+        tags=sanitize_json_field(request.tags),
         expires_at=request.expires_at,
         max_responses=request.max_responses,
         status='active'
@@ -563,7 +689,7 @@ def update_request(db: Session, request_id: int, user_id: int, data: schemas.Req
     update_data = data.model_dump(exclude_unset=True)
     
     if 'tags' in update_data:
-        update_data['tags'] = json.dumps(update_data['tags'])
+        update_data['tags'] = sanitize_json_field(update_data['tags'])
     
     for key, value in update_data.items():
         setattr(request, key, value)
@@ -696,26 +822,6 @@ def auto_expire_requests(db: Session):
     db.commit()
     return len(expired)
 
-def auto_delete_expired_posts(db: Session):
-    """Cron job: удалить истёкшие посты и их картинки"""
-    expired = db.query(models.Post).filter(
-        models.Post.expires_at != None,
-        models.Post.expires_at <= datetime.utcnow()
-    ).all()
-    
-    for post in expired:
-        if post.images:
-            try:
-                images_data = json.loads(post.images)
-                delete_images(images_data)
-            except Exception as e:
-                print(f"⚠️ Ошибка удаления изображений истёкшего поста {post.id}: {e}")
-        
-        db.delete(post)
-    
-    db.commit()
-    return len(expired)
-
 def get_responses_count(db: Session, user_id: int, category: Optional[str] = None) -> int:
     query = db.query(func.sum(models.Request.responses_count)).filter(
         models.Request.author_id == user_id,
@@ -752,10 +858,6 @@ def get_dating_feed(
 ) -> List[dict]:
     """
     Получить ленту анкет.
-    Исключает:
-    1. Самого себя
-    2. Тех, кого я уже лайкнул (или дизлайкнул)
-    3. Неактивные анкеты
     """
     
     # ID тех, кого я уже лайкнул/скипнул
@@ -780,25 +882,22 @@ def get_dating_feed(
     # Формируем плоский объект для фронтенда
     results = []
     for p in profiles:
-        # User данные
         user = p.user
         
-        # Фото: берем из профиля dating, если нет - аватар юзера
         photos_raw = p.photos
         photos = get_image_urls(photos_raw) if photos_raw else []
         if not photos and user.avatar:
-            photos = [{"url": user.avatar, "w": 500, "h": 500}] # Fallback
+            photos = [{"url": user.avatar, "w": 500, "h": 500}]
 
         interests = json.loads(user.interests) if user.interests else []
         goals = json.loads(p.goals) if p.goals else []
 
-        # Собираем объект, который ждет ProfileCard.js
         results.append({
-            "id": user.id,              # ID для лайка
+            "id": user.id,
             "telegram_id": user.telegram_id,
             "name": user.name,
             "age": user.age,
-            "bio": p.bio or user.bio,   # Био из дейтинга приоритетнее
+            "bio": p.bio or user.bio,
             "university": user.university,
             "institute": user.institute,
             "course": user.course,
@@ -811,28 +910,21 @@ def get_dating_feed(
     return results
 
 def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
-    """
-    Создать лайк и проверить на мэтч.
-    Возвращает словарь с результатом.
-    """
     if liker_id == liked_id:
         return {"success": False, "error": "Нельзя лайкнуть себя"}
     
-    # 1. Проверяем, не лайкали ли уже
     existing = db.query(models.DatingLike).filter(
         models.DatingLike.who_liked_id == liker_id,
         models.DatingLike.whom_liked_id == liked_id
     ).first()
     
     if existing:
-        return {"success": True, "is_match": False, "already_liked": True} # Не ошибка, просто игнор
+        return {"success": True, "is_match": False, "already_liked": True}
     
-    # 2. Создаем лайк
     new_like = models.DatingLike(who_liked_id=liker_id, whom_liked_id=liked_id, is_like=True)
     db.add(new_like)
     db.commit()
     
-    # 3. Проверяем ВЗАИМНОСТЬ (Ищет лайк в обратную сторону)
     reverse_like = db.query(models.DatingLike).filter(
         models.DatingLike.who_liked_id == liked_id,
         models.DatingLike.whom_liked_id == liker_id,
@@ -845,11 +937,9 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
     
     if reverse_like:
         is_match = True
-        # Нормализация ID для таблицы matches (меньший ID всегда user_a)
         user_a = min(liker_id, liked_id)
         user_b = max(liker_id, liked_id)
         
-        # Проверяем, не создан ли уже матч
         existing_match = db.query(models.Match).filter(
             models.Match.user_a_id == user_a,
             models.Match.user_b_id == user_b
@@ -861,9 +951,8 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
             db.commit()
             db.refresh(match_obj)
         
-        # Получаем данные того, с кем совпали
         matched_user_db = db.query(models.User).filter(models.User.id == liked_id).first()
-        matched_user = matched_user_db # Вернем модель, схема обработает
+        matched_user = matched_user_db
         
     return {
         "success": True,
@@ -873,30 +962,23 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
     }
 
 def create_dislike(db: Session, disliker_id: int, disliked_id: int) -> dict:
-    """
-    Создать дизлайк (skip).
-    Не создаёт матч, просто помечает "не показывать больше".
-    """
     if disliker_id == disliked_id:
         return {"success": False, "error": "Нельзя дизлайкнуть себя"}
     
-    # Проверяем существующий лайк/дизлайк
     existing = db.query(models.DatingLike).filter(
         models.DatingLike.who_liked_id == disliker_id,
         models.DatingLike.whom_liked_id == disliked_id
     ).first()
     
     if existing:
-        # Обновляем на dislike
         existing.is_like = False
         db.commit()
         return {"success": True, "updated": True}
     
-    # Создаём новый dislike
     new_dislike = models.DatingLike(
         who_liked_id=disliker_id,
         whom_liked_id=disliked_id,
-        is_like=False  # Ключевое отличие от like
+        is_like=False
     )
     db.add(new_dislike)
     db.commit()
@@ -904,19 +986,15 @@ def create_dislike(db: Session, disliker_id: int, disliked_id: int) -> dict:
     return {"success": True, "updated": False}
 
 def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.User]:
-    """Кто лайкнул меня, но кого я ЕЩЕ НЕ лайкнул в ответ (чтобы не показывать матчи в лайках)"""
-    
-    # Мои лайки (кого я уже оценил)
     my_likes = db.query(models.DatingLike.whom_liked_id).filter(
     models.DatingLike.who_liked_id == user_id
     ).subquery()
     
-    # Те кто лайкнул меня
     users = db.query(models.User).join(models.DatingLike, models.DatingLike.who_liked_id == models.User.id)\
     .filter(
         models.DatingLike.whom_liked_id == user_id,
         models.DatingLike.is_like == True,
-            models.User.id.notin_(my_likes) # Исключаем тех, кого я уже лайкнул (это уже матчи)
+            models.User.id.notin_(my_likes)
         )\
         .order_by(models.DatingLike.created_at.desc())\
         .offset(offset)\
@@ -926,15 +1004,13 @@ def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0
     return users
 
 def get_dating_stats(db: Session, user_id: int) -> dict:
-    """Счетчики лайков и матчей"""
-    # Входящие лайки (без моих ответов)
     my_likes = db.query(models.DatingLike.whom_liked_id).filter(
         models.DatingLike.who_liked_id == user_id
     ).subquery()
 
     likes_count = db.query(func.count(models.DatingLike.id)).filter(
         models.DatingLike.whom_liked_id == user_id,
-        models.DatingLike.is_like == True,  # Только лайки
+        models.DatingLike.is_like == True,
         models.DatingLike.who_liked_id.notin_(my_likes)
     ).scalar()
     
@@ -945,33 +1021,23 @@ def get_dating_stats(db: Session, user_id: int) -> dict:
     return {"likes_count": likes_count, "matches_count": matches_count}
 
 def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optional[models.User]:
-    """
-    Обновление настроек приватности и интересов.
-    Синхронизирует статус User.show_in_dating и DatingProfile.is_active.
-    """
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         return None
     
-    # 1. Скрыть/показать анкету
     if 'show_in_dating' in settings:
         is_visible = settings['show_in_dating']
         user.show_in_dating = is_visible
-        
-        # Важно: Синхронизируем с DatingProfile, если он есть
-        # (используем relationship user.dating_profile)
         if user.dating_profile:
             user.dating_profile.is_active = is_visible
 
-    # 2. Скрыть группу/курс
     if 'hide_course_group' in settings:
         user.hide_course_group = settings['hide_course_group']
     
-    # 3. Обновить интересы
     if 'interests' in settings:
         val = settings['interests']
         if isinstance(val, list):
-            user.interests = json.dumps(val)
+            user.interests = sanitize_json_field(val)
         else:
             user.interests = val
     
@@ -996,7 +1062,6 @@ async def create_market_item(
     seller_id: int, 
     uploaded_files: List = None
 ) -> models.MarketItem:
-    """Создание товара с автозаполнением university/institute из профиля"""
     from app.utils import process_uploaded_files
     
     seller = get_user_by_id(db, seller_id)
@@ -1027,7 +1092,7 @@ async def create_market_item(
         price=item.price,
         condition=item.condition,
         location=item.location or f"{seller.university}, {seller.institute}",
-        images=json.dumps(saved_images_meta),
+        images=sanitize_json_field(saved_images_meta),
         status='active',
         university=seller.university,
         institute=seller.institute
@@ -1057,7 +1122,6 @@ def get_market_items(
     search: Optional[str] = None,
     current_user_id: Optional[int] = None
 ) -> Dict:
-    """Лента товаров с фильтрами и сортировкой"""
     query = db.query(models.MarketItem).options(joinedload(models.MarketItem.seller))
     
     query = query.filter(models.MarketItem.status == 'active')
@@ -1181,7 +1245,7 @@ async def update_market_item(
         if files_to_delete:
             delete_images(files_to_delete)
         
-        update_data['images'] = json.dumps(final_images_meta)
+        update_data['images'] = sanitize_json_field(final_images_meta)
     
     for key, value in update_data.items():
         setattr(db_item, key, value)
@@ -1291,7 +1355,7 @@ def count_user_total_likes(db: Session, user_id: int) -> int:
     # Лайки за посты
     post_likes = db.query(func.sum(models.Post.likes_count)).filter(
         models.Post.author_id == user_id,
-        models.Post.is_anonymous == False # Анонимные лайки не считаем в карму (опционально)
+        models.Post.is_anonymous == False
     ).scalar() or 0
     
     # Лайки за комментарии

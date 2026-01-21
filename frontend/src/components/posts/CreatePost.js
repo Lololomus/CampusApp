@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, Image as ImageIcon, Trash2, Upload } from 'lucide-react';
+import { X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, Image as ImageIcon, Trash2, Upload, BarChart2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { createPost } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { Z_CREATE_POST } from '../../constants/zIndex';
 import imageCompression from 'browser-image-compression';
-
-const CATEGORIES = [
-  { value: 'news', label: 'Новости', icon: '📰', color: theme.colors.news },
-  { value: 'events', label: 'События', icon: '🎉', color: theme.colors.events },
-  { value: 'confessions', label: 'Признания', icon: '💭', color: theme.colors.confessions },
-  { value: 'lost_found', label: 'Находки', icon: '🔍', color: theme.colors.lostFound }
-];
+import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from '../../types';
+import PollCreator from './PollCreator';
 
 const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'сопромат'];
 
@@ -22,6 +17,12 @@ const MAX_TAGS = 5;
 const MAX_IMAGES = 3;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_FORMATS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// Добавляем цвета к категориям
+const CATEGORIES_WITH_COLORS = CATEGORIES.map(cat => ({
+  ...cat,
+  color: theme.colors[cat.value] || theme.colors.primary
+}));
 
 function CreatePost() {
   const { setShowCreateModal, addNewPost } = useStore();
@@ -44,13 +45,31 @@ function CreatePost() {
   const [checkDrawn, setCheckDrawn] = useState(false);
 
   const [isAnonymous, setIsAnonymous] = useState(false);
+  
+  // Lost & Found
   const [lostOrFound, setLostOrFound] = useState('lost');
   const [itemDescription, setItemDescription] = useState('');
   const [location, setLocation] = useState('');
+  const [rewardType, setRewardType] = useState(REWARD_TYPES.NONE);
+  const [rewardValue, setRewardValue] = useState('');
+
+  // Events
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventLocation, setEventLocation] = useState('');
+  const [eventContact, setEventContact] = useState('');
   const [isImportant, setIsImportant] = useState(false);
+
+  // Polls
+  const [hasPoll, setHasPoll] = useState(false);
+  const [pollData, setPollData] = useState({
+    question: '',
+    options: ['', ''],
+    type: 'regular',
+    correctOption: null,
+    allowMultiple: false,
+    isAnonymous: true,
+  });
 
   const titleInputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -67,15 +86,16 @@ function CreatePost() {
       if (title.trim() || body.trim()) {
         const draft = {
           category, title, body, tags, isAnonymous,
-          lostOrFound, itemDescription, location,
-          eventName, eventDate, eventLocation, isImportant,
+          lostOrFound, itemDescription, location, rewardType, rewardValue,
+          eventName, eventDate, eventLocation, eventContact, isImportant,
+          hasPoll, pollData,
           timestamp: Date.now()
         };
         localStorage.setItem('createPostDraft', JSON.stringify(draft));
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [category, title, body, tags, isAnonymous, lostOrFound, itemDescription, location, eventName, eventDate, eventLocation, isImportant]);
+  }, [category, title, body, tags, isAnonymous, lostOrFound, itemDescription, location, eventName, eventDate, eventLocation, isImportant, hasPoll, pollData, rewardType, rewardValue, eventContact]);
 
   useEffect(() => {
     const draft = localStorage.getItem('createPostDraft');
@@ -92,10 +112,15 @@ function CreatePost() {
             setLostOrFound(parsed.lostOrFound || 'lost');
             setItemDescription(parsed.itemDescription || '');
             setLocation(parsed.location || '');
+            setRewardType(parsed.rewardType || REWARD_TYPES.NONE);
+            setRewardValue(parsed.rewardValue || '');
             setEventName(parsed.eventName || '');
             setEventDate(parsed.eventDate || '');
             setEventLocation(parsed.eventLocation || '');
+            setEventContact(parsed.eventContact || '');
             setIsImportant(parsed.isImportant || false);
+            setHasPoll(parsed.hasPoll || false);
+            if (parsed.pollData) setPollData(parsed.pollData);
             hapticFeedback('success');
           } else {
             localStorage.removeItem('createPostDraft');
@@ -108,11 +133,15 @@ function CreatePost() {
   }, []);
 
   useEffect(() => {
+    // Сброс полей при смене категории
     setItemDescription('');
     setLocation('');
     setEventName('');
     setEventDate('');
     setEventLocation('');
+    setRewardType(REWARD_TYPES.NONE);
+    setRewardValue('');
+    setEventContact('');
     setIsImportant(false);
     
     if (category === 'confessions') {
@@ -124,6 +153,15 @@ function CreatePost() {
       }
     } else {
       setIsAnonymous(false);
+    }
+    
+    // ✅ POLLS: Автоматически включаем опрос и убираем изображения
+    if (category === 'polls') {
+      setHasPoll(true);
+      if (images.length > 0) {
+        setImages([]);
+        setImageFiles([]);
+      }
     }
   }, [category]);
 
@@ -163,6 +201,15 @@ function CreatePost() {
   );
 
   const calculateProgress = () => {
+    // ✅ POLLS: Специальный прогресс
+    if (category === 'polls') {
+      let filled = 0;
+      if (pollData.question.trim().length >= 3) filled++;
+      const validOptions = pollData.options.filter(o => o.trim()).length;
+      if (validOptions >= 2) filled++;
+      return Math.round((filled / 2) * 100);
+    }
+    
     let totalFields = 2;
     let filledFields = 0;
 
@@ -190,6 +237,12 @@ function CreatePost() {
   };
 
   const isFormValid = () => {
+    // ✅ POLLS: Специальная валидация
+    if (category === 'polls') {
+      const validOptions = pollData.options.filter(o => o.trim()).length;
+      return pollData.question.trim().length >= 3 && validOptions >= 2;
+    }
+    
     const basicValid = title.trim().length >= 3 && body.trim().length >= 10;
     
     if (category === 'lost_found') {
@@ -230,9 +283,9 @@ function CreatePost() {
     
     if (files.length === 0) return;
 
-    if (category === 'confessions') {
+    if (category === 'confessions' || category === 'polls') {
       hapticFeedback('error');
-      setError('В категории Confessions нельзя прикреплять изображения (деанонимизация)');
+      setError(`В категории ${category === 'confessions' ? 'Признания' : 'Опросы'} нельзя прикреплять изображения`);
       return;
     }
 
@@ -298,9 +351,9 @@ function CreatePost() {
   };
 
   const handleAddImageClick = () => {
-    if (category === 'confessions') {
+    if (category === 'confessions' || category === 'polls') {
       hapticFeedback('error');
-      setError('В категории Confessions нельзя прикреплять изображения');
+      setError(`В категории ${category === 'confessions' ? 'Признания' : 'Опросы'} нельзя прикреплять изображения`);
       return;
     }
     if (images.length >= MAX_IMAGES) {
@@ -364,10 +417,32 @@ function CreatePost() {
         setError('Заполните все поля: заголовок, описание, что потеряли/нашли, и где');
       } else if (category === 'events') {
         setError('Заполните все поля: заголовок, описание, название события, дату и место');
+      } else if (category === 'polls') {
+        setError('Укажите вопрос (мин. 3 символа) и минимум 2 варианта ответа');
       } else {
         setError('Заполните заголовок (мин. 3 символа) и описание (мин. 10 символов)');
       }
       return;
+    }
+
+    // Валидация опроса
+    if (hasPoll) {
+      if (!pollData.question.trim()) {
+        setError('Введите вопрос для опроса');
+        hapticFeedback('error');
+        return;
+      }
+      const validOptions = pollData.options.filter(o => o.trim());
+      if (validOptions.length < 2) {
+        setError('В опросе должно быть минимум 2 варианта ответа');
+        hapticFeedback('error');
+        return;
+      }
+      if (pollData.type === 'quiz' && pollData.correctOption === null) {
+        setError('Для викторины выберите правильный ответ');
+        hapticFeedback('error');
+        return;
+      }
     }
 
     hapticFeedback('medium');
@@ -377,8 +452,16 @@ function CreatePost() {
     try {
       const formData = new FormData();
       formData.append('category', category);
-      formData.append('title', title.trim());
-      formData.append('body', body.trim());
+      
+      // ✅ POLLS: Используем вопрос как заголовок
+      if (category === 'polls') {
+        formData.append('title', pollData.question.trim() || 'Опрос');
+        formData.append('body', body.trim() || '');
+      } else {
+        formData.append('title', title.trim());
+        formData.append('body', body.trim());
+      }
+      
       formData.append('tags', JSON.stringify(tags));
       formData.append('is_anonymous', isAnonymous);
       formData.append('enable_anonymous_comments', category === 'confessions' ? true : isAnonymous);
@@ -387,16 +470,30 @@ function CreatePost() {
         formData.append('lost_or_found', lostOrFound);
         formData.append('item_description', itemDescription.trim());
         formData.append('location', location.trim());
+        if (rewardType !== REWARD_TYPES.NONE) {
+          formData.append('reward_type', rewardType);
+          formData.append('reward_value', rewardValue);
+        }
       }
 
       if (category === 'events') {
         formData.append('event_name', eventName.trim());
         formData.append('event_date', new Date(eventDate).toISOString());
         formData.append('event_location', eventLocation.trim());
+        if (eventContact) formData.append('event_contact', eventContact);
       }
 
       if (category === 'news') {
         formData.append('is_important', isImportant);
+      }
+
+      // ✅ Добавляем опрос
+      if (hasPoll || category === 'polls') {
+        const cleanPoll = {
+          ...pollData,
+          options: pollData.options.filter(o => o.trim())
+        };
+        formData.append('poll_data', JSON.stringify(cleanPoll));
       }
 
       imageFiles.forEach((file) => {
@@ -515,7 +612,7 @@ function CreatePost() {
               <label style={styles.label}>Категория</label>
               
               <div style={styles.categoriesGrid}>
-                {CATEGORIES.map(cat => (
+                {CATEGORIES_WITH_COLORS.map(cat => (
                   <button
                     key={cat.value}
                     onClick={() => {
@@ -541,7 +638,7 @@ function CreatePost() {
                 ))}
               </div>
               
-              {category !== 'confessions' && (
+              {category !== 'confessions' && category !== 'polls' && (
                 <label style={styles.anonymousCheckbox}>
                   <input
                     type="checkbox"
@@ -562,151 +659,87 @@ function CreatePost() {
                   💭 Все признания публикуются анонимно (без фото)
                 </div>
               )}
-            </div>
 
-            <div style={styles.section}>
-              <label style={styles.label}>
-                Заголовок*
-                <CharCounter current={title.length} max={MAX_TITLE_LENGTH} isValid={isTitleValid} />
-              </label>
-              <div style={styles.inputWrapper}>
-                <input 
-                  ref={titleInputRef}
-                  type="text"
-                  placeholder="Минимум 3 символа"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  style={{
-                    ...styles.input,
-                    borderColor: attemptedSubmit && !isTitleValid ? theme.colors.error : 
-                                 title.length > 0 ? theme.colors.primary : theme.colors.border
-                  }}
-                  maxLength={MAX_TITLE_LENGTH}
-                  disabled={isSubmitting}
-                />
-                {isTitleValid && (
-                  <Check size={20} style={styles.inputCheckIcon} />
-                )}
-              </div>
-            </div>
-
-            <div style={styles.section}>
-              <label style={styles.label}>
-                Описание*
-                <CharCounter current={body.length} max={MAX_BODY_LENGTH} isValid={isBodyValid} />
-              </label>
-              <div style={styles.inputWrapper}>
-                <textarea 
-                  placeholder="Расскажите подробнее... (минимум 10 символов)"
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  style={{
-                    ...styles.textarea,
-                    borderColor: attemptedSubmit && !isBodyValid ? theme.colors.error : 
-                                 body.length > 0 ? theme.colors.primary : theme.colors.border
-                  }}
-                  rows={6}
-                  maxLength={MAX_BODY_LENGTH}
-                  disabled={isSubmitting}
-                />
-                {isBodyValid && (
-                  <Check size={20} style={styles.textareaCheckIcon} />
-                )}
-              </div>
-            </div>
-
-            <div style={styles.section}>
-              <label style={styles.label}>
-                Изображения (опционально)
-                <span style={styles.charCount}>{images.length}/{MAX_IMAGES}</span>
-              </label>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
-              />
-
-              {images.length > 0 && (
-                <div style={styles.imagesPreview}>
-                  {images.map((img, index) => (
-                    <div key={index} style={styles.imagePreviewItem}>
-                      <img src={img} alt={`Превью ${index + 1}`} style={styles.previewImage} />
-                      <button
-                        onClick={() => handleRemoveImage(index)}
-                        style={styles.removeImageButton}
-                        disabled={isSubmitting}
-                        aria-label="Удалить изображение"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))}
-
-                  {images.length < MAX_IMAGES && category !== 'confessions' && (
-                    <button
-                      onClick={handleAddImageClick}
-                      style={styles.addImagePlaceholder}
-                      disabled={isSubmitting}
-                    >
-                      <Plus size={24} />
-                    </button>
-                  )}
+              {/* ✅ POLLS HINT */}
+              {category === 'polls' && (
+                <div style={styles.pollsHint}>
+                  📊 <strong>Быстрый опрос:</strong> Укажите вопрос и варианты ответов ниже. Заголовок и описание не обязательны.
                 </div>
               )}
-
-              {images.length === 0 && (
-                <button
-                  onClick={handleAddImageClick}
-                  style={{
-                    ...styles.addImageButton,
-                    opacity: category === 'confessions' ? 0.5 : 1,
-                    cursor: category === 'confessions' ? 'not-allowed' : 'pointer'
-                  }}
-                  disabled={isSubmitting || category === 'confessions'}
-                >
-                  <ImageIcon size={20} />
-                  Добавить фото
-                </button>
-              )}
-
-              <div style={styles.hint}>
-                💡 Максимум {MAX_IMAGES} фото, до 5MB каждое. Авто-сжатие до 1MB
-              </div>
             </div>
 
+            {/* ✅ СКРЫВАЕМ title/body ДЛЯ POLLS */}
+            {category !== 'polls' && (
+              <>
+                <div style={styles.section}>
+                  <label style={styles.label}>
+                    Заголовок*
+                    <CharCounter current={title.length} max={MAX_TITLE_LENGTH} isValid={isTitleValid} />
+                  </label>
+                  <div style={styles.inputWrapper}>
+                    <input 
+                      ref={titleInputRef}
+                      type="text"
+                      placeholder="Минимум 3 символа"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      style={{
+                        ...styles.input,
+                        borderColor: attemptedSubmit && !isTitleValid ? theme.colors.error : 
+                                     title.length > 0 ? theme.colors.primary : theme.colors.border
+                      }}
+                      maxLength={MAX_TITLE_LENGTH}
+                      disabled={isSubmitting}
+                    />
+                    {isTitleValid && (
+                      <Check size={20} style={styles.inputCheckIcon} />
+                    )}
+                  </div>
+                </div>
+
+                <div style={styles.section}>
+                  <label style={styles.label}>
+                    Описание*
+                    <CharCounter current={body.length} max={MAX_BODY_LENGTH} isValid={isBodyValid} />
+                  </label>
+                  <div style={styles.inputWrapper}>
+                    <textarea 
+                      placeholder="Расскажите подробнее... (минимум 10 символов)"
+                      value={body}
+                      onChange={(e) => setBody(e.target.value)}
+                      style={{
+                        ...styles.textarea,
+                        borderColor: attemptedSubmit && !isBodyValid ? theme.colors.error : 
+                                     body.length > 0 ? theme.colors.primary : theme.colors.border
+                      }}
+                      rows={6}
+                      maxLength={MAX_BODY_LENGTH}
+                      disabled={isSubmitting}
+                    />
+                    {isBodyValid && (
+                      <Check size={20} style={styles.textareaCheckIcon} />
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Lost & Found */}
             {category === 'lost_found' && (
               <>
                 <div style={styles.section}>
                   <label style={styles.label}>Что случилось?</label>
                   <div style={styles.toggleWrapper}>
                     <button
-                      onClick={() => {
-                        setLostOrFound('lost');
-                        hapticFeedback('light');
-                      }}
-                      style={
-                        lostOrFound === 'lost'
-                          ? { ...styles.toggleButton, ...styles.toggleButtonActive }
-                          : styles.toggleButton
-                      }
+                      onClick={() => { setLostOrFound('lost'); hapticFeedback('light'); }}
+                      style={lostOrFound === 'lost' ? { ...styles.toggleButton, ...styles.toggleButtonActive } : styles.toggleButton}
                       disabled={isSubmitting}
                     >
                       😢 Потерял
                     </button>
                     <button
-                      onClick={() => {
-                        setLostOrFound('found');
-                        hapticFeedback('light');
-                      }}
-                      style={
-                        lostOrFound === 'found'
-                          ? { ...styles.toggleButton, ...styles.toggleButtonActive }
-                          : styles.toggleButton
-                      }
+                      onClick={() => { setLostOrFound('found'); hapticFeedback('light'); }}
+                      style={lostOrFound === 'found' ? { ...styles.toggleButton, ...styles.toggleButtonActive } : styles.toggleButton}
                       disabled={isSubmitting}
                     >
                       🎉 Нашёл
@@ -724,11 +757,7 @@ function CreatePost() {
                     placeholder="Например: Чёрный рюкзак Adidas"
                     value={itemDescription}
                     onChange={(e) => setItemDescription(e.target.value)}
-                    style={{
-                      ...styles.input,
-                      borderColor: attemptedSubmit && itemDescription.trim().length < 5 ? theme.colors.error : 
-                                   itemDescription.length > 0 ? theme.colors.primary : theme.colors.border
-                    }}
+                    style={{...styles.input, borderColor: attemptedSubmit && itemDescription.trim().length < 5 ? theme.colors.error : theme.colors.border}}
                     maxLength={100}
                     disabled={isSubmitting}
                   />
@@ -736,10 +765,7 @@ function CreatePost() {
 
                 <div style={styles.section}>
                   <label style={styles.label}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <MapPin size={14} />
-                      Где?*
-                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MapPin size={14} /> Где?*</span>
                     <span style={styles.charCount}>{location.length}/100</span>
                   </label>
                   <input 
@@ -747,35 +773,47 @@ function CreatePost() {
                     placeholder="Например: Главный корпус, 3 этаж"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    style={{
-                      ...styles.input,
-                      borderColor: attemptedSubmit && location.trim().length < 3 ? theme.colors.error : 
-                                   location.length > 0 ? theme.colors.primary : theme.colors.border
-                    }}
+                    style={{...styles.input, borderColor: attemptedSubmit && location.trim().length < 3 ? theme.colors.error : theme.colors.border}}
                     maxLength={100}
                     disabled={isSubmitting}
                   />
                 </div>
+
+                <div style={styles.section}>
+                  <label style={styles.label}>Вознаграждение (опционально)</label>
+                  <select 
+                    value={rewardType}
+                    onChange={(e) => setRewardType(e.target.value)}
+                    style={{...styles.input, marginBottom: 8}}
+                  >
+                    {Object.entries(REWARD_TYPE_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>{REWARD_TYPE_ICONS[key]} {label}</option>
+                    ))}
+                  </select>
+                  {rewardType !== REWARD_TYPES.NONE && (
+                    <input 
+                      type="text"
+                      placeholder={rewardType === 'money' ? "Сумма (500р)" : "Что подарите?"}
+                      value={rewardValue}
+                      onChange={(e) => setRewardValue(e.target.value)}
+                      style={styles.input}
+                    />
+                  )}
+                </div>
               </>
             )}
 
+            {/* Events */}
             {category === 'events' && (
               <>
                 <div style={styles.section}>
-                  <label style={styles.label}>
-                    Название события*
-                    <span style={styles.charCount}>{eventName.length}/100</span>
-                  </label>
+                  <label style={styles.label}>Название события*</label>
                   <input 
                     type="text"
                     placeholder="Например: Хакатон StartupHub 2025"
                     value={eventName}
                     onChange={(e) => setEventName(e.target.value)}
-                    style={{
-                      ...styles.input,
-                      borderColor: attemptedSubmit && eventName.trim().length < 3 ? theme.colors.error : 
-                                   eventName.length > 0 ? theme.colors.primary : theme.colors.border
-                    }}
+                    style={{...styles.input, borderColor: attemptedSubmit && eventName.trim().length < 3 ? theme.colors.error : theme.colors.border}}
                     maxLength={100}
                     disabled={isSubmitting}
                   />
@@ -783,73 +821,47 @@ function CreatePost() {
 
                 <div style={styles.section}>
                   <label style={styles.label}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Calendar size={14} />
-                      Дата и время*
-                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={14} /> Дата и время*</span>
                   </label>
                   
                   <div style={styles.quickDateButtons}>
-                    <button 
-                      onClick={() => setQuickDate('today')} 
-                      style={styles.quickDateBtn}
-                      disabled={isSubmitting}
-                      type="button"
-                    >
-                      Сегодня
-                    </button>
-                    <button 
-                      onClick={() => setQuickDate('tomorrow')} 
-                      style={styles.quickDateBtn}
-                      disabled={isSubmitting}
-                      type="button"
-                    >
-                      Завтра
-                    </button>
-                    <button 
-                      onClick={() => setQuickDate('week')} 
-                      style={styles.quickDateBtn}
-                      disabled={isSubmitting}
-                      type="button"
-                    >
-                      Через неделю
-                    </button>
+                    <button onClick={() => setQuickDate('today')} style={styles.quickDateBtn} type="button">Сегодня</button>
+                    <button onClick={() => setQuickDate('tomorrow')} style={styles.quickDateBtn} type="button">Завтра</button>
+                    <button onClick={() => setQuickDate('week')} style={styles.quickDateBtn} type="button">Через неделю</button>
                   </div>
                   
                   <input 
                     type="datetime-local"
                     value={eventDate}
                     onChange={(e) => setEventDate(e.target.value)}
-                    style={{
-                      ...styles.input,
-                      marginTop: theme.spacing.sm,
-                      borderColor: attemptedSubmit && !eventDate ? theme.colors.error : 
-                                   eventDate ? theme.colors.primary : theme.colors.border
-                    }}
+                    style={{...styles.input, marginTop: theme.spacing.sm, borderColor: attemptedSubmit && !eventDate ? theme.colors.error : theme.colors.border}}
                     disabled={isSubmitting}
                   />
                 </div>
 
                 <div style={styles.section}>
                   <label style={styles.label}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <MapPin size={14} />
-                      Место проведения*
-                    </span>
-                    <span style={styles.charCount}>{eventLocation.length}/100</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MapPin size={14} /> Место проведения*</span>
                   </label>
                   <input 
                     type="text"
                     placeholder="Например: Актовый зал, главный корпус"
                     value={eventLocation}
                     onChange={(e) => setEventLocation(e.target.value)}
-                    style={{
-                      ...styles.input,
-                      borderColor: attemptedSubmit && eventLocation.trim().length < 3 ? theme.colors.error : 
-                                   eventLocation.length > 0 ? theme.colors.primary : theme.colors.border
-                    }}
+                    style={{...styles.input, borderColor: attemptedSubmit && eventLocation.trim().length < 3 ? theme.colors.error : theme.colors.border}}
                     maxLength={100}
                     disabled={isSubmitting}
+                  />
+                </div>
+
+                <div style={styles.section}>
+                  <label style={styles.label}>Контакт для связи (опционально)</label>
+                  <input 
+                    type="text"
+                    placeholder="@username или телефон"
+                    value={eventContact}
+                    onChange={(e) => setEventContact(e.target.value)}
+                    style={styles.input}
                   />
                 </div>
               </>
@@ -861,10 +873,7 @@ function CreatePost() {
                   <input
                     type="checkbox"
                     checked={isImportant}
-                    onChange={(e) => {
-                      setIsImportant(e.target.checked);
-                      hapticFeedback('light');
-                    }}
+                    onChange={(e) => setIsImportant(e.target.checked)}
                     style={styles.checkbox}
                     disabled={isSubmitting}
                   />
@@ -873,12 +882,161 @@ function CreatePost() {
               </div>
             )}
 
+            {/* ✅ СЕКЦИЯ ОПРОСОВ */}
             <div style={styles.section}>
-              <label style={styles.label}>
-                Теги (опционально)
-                <span style={styles.charCount}>{tags.length}/{MAX_TAGS}</span>
-              </label>
-              
+              {category !== 'polls' ? (
+                // Обычный toggle для других категорий
+                <div 
+                  style={{
+                    ...styles.pollToggleCard,
+                    background: hasPoll 
+                      ? `linear-gradient(135deg, ${theme.colors.primary}15 0%, ${theme.colors.primary}05 100%)`
+                      : 'transparent',
+                    borderColor: hasPoll ? theme.colors.primary : theme.colors.border,
+                  }}
+                  onClick={() => {
+                    setHasPoll(!hasPoll);
+                    hapticFeedback('light');
+                  }}
+                >
+                  <div style={styles.pollToggleLeft}>
+                    <div style={{
+                      ...styles.pollIconWrapper,
+                      background: hasPoll 
+                        ? `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
+                        : theme.colors.bgSecondary,
+                    }}>
+                      <BarChart2 
+                        size={20} 
+                        color={hasPoll ? '#fff' : theme.colors.textTertiary}
+                        style={{ transition: 'all 0.3s ease' }}
+                      />
+                    </div>
+                    
+                    <div style={styles.pollToggleContent}>
+                      <h4 style={styles.pollToggleTitle}>
+                        Добавить опрос
+                        {hasPoll && <span style={styles.pollActiveBadge}>✓ Активен</span>}
+                      </h4>
+                      <p style={styles.pollToggleDescription}>
+                        Соберите мнения или проведите викторину
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* iOS-style toggle switch */}
+                  <div 
+                    style={{
+                      ...styles.iosSwitch,
+                      background: hasPoll ? theme.colors.primary : theme.colors.border,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div 
+                      style={{
+                        ...styles.iosSwitchKnob,
+                        transform: hasPoll ? 'translateX(20px)' : 'translateX(2px)',
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                // Для polls показываем заголовок (без toggle)
+                <div style={styles.pollsRequiredSection}>
+                  <div style={styles.pollsRequiredHeader}>
+                    <BarChart2 size={20} color={theme.colors.polls} />
+                    <span style={styles.pollsRequiredTitle}>Опрос (обязательно)</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Редактор опроса */}
+              <div 
+                style={{
+                  maxHeight: (hasPoll || category === 'polls') ? '2000px' : '0',
+                  opacity: (hasPoll || category === 'polls') ? 1 : 0,
+                  overflow: 'hidden',
+                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                  marginTop: (hasPoll || category === 'polls') ? theme.spacing.md : 0,
+                }}
+              >
+                <div style={styles.pollEditorWrapper}>
+                  <PollCreator pollData={pollData} onChange={setPollData} />
+                  
+                  <div style={styles.pollHint}>
+                    💡 <b>Совет:</b> Для викторины отметьте правильный ответ кружком
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ✅ СКРЫВАЕМ IMAGES ДЛЯ POLLS */}
+            {category !== 'polls' && (
+              <div style={styles.section}>
+                <label style={styles.label}>
+                  Изображения (опционально)
+                  <span style={styles.charCount}>{images.length}/{MAX_IMAGES}</span>
+                </label>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                />
+
+                {images.length > 0 && (
+                  <div style={styles.imagesPreview}>
+                    {images.map((img, index) => (
+                      <div key={index} style={styles.imagePreviewItem}>
+                        <img src={img} alt={`Превью ${index + 1}`} style={styles.previewImage} />
+                        <button
+                          onClick={() => handleRemoveImage(index)}
+                          style={styles.removeImageButton}
+                          disabled={isSubmitting}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+
+                    {images.length < MAX_IMAGES && category !== 'confessions' && (
+                      <button
+                        onClick={handleAddImageClick}
+                        style={styles.addImagePlaceholder}
+                        disabled={isSubmitting}
+                      >
+                        <Plus size={24} />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {images.length === 0 && (
+                  <button
+                    onClick={handleAddImageClick}
+                    style={{
+                      ...styles.addImageButton,
+                      opacity: category === 'confessions' ? 0.5 : 1,
+                      cursor: category === 'confessions' ? 'not-allowed' : 'pointer'
+                    }}
+                    disabled={isSubmitting || category === 'confessions'}
+                  >
+                    <ImageIcon size={20} />
+                    Добавить фото
+                  </button>
+                )}
+
+                <div style={styles.hint}>
+                  💡 Максимум {MAX_IMAGES} фото, до 5MB каждое. Авто-сжатие до 1MB
+                </div>
+              </div>
+            )}
+
+            <div style={styles.section}>
+              <label style={styles.label}>Теги (опционально)</label>
               <div style={styles.tagInputWrapper}>
                 <Hash size={18} style={{ color: theme.colors.primary, flexShrink: 0 }} />
                 <input 
@@ -894,57 +1052,19 @@ function CreatePost() {
                 <button
                   onClick={() => handleAddTag()}
                   disabled={!canAddTag || isSubmitting}
-                  style={
-                    canAddTag
-                      ? {
-                          ...styles.addTagButton,
-                          opacity: 1,
-                          cursor: 'pointer',
-                          background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
-                        }
-                      : {
-                          ...styles.addTagButton,
-                          opacity: 0.3,
-                          cursor: 'not-allowed'
-                        }
-                  }
-                  type="button"
-                  aria-label="Добавить тег"
+                  style={canAddTag ? {...styles.addTagButton, opacity: 1, background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`} : styles.addTagButton}
                 >
                   <Plus size={18} />
                 </button>
               </div>
               
-              {tags.length < MAX_TAGS && (
-                <div style={styles.popularTagsSection}>
-                  <span style={styles.popularLabel}>Популярные:</span>
-                  <div style={styles.popularTags}>
-                    {POPULAR_TAGS.filter(tag => !tags.includes(tag)).map(tag => (
-                      <button
-                        key={tag}
-                        onClick={() => handleAddTag(tag)}
-                        style={styles.popularTag}
-                        disabled={isSubmitting || tags.length >= MAX_TAGS}
-                        type="button"
-                      >
-                        #{tag}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
               {tags.length > 0 && (
                 <div style={styles.tagsList}>
-                  {tags.map((tag, index) => (
+                  {tags.map((tag) => (
                     <TagBadge key={tag} tag={tag} onRemove={handleRemoveTag} />
                   ))}
                 </div>
               )}
-              
-              <div style={styles.hint}>
-                💡 Максимум 20 символов на тег. Нажмите + или Enter для добавления
-              </div>
             </div>
 
             <div style={{ height: 80 }} />
@@ -989,36 +1109,21 @@ function CreatePost() {
                   <span style={styles.spinner} />
                   {uploadProgress < 40 ? 'Подготовка...' : uploadProgress < 90 ? 'Загрузка...' : 'Завершение...'}
                 </>
-              ) : !isFormValid() ? (
-                <>
-                  Заполните все поля ⬆️
-                </>
-              ) : (
-                'Опубликовать'
-              )}
+              ) : !isFormValid() ? 'Заполните все поля ⬆️' : 'Опубликовать'}
             </button>
           </div>
         </div>
       </div>
 
       {showSuccess && (
-        <div style={{
-          ...styles.successOverlay,
-          opacity: showSuccess ? 1 : 0
-        }}>
+        <div style={{ ...styles.successOverlay, opacity: showSuccess ? 1 : 0 }}>
           <div style={styles.successCard}>
             <div style={{
               ...styles.successIconWrapper,
               transform: checkDrawn ? 'scale(1.0)' : 'scale(0.8)',
               animation: checkDrawn ? 'bigPulse 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'none'
             }}>
-              <svg 
-                width="120" 
-                height="120" 
-                viewBox="0 0 120 120" 
-                fill="none"
-                style={styles.checkmarkSvg}
-              >
+              <svg width="120" height="120" viewBox="0 0 120 120" fill="none" style={styles.checkmarkSvg}>
                 <path
                   d="M 25 60 L 50 85 L 95 35"
                   stroke="url(#gradient)"
@@ -1040,7 +1145,6 @@ function CreatePost() {
                 </defs>
               </svg>
             </div>
-            
             <h3 style={styles.successTitle}>Пост опубликован! 🎉</h3>
             <p style={styles.successText}>Ваш пост появится в ленте через несколько секунд</p>
           </div>
@@ -1053,18 +1157,8 @@ function CreatePost() {
             <h3 style={styles.confirmationTitle}>Отменить создание поста?</h3>
             <p style={styles.confirmationText}>Весь введённый текст будет потерян</p>
             <div style={styles.confirmationButtons}>
-              <button
-                onClick={cancelClose}
-                style={styles.confirmationCancel}
-              >
-                Остаться
-              </button>
-              <button
-                onClick={confirmClose}
-                style={styles.confirmationConfirm}
-              >
-                Да, отменить
-              </button>
+              <button onClick={cancelClose} style={styles.confirmationCancel}>Остаться</button>
+              <button onClick={confirmClose} style={styles.confirmationConfirm}>Да, отменить</button>
             </div>
           </div>
         </div>
@@ -1078,63 +1172,36 @@ const keyframesStyles = `
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
   }
-
   @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
   }
-
   @keyframes tagAppear {
-    from {
-      opacity: 0;
-      transform: scale(0.8) translateY(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1) translateY(0);
-    }
+    from { opacity: 0; transform: scale(0.8) translateY(-10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
   }
-
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
-
   @keyframes shake {
     0%, 100% { transform: translateX(0); }
     25% { transform: translateX(-5px); }
     75% { transform: translateX(5px); }
   }
-
   @keyframes successPop {
-    0% {
-      opacity: 0;
-      transform: scale(0.8);
-    }
-    50% {
-      transform: scale(1.05);
-    }
-    100% {
-      opacity: 1;
-      transform: scale(1);
-    }
+    0% { opacity: 0; transform: scale(0.8); }
+    50% { transform: scale(1.05); }
+    100% { opacity: 1; transform: scale(1); }
   }
-
   @keyframes bigPulse {
-    0% {
-      transform: scale(0.8);
-    }
-    50% {
-      transform: scale(1.2);
-    }
-    100% {
-      transform: scale(1.0);
-    }
+    0% { transform: scale(0.8); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1.0); }
   }
 `;
 
 const styles = {
-  // ... (все стили остаются БЕЗ ИЗМЕНЕНИЙ до конца, добавляю только новые)
   overlay: {
     position: 'fixed',
     inset: 0,
@@ -1144,8 +1211,9 @@ const styles = {
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: 'center',
-    transition: 'opacity 0.3s ease'
+    transition: 'opacity 0.3s ease',
   },
+
   modal: {
     width: '100%',
     maxWidth: '100%',
@@ -1156,602 +1224,723 @@ const styles = {
     flexDirection: 'column',
     boxShadow: theme.shadows.lg,
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    overflow: 'hidden'
+    overflow: 'hidden',
   },
+
   swipeIndicator: {
     padding: `${theme.spacing.md}px 0 ${theme.spacing.sm}px`,
     display: 'flex',
     justifyContent: 'center',
-    flexShrink: 0
+    flexShrink: 0,
   },
+
   swipeBar: {
     width: 40,
     height: 4,
     borderRadius: theme.radius.sm,
-    background: theme.colors.border
+    background: theme.colors.border,
   },
+
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
+    padding: `${theme.spacing.lg}px ${theme.spacing.lg}px ${theme.spacing.md}px`,
     borderBottom: `1px solid ${theme.colors.border}`,
-    flexShrink: 0
+    flexShrink: 0,
   },
+
   closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.md,
+    background: 'none',
     border: 'none',
-    background: theme.colors.bgSecondary,
-    color: theme.colors.textTertiary,
+    color: theme.colors.text,
+    cursor: 'pointer',
+    padding: 8,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    cursor: 'pointer',
-    transition: theme.transitions.normal
+    borderRadius: theme.radius.sm,
+    transition: 'background 0.2s ease',
   },
+
   title: {
     fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
     margin: 0,
-    letterSpacing: '-0.3px'
   },
+
   progressBarContainer: {
-    padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     borderBottom: `1px solid ${theme.colors.border}`,
-    background: theme.colors.bg,
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    flexShrink: 0
+    flexShrink: 0,
   },
+
   progressBarWrapper: {
-    flex: 1,
+    width: '100%',
     height: 6,
+    background: theme.colors.bgSecondary,
     borderRadius: theme.radius.full,
-    background: theme.colors.border,
-    overflow: 'hidden'
+    overflow: 'hidden',
+    marginBottom: theme.spacing.sm,
   },
+
   progressBarFill: {
     height: '100%',
+    transition: 'width 0.3s ease',
     borderRadius: theme.radius.full,
-    transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease'
   },
+
   progressText: {
     fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
     color: theme.colors.textSecondary,
-    whiteSpace: 'nowrap',
-    minWidth: 90
+    fontWeight: theme.fontWeight.medium,
   },
+
   content: {
     flex: 1,
     overflowY: 'auto',
-    overflowX: 'hidden',
-    padding: `${theme.spacing.xl}px ${theme.spacing.xl}px 0`,
-    WebkitOverflowScrolling: 'touch'
+    padding: theme.spacing.lg,
   },
+
   section: {
-    marginBottom: theme.spacing.xxl
+    marginBottom: theme.spacing.lg,
   },
+
   label: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.md,
-    letterSpacing: '0.3px'
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
-  charCount: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textDisabled,
-    fontWeight: theme.fontWeight.medium,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs
-  },
-  checkIcon: {
-    color: theme.colors.success,
-    marginLeft: theme.spacing.xs
-  },
+
   categoriesGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.md
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
   },
+
   categoryButton: {
-    padding: `${theme.spacing.lg}px ${theme.spacing.md}px`,
-    borderRadius: theme.radius.md,
+    padding: theme.spacing.md,
     border: `2px solid ${theme.colors.border}`,
+    borderRadius: theme.radius.md,
     background: theme.colors.bgSecondary,
-    color: theme.colors.textTertiary,
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
     cursor: 'pointer',
-    transition: theme.transitions.normal,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: theme.spacing.xs,
-    minHeight: 64,
-    textAlign: 'center'
+    transition: 'all 0.2s ease',
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
+
   categoryIcon: {
-    fontSize: '24px',
-    lineHeight: 1
+    fontSize: 24,
   },
+
   categoryLabel: {
     fontSize: theme.fontSize.sm,
-    lineHeight: 1.2
   },
+
   anonymousCheckbox: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    cursor: 'pointer'
+    gap: theme.spacing.sm,
+    padding: `${theme.spacing.sm}px 0`,
+    cursor: 'pointer',
   },
+
+  checkbox: {
+    accentColor: theme.colors.primary,
+    width: 18,
+    height: 18,
+    cursor: 'pointer',
+  },
+
+  checkboxText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+  },
+
   confessionHint: {
     padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
     borderRadius: theme.radius.sm,
     background: `${theme.colors.confessions}15`,
     border: `1px solid ${theme.colors.confessions}30`,
-    color: theme.colors.textTertiary,
-    fontSize: theme.fontSize.sm
-  },
-  checkbox: {
-    width: 18,
-    height: 18,
-    cursor: 'pointer',
-    accentColor: theme.colors.primary
-  },
-  checkboxText: {
-    fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
-    fontWeight: theme.fontWeight.medium
+    fontSize: theme.fontSize.xs,
+    lineHeight: 1.5,
   },
+
+  inputWrapper: {
+    position: 'relative',
+  },
+
+  input: {
+    width: '100%',
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    background: theme.colors.bgSecondary,
+    border: `2px solid`,
+    borderRadius: theme.radius.md,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
+    outline: 'none',
+    transition: 'border-color 0.2s ease',
+    boxSizing: 'border-box',
+  },
+
+  textarea: {
+    width: '100%',
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    background: theme.colors.bgSecondary,
+    border: `2px solid`,
+    borderRadius: theme.radius.md,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.md,
+    outline: 'none',
+    transition: 'border-color 0.2s ease',
+    resize: 'vertical',
+    fontFamily: 'inherit',
+    lineHeight: 1.5,
+    boxSizing: 'border-box',
+  },
+
+  inputCheckIcon: {
+    position: 'absolute',
+    right: theme.spacing.md,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    color: theme.colors.success,
+  },
+
+  textareaCheckIcon: {
+    position: 'absolute',
+    right: theme.spacing.md,
+    top: theme.spacing.md,
+    color: theme.colors.success,
+  },
+
+  charCount: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  checkIcon: {
+    marginLeft: 4,
+  },
+
+  toggleWrapper: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: theme.spacing.sm,
+  },
+
+  toggleButton: {
+    padding: theme.spacing.md,
+    border: `2px solid ${theme.colors.border}`,
+    borderRadius: theme.radius.md,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.text,
+    cursor: 'pointer',
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    transition: 'all 0.2s ease',
+  },
+
+  toggleButtonActive: {
+    borderColor: theme.colors.primary,
+    background: `${theme.colors.primary}15`,
+    color: theme.colors.primary,
+  },
+
+  quickDateButtons: {
+    display: 'flex',
+    gap: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
+  },
+
+  quickDateBtn: {
+    flex: 1,
+    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+    background: theme.colors.bgSecondary,
+    border: `1px solid ${theme.colors.border}`,
+    borderRadius: theme.radius.sm,
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.xs,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+
   checkboxLabel: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    cursor: 'pointer'
-  },
-  toggleWrapper: {
-    display: 'flex',
-    gap: theme.spacing.md
-  },
-  toggleButton: {
-    flex: 1,
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    borderRadius: theme.radius.md,
-    border: `2px solid ${theme.colors.border}`,
-    background: theme.colors.bgSecondary,
-    color: theme.colors.textTertiary,
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer',
-    transition: theme.transitions.normal
-  },
-  toggleButtonActive: {
-    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
-    color: theme.colors.text,
-    border: 'none',
-    boxShadow: `0 4px 12px ${theme.colors.primary}40`
-  },
-  inputWrapper: {
-    position: 'relative'
-  },
-  input: {
-    width: '100%',
-    padding: `${theme.spacing.lg}px ${theme.spacing.lg}px`,
-    paddingRight: 40,
-    borderRadius: theme.radius.lg,
-    border: `2px solid ${theme.colors.border}`,
-    background: theme.colors.bgSecondary,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.medium,
-    outline: 'none',
-    boxSizing: 'border-box',
-    transition: theme.transitions.normal
-  },
-  textarea: {
-    width: '100%',
-    padding: `${theme.spacing.lg}px ${theme.spacing.lg}px`,
-    paddingRight: 40,
-    borderRadius: theme.radius.lg,
-    border: `2px solid ${theme.colors.border}`,
-    background: theme.colors.bgSecondary,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.medium,
-    outline: 'none',
-    resize: 'none',
-    lineHeight: 1.6,
-    boxSizing: 'border-box',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    transition: theme.transitions.normal
-  },
-  inputCheckIcon: {
-    position: 'absolute',
-    right: theme.spacing.lg,
-    top: theme.spacing.lg,
-    color: theme.colors.success
-  },
-  textareaCheckIcon: {
-    position: 'absolute',
-    right: theme.spacing.lg,
-    top: theme.spacing.lg,
-    color: theme.colors.success
-  },
-  quickDateButtons: {
-    display: 'flex',
     gap: theme.spacing.sm,
-    marginBottom: theme.spacing.sm
+    cursor: 'pointer',
   },
-  quickDateBtn: {
-    flex: 1,
-    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+
+  imagesPreview: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+
+  imagePreviewItem: {
+    position: 'relative',
+    paddingTop: '100%',
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+  },
+
+  previewImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+
+  removeImageButton: {
+    position: 'absolute',
+    top: theme.spacing.xs,
+    right: theme.spacing.xs,
+    padding: theme.spacing.xs,
+    background: 'rgba(0, 0, 0, 0.7)',
+    border: 'none',
     borderRadius: theme.radius.sm,
-    border: `1px solid ${theme.colors.border}`,
+    color: '#fff',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  addImagePlaceholder: {
+    paddingTop: '100%',
+    position: 'relative',
+    border: `2px dashed ${theme.colors.border}`,
+    borderRadius: theme.radius.md,
     background: theme.colors.bgSecondary,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: theme.colors.textTertiary,
+    transition: 'all 0.2s ease',
+  },
+
+  addImageButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    border: `2px dashed ${theme.colors.border}`,
+    borderRadius: theme.radius.md,
+    background: 'transparent',
     color: theme.colors.textSecondary,
+    cursor: 'pointer',
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
-    cursor: 'pointer',
-    transition: theme.transitions.fast
+    transition: 'all 0.2s ease',
+    width: '100%',
+    justifyContent: 'center',
   },
+
+  hint: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textTertiary,
+    marginTop: theme.spacing.sm,
+    lineHeight: 1.4,
+  },
+
   tagInputWrapper: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    borderRadius: theme.radius.lg,
-    border: `2px solid ${theme.colors.border}`,
+    gap: theme.spacing.sm,
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
     background: theme.colors.bgSecondary,
-    transition: theme.transitions.normal
+    border: `2px solid ${theme.colors.border}`,
+    borderRadius: theme.radius.md,
+    transition: 'border-color 0.2s ease',
   },
+
   tagInput: {
     flex: 1,
     background: 'transparent',
     border: 'none',
     color: theme.colors.text,
     fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.medium,
-    outline: 'none'
+    outline: 'none',
   },
+
   addTagButton: {
-    width: 32,
-    height: 32,
-    borderRadius: theme.radius.md,
+    padding: theme.spacing.xs,
+    background: theme.colors.bgTertiary,
     border: 'none',
-    background: theme.colors.border,
-    color: theme.colors.text,
+    borderRadius: theme.radius.sm,
+    color: theme.colors.textTertiary,
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
-    transition: theme.transitions.normal
+    transition: 'all 0.2s ease',
+    opacity: 0.5,
   },
-  popularTagsSection: {
-    marginTop: theme.spacing.md,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.sm
-  },
-  popularLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textTertiary,
-    fontWeight: theme.fontWeight.medium
-  },
-  popularTags: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm
-  },
-  popularTag: {
-    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-    borderRadius: theme.radius.sm,
-    border: `1px solid ${theme.colors.border}`,
-    background: theme.colors.bgSecondary,
-    color: theme.colors.textSecondary,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    cursor: 'pointer',
-    transition: theme.transitions.fast
-  },
+
   tagsList: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.md
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.sm,
   },
+
   tag: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: theme.spacing.sm,
-    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-    borderRadius: theme.radius.md,
-    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    boxShadow: `0 2px 8px ${theme.colors.primary}30`,
-    animation: 'tagAppear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-    cursor: 'pointer'
-  },
-  tagRemove: {
-    background: 'rgba(255, 255, 255, 0.2)',
-    border: 'none',
+    gap: theme.spacing.xs,
+    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+    background: `${theme.colors.primary}15`,
+    color: theme.colors.primary,
     borderRadius: theme.radius.sm,
-    width: 20,
-    height: 20,
-    color: theme.colors.text,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    animation: 'tagAppear 0.3s ease',
+  },
+
+  tagRemove: {
+    background: 'none',
+    border: 'none',
+    color: 'inherit',
     cursor: 'pointer',
     padding: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: theme.transitions.fast
   },
-  hint: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textDisabled,
-    marginTop: theme.spacing.md,
-    lineHeight: 1.5
-  },
+
   errorAlert: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
-    background: `${theme.colors.error}20`,
-    borderTop: `2px solid ${theme.colors.error}`,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    background: `${theme.colors.error}15`,
+    border: `1px solid ${theme.colors.error}`,
+    borderRadius: theme.radius.md,
     color: theme.colors.error,
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    animation: 'shake 0.5s ease'
+    margin: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`,
+    animation: 'shake 0.3s ease',
   },
+
   footer: {
-    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
-    paddingBottom: `max(${theme.spacing.lg}px, env(safe-area-inset-bottom))`,
+    padding: theme.spacing.lg,
     borderTop: `1px solid ${theme.colors.border}`,
-    background: theme.colors.bg,
-    flexShrink: 0
+    flexShrink: 0,
   },
+
   uploadProgressContainer: {
-    marginBottom: theme.spacing.md
+    marginBottom: theme.spacing.md,
   },
+
   uploadProgressBar: {
     width: '100%',
     height: 4,
+    background: theme.colors.bgSecondary,
     borderRadius: theme.radius.full,
-    background: theme.colors.border,
     overflow: 'hidden',
-    marginBottom: theme.spacing.xs
+    marginBottom: theme.spacing.xs,
   },
+
   uploadProgressFill: {
     height: '100%',
-    background: `linear-gradient(90deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
+    background: `linear-gradient(90deg, ${theme.colors.primary} 0%, ${theme.colors.success} 100%)`,
+    transition: 'width 0.3s ease',
     borderRadius: theme.radius.full,
-    transition: 'width 0.3s ease'
   },
+
   uploadProgressText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.textSecondary,
-    fontWeight: theme.fontWeight.medium
+    fontWeight: theme.fontWeight.medium,
   },
+
   publishButton: {
     width: '100%',
-    padding: theme.spacing.lg,
-    borderRadius: theme.radius.lg,
-    border: 'none',
-    background: theme.colors.border,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.lg,
+    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
+    borderRadius: theme.radius.md,
+    fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.bold,
-    cursor: 'pointer',
-    transition: theme.transitions.normal,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: theme.spacing.md,
-    boxShadow: `0 4px 16px ${theme.colors.primary}40`,
-    letterSpacing: '0.3px'
+    gap: theme.spacing.sm,
+    transition: 'all 0.2s ease',
   },
+
   spinner: {
     width: 16,
     height: 16,
-    border: '2px solid rgba(255, 255, 255, 0.3)',
-    borderTopColor: theme.colors.text,
-    borderRadius: theme.radius.full,
-    animation: 'spin 0.6s linear infinite'
+    border: '2px solid rgba(255,255,255,0.3)',
+    borderTop: '2px solid #fff',
+    borderRadius: '50%',
+    animation: 'spin 0.6s linear infinite',
   },
+
   successOverlay: {
     position: 'fixed',
     inset: 0,
     background: 'rgba(0, 0, 0, 0.85)',
     backdropFilter: 'blur(8px)',
-    zIndex: Z_CREATE_POST + 3,
+    zIndex: Z_CREATE_POST + 1,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: theme.spacing.xl,
-    transition: 'opacity 0.5s ease'
+    transition: 'opacity 0.3s ease',
   },
+
   successCard: {
-    background: `linear-gradient(135deg, ${theme.colors.bg} 0%, ${theme.colors.bgSecondary} 100%)`,
-    borderRadius: theme.radius.xl,
-    padding: `${theme.spacing.xxxl}px ${theme.spacing.xxxl}px`,
-    maxWidth: 340,
-    width: '100%',
-    border: `2px solid ${theme.colors.primary}`,
-    boxShadow: `0 20px 60px ${theme.colors.primary}40`,
-    textAlign: 'center',
-    animation: 'successPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
-    position: 'relative'
-  },
-  successIconWrapper: {
-    width: 120,
-    height: 120,
-    margin: `0 auto ${theme.spacing.xxl}px`,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
-  },
-  checkmarkSvg: {
-    filter: `drop-shadow(0 0 20px ${theme.colors.primary}80)`
-  },
-  successTitle: {
-    fontSize: theme.fontSize.xxl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
-    margin: `0 0 ${theme.spacing.md}px`,
-    letterSpacing: '-0.3px'
-  },
-  successText: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-    margin: 0,
-    lineHeight: 1.5
-  },
-  confirmationOverlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0, 0, 0, 0.85)',
-    backdropFilter: 'blur(8px)',
-    zIndex: Z_CREATE_POST + 2,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.xl,
-    animation: 'fadeIn 0.2s ease'
-  },
-  confirmationDialog: {
     background: theme.colors.bg,
     borderRadius: theme.radius.xl,
-    padding: theme.spacing.xxl,
-    maxWidth: 340,
-    width: '100%',
-    border: `1px solid ${theme.colors.border}`,
-    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8)',
-    animation: 'successPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+    padding: theme.spacing.xl,
+    maxWidth: 320,
+    textAlign: 'center',
+    animation: 'successPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
   },
-  confirmationTitle: {
+
+  successIconWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: theme.spacing.lg,
+  },
+
+  checkmarkSvg: {
+    filter: 'drop-shadow(0 4px 12px rgba(99, 102, 241, 0.4))',
+  },
+
+  successTitle: {
     fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
-    margin: `0 0 ${theme.spacing.md}px`,
-    textAlign: 'center'
+    margin: `0 0 ${theme.spacing.sm}px`,
   },
+
+  successText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    margin: 0,
+  },
+
+  confirmationOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.75)',
+    backdropFilter: 'blur(4px)',
+    zIndex: Z_CREATE_POST + 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    animation: 'fadeIn 0.2s ease',
+  },
+
+  confirmationDialog: {
+    background: theme.colors.bg,
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.xl,
+    margin: theme.spacing.lg,
+    maxWidth: 340,
+    width: '100%',
+  },
+
+  confirmationTitle: {
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    margin: `0 0 ${theme.spacing.sm}px`,
+  },
+
   confirmationText: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textTertiary,
-    margin: `0 0 ${theme.spacing.xxl}px`,
-    textAlign: 'center',
-    lineHeight: 1.5
-  },
-  confirmationButtons: {
-    display: 'flex',
-    gap: theme.spacing.md
-  },
-  confirmationCancel: {
-    flex: 1,
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
-    border: `2px solid ${theme.colors.border}`,
-    background: theme.colors.bgSecondary,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer',
-    transition: theme.transitions.normal
-  },
-  confirmationConfirm: {
-    flex: 1,
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
-    border: 'none',
-    background: theme.colors.error,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer',
-    transition: theme.transitions.normal
-  },
-  imagesPreview: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.md
-  },
-  imagePreviewItem: {
-    position: 'relative',
-    aspectRatio: '1',
-    borderRadius: theme.radius.md,
-    overflow: 'hidden',
-    border: `2px solid ${theme.colors.border}`,
-    background: theme.colors.bgSecondary
-  },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover'
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: theme.spacing.xs,
-    right: theme.spacing.xs,
-    width: 28,
-    height: 28,
-    borderRadius: theme.radius.sm,
-    background: 'rgba(0, 0, 0, 0.7)',
-    backdropFilter: 'blur(4px)',
-    border: 'none',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    transition: theme.transitions.fast,
-    opacity: 0.9
-  },
-  addImagePlaceholder: {
-    aspectRatio: '1',
-    borderRadius: theme.radius.md,
-    border: `2px dashed ${theme.colors.border}`,
-    background: theme.colors.bgSecondary,
-    color: theme.colors.textTertiary,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    transition: theme.transitions.normal
-  },
-  addImageButton: {
-    width: '100%',
-    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
-    borderRadius: theme.radius.md,
-    border: `2px dashed ${theme.colors.border}`,
-    background: theme.colors.bgSecondary,
     color: theme.colors.textSecondary,
-    fontSize: theme.fontSize.md,
+    margin: `0 0 ${theme.spacing.lg}px`,
+  },
+
+  confirmationButtons: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: theme.spacing.sm,
+  },
+
+  confirmationCancel: {
+    padding: theme.spacing.md,
+    background: theme.colors.bgSecondary,
+    border: `2px solid ${theme.colors.border}`,
+    borderRadius: theme.radius.md,
+    color: theme.colors.text,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
-    transition: theme.transitions.normal,
+    transition: 'all 0.2s ease',
+  },
+
+  confirmationConfirm: {
+    padding: theme.spacing.md,
+    background: theme.colors.error,
+    border: 'none',
+    borderRadius: theme.radius.md,
+    color: '#fff',
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+
+  // === POLLS CATEGORY STYLES ===
+  pollsHint: {
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    borderRadius: theme.radius.md,
+    background: `${theme.colors.polls}15`,
+    border: `1px solid ${theme.colors.polls}30`,
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.sm,
+    marginTop: theme.spacing.md,
+    lineHeight: 1.5,
+  },
+
+  pollsRequiredSection: {
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    background: `${theme.colors.polls}10`,
+    border: `2px solid ${theme.colors.polls}`,
+    marginBottom: theme.spacing.md,
+  },
+
+  pollsRequiredHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+
+  pollsRequiredTitle: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.polls,
+  },
+
+  // === POLL TOGGLE CARD ===
+  pollToggleCard: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: theme.spacing.lg,
+    border: '2px solid',
+    borderRadius: theme.radius.lg,
+    cursor: 'pointer',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    userSelect: 'none',
+  },
+
+  pollToggleLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    flex: 1,
+  },
+
+  pollIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: theme.radius.md,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: theme.spacing.md
+    transition: 'all 0.3s ease',
+    flexShrink: 0,
+  },
+
+  pollToggleContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+
+  pollToggleTitle: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    margin: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+
+  pollActiveBadge: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.success,
+    background: `${theme.colors.success}20`,
+    padding: '2px 8px',
+    borderRadius: theme.radius.sm,
+    animation: 'fadeIn 0.3s ease',
+  },
+
+  pollToggleDescription: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textTertiary,
+    margin: 0,
+    lineHeight: 1.4,
+  },
+
+  // === iOS SWITCH ===
+  iosSwitch: {
+    position: 'relative',
+    width: 46,
+    height: 26,
+    borderRadius: 13,
+    transition: 'background 0.3s ease',
+    flexShrink: 0,
+    cursor: 'pointer',
+  },
+
+  iosSwitchKnob: {
+    position: 'absolute',
+    top: 2,
+    width: 22,
+    height: 22,
+    borderRadius: '50%',
+    background: '#fff',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+
+  // === POLL EDITOR ===
+  pollEditorWrapper: {
+    background: `${theme.colors.bgSecondary}80`,
+    border: `1px solid ${theme.colors.border}`,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+    backdropFilter: 'blur(8px)',
+  },
+
+  pollHint: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+    background: `${theme.colors.primary}10`,
+    border: `1px solid ${theme.colors.primary}30`,
+    borderRadius: theme.radius.sm,
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+    marginTop: theme.spacing.md,
+    lineHeight: 1.5,
   },
 };
 

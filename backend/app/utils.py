@@ -1,29 +1,36 @@
+# ===== 📄 ФАЙЛ: backend/app/utils.py =====
+
 import os
 import base64
 import uuid
 import json
+import shutil
 from typing import List, Optional, Dict, Union
 from PIL import Image
 from io import BytesIO
 from fastapi import UploadFile
 from starlette.concurrency import run_in_threadpool
 
-# Конфигурация
-UPLOAD_DIR = "uploads/images"
+# ================= CONFIG =================
+
+# Базовый URL (важно для формирования ссылок на картинки)
+# Для эмулятора Android: "http://10.0.2.2:8000"
+# Для iOS/Web: "http://127.0.0.1:8000" или "http://localhost:8000"
 BASE_URL = "http://127.0.0.1:8000"
 
-# Параметры обработки изображений
-MAX_IMAGE_SIZE = 1200
-MIN_IMAGE_SIZE = 100
-IMAGE_QUALITY = 85
+UPLOAD_DIR = "uploads/images"
+MAX_IMAGE_SIZE = 1200  # Макс размер стороны (px)
+MIN_IMAGE_SIZE = 100   # Мин размер
+IMAGE_QUALITY = 85     # Качество JPEG/WEBP
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
-# Ограничение для защиты от Decompression Bomb
+# Ограничение для защиты от "Zip Bomb" атак
 Image.MAX_IMAGE_PIXELS = 90_000_000
 
-ALLOWED_FORMATS = {'jpg', 'jpeg', 'png', 'webp'}
+# Создаем папки при старте
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Сигнатуры файлов
+# Сигнатуры файлов (Magic Bytes)
 MAGIC_BYTES = {
     b'\xff\xd8\xff': 'jpg',
     b'\x89\x50\x4e\x47': 'png',
@@ -31,189 +38,186 @@ MAGIC_BYTES = {
     b'\x52\x49\x46\x46': 'webp',
 }
 
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# ================= LOGIC =================
 
+def verify_magic_bytes(file_content: bytes) -> bool:
+    """Проверка реального типа файла по заголовку"""
+    if len(file_content) < 4:
+        return False
+    for magic, ext in MAGIC_BYTES.items():
+        if file_content.startswith(magic):
+            return True
+    return False
 
-def verify_magic_bytes(image_bytes: bytes) -> Optional[str]:
-    """Определяет реальный формат файла по заголовку."""
-    for magic, fmt in MAGIC_BYTES.items():
-        if image_bytes.startswith(magic):
-            return fmt
-    return None
-
-
-def remove_exif(image: Image.Image) -> Image.Image:
-    """Удаляет метаданные EXIF, пересоздавая изображение."""
-    if not hasattr(image, '_getexif'):
-        return image
-        
-    data = list(image.getdata())
-    image_without_exif = Image.new(image.mode, image.size)
-    image_without_exif.putdata(data)
-    return image_without_exif
-
-
-def resize_image(image: Image.Image, max_size: int = MAX_IMAGE_SIZE) -> Image.Image:
-    """Изменяет размер изображения с сохранением пропорций."""
-    width, height = image.size
-    
-    if width <= max_size and height <= max_size:
-        return image
-    
-    image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-    return image
-
-
-def process_image_sync(image_data: bytes) -> Dict[str, Union[str, int]]:
+def process_image_sync(content: bytes) -> dict:
     """
-    Синхронная обработка изображения: валидация, очистка, ресайз, сохранение.
-    Выполняется в отдельном потоке.
+    Синхронная обработка изображения (CPU-bound).
+    Изменяет размер, удаляет EXIF, конвертирует и сохраняет.
+    Возвращает метаданные: url, width, height.
     """
-    # Проверка формата
-    detected_format = verify_magic_bytes(image_data)
-    if not detected_format:
-        raise ValueError("Недопустимый формат файла")
+    if not verify_magic_bytes(content):
+        raise ValueError("Invalid image format (check magic bytes)")
 
     try:
-        img = Image.open(BytesIO(image_data))
-        width, height = img.size
+        img = Image.open(BytesIO(content))
         
-        # Проверка размеров
-        if width < MIN_IMAGE_SIZE or height < MIN_IMAGE_SIZE:
-            raise ValueError(f"Изображение слишком маленькое (мин. {MIN_IMAGE_SIZE}px)")
-            
-        aspect_ratio = width / height
-        if aspect_ratio > 3.0 or aspect_ratio < 0.33:
-            raise ValueError("Нестандартные пропорции изображения")
+        # Защита от очень маленьких картинок
+        if img.width < MIN_IMAGE_SIZE or img.height < MIN_IMAGE_SIZE:
+            raise ValueError(f"Image too small (min {MIN_IMAGE_SIZE}px)")
 
-        # Обработка
-        if img.mode in ('RGBA', 'LA', 'P'):
+        # Конвертация RGBA/P -> RGB (для сохранения в JPG)
+        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
             background = Image.new('RGB', img.size, (255, 255, 255))
             if img.mode == 'P':
                 img = img.convert('RGBA')
-            background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            background.paste(img, mask=img.split()[-1]) # Используем альфа-канал как маску
             img = background
-        
-        img = remove_exif(img)
-        img = resize_image(img)
-        
-        # Финальные размеры
-        final_width, final_height = img.size
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
 
-        # Сохранение
-        ext = 'jpg'
-        filename = f"{uuid.uuid4().hex}.{ext}"
+        # Ресайз (с сохранением пропорций)
+        if img.width > MAX_IMAGE_SIZE or img.height > MAX_IMAGE_SIZE:
+            img.thumbnail((MAX_IMAGE_SIZE, MAX_IMAGE_SIZE), Image.Resampling.LANCZOS)
+
+        # Удаление EXIF (создаем новую картинку без метаданных)
+        data = list(img.getdata())
+        clean_img = Image.new(img.mode, img.size)
+        clean_img.putdata(data)
+        
+        # Генерируем уникальное имя
+        filename = f"{uuid.uuid4().hex}.jpg"
         filepath = os.path.join(UPLOAD_DIR, filename)
 
-        with open(filepath, 'wb') as f:
-            img.save(f, format='JPEG', quality=IMAGE_QUALITY, optimize=True)
+        # Сохраняем
+        with open(filepath, "wb") as f:
+            clean_img.save(f, format="JPEG", quality=IMAGE_QUALITY, optimize=True)
 
         return {
             "url": filename,
-            "w": final_width,
-            "h": final_height
+            "w": clean_img.width,
+            "h": clean_img.height
         }
 
     except Exception as e:
-        raise ValueError(f"Ошибка обработки: {str(e)}")
+        print(f"❌ Error in process_image_sync: {e}")
+        raise ValueError("Failed to process image")
 
-
-async def process_uploaded_files(files: List[UploadFile]) -> List[Dict[str, Union[str, int]]]:
+async def process_uploaded_files(files: List[UploadFile]) -> List[dict]:
     """
-    Основная функция загрузки файлов.
-    Читает асинхронно, обрабатывает в пуле потоков.
+    Асинхронная обертка для обработки списка загружаемых файлов.
+    Использует ThreadPool для тяжелых операций с изображениями.
     """
-    processed_images = []
-
-    for file in files:
-        try:
-            content = await file.read()
-            
-            if len(content) > MAX_FILE_SIZE:
-                raise ValueError(f"Файл {file.filename} превышает лимит {MAX_FILE_SIZE // (1024*1024)}MB")
-
-            image_meta = await run_in_threadpool(process_image_sync, content)
-            processed_images.append(image_meta)
-
-        except Exception as e:
-            delete_images(processed_images)
-            raise ValueError(f"Ошибка с файлом {file.filename}: {str(e)}")
-
-    return processed_images
-
-
-def process_base64_images(base64_images: List[str]) -> List[Dict[str, Union[str, int]]]:
-    """Обработка Base64 строк (для обратной совместимости)."""
-    processed_images = []
+    saved_files_meta = []
     
-    for b64 in base64_images:
-        try:
-            if ',' in b64:
-                b64 = b64.split(',', 1)[1]
-            
-            content = base64.b64decode(b64)
-            # Выполняем синхронно, так как обычно вызывается не в async контексте
-            image_meta = process_image_sync(content)
-            processed_images.append(image_meta)
-            
-        except Exception as e:
-            delete_images(processed_images)
-            raise ValueError(f"Ошибка обработки Base64: {str(e)}")
-            
-    return processed_images
-
-
-def delete_images(images_data: List[Union[str, Dict]]):
-    """
-    Удаляет изображения с диска.
-    Поддерживает старый формат (список строк) и новый (список словарей).
-    """
-    for item in images_data:
-        filename = item.get('url') if isinstance(item, dict) else item
-            
-        if not filename:
+    for file in files:
+        if not file.filename:
             continue
+            
+        # Читаем асинхронно
+        content = await file.read()
+        
+        if len(content) > MAX_FILE_SIZE:
+            # Очищаем уже загруженное при ошибке
+            delete_images(saved_files_meta)
+            raise ValueError(f"File {file.filename} is too large (>10MB)")
 
-        filepath = os.path.join(UPLOAD_DIR, filename)
         try:
-            if os.path.exists(filepath):
-                os.remove(filepath)
+            # Обрабатываем в отдельном потоке (чтобы не блочить сервер)
+            meta = await run_in_threadpool(process_image_sync, content)
+            saved_files_meta.append(meta)
         except Exception as e:
-            print(f"Ошибка удаления файла {filename}: {e}")
+            delete_images(saved_files_meta)
+            raise ValueError(f"Error processing {file.filename}: {str(e)}")
+            
+    return saved_files_meta
 
-
-def get_image_urls(images_json: str) -> List[Dict[str, Union[str, int]]]:
+def process_base64_images(base64_list: List[str]) -> List[dict]:
     """
-    Парсит JSON поле images и возвращает список объектов с полными URL.
-    Обеспечивает совместимость со старым форматом данных.
+    Обработка Base64 строк (для легаси или JSON запросов).
+    """
+    saved_files_meta = []
+    
+    for b64_str in base64_list:
+        try:
+            if "," in b64_str:
+                b64_str = b64_str.split(",")[1]
+            
+            content = base64.b64decode(b64_str)
+            
+            # Запускаем синхронную функцию (здесь можно без threadpool, если их мало)
+            meta = process_image_sync(content)
+            saved_files_meta.append(meta)
+        except Exception as e:
+            delete_images(saved_files_meta)
+            raise ValueError(f"Invalid Base64 image: {str(e)}")
+            
+    return saved_files_meta
+
+def delete_images(images_data: Union[List[dict], List[str], str]):
+    """
+    Удаление изображений с диска.
+    Принимает JSON строку, список строк или список словарей (metadata).
+    """
+    if not images_data:
+        return
+
+    # Если пришла JSON строка
+    if isinstance(images_data, str):
+        try:
+            images_data = json.loads(images_data)
+        except:
+            return
+
+    target_list = images_data if isinstance(images_data, list) else [images_data]
+
+    for item in target_list:
+        filename = None
+        if isinstance(item, dict):
+            filename = item.get("url")
+        elif isinstance(item, str):
+            # Если полный URL -> вытаскиваем имя файла
+            filename = item.split("/")[-1]
+        
+        if filename:
+            path = os.path.join(UPLOAD_DIR, filename)
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    print(f"⚠️ Failed to delete {path}: {e}")
+
+def get_image_urls(images_json: Union[str, List]) -> List[dict]:
+    """
+    Преобразует хранящиеся данные (JSON или List) в список объектов с полными URL.
+    Гарантирует формат: [{"url": "http...", "w": 100, "h": 100}, ...]
     """
     if not images_json:
         return []
     
-    try:
-        raw_data = json.loads(images_json)
-        result = []
-        
-        for item in raw_data:
+    data = images_json
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except:
+            return []
+            
+    result = []
+    if isinstance(data, list):
+        for item in data:
             if isinstance(item, str):
-                # Очищаем от путей, оставляем только filename
-                filename = item.replace('/uploads/images/', '').split('/')[-1]
+                # Старый формат (просто имя файла)
+                fname = item.split("/")[-1]
                 result.append({
-                    "url": f"{BASE_URL}/uploads/images/{filename}",
-                    "w": 1000,
-                    "h": 1000
+                    "url": f"{BASE_URL}/uploads/images/{fname}",
+                    "w": 800, # Fake dimensions for legacy
+                    "h": 800
                 })
             elif isinstance(item, dict):
-                # Очищаем URL от путей
-                url = item.get('url', '')
-                filename = url.replace('/uploads/images/', '').split('/')[-1]
+                # Новый формат (метаданные)
+                fname = item.get("url", "").split("/")[-1]
                 result.append({
-                    "url": f"{BASE_URL}/uploads/images/{filename}",
-                    "w": item.get('w', 1000),
-                    "h": item.get('h', 1000)
+                    "url": f"{BASE_URL}/uploads/images/{fname}",
+                    "w": item.get("w", 800),
+                    "h": item.get("h", 800)
                 })
-        
-        return result
-    except Exception as e:
-        print(f"Ошибка парсинга JSON изображений: {e}")
-        return []
+    return result

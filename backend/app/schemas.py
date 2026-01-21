@@ -106,49 +106,136 @@ class UserPublic(BaseModel):
     class Config:
         from_attributes = True
 
+# ===== POLL SCHEMAS (NEW) =====
+
+class PollCreate(BaseModel):
+    """Создание опроса"""
+    question: str
+    options: List[str]  # Минимум 2, максимум 10
+    type: str = "regular"  # "regular" | "quiz"
+    correct_option: Optional[int] = None  # Только для quiz
+    allow_multiple: bool = False
+    is_anonymous: bool = True
+    closes_at: Optional[datetime] = None
+    
+    @field_validator('options')
+    @classmethod
+    def validate_options(cls, v):
+        if len(v) < 2:
+            raise ValueError('Минимум 2 варианта')
+        if len(v) > 10:
+            raise ValueError('Максимум 10 вариантов')
+        return v
+
+    @field_validator('correct_option')
+    @classmethod
+    def validate_correct_option(cls, v, info):
+        # В Pydantic v2 доступ к values через info.data
+        if info.data.get('type') == 'quiz' and v is None:
+            raise ValueError('Для quiz обязателен correct_option')
+        return v
+
+class PollVoteCreate(BaseModel):
+    """Голосование в опросе"""
+    option_indices: List[int]  # [0] для одиночного, [0, 2] для множественного
+
+class PollOptionResponse(BaseModel):
+    """Вариант ответа в опросе"""
+    text: str
+    votes: int
+    percentage: float
+    voters: Optional[List[UserShort]] = None  # Только для неанонимных опросов
+
+class PollResponse(BaseModel):
+    """Полная информация об опросе"""
+    id: int
+    post_id: int
+    question: str
+    options: List[PollOptionResponse]
+    type: str
+    correct_option: Optional[int] = None
+    allow_multiple: bool
+    is_anonymous: bool
+    closes_at: Optional[datetime] = None
+    total_votes: int
+    is_closed: bool
+    user_votes: List[int]  # Индексы вариантов, за которые проголосовал текущий юзер
+    
+    class Config:
+        from_attributes = True
+
 # ===== POST SCHEMAS =====
 
 class ImageMeta(BaseModel):
     """
-    Модель изображения с метаданными (The Holy Grail).
-    Фронтенд использует w/h для расчёта aspect-ratio до загрузки картинки.
+    Модель изображения с метаданными.
     """
     url: str
     w: int
     h: int
 
 class PostCreate(BaseModel):
-    """Создание поста"""
     category: str
-    title: str = Field(..., min_length=1, max_length=255)
-    body: str = Field(..., min_length=1)
+    title: Optional[str] = None
+    body: Optional[str] = None
     tags: List[str] = []
-    
-    # Изображения (Base64 строки для загрузки, если не multipart)
-    images: List[str] = Field(default=[], max_length=3)
-    
-    # Анонимность
     is_anonymous: bool = False
     enable_anonymous_comments: bool = False
+    
+    # Изображения
+    images: List[str] = Field(default=[], max_length=3)
     
     # Lost & Found
     lost_or_found: Optional[str] = None
     item_description: Optional[str] = None
     location: Optional[str] = None
+    reward_type: Optional[str] = None
+    reward_value: Optional[str] = None
     
     # Events
     event_name: Optional[str] = None
     event_date: Optional[datetime] = None
     event_location: Optional[str] = None
+    event_contact: Optional[str] = None
     
     # News
     is_important: bool = False
+    
+    # ✅ Polls
+    poll_data: Optional[dict] = None
     
     @field_validator('images')
     @classmethod
     def validate_images(cls, v):
         if len(v) > 3:
             raise ValueError('Максимум 3 изображения на пост')
+        return v
+    
+    @field_validator('title')
+    @classmethod
+    def validate_title(cls, v, info):
+        """Для polls заголовок опционален (используется вопрос опроса)"""
+        category = info.data.get('category')
+        if category != 'polls' and (not v or len(v.strip()) < 3):
+            raise ValueError('Заголовок обязателен (мин. 3 символа)')
+        return v
+    
+    @field_validator('body')
+    @classmethod
+    def validate_body(cls, v, info):
+        """Для polls описание опционально"""
+        category = info.data.get('category')
+        if category != 'polls' and (not v or len(v.strip()) < 10):
+            raise ValueError('Описание обязательно (мин. 10 символов)')
+        return v
+    
+    @field_validator('poll_data')
+    @classmethod
+    def validate_poll_required(cls, v, info):
+        """Для category=polls опрос обязателен"""
+        category = info.data.get('category')
+        if category == 'polls' and not v:
+            raise ValueError('Для категории Опросы обязательно создать опрос')
         return v
 
 class PostUpdate(BaseModel):
@@ -158,16 +245,20 @@ class PostUpdate(BaseModel):
     tags: Optional[List[str]] = None
     is_anonymous: Optional[bool] = None
     
-    # Обновление изображений (здесь могут быть имена файлов или base64)
     images: Optional[List[str]] = Field(None, max_length=3)
     
     # Специфичные поля
     lost_or_found: Optional[str] = None
     item_description: Optional[str] = None
     location: Optional[str] = None
+    reward_type: Optional[str] = None
+    reward_value: Optional[str] = None
+    
     event_name: Optional[str] = None
     event_date: Optional[datetime] = None
     event_location: Optional[str] = None
+    event_contact: Optional[str] = None
+    
     is_important: Optional[bool] = None
     
     @field_validator('images')
@@ -197,15 +288,20 @@ class PostResponse(BaseModel):
     lost_or_found: Optional[str] = None
     item_description: Optional[str] = None
     location: Optional[str] = None
+    reward_type: Optional[str] = None
+    reward_value: Optional[str] = None
     
     # Events
     event_name: Optional[str] = None
     event_date: Optional[datetime] = None
     event_location: Optional[str] = None
+    event_contact: Optional[str] = None
     
     # News
     is_important: bool = False
-    expires_at: Optional[datetime] = None
+    
+    # Опрос
+    poll: Optional[PollResponse] = None
     
     # Статистика
     likes_count: int = 0

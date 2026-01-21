@@ -1,3 +1,5 @@
+// ===== 📄 ФАЙЛ: frontend/src/api.js =====
+
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8000';
@@ -197,6 +199,22 @@ export async function likePost(postId) {
     return response.data;
   } catch (error) {
     console.error('Ошибка лайка поста:', error);
+    throw error;
+  }
+}
+
+// ✅ НОВАЯ ФУНКЦИЯ ДЛЯ ОПРОСОВ
+export async function votePoll(pollId, optionIndices) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.post(`/polls/${pollId}/vote`, {
+      option_indices: optionIndices
+    }, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка голосования:', error);
     throw error;
   }
 }
