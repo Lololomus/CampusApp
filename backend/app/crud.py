@@ -117,7 +117,7 @@ async def create_post(db: Session, post: schemas.PostCreate, author_id: int, upl
         models.Post.created_at > datetime.utcnow() - timedelta(hours=1)
     ).scalar()
     
-    if recent_posts_count >= 10:
+    if recent_posts_count >= 100: #НА ПРОДАКШЕНЕ ВЕРНУТЬ 10!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         raise ValueError("Превышен лимит создания постов (10 в час)")
 
     from app.utils import process_uploaded_files

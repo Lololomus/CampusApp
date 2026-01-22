@@ -3,7 +3,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import PostCard from './posts/PostCard';
 import RequestsFeed from './requests/RequestsFeed';
-import CreatePost from './posts/CreatePost';
+// import CreatePost from './posts/CreatePost';
+import CreateContentModal from './shared/CreateContentModal';
 import { getPosts } from '../api';
 import { useStore } from '../store';
 import PostCardSkeleton from './posts/PostCardSkeleton';
@@ -16,7 +17,7 @@ function Feed() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [requestsCategory, setRequestsCategory] = useState('all');
-  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   
   const { 
     feedSubTab, 
@@ -25,7 +26,8 @@ function Feed() {
     viewPostId, 
     updatedPostId, 
     getUpdatedPost, 
-    clearUpdatedPost
+    clearUpdatedPost,
+    posts: storePosts
   } = useStore();
 
   const haptic = (type = 'light') => {
@@ -98,6 +100,17 @@ function Feed() {
   useEffect(() => {
     if (feedSubTab === 'posts') loadPosts();
   }, [feedSubTab, loadPosts]);
+
+  useEffect(() => {
+    if (storePosts.length > 0 && feedSubTab === 'posts') {
+      setPosts(prevPosts => {
+        // Объединяем новые посты из store с существующими
+        const storePostIds = new Set(storePosts.map(p => p.id));
+        const existingPosts = prevPosts.filter(p => !storePostIds.has(p.id));
+        return [...storePosts, ...existingPosts];
+      });
+    }
+  }, [storePosts, feedSubTab]);
 
   useEffect(() => {
     if (!viewPostId && updatedPostId) {
@@ -224,12 +237,12 @@ function Feed() {
         )}
       </div>
 
-      {showCreatePost && (
-        <CreatePost 
+      {showCreateModal && (
+        <CreateContentModal 
           onClose={() => {
-            setShowCreatePost(false);
-            loadPosts();
-          }}
+            setShowCreateModal(false);
+            loadPosts(); // Обновит список после создания
+          }} 
         />
       )}
     </div>

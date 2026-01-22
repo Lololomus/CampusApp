@@ -6,8 +6,10 @@ import { initTelegramApp } from './utils/telegram';
 import Navigation from './components/Navigation';
 import Feed from './components/Feed';
 import PostDetail from './components/posts/PostDetail';
-import CreatePost from './components/posts/CreatePost';
-import CreateRequestModal from './components/requests/CreateRequestModal';
+// ❌ УДАЛЕНО: import CreatePost from './components/posts/CreatePost';
+// ❌ УДАЛЕНО: import CreateRequestModal from './components/requests/CreateRequestModal';
+// ✅ ДОБАВЛЕНО: Новый общий компонент
+import CreateContentModal from './components/shared/CreateContentModal';
 import Onboarding from './components/Onboarding';
 import AuthModal from './components/AuthModal';
 import EditProfile from './components/EditProfile';
@@ -23,7 +25,8 @@ function App() {
     activeTab, 
     viewPostId, 
     showCreateModal,
-    showCreateRequestModal,
+    setShowCreateModal, // ✅ Добавили сеттер
+    // showCreateRequestModal, // Больше не нужно, так как модалка одна
     showCreateMarketItem,
     editingMarketItem,
     setEditingMarketItem,
@@ -59,13 +62,16 @@ function App() {
       {renderContent()}
       <Navigation />
       
-      {showCreateModal && <CreatePost />}
-      
-      {showCreateRequestModal && (
-        <CreateRequestModal 
-          onClose={() => useStore.getState().setShowCreateRequestModal(false)} 
+      {/* ✅ ЕДИНАЯ МОДАЛКА ДЛЯ СОЗДАНИЯ КОНТЕНТА */}
+      {showCreateModal && (
+        <CreateContentModal 
+          onClose={() => setShowCreateModal(false)} 
         />
       )}
+
+      {/* CreateRequestModal убран, так как CreateContentModal обрабатывает и посты, и запросы.
+        Логика переключения таба внутри модалки зависит от feedSubTab в store.
+      */}
 
       {showCreateMarketItem && (
         <CreateMarketItem 
