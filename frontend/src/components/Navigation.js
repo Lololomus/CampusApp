@@ -63,23 +63,21 @@ function Navigation() {
 
   const handleTabClick = (tabId) => {
     hapticFeedback('light');
-
+    
     if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people' || tabId === 'market')) {
       setShowAuthModal(true);
       return;
     }
-
+    
     if (tabId === 'create') {
       if (activeTab === 'market') {
         setShowCreateMarketItem(true);
-      } else if (feedSubTab === 'requests') {
-        setShowCreateRequestModal(true);
       } else {
         setShowCreateModal(true);
       }
       return;
     }
-
+    
     setActiveTab(tabId);
   };
 

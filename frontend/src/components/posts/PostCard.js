@@ -1,68 +1,120 @@
-// ===== 📄 ФАЙЛ: PostCard.js =====
-
-import React, { useState, useRef } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useRef, useMemo } from 'react';
+import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight, Calendar, Link as LinkIcon } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import { likePost, deletePost } from '../../api';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
-import EditPost from './EditPost';
 import PollWidget from './PollWidget';
+import PhotoViewer from '../shared/PhotoViewer';
 
-// Константы для URL изображений
-const API_URL = 'http://localhost:8000'; 
+const API_URL = 'http://localhost:8000';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
-  const { likedPosts, setPostLiked, user } = useStore();
+  const { likedPosts, setPostLiked, user, setEditingContent } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isLikeAnimating, setIsLikeAnimating] = useState(false);
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
 
-  // ===== THE HOLY GRAIL: LOGIC (Новая логика) =====
-  
-  // 1. Получаем изображения. Поддержка и старого формата (строки), и нового (объекты)
-  const images = post.images || [];
-  
-  // 2. Определяем метаданные первого изображения для расчета aspect-ratio
+  // ✅ Local state для likes_count
+  const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
+
+  const images = useMemo(() => {
+    if (!post.images) return [];
+    if (Array.isArray(post.images)) return post.images;
+    try { return JSON.parse(post.images); } catch { return []; }
+  }, [post.images]);
+
   const firstImage = images.length > 0 ? images[0] : null;
-  const meta = (typeof firstImage === 'object' && firstImage !== null) 
-    ? firstImage 
-    : { w: 1000, h: 1000, url: firstImage }; 
+  const meta = (typeof firstImage === 'object' && firstImage !== null) ? firstImage : null;
+  const rawRatio = (meta?.w && meta?.h) ? meta.w / meta.h : 1;
+  const safeRatio = Math.max(0.75, Math.min(rawRatio, 1.77));
 
-  // 3. Слайдер изображений (С сохранением индекса в session, как у тебя было)
   const [currentImageIndex, setCurrentImageIndex] = useState(() => {
     const saved = sessionStorage.getItem(`post-${post.id}-imageIndex`);
     return saved ? parseInt(saved, 10) : 0;
   });
 
-  // Получаем URL для src (учитываем, что image может быть объектом или строкой)
-  const getCurrentImageUrl = () => {
-    const img = images[currentImageIndex];
+  const getImageUrl = (img) => {
     if (!img) return '';
     const filename = (typeof img === 'object') ? img.url : img;
     if (filename.startsWith('http')) return filename;
     return `${API_URL}/uploads/images/${filename}`;
   };
 
-  const hasImages = images.length > 0;
+  const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
+
   const isLiked = likedPosts[post.id] ?? post.is_liked ?? false;
-  const likesCount = post.likes_count || post.likes || 0;
-  
-  // Проверка авторства
-  const currentUserId = user?.id;
-  const isAuthor = currentUserId && post.author_id === currentUserId;
-  
+
+  const isOwner = useMemo(() => {
+    if (!user) return false;
+    const userId = user.id || user.user_id;
+    if (post.author_id && userId && String(post.author_id) === String(userId)) return true;
+    if (post.author_telegram_id && user.telegram_id && String(user.telegram_id) === String(post.author_telegram_id)) return true;
+    return false;
+  }, [user, post]);
+
+  const authorMeta = !post.is_anonymous && post.author
+    ? [post.author.university, post.author.course ? `${post.author.course}к` : null]
+        .filter(Boolean).join(' · ')
+    : null;
+
+  const { dateText, isEdited } = useMemo(() => {
+    const created = new Date(post.created_at);
+    const now = new Date();
+    const diffMs = now - created;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    let dateText = '';
+    if (diffMins < 1) dateText = 'Только что';
+    else if (diffMins < 60) dateText = `${diffMins}м назад`;
+    else if (diffHours < 24) dateText = `${diffHours}ч назад`;
+    else if (diffDays < 7) dateText = `${diffDays}д назад`;
+    else dateText = created.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+    const updated = new Date(post.updated_at || post.created_at);
+    const isEdited = (updated - created) > 5 * 60 * 1000;
+
+    return { dateText, isEdited };
+  }, [post.created_at, post.updated_at]);
+
+  const catInfo = useMemo(() => {
+    switch(post.category) {
+      case 'news': return { label: 'Новости', color: theme.colors.news };
+      case 'events': return { label: 'Событие', color: theme.colors.events };
+      case 'confessions': return { label: 'Подслушано', color: theme.colors.confessions };
+      case 'lost_found': return { label: 'Бюро', color: theme.colors.lostFound };
+      case 'polls': return { label: 'Опрос', color: theme.colors.primary };
+      default: return { label: 'Пост', color: theme.colors.textSecondary };
+    }
+  }, [post.category]);
+
+  const handleCardClick = () => {
+    if (onClick) onClick(post.id);
+  };
+
   const handleLike = async (e) => {
     e.stopPropagation();
-    hapticFeedback('light');
-    
+    hapticFeedback('medium');
+
+    setIsLikeAnimating(true);
+    setTimeout(() => setIsLikeAnimating(false), 300);
+
     const newIsLiked = !isLiked;
-    setPostLiked(post.id, newIsLiked);
     
+    // Optimistic update
+    setPostLiked(post.id, newIsLiked);
+    setLocalLikesCount(prev => newIsLiked ? prev + 1 : prev - 1);
+
     try {
       const result = await likePost(post.id);
+      
+      // Применяем реальный ответ сервера
       setPostLiked(post.id, result.is_liked);
+      setLocalLikesCount(result.likes);
       
       if (onLikeUpdate) {
         onLikeUpdate(post.id, {
@@ -71,605 +123,522 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         });
       }
     } catch (error) {
-      console.error('Ошибка лайка:', error);
+      console.error('Like error:', error);
+      // Откат при ошибке
       setPostLiked(post.id, isLiked);
+      setLocalLikesCount(post.likes_count || 0);
     }
+  };
+
+  const handleEdit = () => {
+    setMenuOpen(false);
+    hapticFeedback('light');
+    setEditingContent(post, 'post');
+  };
+
+  const handleDelete = async () => {
+    setMenuOpen(false);
+    if (window.confirm('Удалить этот пост?')) {
+      hapticFeedback('heavy');
+      try {
+        await deletePost(post.id);
+        if (onPostDeleted) onPostDeleted(post.id);
+      } catch (error) {
+        alert('Ошибка удаления');
+      }
+    }
+  };
+
+  const handleCopyLink = () => {
+    setMenuOpen(false);
+    hapticFeedback('success');
+    const link = `campusapp://post/${post.id}`;
+    navigator.clipboard.writeText(link);
+  };
+
+  const handleImageClick = (e) => {
+    e.stopPropagation();
+    hapticFeedback('light');
+    setIsPhotoViewerOpen(true);
   };
 
   const handlePrevImage = (e) => {
     e.stopPropagation();
     hapticFeedback('light');
-    setCurrentImageIndex((prev) => {
-      const newIndex = prev === 0 ? images.length - 1 : prev - 1;
-      sessionStorage.setItem(`post-${post.id}-imageIndex`, newIndex);
-      return newIndex;
+    setCurrentImageIndex(prev => {
+      const n = prev === 0 ? images.length - 1 : prev - 1;
+      sessionStorage.setItem(`post-${post.id}-imageIndex`, n);
+      return n;
     });
   };
 
   const handleNextImage = (e) => {
     e.stopPropagation();
     hapticFeedback('light');
-    setCurrentImageIndex((prev) => {
-      const newIndex = prev === images.length - 1 ? 0 : prev + 1;
-      sessionStorage.setItem(`post-${post.id}-imageIndex`, newIndex);
-      return newIndex;
+    setCurrentImageIndex(prev => {
+      const n = prev === images.length - 1 ? 0 : prev + 1;
+      sessionStorage.setItem(`post-${post.id}-imageIndex`, n);
+      return n;
     });
   };
 
-  const handleMenuClick = (e) => {
-    e.stopPropagation();
-    hapticFeedback('light');
-    setMenuOpen(!menuOpen);
-  };
-
-  const handleEdit = () => {
-    setMenuOpen(false);
-    hapticFeedback('medium');
-    setIsEditModalOpen(true);
-  };
-
-  const handleEditUpdate = (updatedPost) => {
-    hapticFeedback('success');
-    if (onLikeUpdate) {
-      onLikeUpdate(post.id, updatedPost);
-    }
-    setIsEditModalOpen(false);
-  };
-
-  const handleEditClose = () => {
-    setIsEditModalOpen(false);
-  };
-
-  const handleDelete = async () => {
-    setMenuOpen(false);
-    if (!window.confirm('Удалить пост? Это действие нельзя отменить.')) {
-      return;
-    }
-    hapticFeedback('heavy');
-    try {
-      await deletePost(post.id);
-      if (onPostDeleted) {
-        onPostDeleted(post.id);
-      }
-    } catch (error) {
-      console.error('Ошибка удаления:', error);
-      alert('Не удалось удалить пост');
-    }
-  };
-
-  const handlePin = () => {
-    setMenuOpen(false);
-    hapticFeedback('medium');
-    alert('Функция закрепления в разработке');
-  };
-
-  const handleReport = () => {
-    setMenuOpen(false);
-    hapticFeedback('medium');
-    alert('Функция жалобы в разработке');
-  };
-
-  const handleCopyLink = async () => {
-    setMenuOpen(false);
-    hapticFeedback('light');
-    const link = `${window.location.origin}/post/${post.id}`;
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(link);
-        alert('Ссылка скопирована!');
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = link;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        alert('Ссылка скопирована!');
-      }
-    } catch (error) {
-      console.error('Ошибка копирования:', error);
-      alert('Не удалось скопировать ссылку');
-    }
-  };
-
-  const handleRepost = () => {
-    setMenuOpen(false);
-    hapticFeedback('medium');
-    alert('Функция репоста в разработке');
-  };
-
-  const getCategoryColor = (category) => {
-    const colors = {
-      news: theme.colors.news,
-      events: theme.colors.events,
-      confessions: theme.colors.confessions,
-      lost_found: theme.colors.lostFound,
-      polls: theme.colors.polls || theme.colors.primary,
-    };
-    return colors[category] || theme.colors.textDisabled;
-  };
-
-  const getCategoryIcon = (category) => {
-    const icons = {
-      news: '📰',
-      events: '🎉',
-      confessions: '💭',
-      lost_found: '🔍',
-      polls: '📊',
-    };
-    return icons[category] || '';
-  };
-
-  const getCategoryName = (category) => {
-    const names = {
-      news: 'Новости',
-      events: 'События',
-      confessions: 'Признания',
-      lost_found: 'Находки',
-      polls: 'Опросы',
-    };
-    return names[category] || category;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    const options = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
-    return date.toLocaleDateString('ru-RU', options).replace(' г.', '');
-  };
-
-  const isAnonymous = post.is_anonymous === true;
-  const authorName = isAnonymous ? 'Аноним' : (post.author?.name || 'Пользователь');
-  const authorMeta = !isAnonymous && post.author 
-    ? [post.author.university, post.author.course ? `${post.author.course}к` : null]
-        .filter(Boolean).join(' · ')
-    : null;
-
-  const truncateText = (text, maxLength) => {
-    if (!text) return '';
-    return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
-  };
-
-  // Меню действий
-  const menuItems = isAuthor ? [
-    { icon: '✏️', label: 'Редактировать', onClick: handleEdit },
-    { icon: '📌', label: 'Закрепить', onClick: handlePin },
-    { icon: '🗑', label: 'Удалить', onClick: handleDelete, danger: true },
-    { divider: true },
-    { icon: '🔗', label: 'Копировать ссылку', onClick: handleCopyLink },
-    { icon: '📤', label: 'Репост', onClick: handleRepost },
-  ] : [
-    { icon: '🚫', label: 'Пожаловаться', onClick: handleReport, danger: true },
-    { divider: true },
-    { icon: '🔗', label: 'Копировать ссылку', onClick: handleCopyLink },
-    { icon: '📤', label: 'Репост', onClick: handleRepost },
+  const menuItems = [
+    { label: 'Скопировать ссылку', icon: <LinkIcon size={18} />, onClick: handleCopyLink },
+    ...(isOwner ? [
+      { label: 'Редактировать', icon: '✏️', onClick: handleEdit },
+      { label: 'Удалить', icon: '🗑️', danger: true, onClick: handleDelete }
+    ] : [
+      { label: 'Пожаловаться', icon: '🚩', danger: true, onClick: () => { alert('Жалоба отправлена'); setMenuOpen(false); } }
+    ])
   ];
 
-  // ===== СТИЛИ (The Holy Grail Calculation) =====
-  
-  // Вычисляем соотношение сторон
-  const rawRatio = (meta.w && meta.h) ? meta.w / meta.h : 1;
-  // Ограничиваем: от 3:4 (вертикальное) до 16:9 (горизонтальное)
-  const safeRatio = Math.max(0.75, Math.min(rawRatio, 1.9));
-
   return (
-    <div 
-      style={{
-        ...styles.card,
-        borderLeft: `4px solid ${getCategoryColor(post.category)}`
-      }} 
-      onClick={() => onClick(post.id)}
-    >
-      {/* ХЕДЕР */}
-      <div style={styles.header}>
-        <div style={styles.authorSection}>
-          <div style={{
-            ...styles.avatar,
-            backgroundColor: isAnonymous ? theme.colors.textDisabled : theme.colors.primary
-          }}>
-            {authorName[0]?.toUpperCase() || '?'}
+    <>
+      <style>{`
+        @keyframes likeBounce {
+          0% { transform: scale(1); }
+          40% { transform: scale(1.25); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
+
+      <div style={styles.card} onClick={handleCardClick}>
+        <div style={styles.header}>
+          <div style={styles.authorRow}>
+            <div style={{
+              ...styles.avatar,
+              background: post.is_anonymous 
+                ? theme.colors.primary 
+                : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
+            }}>
+              {post.is_anonymous ? 'A' : (post.author?.name?.[0] || 'A')}
+            </div>
+
+            <div style={styles.authorInfo}>
+              <div style={styles.nameRow}>
+                <span style={styles.authorName}>
+                  {post.is_anonymous ? 'Аноним' : (post.author?.name || 'Пользователь')}
+                </span>
+                {post.is_important && <span style={styles.pinned}>📌</span>}
+              </div>
+              {authorMeta && <span style={styles.authorMeta}>{authorMeta}</span>}
+            </div>
           </div>
-          <div style={styles.authorText}>
-            <span style={styles.authorName}>{authorName}</span>
-            {authorMeta && (
+
+          <div style={styles.headerRight}>
+            <span style={{...styles.categoryText, color: catInfo.color}}>
+              {catInfo.label}
+            </span>
+
+            <div style={{position: 'relative', display: 'flex', alignItems: 'center'}}>
+              <button
+                ref={menuButtonRef}
+                style={styles.menuButton}
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); hapticFeedback('light'); }}
+              >
+                <MoreVertical size={20} />
+              </button>
+              <DropdownMenu
+                isOpen={menuOpen}
+                onClose={() => setMenuOpen(false)}
+                anchorRef={menuButtonRef}
+                items={menuItems}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style={styles.content}>
+          {post.title && post.category !== 'polls' && (
+            <h3 style={styles.title}>{post.title}</h3>
+          )}
+
+          {post.body && (
+            <p style={styles.body}>{post.body}</p>
+          )}
+        </div>
+
+        {post.poll && (
+          <div style={styles.pollWrapper} onClick={e => e.stopPropagation()}>
+            <PollWidget poll={post.poll} postId={post.id} />
+          </div>
+        )}
+
+        {(post.event_date || post.lost_or_found || post.location) && (
+          <div style={styles.specialBlock}>
+            {post.event_date && (
+              <div style={styles.specialItem}>
+                <Calendar size={14} />
+                <span>
+                  {new Date(post.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в {new Date(post.event_date).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
+                </span>
+              </div>
+            )}
+            {post.location && (
+              <div style={styles.specialItem}>
+                <MapPin size={14} />
+                <span>{post.location}</span>
+              </div>
+            )}
+            {post.lost_or_found && (
+              <div style={{
+                ...styles.specialItem,
+                color: post.lost_or_found === 'lost' ? theme.colors.error : theme.colors.success,
+                background: post.lost_or_found === 'lost' ? `${theme.colors.error}15` : `${theme.colors.success}15`
+              }}>
+                {post.lost_or_found === 'lost' ? '🔍 Потерял' : '🎁 Нашёл'}
+                {post.item_description && ` — ${post.item_description}`}
+              </div>
+            )}
+          </div>
+        )}
+
+        {images.length > 0 && (
+          <div style={{...styles.imageContainer, aspectRatio: `${safeRatio}`}} onClick={handleImageClick}>
+            <img
+              src={getImageUrl(images[currentImageIndex])}
+              alt=""
+              style={styles.image}
+            />
+
+            {images.length > 1 && (
               <>
-                <span style={styles.dot}> · </span>
-                <span style={styles.authorMeta}>{authorMeta}</span>
+                <div style={styles.imageCounter}>{currentImageIndex + 1}/{images.length}</div>
+                <button onClick={handlePrevImage} style={{...styles.navBtn, left: 10}}>
+                  <ChevronLeft size={20}/>
+                </button>
+                <button onClick={handleNextImage} style={{...styles.navBtn, right: 10}}>
+                  <ChevronRight size={20}/>
+                </button>
+                <div style={styles.dots}>
+                  {images.map((_, i) => (
+                    <div key={i} style={{...styles.dot, opacity: i === currentImageIndex ? 1 : 0.4}} />
+                  ))}
+                </div>
               </>
             )}
           </div>
-        </div>
-        
-        <div style={styles.headerRight}>
-          <div style={styles.categoryIcon}>
-            {getCategoryIcon(post.category)} {getCategoryName(post.category)}
+        )}
+
+        {post.tags && post.tags.length > 0 && (
+          <div style={styles.tags}>
+            {post.tags.slice(0, 3).map(t => <span key={t} style={styles.tag}>#{t}</span>)}
           </div>
-          
-          <button 
-            ref={menuButtonRef}
-            style={styles.menuButton}
-            onClick={handleMenuClick}
-            aria-label="Меню"
-          >
-            <MoreVertical size={18} />
-          </button>
+        )}
 
-          <DropdownMenu 
-            isOpen={menuOpen}
-            onClose={() => setMenuOpen(false)}
-            items={menuItems}
-            anchorRef={menuButtonRef}
+        <div style={styles.footer}>
+          <div style={styles.footerLeft}>
+            <span style={styles.dateText}>{dateText}</span>
+            {isEdited && <span style={styles.editedLabel}>(изм.)</span>}
+          </div>
+
+          <div style={styles.footerRight}>
+            <div style={styles.statItem}>
+              <Eye size={20} color={theme.colors.textTertiary} strokeWidth={2} />
+              <span style={styles.statText}>{post.views_count || 0}</span>
+            </div>
+
+            <button
+              style={styles.footerAction}
+              onClick={(e) => {
+                e.stopPropagation();
+                if(onClick) onClick(post.id);
+              }}
+            >
+              <MessageCircle size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+              <span style={{...styles.statText, color: theme.colors.textSecondary}}>
+                {post.comments_count || 0}
+              </span>
+            </button>
+
+            <button
+              style={{
+                ...styles.footerAction,
+                animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none'
+              }}
+              onClick={handleLike}
+            >
+              <Heart
+                size={20}
+                fill={isLiked ? theme.colors.accent : 'none'}
+                color={isLiked ? theme.colors.accent : theme.colors.textSecondary}
+                strokeWidth={isLiked ? 0 : 2}
+              />
+              <span style={{
+                ...styles.statText,
+                color: isLiked ? theme.colors.accent : theme.colors.textSecondary
+              }}>
+                {localLikesCount}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {isPhotoViewerOpen && (
+          <PhotoViewer
+            photos={viewerPhotos}
+            initialIndex={currentImageIndex}
+            onClose={() => setIsPhotoViewerOpen(false)}
           />
-        </div>
+        )}
       </div>
-
-      {/* ЗАГОЛОВОК - ✅ СКРЫВАЕМ ДЛЯ POLLS */}
-      {post.category !== 'polls' && (
-        <h3 style={styles.title}>{post.title}</h3>
-      )}
-
-      {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ (Holy Grail) */}
-      {hasImages && (
-        <div style={{
-          ...styles.imageContainer, 
-          aspectRatio: `${safeRatio}`,
-          maxHeight: '500px'
-        }}>
-          <img 
-            src={getCurrentImageUrl()} 
-            alt={`${post.title} - фото ${currentImageIndex + 1}`}
-            style={styles.image}
-            loading="lazy"
-            onError={(e) => { e.target.style.display = 'none'; }}
-          />
-          
-          {images.length > 1 && (
-            <>
-              <div style={styles.imageCounter}>
-                {currentImageIndex + 1} / {images.length}
-              </div>
-              
-              <button 
-                onClick={handlePrevImage}
-                style={{...styles.imageNavButton, left: 8}}
-              >
-                <ChevronLeft size={20} />
-              </button>
-              
-              <button 
-                onClick={handleNextImage}
-                style={{...styles.imageNavButton, right: 8}}
-              >
-                <ChevronRight size={20} />
-              </button>
-              
-              <div style={styles.imageDots}>
-                {images.map((_, index) => (
-                  <div 
-                    key={index}
-                    style={{
-                      ...styles.dotIndicator,
-                      opacity: index === currentImageIndex ? 1 : 0.4,
-                      transform: index === currentImageIndex ? 'scale(1.2)' : 'scale(1)'
-                    }}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ОПИСАНИЕ - показываем только если есть и не пустое */}
-      {post.body && post.body.trim() && (
-        <p style={styles.body}>
-          {truncateText(post.body, 180)}
-        </p>
-      )}
-
-      {/* ✅ ОПРОС - с stopPropagation чтобы можно было кликать */}
-      {post.category === 'polls' && post.poll && (
-        <div onClick={(e) => e.stopPropagation()} style={styles.pollContainer}>
-          <PollWidget poll={post.poll} postId={post.id} />
-        </div>
-      )}
-
-      {/* ДОП ИНФО */}
-      {(post.event_name || post.event_date || post.item_description || post.location) && (
-        <div style={styles.metaInfo}>
-          {post.event_name && (
-            <span style={styles.metaItem}>
-              📅 {post.event_name} • {formatDate(post.event_date)}
-            </span>
-          )}
-          {post.item_description && (
-            <span style={styles.metaItem}>
-              {post.lost_or_found === 'lost' ? '😢' : '🎉'} {post.item_description}
-            </span>
-          )}
-          {post.location && (
-            <span style={styles.metaItem}>
-              <MapPin size={12} style={{verticalAlign: 'middle', marginRight: 4}} />
-              {post.location}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* ТЕГИ - ✅ УВЕЛИЧЕН РАЗМЕР И ОТСТУПЫ */}
-      {post.tags && post.tags.length > 0 && (
-        <div style={styles.tags}>
-          {post.tags.slice(0, 3).map((tag, index) => (
-            <span key={index} style={styles.tag}>
-              #{tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* ФУТЕР */}
-      <div style={styles.footer}>
-        <button 
-          style={{
-            ...styles.actionButton,
-            color: isLiked ? theme.colors.accent : theme.colors.textTertiary
-          }}
-          onClick={handleLike}
-        >
-          <Heart size={18} fill={isLiked ? theme.colors.accent : 'none'} />
-          <span>{likesCount}</span>
-        </button>
-        <button style={styles.actionButton}>
-          <MessageCircle size={18} />
-          <span>{post.comments_count || 0}</span>
-        </button>
-        <div style={styles.views}>
-          <Eye size={16} />
-          <span>{post.views_count || 0}</span>
-        </div>
-      </div>
-      
-      {isEditModalOpen && (
-        <EditPost 
-          post={post}
-          onClose={handleEditClose}
-          onUpdate={handleEditUpdate}
-        />
-      )}
-    </div>
+    </>
   );
 }
 
 const styles = {
   card: {
-    backgroundColor: theme.colors.card,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    cursor: 'pointer',
-    transition: 'transform 0.2s, box-shadow 0.2s',
+    backgroundColor: theme.colors.bgSecondary,
+    borderRadius: theme.radius.lg,
+    marginBottom: 8, // ✅ БЫЛО: 12 → СТАЛО: 8 (VK style)
     border: `1px solid ${theme.colors.border}`,
+    overflow: 'hidden',
+    position: 'relative',
+    cursor: 'pointer',
+    transition: 'transform 0.1s ease-out',
+    WebkitTapHighlightColor: 'transparent',
   },
-  
   header: {
+    padding: '12px 16px 2px',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-    position: 'relative',
+    alignItems: 'flex-start',
   },
-  authorSection: {
+  authorRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     flex: 1,
     minWidth: 0,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: '50%',
+    width: 40,
+    height: 40,
+    borderRadius: theme.radius.full,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 14,
-    fontWeight: 600,
-    color: '#fff',
+    fontSize: 18,
+    color: theme.colors.text,
+    fontWeight: theme.fontWeight.bold,
     flexShrink: 0,
   },
-  authorText: {
-    fontSize: 13,
-    lineHeight: 1.3,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+  authorInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  nameRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
   },
   authorName: {
-    fontWeight: 600,
+    fontSize: 15,
+    fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
-  dot: {
-    color: theme.colors.textTertiary,
+  pinned: {
+    fontSize: 12,
   },
   authorMeta: {
+    fontSize: 12,
     color: theme.colors.textTertiary,
+    marginTop: 2,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
-  
   headerRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: theme.spacing.sm,
     flexShrink: 0,
-    position: 'relative',
+    paddingLeft: theme.spacing.sm,
   },
-  categoryIcon: {
-    fontSize: 11,
-    color: theme.colors.textTertiary,
-    fontWeight: 500,
-    whiteSpace: 'nowrap',
+  categoryText: {
+    fontSize: 12,
+    fontWeight: theme.fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
   },
-  
   menuButton: {
-    background: 'none',
+    padding: 6,
+    background: 'transparent',
     border: 'none',
     color: theme.colors.textTertiary,
     cursor: 'pointer',
-    padding: 4,
-    display: 'flex',
-    alignItems: 'center',
-    borderRadius: 6,
-    transition: 'all 0.2s',
-  },
-  
-  title: {
-    fontSize: 18,
-    fontWeight: 600,
-    color: theme.colors.text,
-    marginBottom: 10,
-    lineHeight: 1.3,
-    margin: '0 0 10px 0',
-  },
-  
-  imageContainer: {
-    position: 'relative',
-    width: '100%',
-    borderRadius: `${theme.radius.lg}px`,
-    overflow: 'hidden',
-    backgroundColor: '#000',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    borderRadius: theme.radius.full,
   },
-  
+  content: {
+    padding: '1px 16px 1px',
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: theme.fontWeight.bold,
+    marginBottom: 6,
+    lineHeight: 1.3,
+    color: theme.colors.text,
+  },
+  body: {
+    fontSize: 15,
+    lineHeight: 1.5,
+    color: theme.colors.textSecondary,
+    display: '-webkit-box',
+    WebkitLineClamp: 4,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  },
+  pollWrapper: {
+    margin: `0 16px 12px`,
+  },
+  specialBlock: {
+    margin: `0 16px 12px`,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  specialItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 10px',
+    background: theme.colors.elevated,
+    borderRadius: theme.radius.sm,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    fontWeight: theme.fontWeight.medium,
+  },
+  imageContainer: {
+    width: '100%',
+    position: 'relative',
+    backgroundColor: theme.colors.bg,
+    marginBottom: 10,
+    margin: '0 16px 10px',
+    width: 'calc(100% - 32px)',
+    borderRadius: '8px',
+    overflow: 'hidden',
+  },
   image: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    display: 'block',
   },
-  
   imageCounter: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    background: 'rgba(0, 0, 0, 0.7)',
-    backdropFilter: 'blur(8px)',
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 600,
+    top: 12,
+    right: 12,
+    background: theme.colors.overlayDark,
+    color: theme.colors.text,
     padding: '4px 10px',
-    borderRadius: 12,
-    zIndex: 2,
+    borderRadius: theme.radius.md,
+    fontSize: 12,
+    fontWeight: theme.fontWeight.bold,
   },
-  imageNavButton: {
+  navBtn: {
     position: 'absolute',
     top: '50%',
     transform: 'translateY(-50%)',
     width: 32,
     height: 32,
-    borderRadius: '50%',
+    borderRadius: theme.radius.full,
+    background: theme.colors.overlay,
+    color: theme.colors.text,
     border: 'none',
-    background: 'rgba(0, 0, 0, 0.6)',
-    backdropFilter: 'blur(8px)',
-    color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    zIndex: 3,
-    transition: 'all 0.2s',
-    opacity: 0.8,
+    backdropFilter: 'blur(4px)',
   },
-  imageDots: {
+  dots: {
     position: 'absolute',
-    bottom: 8,
-    left: '50%',
-    transform: 'translateX(-50%)',
+    bottom: 10,
+    left: 0,
+    right: 0,
     display: 'flex',
+    justifyContent: 'center',
     gap: 6,
-    zIndex: 2,
   },
-  dotIndicator: {
+  dot: {
     width: 6,
     height: 6,
-    borderRadius: '50%',
-    backgroundColor: '#fff',
-    transition: 'all 0.2s',
+    borderRadius: theme.radius.full,
+    background: theme.colors.text,
+    transition: theme.transitions.fast,
   },
-  
-  body: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    lineHeight: 1.4,
-    marginBottom: 12,
-    display: '-webkit-box',
-    WebkitLineClamp: 3,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-  },
-  
-  // ✅ НОВЫЙ СТИЛЬ для опроса
-  pollContainer: {
-    marginBottom: 12,
-  },
-  
-  metaInfo: {
-    fontSize: 13,
-    color: theme.colors.textTertiary,
-    marginBottom: 8,
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  metaItem: {
-    display: 'inline-flex',
-    alignItems: 'center',
-  },
-  
-  // ✅ ИСПРАВЛЕНЫ СТИЛИ ТЕГОВ
   tags: {
+    padding: `0 16px`,
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-    marginTop: 4,
+    gap: theme.spacing.sm,
+    marginBottom: 10,
   },
   tag: {
-    fontSize: 13,        // было 12, увеличил
     color: theme.colors.primary,
-    fontWeight: 600,     // было 500, сделал жирнее
-    padding: '2px 0',    // добавил вертикальный отступ
+    fontSize: 13,
+    fontWeight: theme.fontWeight.medium,
   },
-  
   footer: {
     display: 'flex',
-    gap: 16,
     alignItems: 'center',
-    paddingTop: 10,
-    borderTop: `1px solid ${theme.colors.border}`,
+    justifyContent: 'space-between',
+    padding: '6px 16px',
+    backgroundColor: theme.colors.bgSecondary,
+    minHeight: 40,
   },
-  actionButton: {
+  footerLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    background: 'none',
-    border: 'none',
+    gap: theme.spacing.sm,
+    minWidth: 0,
+  },
+  dateText: {
+    fontSize: 12,
     color: theme.colors.textTertiary,
-    cursor: 'pointer',
-    padding: 4,
-    fontSize: 14,
-    transition: 'color 0.2s',
+    fontWeight: theme.fontWeight.medium,
   },
-  views: {
+  editedLabel: {
+    fontSize: 11,
+    color: theme.colors.textTertiary,
+    opacity: 0.7,
+    fontStyle: 'italic',
+  },
+  footerRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    color: theme.colors.textDisabled,
+    gap: 14, // ✅ БЫЛО: 16px (theme.spacing.lg) → СТАЛО: 14px (плотнее)
+  },
+  statItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    color: theme.colors.textTertiary,
+  },
+  footerAction: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    background: 'transparent',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    color: theme.colors.textTertiary,
+  },
+  statText: {
     fontSize: 14,
-    marginLeft: 'auto',
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.textTertiary,
+    minWidth: 14,
+    textAlign: 'center',
+    lineHeight: 1,
   },
 };
 

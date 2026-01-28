@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, 
   Image as ImageIcon, Trash2, BarChart2, Clock, EyeOff, Eye,
-  Loader2, Star, Zap
+  Loader2, Star, Gift
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { createPost, createRequest } from '../../api';
@@ -23,13 +23,11 @@ const MAX_TAGS = 5;
 const MAX_IMAGES = 3;
 const ALLOWED_FORMATS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
-// Post Categories with colors
 const POST_CATEGORIES = CATEGORIES.map(cat => ({
   ...cat,
   color: theme.colors[cat.value] || theme.colors.primary
 }));
 
-// Request Categories
 const REQUEST_CATEGORIES = [
   { value: 'study', label: 'Учёба', icon: '📚', color: '#3b82f6' },
   { value: 'help', label: 'Помощь', icon: '🤝', color: '#10b981' },
@@ -41,7 +39,6 @@ function CreateContentModal({ onClose }) {
 
   // ===== GLOBAL STATE =====
   const [isVisible, setIsVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState('post'); // 'post' | 'request'
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -55,14 +52,12 @@ function CreateContentModal({ onClose }) {
   const [postTags, setPostTags] = useState([]);
   const [postTagInput, setPostTagInput] = useState('');
    
-  // Image State
   const [images, setImages] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
-  const [processingImages, setProcessingImages] = useState([]); // { id, progress }
+  const [processingImages, setProcessingImages] = useState([]);
 
   const [isAnonymous, setIsAnonymous] = useState(false);
    
-  // Post: Sub-features
   const [lostOrFound, setLostOrFound] = useState('lost');
   const [itemDescription, setItemDescription] = useState('');
   const [location, setLocation] = useState('');
@@ -72,10 +67,13 @@ function CreateContentModal({ onClose }) {
   const [eventDate, setEventDate] = useState('');
   const [eventLocation, setEventLocation] = useState('');
   const [eventContact, setEventContact] = useState('');
-  const [activeEventDateBtn, setActiveEventDateBtn] = useState(null); // 'today', 'tomorrow', 'week'
+  const [activeEventDateBtn, setActiveEventDateBtn] = useState(null);
   const [isImportant, setIsImportant] = useState(false);
+
+  const [activeTab, setActiveTab] = useState(
+  feedSubTab === 'requests' ? 'request' : 'post'
+  );
    
-  // Post: Polls
   const [hasPoll, setHasPoll] = useState(false);
   const [pollData, setPollData] = useState({
     question: '',
@@ -93,19 +91,25 @@ function CreateContentModal({ onClose }) {
   const [reqTags, setReqTags] = useState([]);
   const [reqTagInput, setReqTagInput] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
-  const [activeTimeBtn, setActiveTimeBtn] = useState(72); // for UI styling
+  const [activeTimeBtn, setActiveTimeBtn] = useState(72);
+  const [reqRewardType, setReqRewardType] = useState(REWARD_TYPES.NONE);
+  const [reqRewardValue, setReqRewardValue] = useState('');
+  const [reqImages, setReqImages] = useState([]);
+  const [reqImageFiles, setReqImageFiles] = useState([]);
+  const [reqProcessingImages, setReqProcessingImages] = useState([]);
+
 
   // ===== REFS =====
   const postTitleRef = useRef(null);
   const reqTitleRef = useRef(null);
   const fileInputRef = useRef(null);
+  const reqFileInputRef = useRef(null);
 
   // ===== EFFECTS =====
 
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 50);
-    if (feedSubTab === 'requests') setActiveTab('request');
-  }, [feedSubTab]);
+  }, []);
 
   useEffect(() => {
     if (window.innerWidth >= 768 && !isSubmitting) {
@@ -114,32 +118,26 @@ function CreateContentModal({ onClose }) {
     }
   }, [activeTab, isSubmitting]);
 
-  // Sync Post Anonymous to Poll Anonymous
   useEffect(() => {
     if (isAnonymous) {
       setPollData(prev => ({ ...prev, isAnonymous: true }));
     }
   }, [isAnonymous]);
 
-  // Drafts logic omitted for brevity but presumed active...
-  // (Keeping existing draft logic as is)
   useEffect(() => {
-      // Simple draft restoration logic from original code
-      const draft = localStorage.getItem('createPostDraft');
-      if (draft) {
-          try {
-              const parsed = JSON.parse(draft);
-              if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
-                  setPostCategory(parsed.postCategory || 'news');
-                  setPostTitle(parsed.postTitle || '');
-                  setPostBody(parsed.postBody || '');
-                  // ... other fields restoration
-              }
-          } catch(e) {}
-      }
+    const draft = localStorage.getItem('createPostDraft');
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+          setPostCategory(parsed.postCategory || 'news');
+          setPostTitle(parsed.postTitle || '');
+          setPostBody(parsed.postBody || '');
+        }
+      } catch(e) {}
+    }
   }, []);
 
-  // Default Request Expiration
   useEffect(() => {
     if (!expiresAt) {
       const hours = reqCategory === 'study' ? 72 : 24;
@@ -149,7 +147,6 @@ function CreateContentModal({ onClose }) {
     }
   }, [reqCategory, expiresAt]);
 
-  // Post Category Reset Logic
   useEffect(() => {
     setItemDescription(''); setLocation(''); 
     setEventName(''); setEventDate(''); setEventLocation(''); setEventContact('');
@@ -233,6 +230,59 @@ function CreateContentModal({ onClose }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleReqFileSelect = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const remainingSlots = MAX_IMAGES - reqImages.length - reqProcessingImages.length;
+    if (remainingSlots <= 0) {
+      hapticFeedback('error');
+      setError(`Максимум ${MAX_IMAGES} изображений`);
+      return;
+    }
+
+    const filesToProcess = files.slice(0, remainingSlots);
+    const newProcessors = filesToProcess.map(() => ({ id: Math.random().toString(36).substr(2, 9), progress: 0 }));
+    setReqProcessingImages(prev => [...prev, ...newProcessors]);
+    hapticFeedback('light');
+
+    try {
+      for (let i = 0; i < filesToProcess.length; i++) {
+        const file = filesToProcess[i];
+        const procId = newProcessors[i].id;
+
+        if (!ALLOWED_FORMATS.includes(file.type)) {
+          setReqProcessingImages(prev => prev.filter(p => p.id !== procId));
+          continue;
+        }
+
+        const options = {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1200,
+          useWebWorker: true,
+          onProgress: (prog) => {
+            setReqProcessingImages(prev => prev.map(p => p.id === procId ? { ...p, progress: prog } : p));
+          }
+        };
+
+        const compressedFile = await imageCompression(file, options);
+        
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          setReqImages(prev => [...prev, ev.target.result]);
+          setReqImageFiles(prev => [...prev, compressedFile]);
+          setReqProcessingImages(prev => prev.filter(p => p.id !== procId));
+        };
+        reader.readAsDataURL(compressedFile);
+      }
+      hapticFeedback('success');
+    } catch (err) { 
+      console.error(err);
+      setReqProcessingImages([]);
+    }
+    if (reqFileInputRef.current) reqFileInputRef.current.value = '';
+  };
+
   const handleAddImageClick = () => {
     if (postCategory === 'confessions' || postCategory === 'polls') {
       hapticFeedback('error');
@@ -274,7 +324,6 @@ function CreateContentModal({ onClose }) {
     else if (type === 'tomorrow') { targetDate.setDate(now.getDate() + 1); targetDate.setHours(18, 0, 0, 0); }
     else if (type === 'week') { targetDate.setDate(now.getDate() + 7); targetDate.setHours(18, 0, 0, 0); }
     
-    // Format for datetime-local input: YYYY-MM-DDTHH:mm
     const year = targetDate.getFullYear();
     const month = String(targetDate.getMonth() + 1).padStart(2, '0');
     const day = String(targetDate.getDate()).padStart(2, '0');
@@ -355,10 +404,10 @@ function CreateContentModal({ onClose }) {
       }
 
       if (hasPoll && postCategory !== 'polls') {
-         if (!pollData.question.trim() || pollData.options.filter(o=>o.trim()).length < 2) {
-           setError('Заполните опрос корректно');
-           return;
-         }
+        if (!pollData.question.trim() || pollData.options.filter(o=>o.trim()).length < 2) {
+          setError('Заполните опрос корректно');
+          return;
+        }
       }
 
       setIsSubmitting(true);
@@ -401,10 +450,7 @@ function CreateContentModal({ onClose }) {
         
         if (hasPoll || postCategory === 'polls') {
           const cleanPoll = { ...pollData, options: pollData.options.filter(o => o.trim()) };
-          // If post is anonymous, force poll to be anonymous
-          if (isAnonymous) {
-              cleanPoll.isAnonymous = true;
-          }
+          if (isAnonymous) cleanPoll.isAnonymous = true;
           formData.append('poll_data', JSON.stringify(cleanPoll));
         }
         
@@ -420,38 +466,98 @@ function CreateContentModal({ onClose }) {
         setTimeout(confirmClose, 100);
       } catch (e) {
         console.error(e);
-        setError(e.response?.data?.detail || 'Ошибка публикации');
+
+        let errorMsg = 'Ошибка публикации';
+        
+        if (e.response?.data?.detail) {
+          const detail = e.response.data.detail;
+          
+          if (Array.isArray(detail)) {
+            errorMsg = detail.map(err => err.msg || err.type).join(', ');
+          } else if (typeof detail === 'string') {
+            errorMsg = detail;
+          }
+        }
+        
+        setError(errorMsg);
         setIsSubmitting(false);
         setUploadProgress(0);
       }
     } else {
-      // REQUEST SUBMIT
       if (!isRequestFormValid()) {
         hapticFeedback('error');
         setError('Заполните обязательные поля (Заголовок 10+, Описание 20+)');
         return;
       }
+      
       setIsSubmitting(true);
-      setUploadProgress(50);
+      setUploadProgress(20);
+      
       try {
-        const requestData = {
-          category: reqCategory,
-          title: reqTitle.trim(),
-          body: reqBody.trim(),
-          tags: reqTags,
-          expires_at: expiresAt
-        };
-        const newReq = await createRequest(requestData);
+        const formData = new FormData();
+        formData.append('category', reqCategory);
+        formData.append('title', reqTitle.trim());
+        formData.append('body', reqBody.trim());
+        formData.append('expires_at', expiresAt); // ✅ ISO строка
+        
+        if (reqTags && reqTags.length > 0) {
+          formData.append('tags', JSON.stringify(reqTags));
+        } else {
+          formData.append('tags', JSON.stringify([]));
+        }
+        
+        formData.append('max_responses', '5');
+
+        if (reqRewardType && reqRewardType !== REWARD_TYPES.NONE) {
+          formData.append('reward_type', reqRewardType);
+          if (reqRewardValue && reqRewardValue.trim()) {
+            formData.append('reward_value', reqRewardValue.trim());
+          }
+        }
+
+        if (reqImageFiles && reqImageFiles.length > 0) {
+          reqImageFiles.forEach(f => formData.append('images', f));
+        }
+
+        setUploadProgress(60);
+        const newReq = await createRequest(formData, (pe) => {
+          setUploadProgress(Math.round(50 + (pe.loaded / pe.total) * 40));
+        });
+        
         addNewRequest(newReq);
         localStorage.removeItem('createRequestDraft');
         setUploadProgress(100);
         hapticFeedback('success');
         showSuccessToast('Запрос создан!');
-        if (feedSubTab !== 'requests') setFeedSubTab('requests');
+        
+        if (feedSubTab !== 'requests') {
+          setFeedSubTab('requests');
+        }
+        
         setTimeout(confirmClose, 100);
       } catch (e) {
-        console.error(e);
-        setError(e.response?.data?.detail || 'Ошибка создания запроса');
+        console.error('❌ Ошибка создания запроса:', e);
+        console.error('Response:', e.response?.data);
+        
+        let errorMsg = 'Ошибка создания запроса';
+        
+        if (e.response?.data?.detail) {
+          const detail = e.response.data.detail;
+          
+          // Validation errors (массив)
+          if (Array.isArray(detail)) {
+            errorMsg = detail.map(err => {
+              const field = err.loc ? err.loc[err.loc.length - 1] : '';
+              return `${field}: ${err.msg || err.type}`;
+            }).join('; ');
+          } 
+          // Строка
+          else if (typeof detail === 'string') {
+            errorMsg = detail;
+          }
+        }
+        
+        setError(errorMsg);
         setIsSubmitting(false);
         setUploadProgress(0);
       }
@@ -494,7 +600,6 @@ function CreateContentModal({ onClose }) {
     </div>
   );
 
-  // Helper to determine styles for feature toggle buttons (News Important & Add Poll)
   const getFeatureBtnStyle = (isActive) => ({
     ...styles.featureBtn,
     borderColor: isActive ? theme.colors.primary : theme.colors.border,
@@ -502,7 +607,6 @@ function CreateContentModal({ onClose }) {
     color: isActive ? theme.colors.primary : theme.colors.textSecondary
   });
 
-  // Theme placeholders helper
   const getPlaceholders = () => {
     switch(postCategory) {
       case 'confessions': return { title: 'О чём признание?', body: 'Напишите всё, что на душе (полностью анонимно)...' };
@@ -600,7 +704,6 @@ function CreateContentModal({ onClose }) {
                       ))}
                     </div>
 
-                    {/* NEW OPTIONS GRID (Important & Anonymous) */}
                     {postCategory === 'news' && (
                         <div style={styles.optionsGrid}>
                             <button 
@@ -623,7 +726,6 @@ function CreateContentModal({ onClose }) {
                         </div>
                     )}
                     
-                    {/* Standalone Anonymous button for other categories */}
                     {postCategory !== 'news' && postCategory !== 'confessions' && postCategory !== 'polls' && (
                         <button 
                             style={getFeatureBtnStyle(isAnonymous)}
@@ -699,7 +801,6 @@ function CreateContentModal({ onClose }) {
                          <input type="text" placeholder="Например: Возле столовой ГУК" value={location} onChange={e=>setLocation(e.target.value)} style={{...styles.input, borderColor: attemptedSubmit && location.length<3 ? theme.colors.error : theme.colors.border}} disabled={isSubmitting} />
                       </div>
                       
-                      {/* Reward only if LOST */}
                       {lostOrFound === 'lost' && (
                         <div style={styles.section}>
                             <label style={styles.label}>Вознаграждение (опционально)</label>
@@ -776,12 +877,11 @@ function CreateContentModal({ onClose }) {
                         maxHeight: (hasPoll || postCategory === 'polls') ? (postCategory === 'polls' ? 'none' : '2000px') : '0',
                         opacity: (hasPoll || postCategory === 'polls') ? 1 : 0,
                         overflow: 'hidden',
-                        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)', // Returned smooth closing
+                        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         marginTop: (hasPoll || postCategory === 'polls') ? theme.spacing.md : 0,
                     }}>
                         <div style={styles.pollEditorWrapper}>
                             <PollCreator pollData={pollData} onChange={setPollData} />
-                            {/* Removed poll hint here */}
                         </div>
                     </div>
                   </div>
@@ -907,6 +1007,112 @@ function CreateContentModal({ onClose }) {
                     </div>
                   </div>
 
+                  {/* ✅✅✅ НАГРАДА ДЛЯ REQUEST ✅✅✅ */}
+                  <div style={styles.section}>
+                    <label style={styles.label}>
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        <Gift size={16}/> Награда
+                      </div>
+                      <span style={{fontSize: theme.fontSize.xs, color: theme.colors.textTertiary, fontWeight: 400}}>опционально</span>
+                    </label>
+                    <div style={{
+                      padding: theme.spacing.md,
+                      borderRadius: theme.radius.lg,
+                      background: `linear-gradient(135deg, rgba(255,215,0,0.08) 0%, rgba(255,165,0,0.08) 100%)`,
+                      border: `2px dashed rgba(255,215,0,0.25)`
+                    }}>
+                      <select 
+                        value={reqRewardType} 
+                        onChange={e=>setReqRewardType(e.target.value)} 
+                        style={{...styles.input, marginBottom: reqRewardType !== REWARD_TYPES.NONE ? theme.spacing.sm : 0}}
+                        disabled={isSubmitting}
+                      >
+                        {Object.entries(REWARD_TYPE_LABELS).map(([k,l])=>(
+                          <option key={k} value={k}>{REWARD_TYPE_ICONS[k]} {l}</option>
+                        ))}
+                      </select>
+                      {reqRewardType !== REWARD_TYPES.NONE && (
+                        <input 
+                          type="text" 
+                          placeholder={
+                            reqRewardType==='money' ? "Например: 500₽" :
+                            reqRewardType==='help_back' ? "Например: Помогу с программированием" :
+                            reqRewardType==='food' ? "Например: Кофе в буфете" :
+                            "Опишите награду"
+                          }
+                          value={reqRewardValue} 
+                          onChange={e=>setReqRewardValue(e.target.value)} 
+                          style={styles.input}
+                          maxLength={100}
+                          disabled={isSubmitting}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ✅✅✅ ИЗОБРАЖЕНИЯ ДЛЯ REQUEST ✅✅✅ */}
+                  <div style={styles.section}>
+                    <label style={styles.label}>
+                        Изображения (опционально)
+                        <span style={styles.charCount}>{reqImages.length + reqProcessingImages.length}/{MAX_IMAGES}</span>
+                    </label>
+                    <input 
+                      ref={reqFileInputRef} 
+                      type="file" 
+                      accept="image/*" 
+                      multiple 
+                      onChange={handleReqFileSelect} 
+                      style={{ display: 'none' }} 
+                    />
+                    
+                    {(reqImages.length > 0 || reqProcessingImages.length > 0) ? (
+                      <div style={styles.imagesPreview}>
+                          {reqImages.map((img, i) => (
+                          <div key={i} style={styles.imagePreviewItem}>
+                              <img src={img} style={styles.previewImage} alt="" />
+                              <button 
+                                onClick={() => { 
+                                  setReqImages(p => p.filter((_, idx) => idx !== i)); 
+                                  setReqImageFiles(p => p.filter((_, idx) => idx !== i)); 
+                                }} 
+                                style={styles.removeImageButton}
+                                disabled={isSubmitting}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                          </div>
+                          ))}
+                          {reqProcessingImages.map((proc) => (
+                              <div key={proc.id} style={styles.imagePreviewItem}>
+                                  <div style={styles.loadingOverlay}>
+                                      <CircularProgress progress={proc.progress} />
+                                      <span style={styles.loadingPercent}>{Math.round(proc.progress)}%</span>
+                                  </div>
+                              </div>
+                          ))}
+                          {(reqImages.length + reqProcessingImages.length) < MAX_IMAGES && (
+                          <button 
+                            onClick={() => reqFileInputRef.current?.click()} 
+                            style={styles.addImagePlaceholder} 
+                            disabled={isSubmitting}
+                          >
+                              <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                                  <Plus size={24} />
+                              </div>
+                          </button>
+                          )}
+                      </div>
+                    ) : (
+                        <button 
+                          onClick={() => reqFileInputRef.current?.click()} 
+                          style={styles.addImageButton} 
+                          disabled={isSubmitting}
+                        >
+                            <ImageIcon size={20} /> Добавить фото
+                        </button>
+                    )}
+                  </div>
+
                   {/* Expires At */}
                   <div style={styles.section}>
                     <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><Clock size={16}/> Актуально до*</div></label>
@@ -917,6 +1123,7 @@ function CreateContentModal({ onClose }) {
                             onClick={() => { setQuickTime(h); setActiveTimeBtn(h); }} 
                             style={activeTimeBtn === h ? styles.quickDateBtnActive : styles.quickDateBtn}
                             type="button"
+                            disabled={isSubmitting}
                           >
                               {h === 72 ? '3 дня' : `${h}ч`}
                           </button>
@@ -937,14 +1144,14 @@ function CreateContentModal({ onClose }) {
                     {reqTags.length < MAX_TAGS && (
                       <div style={styles.quickTagsWrapper}>
                         {REQUEST_TAGS.filter(t => !reqTags.includes(t)).slice(0, 5).map(t => (
-                          <button key={t} onClick={() => addReqTag(t)} style={styles.quickTagBtn}>#{t}</button>
+                          <button key={t} onClick={() => addReqTag(t)} style={styles.quickTagBtn} disabled={isSubmitting}>#{t}</button>
                         ))}
                       </div>
                     )}
                     <div style={styles.tagInputWrapper}>
                       <Hash size={18} style={{ color: theme.colors.primary, flexShrink: 0 }} />
                       <input type="text" value={reqTagInput} onChange={(e) => setReqTagInput(e.target.value)} style={styles.tagInput} placeholder="помощь, срочно..." onKeyPress={(e) => e.key === 'Enter' && addReqTag()} disabled={isSubmitting || reqTags.length>=MAX_TAGS} />
-                      <button onClick={() => addReqTag()} style={reqTagInput.trim() ? {...styles.addTagButton, opacity: 1, background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`} : styles.addTagButton} disabled={!reqTagInput.trim()}><Plus size={18} /></button>
+                      <button onClick={() => addReqTag()} style={reqTagInput.trim() ? {...styles.addTagButton, opacity: 1, background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`} : styles.addTagButton} disabled={!reqTagInput.trim() || isSubmitting}><Plus size={18} /></button>
                     </div>
                     {reqTags.length > 0 && (
                         <div style={styles.tagsList}>
@@ -1050,7 +1257,6 @@ const styles = {
     fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold, color: theme.colors.text, margin: 0,
   },
   
-  // SWITCHER
   contentTypeSection: {
     padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     borderBottom: `1px solid ${theme.colors.border}`, flexShrink: 0,
@@ -1074,7 +1280,6 @@ const styles = {
     textAlign: 'center', margin: 0,
   },
 
-  // SLIDER LAYOUT
   contentWrapper: {
     flex: 1, overflow: 'hidden', position: 'relative',
   },
@@ -1090,7 +1295,6 @@ const styles = {
     padding: theme.spacing.lg,
   },
 
-  // COMMON FORM STYLES
   section: { marginBottom: theme.spacing.lg },
   label: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1119,7 +1323,6 @@ const styles = {
   
   inputWrapper: { position: 'relative' },
   
-  // FIX: Split border shorthand to avoid React conflicts with borderColor
   input: {
     width: '100%', padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     background: theme.colors.bgSecondary, 
@@ -1142,13 +1345,6 @@ const styles = {
   textareaCheckIcon: {
     position: 'absolute', right: theme.spacing.md, top: theme.spacing.md, color: theme.colors.success,
   },
-  
-  anonymousCheckbox: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm,
-    padding: `${theme.spacing.sm}px 0`, cursor: 'pointer',
-  },
-  checkbox: { accentColor: theme.colors.primary, width: 18, height: 18, cursor: 'pointer' },
-  checkboxText: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary },
 
   confessionHint: {
     padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
@@ -1161,17 +1357,15 @@ const styles = {
     display: 'flex', alignItems: 'center'
   },
 
-  // LOST & FOUND
   toggleWrapper: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing.sm },
   toggleButton: {
       padding: theme.spacing.md, 
-      borderWidth: 2, borderStyle: 'solid', borderColor: theme.colors.border, // Fixed shorthand warning
+      borderWidth: 2, borderStyle: 'solid', borderColor: theme.colors.border,
       borderRadius: theme.radius.md,
       background: theme.colors.bgSecondary, color: theme.colors.text, cursor: 'pointer', fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium, transition: 'all 0.2s ease'
   },
   toggleButtonActive: { borderColor: theme.colors.primary, background: `${theme.colors.primary}15`, color: theme.colors.primary },
 
-  // FEATURE TOGGLE BUTTONS (Important News, Add Poll)
   featureBtn: {
       width: '100%',
       padding: '12px',
@@ -1193,19 +1387,11 @@ const styles = {
       marginBottom: theme.spacing.md,
   },
 
-  // POLL STYLES
   pollEditorWrapper: {
       background: `${theme.colors.bgSecondary}80`, border: `1px solid ${theme.colors.border}`,
       borderRadius: theme.radius.lg, padding: theme.spacing.lg, backdropFilter: 'blur(8px)',
   },
-  pollHint: {
-      fontSize: theme.fontSize.xs, color: theme.colors.textSecondary,
-      background: `${theme.colors.primary}10`, border: `1px solid ${theme.colors.primary}30`,
-      borderRadius: theme.radius.sm, padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-      marginTop: theme.spacing.md, lineHeight: 1.5,
-  },
 
-  // IMAGES
   imagesPreview: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
   imagePreviewItem: { position: 'relative', paddingTop: '100%', borderRadius: theme.radius.md, overflow: 'hidden', backgroundColor: theme.colors.bgSecondary },
   previewImage: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' },
@@ -1217,7 +1403,7 @@ const styles = {
   loadingOverlay: {
     position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    background: `${theme.colors.bgSecondary}CC`, // Dark gray with opacity
+    background: `${theme.colors.bgSecondary}CC`,
     zIndex: 5
   },
   loadingPercent: {
@@ -1228,7 +1414,7 @@ const styles = {
     paddingTop: '100%', position: 'relative', border: `2px dashed ${theme.colors.border}`,
     borderRadius: theme.radius.md, background: theme.colors.bgSecondary,
     display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.colors.textTertiary,
-    cursor: 'pointer', transition: 'all 0.2s ease', padding: 0 // removed padding hack for content
+    cursor: 'pointer', transition: 'all 0.2s ease', padding: 0
   },
   addImageButton: {
     display: 'flex', alignItems: 'center', gap: theme.spacing.sm, padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
@@ -1237,10 +1423,9 @@ const styles = {
     transition: 'all 0.2s ease', width: '100%', justifyContent: 'center'
   },
 
-  // TAGS
   quickTagsWrapper: { display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, marginBottom: theme.spacing.sm },
   quickTagBtn: {
-    padding: `8px 16px`, // Increased padding
+    padding: `8px 16px`,
     background: theme.colors.bgSecondary,
     border: `1px solid ${theme.colors.border}`, borderRadius: theme.radius.sm,
     color: theme.colors.textSecondary, fontSize: theme.fontSize.sm, cursor: 'pointer', transition: 'all 0.2s ease'
@@ -1265,13 +1450,11 @@ const styles = {
   },
   tagRemove: { background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
 
-  // DATE BUTTONS
   quickDateButtons: { display: 'flex', gap: theme.spacing.xs, marginBottom: theme.spacing.sm },
   
-  // FIX: Separate border properties to avoid React shorthand conflicts
   quickDateBtn: {
     flex: 1, 
-    padding: `12px 14px`, // Unified padding
+    padding: `12px 14px`,
     background: theme.colors.bgSecondary, 
     borderWidth: '1px',
     borderStyle: 'solid',
@@ -1284,8 +1467,8 @@ const styles = {
   },
   quickDateBtnActive: {
       flex: 1,
-      padding: `12px 14px`, // Unified padding
-      background: theme.colors.primary, // Solid purple background
+      padding: `12px 14px`,
+      background: theme.colors.primary,
       borderWidth: '1px',
       borderStyle: 'solid',
       borderColor: theme.colors.primary, 
@@ -1296,7 +1479,6 @@ const styles = {
       transition: 'all 0.2s ease',
   },
 
-  // FOOTER & ERROR
   errorAlert: {
     display: 'flex', alignItems: 'center', gap: theme.spacing.sm,
     padding: theme.spacing.md, background: `${theme.colors.error}15`,
@@ -1316,7 +1498,6 @@ const styles = {
     borderTop: '2px solid #fff', borderRadius: '50%', animation: 'spin 0.6s linear infinite',
   },
 
-  // CONFIRMATION
   confirmationOverlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
     backdropFilter: 'blur(4px)', zIndex: Z_CREATE_POST + 1,

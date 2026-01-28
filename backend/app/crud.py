@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, not_, func, case, desc
 from app import models, schemas
 from typing import Optional, List, Dict, Union, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from app.utils import process_base64_images, delete_images, get_image_urls, BASE_URL
 
@@ -61,7 +61,7 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> O
     for key, value in update_data.items():
         setattr(db_user, key, value)
     
-    db_user.last_profile_edit = datetime.utcnow()
+    db_user.last_profile_edit = datetime.now(timezone.utc)
     
     db.commit()
     db.refresh(db_user)
@@ -114,12 +114,12 @@ async def create_post(db: Session, post: schemas.PostCreate, author_id: int, upl
     # ✅ 1. Rate Limiting (10 постов в час)
     recent_posts_count = db.query(func.count(models.Post.id)).filter(
         models.Post.author_id == author_id,
-        models.Post.created_at > datetime.utcnow() - timedelta(hours=1)
+        models.Post.created_at > datetime.now(timezone.utc) - timedelta(hours=1)
     ).scalar()
     
     if recent_posts_count >= 100: #НА ПРОДАКШЕНЕ ВЕРНУТЬ 10!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         raise ValueError("Превышен лимит создания постов (10 в час)")
-
+    
     from app.utils import process_uploaded_files
     
     # 2. Обработка изображений
@@ -242,7 +242,7 @@ async def update_post(
     for key, value in update_data.items():
         setattr(db_post, key, value)
     
-    db_post.updated_at = datetime.utcnow()
+    db_post.updated_at = datetime.now(timezone.utc)
     
     db.commit()
     db.refresh(db_post)
@@ -306,7 +306,7 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
     if not poll:
         raise ValueError("Опрос не найден")
     
-    if poll.closes_at and poll.closes_at < datetime.utcnow():
+    if poll.closes_at and poll.closes_at < datetime.now(timezone.utc):
         raise ValueError("Опрос закрыт")
     
     existing_vote = db.query(models.PollVote).filter(
@@ -546,28 +546,48 @@ def can_edit_critical_fields(db: Session, user_id: int) -> bool:
     user = get_user_by_id(db, user_id)
     if not user or not user.last_profile_edit:
         return True
-    days_passed = (datetime.utcnow() - user.last_profile_edit).days
+    days_passed = (datetime.now(timezone.utc) - user.last_profile_edit).days
     return days_passed >= 30
 
 def get_cooldown_days_left(db: Session, user_id: int) -> int:
     user = get_user_by_id(db, user_id)
     if not user or not user.last_profile_edit:
         return 0
-    days_passed = (datetime.utcnow() - user.last_profile_edit).days
+    days_passed = (datetime.now(timezone.utc) - user.last_profile_edit).days
     return max(0, 30 - days_passed)
 
 # ===== REQUEST CRUD =====
 
-def create_request(db: Session, request: schemas.RequestCreate, author_id: int) -> models.Request:
+async def create_request(
+    db: Session, 
+    request: schemas.RequestCreate, 
+    author_id: int,
+    uploaded_files: List = None 
+) -> models.Request:
     active_count = db.query(models.Request).filter(
         models.Request.author_id == author_id,
         models.Request.category == request.category,
         models.Request.status == 'active',
-        models.Request.expires_at > datetime.utcnow()
+        models.Request.expires_at > datetime.now(timezone.utc)
     ).count()
     
     if active_count >= 3:
         raise ValueError(f"Максимум 3 активных запроса в категории {request.category}")
+    
+    from app.utils import process_uploaded_files
+    
+    saved_images_meta = []
+    
+    if uploaded_files and len(uploaded_files) > 0:
+        try:
+            saved_images_meta = await process_uploaded_files(uploaded_files)
+        except Exception as e:
+            raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
+    elif request.images and len(request.images) > 0:
+        try:
+            saved_images_meta = process_base64_images(request.images)
+        except Exception as e:
+            raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
     
     db_request = models.Request(
         author_id=author_id,
@@ -577,13 +597,21 @@ def create_request(db: Session, request: schemas.RequestCreate, author_id: int) 
         tags=sanitize_json_field(request.tags),
         expires_at=request.expires_at,
         max_responses=request.max_responses,
-        status='active'
+        status='active',
+        reward_type=request.reward_type,
+        reward_value=request.reward_value,
+        images=sanitize_json_field(saved_images_meta)
     )
     
-    db.add(db_request)
-    db.commit()
-    db.refresh(db_request)
-    return db_request
+    try:
+        db.add(db_request)
+        db.commit()
+        db.refresh(db_request)
+        return db_request
+    except Exception as e:
+        if saved_images_meta:
+            delete_images(saved_images_meta)
+        raise e
 
 def get_requests_feed(
     db: Session,
@@ -592,7 +620,7 @@ def get_requests_feed(
     offset: int = 0,
     current_user_id: Optional[int] = None
 ) -> Dict:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     urgent_threshold = now + timedelta(hours=3)
     
     query = db.query(models.Request).options(joinedload(models.Request.author)).filter(
@@ -622,6 +650,8 @@ def get_requests_feed(
     result = []
     for req in requests:
         tags = json.loads(req.tags) if req.tags else []
+        images = get_image_urls(req.images) if req.images else []
+        
         req_dict = {
             'id': req.id,
             'category': req.category,
@@ -635,7 +665,10 @@ def get_requests_feed(
             'created_at': req.created_at,
             'author': req.author,
             'is_author': req.author_id == current_user_id if current_user_id else False,
-            'has_responded': any(r.user_id == current_user_id for r in req.responses) if current_user_id and req.responses else False
+            'has_responded': any(r.user_id == current_user_id for r in req.responses) if current_user_id and req.responses else False,
+            'reward_type': req.reward_type,
+            'reward_value': req.reward_value,
+            'images': images
         }
         result.append(req_dict)
     
@@ -658,6 +691,7 @@ def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[in
     db.commit()
     
     tags = json.loads(request.tags) if request.tags else []
+    images = get_image_urls(request.images) if request.images else []
     
     request_dict = {
         'id': request.id,
@@ -672,7 +706,10 @@ def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[in
         'created_at': request.created_at,
         'author': request.author,
         'is_author': request.author_id == current_user_id if current_user_id else False,
-        'has_responded': any(r.user_id == current_user_id for r in request.responses) if current_user_id and request.responses else False
+        'has_responded': any(r.user_id == current_user_id for r in request.responses) if current_user_id and request.responses else False,
+        'reward_type': request.reward_type,
+        'reward_value': request.reward_value,
+        'images': images
     }
     
     return request_dict
@@ -694,7 +731,7 @@ def update_request(db: Session, request_id: int, user_id: int, data: schemas.Req
     for key, value in update_data.items():
         setattr(request, key, value)
     
-    request.updated_at = datetime.utcnow()
+    request.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(request)
     return request
@@ -722,6 +759,8 @@ def get_my_requests(db: Session, user_id: int) -> List[Dict]:
     result = []
     for req in requests:
         tags = json.loads(req.tags) if req.tags else []
+        images = get_image_urls(req.images) if req.images else []
+        
         req_dict = {
             'id': req.id,
             'category': req.category,
@@ -733,7 +772,10 @@ def get_my_requests(db: Session, user_id: int) -> List[Dict]:
             'views_count': req.views_count,
             'responses_count': len(req.responses) if req.responses else 0,
             'created_at': req.created_at,
-            'is_expired': req.expires_at < datetime.utcnow()
+            'is_expired': req.expires_at < datetime.now(timezone.utc),
+            'reward_type': req.reward_type,
+            'reward_value': req.reward_value,
+            'images': images
         }
         result.append(req_dict)
     
@@ -746,7 +788,7 @@ def create_response(db: Session, request_id: int, user_id: int, data: schemas.Re
     if not request:
         raise ValueError("Запрос не найден")
     
-    if request.status != 'active' or request.expires_at < datetime.utcnow():
+    if request.status != 'active' or request.expires_at < datetime.now(timezone.utc):
         raise ValueError("Запрос закрыт или истёк")
     
     if request.author_id == user_id:
@@ -813,7 +855,7 @@ def delete_response(db: Session, response_id: int, user_id: int) -> bool:
 def auto_expire_requests(db: Session):
     expired = db.query(models.Request).filter(
         models.Request.status == 'active',
-        models.Request.expires_at <= datetime.utcnow()
+        models.Request.expires_at <= datetime.now(timezone.utc)
     ).all()
     
     for request in expired:
@@ -1250,7 +1292,7 @@ async def update_market_item(
     for key, value in update_data.items():
         setattr(db_item, key, value)
     
-    db_item.updated_at = datetime.utcnow()
+    db_item.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(db_item)
     return db_item

@@ -1,34 +1,42 @@
-// ===== 📄 ФАЙЛ: PostDetail.js =====
-
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Heart, MessageCircle, Eye, Send, MoreVertical, MapPin, Calendar, Clock, ChevronLeft, ChevronRight, Gift, Phone } from 'lucide-react';
-import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment } from '../../api';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  ArrowLeft, Heart, MessageCircle, Eye, MapPin, Calendar,
+  ChevronLeft, ChevronRight, MoreVertical, Link as LinkIcon,
+  Gift, Phone, Trash2, Edit2, Flag
+} from 'lucide-react';
+import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment, deletePost } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/telegram';
 import BottomActionBar from '../BottomActionBar';
 import DropdownMenu from '../DropdownMenu';
 import { Z_MODAL_FORMS } from '../../constants/zIndex';
 import theme from '../../theme';
-import { REWARD_TYPE_ICONS } from '../../types';
 import PollView from './PollView';
+import PhotoViewer from '../shared/PhotoViewer';
 
-// Константы
-const API_URL = 'http://localhost:8000'; 
+const API_URL = 'http://localhost:8000';
 
 function PostDetail() {
-  const { viewPostId, setViewPostId, user, updatePost, setUpdatedPost, likedPosts, setPostLiked } = useStore();
+  const { viewPostId, setViewPostId, user, setUpdatedPost, likedPosts, setPostLiked, setEditingContent } = useStore();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [commentLikes, setCommentLikes] = useState({});
   const isLiked = likedPosts[viewPostId] ?? post?.is_liked ?? false;
+
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
+  const [postMenuOpen, setPostMenuOpen] = useState(false);
+  const postMenuRef = useRef(null);
+
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
   const [reportingComment, setReportingComment] = useState(null);
   const [replyToName, setReplyToName] = useState('');
+
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
+  const [isLikeAnimating, setIsLikeAnimating] = useState(false);
 
   useEffect(() => {
     if (viewPostId) {
@@ -38,167 +46,204 @@ function PostDetail() {
     }
   }, [viewPostId]);
 
-
   const loadPost = async () => {
-    setLoading(true);
+    if (!post) setLoading(true);
+
     try {
       const data = await getPost(viewPostId);
-      
+
       let imagesData = [];
       if (typeof data.images === 'string') {
-        try {
-          imagesData = JSON.parse(data.images);
-        } catch (e) {
-          imagesData = [];
-        }
+        try { imagesData = JSON.parse(data.images); } catch (e) { imagesData = []; }
       } else {
         imagesData = data.images || [];
       }
-
-      const postWithImages = {
-        ...data,
-        images: imagesData
-      };
-      
-      setPost(postWithImages);
+      setPost({ ...data, images: imagesData });
 
       try {
         const commentsData = await getPostComments(viewPostId);
         const commentsArray = Array.isArray(commentsData) ? commentsData : [];
         setComments(commentsArray);
-        
+
         const initialLikes = {};
         commentsArray.forEach(comment => {
-          initialLikes[comment.id] = {
-            isLiked: comment.is_liked || false,
-            count: comment.likes || 0
-          };
+          initialLikes[comment.id] = { isLiked: comment.is_liked || false, count: comment.likes || 0 };
         });
         setCommentLikes(initialLikes);
       } catch (error) {
-        console.error('❌ Ошибка загрузки комментариев:', error);
-        setComments([]);
+        console.error('Comments error:', error);
       }
     } catch (error) {
-      console.error('Error loading post:', error);
+      console.error('Post loading error:', error);
     } finally {
       setLoading(false);
     }
   };
 
-
   const refreshPost = async () => {
     try {
       const fresh = await getPost(viewPostId);
-      
       let imagesData = [];
       if (typeof fresh.images === 'string') {
-        try {
-          imagesData = JSON.parse(fresh.images);
-        } catch (e) {
-          imagesData = [];
-        }
-      } else {
-        imagesData = fresh.images || [];
-      }
-      
+        try { imagesData = JSON.parse(fresh.images); } catch (e) { imagesData = []; }
+      } else { imagesData = fresh.images || []; }
+
       setPost({ ...fresh, images: imagesData });
-      
+
       if (setUpdatedPost && viewPostId) {
-        setUpdatedPost(viewPostId, { 
-          comments_count: fresh.comments_count, 
-          likes_count: fresh.likes_count, 
-          views_count: fresh.views_count 
+        setUpdatedPost(viewPostId, {
+          comments_count: fresh.comments_count,
+          likes_count: fresh.likes_count,
+          views_count: fresh.views_count
         });
       }
-    } catch (e) {
-      console.error('❌ Не удалось обновить пост:', e);
-    }
+    } catch (e) { console.error('Silent update failed:', e); }
   };
 
+  const images = useMemo(() => {
+    if (!post || !post.images) return [];
+    return post.images;
+  }, [post]);
+
+  const getImageUrl = (img) => {
+    if (!img) return '';
+    const filename = (typeof img === 'object') ? img.url : img;
+    if (filename.startsWith('http')) return filename;
+    return `${API_URL}/uploads/images/${filename}`;
+  };
+
+  const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
+
+  const safeRatio = useMemo(() => {
+    const firstImage = images.length > 0 ? images[0] : null;
+    const meta = (typeof firstImage === 'object' && firstImage !== null) ? firstImage : null;
+    const rawRatio = (meta?.w && meta?.h) ? meta.w / meta.h : 1;
+    return Math.max(0.75, Math.min(rawRatio, 1.77));
+  }, [images]);
+
+  const { dateText, isEdited } = useMemo(() => {
+    if (!post) return { dateText: '', isEdited: false };
+    const created = new Date(post.created_at);
+    const now = new Date();
+    const diffMs = now - created;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    let text = '';
+    if (diffMins < 1) text = 'Только что';
+    else if (diffMins < 60) text = `${diffMins}м назад`;
+    else if (diffHours < 24) text = `${diffHours}ч назад`;
+    else if (diffDays < 7) text = `${diffDays}д назад`;
+    else text = created.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+    const updated = new Date(post.updated_at || post.created_at);
+    const edited = (updated - created) > 5 * 60 * 1000;
+    return { dateText: text, isEdited: edited };
+  }, [post?.created_at, post?.updated_at]);
+
+  const catInfo = useMemo(() => {
+    if (!post) return { label: '', color: theme.colors.text };
+    switch(post.category) {
+      case 'news': return { label: 'Новости', color: theme.colors.news };
+      case 'events': return { label: 'Событие', color: theme.colors.events };
+      case 'confessions': return { label: 'Подслушано', color: theme.colors.confessions };
+      case 'lost_found': return { label: 'Бюро', color: theme.colors.lostFound };
+      case 'polls': return { label: 'Опрос', color: theme.colors.primary };
+      default: return { label: 'Пост', color: theme.colors.textSecondary };
+    }
+  }, [post?.category]);
+
+  const isOwner = useMemo(() => {
+    if (!user || !post) return false;
+    const userId = user.id || user.user_id;
+    const authorId = post.author_id;
+    return (authorId && userId && String(authorId) === String(userId));
+  }, [user, post?.author_id]);
+
+  const authorMeta = useMemo(() => {
+    return post && !post.is_anonymous && post.author
+      ? [post.author.university, post.author.course ? `${post.author.course}к` : null]
+          .filter(Boolean).join(' · ')
+      : null;
+  }, [post?.author, post?.is_anonymous]);
 
   const handleBack = () => {
     hapticFeedback('light');
     setViewPostId(null);
   };
 
+  const handleLike = async () => {
+    hapticFeedback('medium');
+    setIsLikeAnimating(true);
+    setTimeout(() => setIsLikeAnimating(false), 300);
+
+    const prevCount = post.likes_count || 0;
+    const newIsLiked = !isLiked;
+
+    setPostLiked(viewPostId, newIsLiked);
+    setPost(p => ({ ...p, likes_count: newIsLiked ? prevCount + 1 : prevCount - 1 }));
+
+    try {
+      const result = await likePost(post.id);
+      setPostLiked(viewPostId, result.is_liked);
+      setPost(p => ({ ...p, likes_count: result.likes, is_liked: result.is_liked }));
+      if (setUpdatedPost) setUpdatedPost(viewPostId, { likes_count: result.likes, is_liked: result.is_liked });
+    } catch (error) {
+      setPostLiked(viewPostId, !newIsLiked);
+      setPost(p => ({ ...p, likes_count: prevCount }));
+    }
+  };
+
+  const handleEditPost = () => {
+    setPostMenuOpen(false);
+    hapticFeedback('light');
+    setEditingContent(post, 'post');
+  };
+
+  const handleDeletePost = async () => {
+    setPostMenuOpen(false);
+    if (window.confirm('Удалить этот пост?')) {
+      hapticFeedback('heavy');
+      try {
+        await deletePost(post.id);
+        handleBack();
+      } catch (error) {
+        alert('Ошибка удаления');
+      }
+    }
+  };
+
+  const handleCopyLink = () => {
+    setPostMenuOpen(false);
+    hapticFeedback('success');
+    const link = `campusapp://post/${post.id}`;
+    navigator.clipboard.writeText(link);
+  };
 
   const handleSendComment = async (text) => {
     if (!text || !text.trim()) return;
     try {
       const comment = await createComment(viewPostId, text.trim(), replyTo);
-      setComments([...comments, comment]);
-      setCommentLikes({
-        ...commentLikes,
-        [comment.id]: { isLiked: false, count: 0 }
-      });
+      setComments(prev => [...prev, comment]);
+      setCommentLikes(prev => ({ ...prev, [comment.id]: { isLiked: false, count: 0 } }));
       setReplyTo(null);
       await refreshPost();
-    } catch (error) {
-      console.error('Ошибка создания комментария:', error);
-      alert('Не удалось отправить комментарий');
-    }
+    } catch (error) { alert('Не удалось отправить комментарий'); }
   };
 
-
-  const handleDirectSend = async (text) => {
+  const handleDirectSend = (text) => {
     hapticFeedback('success');
     alert(`Отклик отправлен автору!\n\n"${text}"`);
   };
-
-
-  const handleLike = async () => {
-    hapticFeedback('light');
-    
-    const wasLiked = isLiked;
-    const prevCount = post.likes_count || 0;
-    const newIsLiked = !isLiked;
-    
-    setPostLiked(viewPostId, newIsLiked);
-    setPost({ ...post, likes_count: newIsLiked ? prevCount + 1 : prevCount - 1 });
-    
-    try {
-      const result = await likePost(post.id);
-      setPostLiked(viewPostId, result.is_liked);
-      setPost({ 
-        ...post, 
-        likes_count: result.likes,
-        is_liked: result.is_liked,
-        images: post.images 
-      });
-      
-      if (setUpdatedPost && viewPostId) {
-        setUpdatedPost(viewPostId, { 
-          comments_count: post.comments_count, 
-          likes_count: result.likes, 
-          views_count: post.views_count, 
-          is_liked: result.is_liked
-        });
-      }
-    } catch (error) {
-      console.error('Ошибка лайка:', error);
-      setPostLiked(viewPostId, wasLiked);
-      setPost({ ...post, likes_count: prevCount });
-    }
-  };
-
 
   const handleCommentLike = async (commentId) => {
     hapticFeedback('light');
     try {
       const result = await likeComment(commentId);
-      setCommentLikes({
-        ...commentLikes,
-        [commentId]: {
-          isLiked: result.is_liked,
-          count: result.likes
-        }
-      });
-    } catch (error) {
-      console.error('Ошибка лайка комментария:', error);
-    }
+      setCommentLikes(prev => ({ ...prev, [commentId]: { isLiked: result.is_liked, count: result.likes } }));
+    } catch (error) {}
   };
-
 
   const handleReply = (comment) => {
     hapticFeedback('light');
@@ -208,34 +253,20 @@ function PostDetail() {
     setMenuOpen(null);
   };
 
-
   const handleDeleteComment = async (commentId) => {
     if (!window.confirm('Удалить комментарий?')) return;
-
     hapticFeedback('medium');
     setMenuOpen(null);
-
     try {
       const result = await deleteComment(commentId);
-
       if (result.type === 'hard_delete') {
-        setComments(comments.filter(c => c.id !== commentId));
+        setComments(prev => prev.filter(c => c.id !== commentId));
       } else {
-        setComments(comments.map(c =>
-          c.id === commentId
-            ? { ...c, body: 'Комментарий удалён', is_deleted: true }
-            : c
-        ));
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, body: 'Комментарий удалён', is_deleted: true } : c));
       }
-
       await refreshPost();
-      hapticFeedback('success');
-    } catch (error) {
-      console.error('Ошибка удаления:', error);
-      alert('Не удалось удалить комментарий');
-    }
+    } catch (error) {}
   };
-
 
   const handleEditComment = (comment) => {
     hapticFeedback('light');
@@ -244,39 +275,16 @@ function PostDetail() {
     setMenuOpen(null);
   };
 
-
   const handleSaveEdit = async (commentId) => {
     if (!editText.trim()) return;
-    
     hapticFeedback('medium');
     try {
       const updated = await updateComment(commentId, editText.trim());
-      
-      setComments(comments.map(c => 
-        c.id === commentId ? { 
-          ...c, 
-          body: updated.body,
-          is_edited: true, 
-          updated_at: updated.updated_at 
-        } : c
-      ));
-      
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, body: updated.body, is_edited: true, updated_at: updated.updated_at } : c));
       setEditingComment(null);
       setEditText('');
-      hapticFeedback('success');
-    } catch (error) {
-      console.error('Ошибка редактирования:', error);
-      alert('Не удалось отредактировать комментарий');
-    }
+    } catch (error) { alert('Не удалось отредактировать'); }
   };
-
-
-  const cancelEdit = () => {
-    hapticFeedback('light');
-    setEditingComment(null);
-    setEditText('');
-  };
-
 
   const handleReportComment = (commentId) => {
     hapticFeedback('light');
@@ -284,89 +292,58 @@ function PostDetail() {
     setMenuOpen(null);
   };
 
-
   const submitReport = async (reason) => {
     hapticFeedback('medium');
     try {
       await reportComment(reportingComment, reason);
       setReportingComment(null);
       hapticFeedback('success');
-      alert('Жалоба отправлена. Модераторы рассмотрят её.');
-    } catch (error) {
-      console.error('Ошибка отправки жалобы:', error);
-      alert('Не удалось отправить жалобу');
-    }
+      alert('Жалоба отправлена.');
+    } catch (error) {}
   };
 
-  const handlePrevImage = (e) => {
-    e.stopPropagation();
-    hapticFeedback('light');
-    setCurrentImageIndex((prev) => (prev === 0 ? post.images.length - 1 : prev - 1));
-  };
-
-  const handleNextImage = (e) => {
-    e.stopPropagation();
-    hapticFeedback('light');
-    setCurrentImageIndex((prev) => (prev === post.images.length - 1 ? 0 : prev + 1));
-  };
-
-  const buildCommentTree = (comments) => {
+  const commentTree = useMemo(() => {
     const commentMap = {};
     const roots = [];
-
-    comments.forEach(comment => {
-      commentMap[comment.id] = { ...comment, replies: [] };
+    comments.forEach(c => { commentMap[c.id] = { ...c, replies: [] }; });
+    comments.forEach(c => {
+      if (c.parent_id && commentMap[c.parent_id]) {
+        commentMap[c.parent_id].replies.push(commentMap[c.id]);
+      } else { roots.push(commentMap[c.id]); }
     });
-
-    comments.forEach(comment => {
-      if (comment.parent_id) {
-        if (commentMap[comment.parent_id]) {
-          commentMap[comment.parent_id].replies.push(commentMap[comment.id]);
-        }
-      } else {
-        roots.push(commentMap[comment.id]);
-      }
-    });
-
     return roots;
-  };
+  }, [comments]);
 
-  const getCurrentImage = () => {
-    if (!post || !post.images || post.images.length === 0) return null;
-    const img = post.images[currentImageIndex];
-    if (typeof img === 'object' && img !== null) {
-      return img;
-    }
-    return { url: img, w: 1000, h: 1000 };
-  };
-
-  const currentImgMeta = getCurrentImage();
-  
-  const getImageUrl = (meta) => {
-    if (!meta) return '';
-    if (meta.url.startsWith('http')) return meta.url;
-    return `${API_URL}/uploads/images/${meta.url}`;
-  };
-
-  const currentAspectRatio = (currentImgMeta && currentImgMeta.w && currentImgMeta.h) 
-    ? currentImgMeta.w / currentImgMeta.h 
-    : 1;
-
+  const postMenuItems = [
+    { label: 'Скопировать ссылку', icon: <LinkIcon size={18} />, onClick: handleCopyLink },
+    ...(isOwner ? [
+      { label: 'Редактировать', icon: <Edit2 size={18} />, onClick: handleEditPost },
+      { label: 'Удалить', icon: <Trash2 size={18} />, danger: true, onClick: handleDeletePost }
+    ] : [
+      { label: 'Пожаловаться', icon: <Flag size={18} />, danger: true, onClick: () => { alert('Жалоба отправлена'); setPostMenuOpen(false); } }
+    ])
+  ];
 
   if (!viewPostId) return null;
 
+  return (
+    <>
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translate3d(100%, 0, 0); }
+          to { transform: translate3d(0, 0, 0); }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        @keyframes likeBounce {
+          0% { transform: scale(1); }
+          40% { transform: scale(1.25); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
 
-  if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loading}>Загрузка...</div>
-      </div>
-    );
-  }
-
-
-  if (!post) {
-    return (
       <div style={styles.container}>
         <div style={styles.header}>
           <button onClick={handleBack} style={styles.backButton}>
@@ -374,434 +351,339 @@ function PostDetail() {
           </button>
           <span style={styles.headerTitle}>Пост</span>
         </div>
-        <div style={styles.loading}>Пост не найден</div>
-      </div>
-    );
-  }
 
-
-  const getCategoryColor = (category) => {
-    const colors = {
-      'news': theme.colors.news,
-      'events': theme.colors.events,
-      'confessions': theme.colors.confessions,
-      'lost_found': theme.colors.lostFound,
-    };
-    return colors[category] || theme.colors.textDisabled;
-  };
-
-
-  const getCategoryLabel = (category) => {
-    const labels = {
-      'news': '📰 Новости',
-      'events': '🎉 События',
-      'confessions': '💭 Признания',
-      'lost_found': '🔍 Находки',
-    };
-    return labels[category] || category;
-  };
-
-
-  const formatEventDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    const options = { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    };
-    return date.toLocaleDateString('ru-RU', options);
-  };
-
-
-  const commentTree = buildCommentTree(comments);
-  const isAnonymous = post.is_anonymous === true;
-  const displayAuthorName = isAnonymous ? 'Аноним' : (typeof post.author === 'object' ? post.author.name : post.author);
-
-
-  return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <button onClick={handleBack} style={styles.backButton}>
-          <ArrowLeft size={24} />
-        </button>
-        <span style={styles.headerTitle}>Пост</span>
-      </div>
-
-
-      <div style={styles.content}>
-        <div style={styles.authorSection}>
-          <div style={{
-            ...styles.avatar,
-            backgroundColor: isAnonymous ? theme.colors.textDisabled : theme.colors.primary
-          }}>
-            {isAnonymous ? '?' : (typeof post.author === 'object' ? post.author.name[0] : post.author?.[0] || '?')}
-          </div>
-          <div style={styles.authorInfo}>
-            <div style={styles.authorName}>
-              {displayAuthorName}
-            </div>
-            {!isAnonymous && (post.author?.university || post.author?.institute || post.author?.course) && (
-              <div style={styles.authorMeta}>
-                {[
-                  post.author?.university,
-                  post.author?.institute,
-                  post.author?.course ? `${post.author.course} курс` : null
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </div>
-            )}
-            <div style={styles.time}>{post.time}</div>
-          </div>
-        </div>
-
-
-        <div
-          style={{
-            ...styles.category,
-            backgroundColor: `${getCategoryColor(post.category)}20`,
-            color: getCategoryColor(post.category),
-          }}
-        >
-          {getCategoryLabel(post.category)}
-          {post.category === 'news' && post.is_important && (
-            <span style={styles.importantBadge}>⭐ Важное</span>
-          )}
-        </div>
-
-
-        <h1 style={styles.title}>{post.title}</h1>
-        <p style={styles.body}>{post.body}</p>
-
-        {/* ✅ ОТОБРАЖЕНИЕ ОПРОСА */}
-        {post.poll && (
-          <div style={{marginBottom: theme.spacing.lg}}>
-            <PollView 
-              poll={post.poll} 
-              onVoteUpdate={refreshPost} 
-            />
-          </div>
-        )}
-
-        {/* ГАЛЕРЕЯ ИЗОБРАЖЕНИЙ */}
-        {post.images && post.images.length > 0 && currentImgMeta && (
-          <div style={{
-            ...styles.imageContainer, 
-            aspectRatio: `${currentAspectRatio}`,
-            maxHeight: 'none', 
-          }}>
-            <img 
-              src={getImageUrl(currentImgMeta)}
-              alt={`${post.title} - фото ${currentImageIndex + 1}`}
-              style={styles.image}
-              loading="lazy"
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-            
-            {post.images.length > 1 && (
-              <>
-                <div style={styles.imageCounter}>
-                  {currentImageIndex + 1} / {post.images.length}
+        <div style={styles.scrollContent}>
+          {loading || !post ? (
+            <div style={styles.cardContent}>
+              <div style={styles.authorSection}>
+                <div style={styles.skeletonAvatar} />
+                <div style={{flex: 1}}>
+                  <div style={styles.skeletonTextShort} />
+                  <div style={styles.skeletonTextMini} />
                 </div>
-                
-                <button 
-                  onClick={handlePrevImage}
-                  style={{...styles.imageNavButton, left: 8}}
-                  aria-label="Предыдущее фото"
-                >
-                  <ChevronLeft size={24} />
-                </button>
-                
-                <button 
-                  onClick={handleNextImage}
-                  style={{...styles.imageNavButton, right: 8}}
-                  aria-label="Следующее фото"
-                >
-                  <ChevronRight size={24} />
-                </button>
-                
-                <div style={styles.imageDots}>
-                  {post.images.map((_, index) => (
-                    <div 
-                      key={index}
-                      style={{
-                        ...styles.dot,
-                        opacity: index === currentImageIndex ? 1 : 0.4,
-                        transform: index === currentImageIndex ? 'scale(1.2)' : 'scale(1)'
-                      }}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ✅ Lost & Found (с наградой) */}
-        {post.category === 'lost_found' && (
-          <div style={styles.additionalInfo}>
-            <div style={styles.infoRow}>
-              <span style={styles.infoLabel}>
-                {post.lost_or_found === 'lost' ? '😢 Потеряно' : '🎉 Найдено'}:
-              </span>
-              <span style={styles.infoValue}>{post.item_description}</span>
-            </div>
-            {post.location && (
-              <div style={styles.infoRow}>
-                <MapPin size={16} style={{ color: theme.colors.lostFound }} />
-                <span style={styles.infoValue}>{post.location}</span>
               </div>
-            )}
-            {/* Награда */}
-            {post.reward_type && post.reward_type !== 'none' && (
-              <div style={styles.infoRow}>
-                <Gift size={16} style={{ color: theme.colors.success }} />
-                <span style={styles.infoValue}>
-                  {REWARD_TYPE_ICONS[post.reward_type]} {post.reward_value}
-                </span>
+              <div style={styles.textContent}>
+                <div style={styles.skeletonTitle} />
+                <div style={styles.skeletonBody} />
+                <div style={styles.skeletonBody} />
               </div>
-            )}
-          </div>
-        )}
-
-        {/* ✅ Events (с контактом) */}
-        {post.category === 'events' && (
-          <div style={styles.additionalInfo}>
-            {post.event_name && (
-              <div style={styles.infoRow}>
-                <span style={styles.infoLabel}>Событие:</span>
-                <span style={styles.infoValue}>{post.event_name}</span>
-              </div>
-            )}
-            {post.event_date && (
-              <div style={styles.infoRow}>
-                <Calendar size={16} style={{ color: theme.colors.events }} />
-                <span style={styles.infoValue}>{formatEventDate(post.event_date)}</span>
-              </div>
-            )}
-            {post.event_location && (
-              <div style={styles.infoRow}>
-                <MapPin size={16} style={{ color: theme.colors.events }} />
-                <span style={styles.infoValue}>{post.event_location}</span>
-              </div>
-            )}
-            {/* Контакт */}
-            {post.event_contact && (
-              <div style={styles.infoRow}>
-                <Phone size={16} style={{ color: theme.colors.text }} />
-                <span style={styles.infoValue}>{post.event_contact}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-
-        {post.tags && post.tags.length > 0 && (
-          <div style={styles.tags}>
-            {post.tags.map((tag, index) => (
-              <span key={index} style={styles.tag}>#{tag}</span>
-            ))}
-          </div>
-        )}
-
-
-        <div style={styles.stats}>
-          <button
-            style={{
-              ...styles.statButton,
-              color: isLiked ? theme.colors.accent : theme.colors.textTertiary
-            }}
-            onClick={handleLike}
-          >
-            <Heart size={20} fill={isLiked ? theme.colors.accent : 'none'} />
-            <span>{post.likes_count || 0}</span>
-          </button>
-          <div style={styles.statItem}>
-            <MessageCircle size={20} />
-            <span>{comments.length}</span>
-          </div>
-          <div style={styles.statItem}>
-            <Eye size={20} />
-            <span>{post.views_count || 0}</span>
-          </div>
-        </div>
-
-
-        <div style={styles.commentsSection}>
-          <h3 style={styles.commentsTitle}>Комментарии ({comments.length})</h3>
-
-
-          {commentTree.length === 0 ? (
-            <div style={styles.noComments}>
-              <p>Пока нет комментариев</p>
-              <p style={styles.noCommentsHint}>Будьте первым!</p>
+              <div style={styles.skeletonImage} />
             </div>
           ) : (
-            <div style={styles.commentsList}>
-              {commentTree.map(comment => (
-                <Comment
-                  key={comment.id}
-                  comment={comment}
-                  currentUser={user}
-                  commentLikes={commentLikes}
-                  onLike={handleCommentLike}
-                  onReply={handleReply}
-                  onDelete={handleDeleteComment}
-                  onEdit={handleEditComment}
-                  onReport={handleReportComment}
-                  menuOpen={menuOpen}
-                  setMenuOpen={setMenuOpen}
-                  editingComment={editingComment}
-                  editText={editText}
-                  setEditText={setEditText}
-                  onSaveEdit={handleSaveEdit}
-                  onCancelEdit={cancelEdit}
-                />
-              ))}
-            </div>
+            <>
+              <div style={styles.cardContent}>
+                <div style={styles.authorSection}>
+                  <div style={styles.authorRow}>
+                    <div style={{
+                      ...styles.avatar,
+                      background: post.is_anonymous ? theme.colors.primary : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
+                    }}>
+                      {post.is_anonymous ? 'A' : (post.author?.name?.[0] || 'A')}
+                    </div>
+
+                    <div style={styles.authorInfo}>
+                      <div style={styles.nameRow}>
+                        <span style={styles.authorName}>
+                          {post.is_anonymous ? 'Аноним' : (post.author?.name || 'Пользователь')}
+                        </span>
+                        {post.is_important && <span style={styles.pinned}>📌</span>}
+                      </div>
+                      {authorMeta && <span style={styles.authorMeta}>{authorMeta}</span>}
+                    </div>
+                  </div>
+
+                  <div style={styles.headerRight}>
+                    <span style={{...styles.categoryText, color: catInfo.color}}>
+                      {catInfo.label}
+                    </span>
+                    <div style={{position: 'relative', display: 'flex', alignItems: 'center'}}>
+                      <button
+                        ref={postMenuRef}
+                        style={styles.menuButton}
+                        onClick={(e) => { e.stopPropagation(); setPostMenuOpen(!postMenuOpen); hapticFeedback('light'); }}
+                      >
+                        <MoreVertical size={20} />
+                      </button>
+                      <DropdownMenu
+                        isOpen={postMenuOpen}
+                        onClose={() => setPostMenuOpen(false)}
+                        anchorRef={postMenuRef}
+                        items={postMenuItems}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={styles.textContent}>
+                  {post.title && post.category !== 'polls' && (
+                    <h3 style={styles.title}>{post.title}</h3>
+                  )}
+                  {post.body && (
+                    <p style={styles.body}>{post.body}</p>
+                  )}
+                </div>
+
+                {post.poll && (
+                  <div style={styles.pollWrapper}>
+                    <PollView poll={post.poll} onVoteUpdate={refreshPost} />
+                  </div>
+                )}
+
+                {(post.event_date || post.lost_or_found || post.location || post.event_contact || post.reward_type) && (
+                  <div style={styles.specialBlock}>
+                    {post.event_date && (
+                      <div style={styles.specialItem}>
+                        <Calendar size={14} />
+                        <span>
+                          {new Date(post.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в {new Date(post.event_date).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
+                        </span>
+                      </div>
+                    )}
+                    {post.location && (
+                      <div style={styles.specialItem}>
+                        <MapPin size={14} />
+                        <span>{post.location}</span>
+                      </div>
+                    )}
+                    {post.event_contact && (
+                      <div style={styles.specialItem}>
+                        <Phone size={14} />
+                        <span>{post.event_contact}</span>
+                      </div>
+                    )}
+                    {post.lost_or_found && (
+                      <div style={{
+                        ...styles.specialItem,
+                        color: post.lost_or_found === 'lost' ? theme.colors.error : theme.colors.success,
+                        background: post.lost_or_found === 'lost' ? `${theme.colors.error}15` : `${theme.colors.success}15`
+                      }}>
+                        {post.lost_or_found === 'lost' ? '🔍 Потерял' : '🎁 Нашёл'}
+                        {post.item_description && ` — ${post.item_description}`}
+                      </div>
+                    )}
+                    {post.reward_type && post.reward_type !== 'none' && (
+                      <div style={{...styles.specialItem, color: theme.colors.success}}>
+                        <Gift size={14} />
+                        <span>Награда: {post.reward_value}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {images.length > 0 && (
+                  <div style={{...styles.imageContainer, aspectRatio: `${safeRatio}`}} onClick={() => { hapticFeedback('light'); setIsPhotoViewerOpen(true); }}>
+                    <img
+                      src={getImageUrl(images[currentImageIndex])}
+                      alt=""
+                      style={styles.image}
+                    />
+                    {images.length > 1 && (
+                      <>
+                        <div style={styles.imageCounter}>{currentImageIndex + 1}/{images.length}</div>
+                        <button onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(prev => prev === 0 ? images.length - 1 : prev - 1); }} style={{...styles.navBtn, left: 10}}>
+                          <ChevronLeft size={20}/>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(prev => prev === images.length - 1 ? 0 : prev + 1); }} style={{...styles.navBtn, right: 10}}>
+                          <ChevronRight size={20}/>
+                        </button>
+                        <div style={styles.dots}>
+                          {images.map((_, i) => (
+                            <div key={i} style={{...styles.dot, opacity: i === currentImageIndex ? 1 : 0.4}} />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {post.tags && post.tags.length > 0 && (
+                  <div style={styles.tags}>
+                    {post.tags.map((t, i) => <span key={i} style={styles.tag}>#{t}</span>)}
+                  </div>
+                )}
+
+                <div style={styles.statsFooter}>
+                  <div style={styles.footerLeft}>
+                    <span style={styles.dateText}>{dateText}</span>
+                    {isEdited && <span style={styles.editedLabel}>(изм.)</span>}
+                  </div>
+
+                  <div style={styles.footerRight}>
+                    <div style={styles.statItem}>
+                      <Eye size={18} color={theme.colors.textTertiary} strokeWidth={2} />
+                      <span style={styles.statText}>{post.views_count || 0}</span>
+                    </div>
+                    <div style={styles.statItem}>
+                      <MessageCircle size={18} color={theme.colors.textSecondary} strokeWidth={2} />
+                      <span style={{...styles.statText, color: theme.colors.textSecondary}}>
+                        {comments.length}
+                      </span>
+                    </div>
+                    <button
+                      style={{
+                        ...styles.footerAction,
+                        animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none'
+                      }}
+                      onClick={handleLike}
+                    >
+                      <Heart
+                        size={18}
+                        fill={isLiked ? theme.colors.accent : 'none'}
+                        color={isLiked ? theme.colors.accent : theme.colors.textSecondary}
+                        strokeWidth={isLiked ? 0 : 2}
+                      />
+                      <span style={{
+                        ...styles.statText,
+                        color: isLiked ? theme.colors.accent : theme.colors.textSecondary
+                      }}>
+                        {post.likes_count || 0}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.commentsSection}>
+                <h3 style={styles.commentsTitle}>Комментарии ({comments.length})</h3>
+                {commentTree.length === 0 ? (
+                  <div style={styles.noComments}>
+                    <p>Пока нет комментариев</p>
+                    <p style={styles.noCommentsHint}>Будьте первым!</p>
+                  </div>
+                ) : (
+                  <div style={styles.commentsList}>
+                    {commentTree.map(comment => (
+                      <Comment
+                        key={comment.id}
+                        comment={comment}
+                        currentUser={user}
+                        commentLikes={commentLikes}
+                        onLike={handleCommentLike}
+                        onReply={handleReply}
+                        onDelete={handleDeleteComment}
+                        onEdit={handleEditComment}
+                        onReport={handleReportComment}
+                        menuOpen={menuOpen}
+                        setMenuOpen={setMenuOpen}
+                        editingComment={editingComment}
+                        editText={editText}
+                        setEditText={setEditText}
+                        onSaveEdit={handleSaveEdit}
+                        onCancelEdit={() => { setEditingComment(null); setEditText(''); }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
-      </div>
 
+        <BottomActionBar
+          onCommentSend={handleSendComment}
+          onDirectSend={handleDirectSend}
+          replyTo={replyTo}
+          replyToName={replyToName}
+          onCancelReply={() => setReplyTo(null)}
+          postAuthorName={post?.is_anonymous ? 'Аноним' : (post?.author?.name || 'Автор')}
+          isAnonymousPost={post?.is_anonymous}
+        />
 
-      <BottomActionBar
-        onCommentSend={handleSendComment}
-        onDirectSend={handleDirectSend}
-        replyTo={replyTo}
-        replyToName={replyToName}
-        onCancelReply={() => setReplyTo(null)}
-        postAuthorName={displayAuthorName}
-        isAnonymousPost={isAnonymous}
-      />
-
-
-      {reportingComment && (
-        <div style={styles.modalOverlay} onClick={() => setReportingComment(null)}>
-          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <h3 style={styles.modalTitle}>Причина жалобы</h3>
-            <button onClick={() => submitReport('spam')} style={styles.reportButton}>
-              Спам
-            </button>
-            <button onClick={() => submitReport('abuse')} style={styles.reportButton}>
-              Оскорбления
-            </button>
-            <button onClick={() => submitReport('inappropriate')} style={styles.reportButton}>
-              Неприемлемый контент
-            </button>
-            <button onClick={() => setReportingComment(null)} style={styles.cancelButtonModal}>
-              Отмена
-            </button>
+        {reportingComment && (
+          <div style={styles.modalOverlay} onClick={() => setReportingComment(null)}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+              <h3 style={styles.modalTitle}>Причина жалобы</h3>
+              <button onClick={() => { submitReport('spam'); }} style={styles.reportButton}>Спам</button>
+              <button onClick={() => { submitReport('offensive'); }} style={styles.reportButton}>Оскорбления</button>
+              <button onClick={() => setReportingComment(null)} style={styles.cancelButtonModal}>Отмена</button>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {isPhotoViewerOpen && (
+          <PhotoViewer
+            photos={viewerPhotos}
+            initialIndex={currentImageIndex}
+            onClose={() => setIsPhotoViewerOpen(false)}
+          />
+        )}
+      </div>
+    </>
   );
 }
 
-
-function Comment({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit }) {
+const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit }) => {
   const menuButtonRef = useRef(null);
   const likes = commentLikes[comment.id] || { isLiked: false, count: comment.likes || 0 };
   const maxDepth = 3;
   const isMyComment = currentUser && comment.author_id === currentUser.id;
   const isEditing = editingComment === comment.id;
-  
+
   const isAnonymousComment = comment.is_anonymous || false;
-  const commentAuthorName = isAnonymousComment 
+  const commentAuthorName = isAnonymousComment
     ? (comment.anonymous_index === 0 || !comment.anonymous_index ? "Аноним" : `Аноним ${comment.anonymous_index}`)
     : (typeof comment.author === 'object' ? comment.author.name : comment.author);
-  const commentAuthorInitial = isAnonymousComment 
-    ? '?' 
-    : (typeof comment.author === 'object' ? comment.author.name[0] : comment.author?.[0] || '?');
+  const commentAuthorInitial = isAnonymousComment ? '?' : (typeof comment.author === 'object' ? comment.author.name?.[0] : comment.author?.[0] || '?');
 
-  // Меню действий
   const menuItems = isMyComment ? [
-    { icon: '✏️', label: 'Редактировать', onClick: () => onEdit(comment) },
-    { icon: '🗑', label: 'Удалить', onClick: () => onDelete(comment.id), danger: true },
+    { icon: <Edit2 size={16}/>, label: 'Редактировать', onClick: () => onEdit(comment) },
+    { icon: <Trash2 size={16}/>, label: 'Удалить', onClick: () => onDelete(comment.id), danger: true },
   ] : [
-    { icon: '🚫', label: 'Пожаловаться', onClick: () => onReport(comment.id), danger: true },
+    { icon: <Flag size={16}/>, label: 'Пожаловаться', onClick: () => onReport(comment.id), danger: true },
   ];
 
   return (
     <div style={{ position: 'relative' }}>
       {comment.replies && comment.replies.length > 0 && (
         <div style={{
-          position: 'absolute',
-          left: 18,
-          top: 36,
-          bottom: 0,
-          width: 2,
-          backgroundColor: 'rgba(135, 116, 225, 0.25)',
-          zIndex: 0,
+          position: 'absolute', left: 18, top: 36, bottom: 0, width: 2,
+          backgroundColor: 'rgba(135, 116, 225, 0.25)', zIndex: 0,
         }} />
       )}
-      
+
       <div style={styles.comment}>
         <div style={{
           ...styles.commentAvatar,
-          backgroundColor: isAnonymousComment ? theme.colors.textDisabled : theme.colors.primary
+          background: isAnonymousComment ? theme.colors.textDisabled : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
         }}>
           {commentAuthorInitial}
         </div>
-        
+
         <div style={styles.commentContent}>
           <div style={styles.commentHeader}>
-            <span style={styles.commentAuthor}>
-              {commentAuthorName}
-            </span>
-            
-            {!isAnonymousComment && comment.author?.university && comment.author?.course && (
+            <span style={styles.commentAuthor}>{commentAuthorName}</span>
+            {!isAnonymousComment && comment.author?.university && (
               <span style={styles.commentMeta}>
-                {[comment.author?.university, comment.author?.course ? `${comment.author.course} курс` : null]
-                  .filter(Boolean)
-                  .join(', ')}
+                {[comment.author?.university, comment.author?.course ? `${comment.author.course}к` : null].filter(Boolean).join(' · ')}
               </span>
             )}
-            
+
             {!comment.is_deleted && (
               <div style={{ marginLeft: 'auto', position: 'relative' }}>
                 <button
                   ref={menuButtonRef}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(menuOpen === comment.id ? null : comment.id);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === comment.id ? null : comment.id); }}
                   style={styles.menuButton}
                 >
                   <MoreVertical size={16} />
                 </button>
-                
-                <DropdownMenu 
-                  isOpen={menuOpen === comment.id}
-                  onClose={() => setMenuOpen(null)}
-                  anchorRef={menuButtonRef}
-                  items={menuItems}
+                <DropdownMenu
+                  isOpen={menuOpen === comment.id} onClose={() => setMenuOpen(null)}
+                  anchorRef={menuButtonRef} items={menuItems}
                 />
               </div>
             )}
           </div>
-          
+
           {isEditing ? (
             <div style={styles.editForm}>
               <textarea
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                style={styles.editTextarea}
-                rows={3}
-                autoFocus
+                value={editText} onChange={(e) => setEditText(e.target.value)}
+                style={styles.editTextarea} rows={3} autoFocus
               />
               <div style={styles.editButtons}>
-                <button onClick={() => onSaveEdit(comment.id)} style={styles.saveButton}>
-                  Сохранить
-                </button>
-                <button onClick={onCancelEdit} style={styles.cancelEditButton}>
-                  Отмена
-                </button>
+                <button onClick={() => onSaveEdit(comment.id)} style={styles.saveButton}>Сохранить</button>
+                <button onClick={onCancelEdit} style={styles.cancelEditButton}>Отмена</button>
               </div>
             </div>
           ) : (
@@ -813,496 +695,299 @@ function Comment({ comment, depth = 0, currentUser, commentLikes, onLike, onRepl
               {comment.body}
             </p>
           )}
-          
-          {comment.is_edited && !comment.is_deleted && (
-            <span style={styles.editedLabel}>(изменено)</span>
-          )}
-          
+
           {!comment.is_deleted && !isEditing && (
             <div style={styles.commentActions}>
               <button
-                style={{
-                  ...styles.commentAction,
-                  color: likes.isLiked ? theme.colors.accent : theme.colors.textTertiary
-                }}
+                style={{ ...styles.commentAction, color: likes.isLiked ? theme.colors.accent : theme.colors.textTertiary }}
                 onClick={() => onLike(comment.id)}
               >
                 <Heart size={14} fill={likes.isLiked ? theme.colors.accent : 'none'} />
                 <span>{likes.count}</span>
               </button>
-              
+
               {depth < maxDepth && (
-                <button style={styles.commentAction} onClick={() => onReply(comment)}>
-                  Ответить
-                </button>
+                <button style={styles.commentAction} onClick={() => onReply(comment)}>Ответить</button>
               )}
             </div>
           )}
         </div>
       </div>
-      
+
       {comment.replies && comment.replies.length > 0 && (
         <div style={{ marginLeft: 30, marginTop: theme.spacing.md, position: 'relative', zIndex: 1 }}>
           {comment.replies.map(reply => (
             <Comment
-              key={reply.id}
-              comment={reply}
-              depth={depth + 1}
-              currentUser={currentUser}
-              commentLikes={commentLikes}
-              onLike={onLike}
-              onReply={onReply}
-              onDelete={onDelete}
-              onEdit={onEdit}
-              onReport={onReport}
+              key={reply.id} comment={reply} depth={depth + 1}
+              currentUser={currentUser} commentLikes={commentLikes}
+              onLike={onLike} onReply={onReply} onDelete={onDelete}
+              onEdit={onEdit} onReport={onReport}
               menuOpen={menuOpen}
-              setMenuOpen={setMenuOpen}
-              editingComment={editingComment}
-              editText={editText}
-              setEditText={setEditText}
-              onSaveEdit={onSaveEdit}
-              onCancelEdit={onCancelEdit}
+              setMenuOpen={setMenuOpen} editingComment={editingComment}
+              editText={editText} setEditText={setEditText}
+              onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
             />
           ))}
         </div>
       )}
     </div>
   );
-}
-
+});
 
 const styles = {
   container: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     zIndex: Z_MODAL_FORMS,
     backgroundColor: theme.colors.bg,
-    minHeight: '100vh',
-    paddingBottom: 72,
-    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    animation: 'slideInRight 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+    willChange: 'transform',
+    transform: 'translate3d(0,0,0)',
+    WebkitOverflowScrolling: 'touch',
   },
   header: {
-    position: 'sticky',
-    top: 0,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.md,
+    position: 'sticky', top: 0,
+    display: 'flex', alignItems: 'center', gap: theme.spacing.md,
     padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     backgroundColor: theme.colors.bgSecondary,
     borderBottom: `1px solid ${theme.colors.border}`,
     zIndex: 10,
+    minHeight: 60,
   },
   backButton: {
-    background: 'none',
-    border: 'none',
-    color: theme.colors.text,
-    cursor: 'pointer',
-    padding: theme.spacing.sm,
-    display: 'flex',
-    alignItems: 'center',
+    background: 'none', border: 'none', color: theme.colors.text,
+    cursor: 'pointer', padding: theme.spacing.sm,
+    display: 'flex', alignItems: 'center',
   },
   headerTitle: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
+    fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.semibold, color: theme.colors.text,
   },
-  content: {
-    padding: theme.spacing.lg,
+  scrollContent: {
+    flex: 1,
+    overflowY: 'auto',
+    paddingBottom: 80,
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorY: 'contain',
+  },
+  cardContent: {
+    backgroundColor: theme.colors.bgSecondary,
+    borderBottom: `1px solid ${theme.colors.border}`,
+    marginBottom: theme.spacing.md,
   },
   authorSection: {
-    display: 'flex',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.lg,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px ${theme.spacing.xs + 2}px`,
+    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+  },
+  authorRow: {
+    display: 'flex', alignItems: 'center', gap: theme.spacing.sm + 2, flex: 1, minWidth: 0,
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: theme.radius.full,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
-    flexShrink: 0,
+    width: 40, height: 40, borderRadius: theme.radius.full,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 18, color: theme.colors.text, fontWeight: theme.fontWeight.bold, flexShrink: 0,
   },
   authorInfo: {
-    flex: 1,
+    display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0,
+  },
+  nameRow: {
+    display: 'flex', alignItems: 'center', gap: theme.spacing.xs
   },
   authorName: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
+    fontSize: 15, fontWeight: theme.fontWeight.bold, color: theme.colors.text,
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
+  pinned: { fontSize: 12 },
   authorMeta: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textTertiary,
-    marginTop: 2,
+    fontSize: 12, color: theme.colors.textTertiary, marginTop: 2,
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
-  time: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textDisabled,
-    marginTop: theme.spacing.xs,
+  headerRight: {
+    display: 'flex', alignItems: 'center', gap: theme.spacing.sm, flexShrink: 0, paddingLeft: theme.spacing.sm,
   },
-  category: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    padding: `6px ${theme.spacing.md}px`,
-    borderRadius: theme.radius.sm,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    marginBottom: theme.spacing.lg,
+  categoryText: {
+    fontSize: 12, fontWeight: theme.fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px',
   },
-  importantBadge: {
-    fontSize: theme.fontSize.xs,
-    padding: `2px ${theme.spacing.sm}px`,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    marginLeft: theme.spacing.xs,
+  menuButton: {
+    padding: theme.spacing.xs + 2, background: 'transparent', border: 'none',
+    color: theme.colors.textTertiary, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.full,
+  },
+  textContent: {
+    padding: `${theme.spacing.xs}px ${theme.spacing.lg}px ${theme.spacing.md}px`,
   },
   title: {
-    fontSize: theme.fontSize.xxl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
-    lineHeight: 1.4,
+    fontSize: 17, fontWeight: theme.fontWeight.bold, marginBottom: theme.spacing.xs + 2, lineHeight: 1.3, color: theme.colors.text,
   },
   body: {
-    fontSize: theme.fontSize.lg,
-    color: theme.colors.textSecondary,
-    lineHeight: 1.6,
-    marginBottom: theme.spacing.lg,
+    fontSize: 15, lineHeight: 1.5, color: theme.colors.textSecondary,
   },
-  additionalInfo: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: theme.radius.md,
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    marginBottom: theme.spacing.lg,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.sm,
+  pollWrapper: { margin: `0 ${theme.spacing.lg}px ${theme.spacing.md}px` },
+  specialBlock: {
+    margin: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`, display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm,
   },
-  infoRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    fontSize: theme.fontSize.base,
+  specialItem: {
+    display: 'flex', alignItems: 'center', gap: theme.spacing.xs + 2, padding: `${theme.spacing.xs + 2}px ${theme.spacing.sm + 2}px`,
+    background: theme.colors.elevated, borderRadius: theme.radius.sm,
+    fontSize: 12, color: theme.colors.textSecondary, fontWeight: theme.fontWeight.medium
   },
-  infoLabel: {
-    color: theme.colors.textTertiary,
-    fontWeight: theme.fontWeight.semibold,
+  imageContainer: {
+    width: '100%', position: 'relative', backgroundColor: theme.colors.bg, marginBottom: theme.spacing.md,
   },
-  infoValue: {
-    color: theme.colors.text,
-    fontWeight: theme.fontWeight.medium,
+  image: {
+    width: '100%', height: '100%', objectFit: 'cover',
+  },
+  imageCounter: {
+    position: 'absolute', top: theme.spacing.md, right: theme.spacing.md,
+    background: theme.colors.overlayDark, color: theme.colors.text,
+    padding: `${theme.spacing.xs}px ${theme.spacing.sm + 2}px`, borderRadius: theme.radius.md, fontSize: 12, fontWeight: theme.fontWeight.bold
+  },
+  navBtn: {
+    position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+    width: 32, height: 32, borderRadius: theme.radius.full,
+    background: theme.colors.overlay, color: theme.colors.text,
+    border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer', backdropFilter: 'blur(4px)'
+  },
+  dots: {
+    position: 'absolute', bottom: theme.spacing.sm + 2, left: 0, right: 0,
+    display: 'flex', justifyContent: 'center', gap: theme.spacing.xs + 2
+  },
+  dot: {
+    width: 6, height: 6, borderRadius: theme.radius.full, background: theme.colors.text, transition: theme.transitions.fast
   },
   tags: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.lg,
+    padding: `0 ${theme.spacing.lg}px`, display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm, marginBottom: theme.spacing.md
   },
   tag: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.primary,
-    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.primary, fontSize: 13, fontWeight: theme.fontWeight.medium
   },
-  stats: {
-    display: 'flex',
-    gap: theme.spacing.xl,
-    paddingTop: theme.spacing.lg,
-    paddingBottom: theme.spacing.lg,
-    borderTop: `1px solid ${theme.colors.border}`,
-    borderBottom: `1px solid ${theme.colors.border}`,
+  statsFooter: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: `${theme.spacing.sm + 2}px ${theme.spacing.lg}px`,
+    backgroundColor: theme.colors.bgSecondary, minHeight: 48,
   },
-  statButton: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: theme.fontSize.md,
-    padding: theme.spacing.xs,
+  footerLeft: {
+    display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0,
   },
-  statItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    color: theme.colors.textDisabled,
-    fontSize: theme.fontSize.md,
-  },
+  dateText: { fontSize: 12, color: theme.colors.textTertiary, fontWeight: theme.fontWeight.medium },
+  editedLabel: { fontSize: 11, color: theme.colors.textTertiary, opacity: 0.7, fontStyle: 'italic' },
+  footerRight: { display: 'flex', alignItems: 'center', gap: theme.spacing.lg },
+  statItem: { display: 'flex', alignItems: 'center', gap: theme.spacing.xs, color: theme.colors.textTertiary },
+  footerAction: { display: 'flex', alignItems: 'center', gap: theme.spacing.xs, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: theme.colors.textTertiary },
+  statText: { fontSize: 14, fontWeight: theme.fontWeight.medium, color: theme.colors.textTertiary, minWidth: 14, textAlign: 'center', lineHeight: 1 },
+
   commentsSection: {
-    marginTop: theme.spacing.xxl,
+    padding: `0 ${theme.spacing.lg}px ${theme.spacing.lg}px`,
   },
   commentsTitle: {
     fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.text,
-    marginBottom: theme.spacing.lg,
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.xl,
   },
   noComments: {
-    textAlign: 'center',
-    color: theme.colors.textTertiary,
-    padding: `40px ${theme.spacing.xl}px`,
+    textAlign: 'center', color: theme.colors.textTertiary, padding: `${theme.spacing.xxl + 8}px ${theme.spacing.xl}px`,
   },
   noCommentsHint: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.textDisabled,
-    marginTop: theme.spacing.sm,
+    fontSize: theme.fontSize.base, color: theme.colors.textDisabled, marginTop: theme.spacing.sm,
   },
   commentsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.lg,
+    display: 'flex', flexDirection: 'column', gap: theme.spacing.lg,
   },
-  comment: {
-    display: 'flex',
-    gap: theme.spacing.md,
-  },
+  comment: { display: 'flex', gap: theme.spacing.md },
   commentAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.textDisabled,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
-    flexShrink: 0,
+    width: 36, height: 36, borderRadius: theme.radius.full,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.bold, color: theme.colors.text, flexShrink: 0,
   },
-  commentContent: {
-    flex: 1,
-  },
+  commentContent: { flex: 1 },
   commentHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.xs,
-    flexWrap: 'wrap',
+    display: 'flex', alignItems: 'center', gap: theme.spacing.sm,
+    marginBottom: theme.spacing.xs, flexWrap: 'wrap',
   },
-  commentAuthor: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-  },
-  commentMeta: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textDisabled,
-  },
+  commentAuthor: { fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, color: theme.colors.text },
+  commentMeta: { fontSize: theme.fontSize.xs, color: theme.colors.textDisabled },
   commentText: {
-    fontSize: theme.fontSize.md,
-    lineHeight: 1.5,
-    marginBottom: theme.spacing.sm,
-    wordBreak: 'break-word',
-    overflowWrap: 'break-word',
+    fontSize: theme.fontSize.md, lineHeight: 1.5, marginBottom: theme.spacing.sm,
+    wordBreak: 'break-word', overflowWrap: 'break-word',
   },
-  commentActions: {
-    display: 'flex',
-    gap: theme.spacing.lg,
-  },
+  commentActions: { display: 'flex', gap: theme.spacing.lg },
   commentAction: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-    background: 'none',
-    border: 'none',
-    color: theme.colors.textTertiary,
-    fontSize: theme.fontSize.sm,
-    cursor: 'pointer',
-    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-    minHeight: 44,
-    minWidth: 44,
+    display: 'flex', alignItems: 'center', gap: theme.spacing.xs,
+    background: 'none', border: 'none', color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.sm, cursor: 'pointer', padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
     borderRadius: theme.radius.sm,
-    transition: theme.transitions.normal,
   },
-  menuButton: {
-    background: 'none',
-    border: 'none',
-    color: theme.colors.textTertiary,
-    cursor: 'pointer',
-    padding: theme.spacing.sm,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.radius.full,
-    minWidth: 32,
-    minHeight: 32,
-    transition: theme.transitions.normal,
-  },
-  loading: {
-    textAlign: 'center',
-    color: theme.colors.textTertiary,
-    padding: 40,
-    fontSize: theme.fontSize.lg,
-  },
-  editForm: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-    maxWidth: '100%',
-    boxSizing: 'border-box',
-  },
+  editForm: { display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
   editTextarea: {
-    width: '100%',
-    maxWidth: '100%',
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.sm,
-    border: `1px solid ${theme.colors.border}`,
-    backgroundColor: theme.colors.card,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.md,
-    fontFamily: 'inherit',
-    resize: 'vertical',
-    outline: 'none',
-    boxSizing: 'border-box',
+    width: '100%', padding: theme.spacing.md, borderRadius: theme.radius.sm,
+    border: `1px solid ${theme.colors.border}`, backgroundColor: theme.colors.card,
+    color: theme.colors.text, fontSize: theme.fontSize.md, resize: 'vertical', outline: 'none',
   },
-  editButtons: {
-    display: 'flex',
-    gap: theme.spacing.sm,
-    justifyContent: 'flex-end'
-  },
+  editButtons: { display: 'flex', gap: theme.spacing.sm, justifyContent: 'flex-end' },
   saveButton: {
-    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-    borderRadius: theme.radius.sm,
-    border: 'none',
-    backgroundColor: theme.colors.primary,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer'
+    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`, borderRadius: theme.radius.sm,
+    border: 'none', backgroundColor: theme.colors.primary, color: theme.colors.text,
+    fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer'
   },
   cancelEditButton: {
-    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-    borderRadius: theme.radius.sm,
-    border: `1px solid ${theme.colors.border}`,
-    backgroundColor: 'transparent',
-    color: theme.colors.textTertiary,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer'
-  },
-  editedLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textDisabled,
-    fontStyle: 'italic',
-    marginTop: theme.spacing.xs,
-    display: 'block'
+    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`, borderRadius: theme.radius.sm,
+    border: `1px solid ${theme.colors.border}`, backgroundColor: 'transparent',
+    color: theme.colors.textTertiary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer'
   },
   modalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: theme.colors.overlay,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000
+    position: 'fixed', inset: 0, backgroundColor: theme.colors.overlay,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
   },
   modalContent: {
-    backgroundColor: theme.colors.bgSecondary,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.xxl,
-    width: '90%',
-    maxWidth: 400,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.md
+    backgroundColor: theme.colors.bgSecondary, borderRadius: theme.radius.lg,
+    padding: theme.spacing.xxl, width: '90%', maxWidth: 400,
+    display: 'flex', flexDirection: 'column', gap: theme.spacing.md
   },
-  modalTitle: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm
-  },
+  modalTitle: { fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.semibold, color: theme.colors.text, marginBottom: theme.spacing.sm },
   reportButton: {
-    padding: 14,
-    borderRadius: theme.radius.md,
-    border: 'none',
-    backgroundColor: theme.colors.cardHover,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.md,
-    cursor: 'pointer',
-    textAlign: 'left',
-    transition: theme.transitions.normal
+    padding: 14, borderRadius: theme.radius.md, border: 'none',
+    backgroundColor: theme.colors.cardHover, color: theme.colors.text,
+    fontSize: theme.fontSize.md, cursor: 'pointer', textAlign: 'left',
   },
   cancelButtonModal: {
-    padding: 14,
-    borderRadius: theme.radius.md,
-    border: `1px solid ${theme.colors.border}`,
-    backgroundColor: 'transparent',
-    color: theme.colors.textTertiary,
-    fontSize: theme.fontSize.md,
-    cursor: 'pointer',
-    marginTop: theme.spacing.sm
+    padding: 14, borderRadius: theme.radius.md, border: `1px solid ${theme.colors.border}`,
+    backgroundColor: 'transparent', color: theme.colors.textTertiary,
+    fontSize: theme.fontSize.md, cursor: 'pointer', marginTop: theme.spacing.sm
   },
-  imageContainer: {
-    position: 'relative',
-    width: '100%',
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: theme.spacing.lg,
-    backgroundColor: '#000',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+
+  skeletonAvatar: {
+    width: 40, height: 40, borderRadius: theme.radius.full,
+    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', marginRight: theme.spacing.sm + 2,
   },
-  image: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'contain', 
-    transition: 'transform 0.3s',
+  skeletonTextShort: {
+    height: 14, width: '40%', marginBottom: theme.spacing.xs + 2, borderRadius: theme.radius.xs,
+    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
-  imageCounter: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    color: '#fff',
-    padding: '6px 12px',
-    borderRadius: 16,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    zIndex: 2,
+  skeletonTextMini: {
+    height: 10, width: '20%', borderRadius: theme.radius.xs,
+    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
-  imageNavButton: {
-    position: 'absolute',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: theme.radius.full,
-    width: 40,
-    height: 40,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 2,
-    transition: 'background-color 0.2s',
+  skeletonTitle: {
+    height: 20, width: '80%', marginBottom: theme.spacing.md, borderRadius: theme.radius.xs,
+    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
-  imageDots: {
-    position: 'absolute',
-    bottom: 12,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    display: 'flex',
-    gap: 6,
-    zIndex: 2,
+  skeletonBody: {
+    height: 14, width: '100%', marginBottom: theme.spacing.sm, borderRadius: theme.radius.xs,
+    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: theme.radius.full,
-    backgroundColor: '#fff',
-    transition: 'all 0.3s ease',
+  skeletonImage: {
+    width: '100%', aspectRatio: '16/9', borderRadius: theme.radius.md,
+    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
 };
 

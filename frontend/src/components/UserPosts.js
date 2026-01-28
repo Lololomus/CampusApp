@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import EditPost from './posts/EditPost';
+import EditPost from './shared/EditContentModal';
 import { getUserPosts, deletePost } from '../api';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';

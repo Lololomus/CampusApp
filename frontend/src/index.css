@@ -192,3 +192,8 @@ button[style*="translateY(-50%)"]:hover {
   transform: translateY(-50%) !important;
   transition: none !important;
 }
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}

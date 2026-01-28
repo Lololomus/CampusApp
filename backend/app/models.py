@@ -1,7 +1,8 @@
 from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Enum, CheckConstraint, UniqueConstraint
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone 
 from .database import Base
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -27,10 +28,10 @@ class User(Base):
     dating_profile = relationship("DatingProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
     # Метаданные
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_active_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    last_active_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     last_profile_edit = Column(DateTime, nullable=True)  # для cooldown редактирования
-    updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
     
     # Отношения
     posts = relationship('Post', back_populates='author', cascade='all, delete-orphan')
@@ -44,6 +45,7 @@ class User(Base):
     # Market отношения
     market_items = relationship('MarketItem', back_populates='seller', cascade='all, delete-orphan')
     market_favorites = relationship('MarketFavorite', back_populates='user', cascade='all, delete-orphan')
+
 
 class Post(Base):
     __tablename__ = 'posts'
@@ -94,8 +96,8 @@ class Post(Base):
     comments_count = Column(Integer, default=0)
     views_count = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Отношения
     author = relationship('User', back_populates='posts')
@@ -103,6 +105,7 @@ class Post(Base):
     
     # ✅ НОВОЕ ОТНОШЕНИЕ (Polls)
     poll = relationship("Poll", back_populates="post", uselist=False, cascade="all, delete-orphan")
+
 
 class Poll(Base):
     """
@@ -125,11 +128,12 @@ class Poll(Base):
     closes_at = Column(DateTime, nullable=True)
     total_votes = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     post = relationship("Post", back_populates="poll")
     votes = relationship("PollVote", back_populates="poll", cascade="all, delete-orphan")
+
 
 class PollVote(Base):
     """
@@ -142,7 +146,7 @@ class PollVote(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     option_indices = Column(Text, nullable=False)  # JSON: [0, 2] (для множественного выбора)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     poll = relationship("Poll", back_populates="votes")
@@ -151,6 +155,7 @@ class PollVote(Base):
     __table_args__ = (
         UniqueConstraint('poll_id', 'user_id', name='unique_poll_vote'),
     )
+
 
 class PostLike(Base):
     """
@@ -161,12 +166,13 @@ class PostLike(Base):
     id = Column(Integer, primary_key=True, index=True)
     post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     # Ограничения
     __table_args__ = (
         UniqueConstraint('post_id', 'user_id', name='unique_post_like'),
     )
+
 
 class Request(Base):
     """
@@ -198,16 +204,21 @@ class Request(Base):
         index=True
     )
     
+    reward_type = Column(String(50), nullable=True)  # 'none' | 'money' | 'help_back' | 'food' | 'gratitude'
+    reward_value = Column(String(255), nullable=True)  # "500₽" | "Помогу взамен"
+    images = Column(Text, nullable=True)  # JSON array [{url: '...', w: 800, h: 600}, ...]
+    
     # Счётчики
     responses_count = Column(Integer, default=0)
     views_count = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Отношения
     author = relationship('User', back_populates='requests')
     responses = relationship('RequestResponse', back_populates='request', cascade='all, delete-orphan')
+
 
 class RequestResponse(Base):
     """
@@ -223,7 +234,7 @@ class RequestResponse(Base):
     message = Column(String(500), nullable=True)  # optional сообщение
     telegram_contact = Column(String(255), nullable=True)  # @username
     
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     # Отношения
     request = relationship('Request', back_populates='responses')
@@ -233,6 +244,7 @@ class RequestResponse(Base):
     __table_args__ = (
         UniqueConstraint('request_id', 'user_id', name='unique_request_response'),
     )
+
 
 class Comment(Base):
     __tablename__ = 'comments'
@@ -254,12 +266,13 @@ class Comment(Base):
     # ЛАЙКИ
     likes_count = Column(Integer, default=0)
     
-    updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, nullable=True, onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     # Отношения
     post = relationship('Post', back_populates='comments')
     author = relationship('User', back_populates='comments')
+
 
 class CommentLike(Base):
     """
@@ -270,12 +283,13 @@ class CommentLike(Base):
     id = Column(Integer, primary_key=True, index=True)
     comment_id = Column(Integer, ForeignKey('comments.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     # Ограничения
     __table_args__ = (
         UniqueConstraint('comment_id', 'user_id', name='unique_comment_like'),
     )
+
 
 class Like(Base):
     """
@@ -286,7 +300,7 @@ class Like(Base):
     id = Column(Integer, primary_key=True, index=True)
     liker_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     liked_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     # Отношения
     liker = relationship('User', foreign_keys=[liker_id], back_populates='likes_given')
@@ -298,6 +312,7 @@ class Like(Base):
         CheckConstraint('liker_id != liked_id', name='no_self_like'),
     )
 
+
 class Match(Base):
     """
     Матчи для знакомств (взаимные лайки)
@@ -307,7 +322,7 @@ class Match(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_a_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     user_b_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    matched_at = Column(DateTime, default=datetime.utcnow, index=True)
+    matched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     # Отношения
     user_a = relationship('User', foreign_keys=[user_a_id])
@@ -319,9 +334,11 @@ class Match(Base):
         CheckConstraint('user_a_id < user_b_id', name='ordered_match'),
     )
 
+
 # ========================================
 # MARKETPLACE
 # ========================================
+
 
 class MarketItem(Base):
     """
@@ -371,12 +388,13 @@ class MarketItem(Base):
     favorites_count = Column(Integer, default=0)
     
     # Временные метки
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Отношения
     seller = relationship('User', back_populates='market_items')
     favorites = relationship('MarketFavorite', back_populates='item', cascade='all, delete-orphan')
+
 
 class MarketFavorite(Base):
     """
@@ -387,7 +405,7 @@ class MarketFavorite(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     # Отношения
     user = relationship('User', back_populates='market_favorites')
@@ -398,7 +416,9 @@ class MarketFavorite(Base):
         UniqueConstraint('user_id', 'item_id', name='unique_market_favorite'),
     )
 
+
 # ===== DATING MODELS =====
+
 
 class DatingProfile(Base):
     __tablename__ = 'datingprofiles'
@@ -416,11 +436,12 @@ class DatingProfile(Base):
     
     is_active = Column(Boolean, default=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationship
     user = relationship("User", back_populates="dating_profile")
+
 
 class DatingLike(Base):
     __tablename__ = 'dating_likes'
@@ -429,5 +450,5 @@ class DatingLike(Base):
     who_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     whom_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     is_like = Column(Boolean, default=True)  # True = лайк, False = дизлайк/скип
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     matched_at = Column(DateTime, nullable=True)

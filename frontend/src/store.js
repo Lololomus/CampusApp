@@ -75,6 +75,19 @@ export const useStore = create(
       setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
+      editingContent: null, // Данные поста или запроса
+      editingType: null,    // 'post' | 'request'
+      
+      setEditingContent: (content, type = 'post') => set({ 
+        editingContent: content, 
+        editingType: type 
+      }),
+      
+      closeEditing: () => set({ 
+        editingContent: null, 
+        editingType: null 
+      }),
+
       // My posts screen
       showUserPosts: false,
       setShowUserPosts: (show) => set({ showUserPosts: show }),
@@ -407,7 +420,7 @@ export const useStore = create(
       partialize: (state) => ({
         isRegistered: state.isRegistered,
         user: state.user,
-        datingProfile: state.datingProfile, // ✅ ДОБАВЛЕНО: сохранение dating профиля
+        datingProfile: state.datingProfile,
         activeTab: state.activeTab,
         feedMode: state.feedMode,
         feedSubTab: state.feedSubTab,

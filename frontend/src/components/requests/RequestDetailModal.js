@@ -1,22 +1,32 @@
 // ===== RequestDetailModal.js =====
 
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Eye, MessageCircle, Clock, Calendar, User } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Clock, Calendar, User, MoreVertical, Edit2, Trash2, Flag, Gift } from 'lucide-react';
 import { useStore } from '../../store';
 import { getRequestById, respondToRequest, updateRequest, getRequestResponses } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { Z_MODAL_FORMS } from '../../constants/zIndex';
+import { REWARD_TYPE_LABELS, REWARD_TYPE_ICONS } from '../../types';
+import DropdownMenu from '../DropdownMenu';
+import PhotoViewer from '../shared/PhotoViewer';
 
-function RequestDetailModal({ onClose }) {
+const API_URL = 'http://localhost:8000';
+
+function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
   const { currentRequest, setCurrentRequest, user, updateRequest: updateStoreRequest } = useStore();
   
   const [request, setRequest] = useState(null);
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
   
   const modalRef = useRef(null);
+  const menuButtonRef = useRef(null);
   const startYRef = useRef(0);
   const currentYRef = useRef(0);
 
@@ -44,6 +54,26 @@ function RequestDetailModal({ onClose }) {
 
   const categoryConfig = CATEGORIES[request?.category] || CATEGORIES.study;
 
+  // ===== ПАРСИНГ ИЗОБРАЖЕНИЙ =====
+  const images = useMemo(() => {
+    if (!request?.images) return [];
+    if (Array.isArray(request.images)) return request.images;
+    try { 
+      return JSON.parse(request.images); 
+    } catch { 
+      return []; 
+    }
+  }, [request?.images]);
+
+  const getImageUrl = (img) => {
+    if (!img) return '';
+    const filename = (typeof img === 'object') ? img.url : img;
+    if (filename.startsWith('http')) return filename;
+    return `${API_URL}/uploads/images/${filename}`;
+  };
+
+  const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
+
   // ===== ЗАГРУЗКА ДАННЫХ =====
   useEffect(() => {
     if (!currentRequest) {
@@ -58,7 +88,6 @@ function RequestDetailModal({ onClose }) {
     try {
       setLoading(true);
 
-      // Загружаем полные данные запроса
       const data = await getRequestById(currentRequest.id);
       setRequest(data);
 
@@ -76,7 +105,7 @@ function RequestDetailModal({ onClose }) {
   };
 
   // ===== ТАЙМЕР =====
-  const getTimeInfo = () => {
+  const getTimeRemaining = () => {
     if (!request?.expires_at) return null;
 
     const now = new Date();
@@ -84,47 +113,81 @@ function RequestDetailModal({ onClose }) {
     const diffMs = expiresAt - now;
 
     if (diffMs <= 0) {
-      return {
-        text: 'Запрос истёк',
-        color: '#666',
-        expired: true
-      };
+      return { text: 'Истёк', color: '#666', pulse: false, expired: true };
     }
 
     const minutes = Math.floor(diffMs / 60000);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
-    let timeLeft = '';
-    let color = theme.colors.textSecondary;
+    let text = '';
+    let color = 'rgba(255,255,255,0.9)';
+    let pulse = false;
 
     if (days > 0) {
-      timeLeft = `${days}д ${hours % 24}ч`;
-    } else if (hours > 0) {
-      timeLeft = `${hours}ч ${minutes % 60}м`;
-      color = hours < 3 ? '#f59e0b' : theme.colors.textSecondary;
+      text = `${days}д ${hours % 24}ч`;
+      color = 'rgba(255,255,255,0.9)';
+    } else if (hours >= 3) {
+      text = `${hours}ч ${minutes % 60}м`;
+      color = 'rgba(255,255,255,0.9)';
+    } else if (hours >= 1) {
+      text = `${hours}ч ${minutes % 60}м`;
+      color = '#f59e0b';
     } else {
-      timeLeft = `${minutes}м`;
+      text = `${minutes}м`;
       color = '#ef4444';
+      pulse = true;
     }
 
-    // Форматируем дату
-    const dateStr = expiresAt.toLocaleDateString('ru-RU', {
+    return { text, color, pulse, expired: false };
+  };
+
+  const timeRemaining = getTimeRemaining();
+
+  // ===== ДАТЫ (СОЗДАНИЕ И ДЕДЛАЙН) =====
+  const getDatesInfo = () => {
+    if (!request) return null;
+
+    const createdDate = new Date(request.created_at);
+    const expiresDate = new Date(request.expires_at);
+    const now = new Date();
+
+    const createdStr = createdDate.toLocaleDateString('ru-RU', {
       day: 'numeric',
       month: 'long',
       hour: '2-digit',
       minute: '2-digit'
     });
 
+    const expiresStr = expiresDate.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const isExpired = expiresDate < now;
+    const diffMs = expiresDate - now;
+    const hours = Math.floor(diffMs / 3600000);
+
+    let deadlineColor = theme.colors.textSecondary;
+    if (isExpired) {
+      deadlineColor = '#666';
+    } else if (hours < 3) {
+      deadlineColor = '#ef4444';
+    } else if (hours < 24) {
+      deadlineColor = '#f59e0b';
+    }
+
     return {
-      text: `Актуально до ${dateStr}`,
-      timeLeft,
-      color,
-      expired: false
+      created: createdStr,
+      deadline: expiresStr,
+      deadlineColor,
+      isExpired
     };
   };
 
-  const timeInfo = getTimeInfo();
+  const datesInfo = getDatesInfo();
 
   // ===== СВАЙП ДЛЯ ЗАКРЫТИЯ =====
   const handleTouchStart = (e) => {
@@ -152,14 +215,30 @@ function RequestDetailModal({ onClose }) {
 
   // ===== ЗАКРЫТИЕ =====
   const handleClose = () => {
+    if (isPhotoViewerJustClosed) return;
+    
     hapticFeedback('light');
     setCurrentRequest(null);
     onClose();
   };
 
+  // ===== КЛИК НА BACKDROP =====
+  const handleBackdropClick = (e) => {
+    if (isPhotoViewerJustClosed) return;
+    handleClose();
+  };
+
+  // ===== КЛИК НА ФОТО =====
+  const handleImageClick = (e, index) => {
+    e.stopPropagation();
+    hapticFeedback('light');
+    setCurrentImageIndex(index);
+    setIsPhotoViewerOpen(true);
+  };
+
   // ===== ОТКЛИКНУТЬСЯ =====
   const handleRespond = async () => {
-    if (!request || request.is_author || request.has_responded || timeInfo?.expired) {
+    if (!request || request.is_author || request.has_responded || datesInfo?.isExpired) {
       return;
     }
 
@@ -169,7 +248,6 @@ function RequestDetailModal({ onClose }) {
 
       await respondToRequest(request.id, {});
 
-      // Обновляем локальное состояние
       const updatedRequest = {
         ...request,
         has_responded: true,
@@ -204,12 +282,9 @@ function RequestDetailModal({ onClose }) {
 
     try {
       hapticFeedback('medium');
-
       await updateRequest(request.id, { status: 'closed' });
-
       hapticFeedback('success');
       handleClose();
-
     } catch (error) {
       console.error('❌ Ошибка закрытия:', error);
       hapticFeedback('error');
@@ -226,30 +301,60 @@ function RequestDetailModal({ onClose }) {
     window.open(`https://t.me/${cleanUsername}`, '_blank');
   };
 
+  // ===== МЕНЮ ДЕЙСТВИЙ =====
+  const menuItems = [
+    ...(request?.is_author ? [
+      {
+        label: 'Редактировать',
+        icon: <Edit2 size={18} />,
+        onClick: () => {
+          hapticFeedback('light');
+          setMenuOpen(false);
+          if (onEdit) onEdit(request);
+        }
+      },
+      {
+        label: 'Удалить',
+        icon: <Trash2 size={18} />,
+        danger: true,
+        onClick: () => {
+          hapticFeedback('medium');
+          setMenuOpen(false);
+          if (onDelete) onDelete(request);
+        }
+      }
+    ] : []),
+    {
+      label: 'Пожаловаться',
+      icon: <Flag size={18} />,
+      danger: !request?.is_author,
+      onClick: () => {
+        hapticFeedback('light');
+        setMenuOpen(false);
+        if (onReport) onReport(request);
+      }
+    }
+  ];
+
   if (!request) {
     return null;
   }
 
+  // Определяем количество колонок для фото: 1-3 фото = 3 колонки, 4+ = 2 колонки
+  const photoGridColumns = images.length <= 3 ? 3 : 2;
+
   return (
     <>
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
-      `}</style>
+      <style>{keyframesStyles}</style>
 
       {/* BACKDROP */}
-      <div style={styles.backdrop} onClick={handleClose} />
+      <div style={styles.backdrop} onClick={handleBackdropClick} />
 
       {/* МОДАЛКА */}
       <div
         ref={modalRef}
         style={styles.modal}
+        onClick={(e) => e.stopPropagation()}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -268,12 +373,41 @@ function RequestDetailModal({ onClose }) {
             <span style={styles.categoryIcon}>{categoryConfig.icon}</span>
             <span style={styles.categoryText}>{categoryConfig.label}</span>
           </div>
-          {timeInfo && !timeInfo.expired && (
-            <div style={{ ...styles.timer, color: timeInfo.color }}>
-              <Clock size={14} style={{ marginRight: 4 }} />
-              {timeInfo.timeLeft}
+          
+          <div style={styles.headerRight}>
+            {/* ТАЙМЕР */}
+            {timeRemaining && (
+              <div style={{
+                ...styles.timer,
+                color: timeRemaining.color,
+                animation: timeRemaining.pulse ? 'pulse 2s ease-in-out infinite' : 'none'
+              }}>
+                <Clock size={14} style={{ marginRight: 4 }} />
+                {timeRemaining.text}
+              </div>
+            )}
+
+            {/* ТРОЕТОЧИЕ МЕНЮ */}
+            <div style={{position: 'relative', display: 'flex', alignItems: 'center'}}>
+              <button
+                ref={menuButtonRef}
+                style={styles.menuButton}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(!menuOpen);
+                  hapticFeedback('light');
+                }}
+              >
+                <MoreVertical size={18} />
+              </button>
+              <DropdownMenu
+                isOpen={menuOpen}
+                onClose={() => setMenuOpen(false)}
+                anchorRef={menuButtonRef}
+                items={menuItems}
+              />
             </div>
-          )}
+          </div>
         </div>
 
         {/* КОНТЕНТ */}
@@ -301,11 +435,52 @@ function RequestDetailModal({ onClose }) {
             )}
           </div>
 
+          {/* НАГРАДА */}
+          {request.reward_type && request.reward_type !== 'none' && (
+            <div style={styles.rewardBlock}>
+              <Gift size={20} style={{ flexShrink: 0, color: '#FFD700' }} />
+              <div style={styles.rewardInfo}>
+                <div style={styles.rewardLabel}>
+                  {REWARD_TYPE_ICONS[request.reward_type] || '🎁'} {REWARD_TYPE_LABELS[request.reward_type] || 'Награда'}
+                </div>
+                {request.reward_value && (
+                  <div style={styles.rewardValue}>{request.reward_value}</div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ОПИСАНИЕ */}
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>Описание</h3>
             <p style={styles.body}>{request.body}</p>
           </div>
+
+          {/* ФОТО */}
+          {images.length > 0 && (
+            <div style={styles.section}>
+              <h3 style={styles.sectionTitle}>Фотографии ({images.length})</h3>
+              <div style={{
+                ...styles.imagesGrid,
+                gridTemplateColumns: `repeat(${photoGridColumns}, 1fr)`
+              }}>
+                {images.map((img, idx) => (
+                  <div 
+                    key={idx} 
+                    style={styles.imageItem}
+                    onClick={(e) => handleImageClick(e, idx)}
+                  >
+                    <img 
+                      src={getImageUrl(img)} 
+                      alt="" 
+                      style={styles.image}
+                      loading="lazy"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ТЕГИ */}
           {request.tags && request.tags.length > 0 && (
@@ -318,80 +493,69 @@ function RequestDetailModal({ onClose }) {
             </div>
           )}
 
-          {/* ИНФО БЛОК */}
-          <div style={styles.infoBlock}>
-            {timeInfo && (
+          {/* ИНФО БЛОК: ДАТЫ */}
+          {datesInfo && (
+            <div style={styles.infoBlock}>
               <div style={styles.infoItem}>
-                <Calendar size={16} color={timeInfo.color} />
-                <span style={{ color: timeInfo.color }}>{timeInfo.text}</span>
+                <Calendar size={16} color={theme.colors.textSecondary} />
+                <span>Создано: {datesInfo.created}</span>
               </div>
-            )}
-            <div style={styles.statsRow}>
-              <div style={styles.statItem}>
-                <Eye size={16} />
-                <span>{request.views_count || 0} просмотров</span>
-              </div>
-              <div style={styles.statItem}>
-                <MessageCircle size={16} />
-                <span>{request.responses_count || 0} откликов</span>
+              <div style={styles.infoItem}>
+                <Clock size={16} color={datesInfo.deadlineColor} />
+                <span style={{ color: datesInfo.deadlineColor }}>
+                  Актуально до: {datesInfo.deadline}
+                </span>
               </div>
             </div>
-          </div>
+          )}
 
           {/* ОТКЛИКИ (только для автора) */}
-          {request.is_author && (
+          {request.is_author && responses.length > 0 && (
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>
                 Отклики ({responses.length})
               </h3>
 
-              {responses.length > 0 ? (
-                <div style={styles.responsesList}>
-                  {responses.map((response) => (
-                    <div key={response.id} style={styles.responseCard}>
-                      <div style={styles.responseHeader}>
-                        <div style={styles.responseAvatar}>
-                          {response.author?.name?.[0]?.toUpperCase() || 'A'}
+              <div style={styles.responsesList}>
+                {responses.map((response) => (
+                  <div key={response.id} style={styles.responseCard}>
+                    <div style={styles.responseHeader}>
+                      <div style={styles.responseAvatar}>
+                        {response.author?.name?.[0]?.toUpperCase() || 'A'}
+                      </div>
+                      <div style={styles.responseInfo}>
+                        <div style={styles.responseName}>
+                          {response.author?.name || 'Аноним'}
                         </div>
-                        <div style={styles.responseInfo}>
-                          <div style={styles.responseName}>
-                            {response.author?.name || 'Аноним'}
-                          </div>
-                          <div style={styles.responseTime}>
-                            {new Date(response.created_at).toLocaleDateString('ru-RU', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </div>
+                        <div style={styles.responseTime}>
+                          {new Date(response.created_at).toLocaleDateString('ru-RU', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
                         </div>
                       </div>
-
-                      {response.message && (
-                        <div style={styles.responseMessage}>
-                          {response.message}
-                        </div>
-                      )}
-
-                      {response.telegram_contact && (
-                        <button
-                          onClick={() => openTelegramChat(response.telegram_contact)}
-                          style={styles.telegramButton}
-                        >
-                          <User size={16} />
-                          Написать в Telegram
-                        </button>
-                      )}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={styles.emptyResponses}>
-                  <MessageCircle size={32} color={theme.colors.textTertiary} />
-                  <p style={styles.emptyText}>Пока нет откликов</p>
-                </div>
-              )}
+
+                    {response.message && (
+                      <div style={styles.responseMessage}>
+                        {response.message}
+                      </div>
+                    )}
+
+                    {response.telegram_contact && (
+                      <button
+                        onClick={() => openTelegramChat(response.telegram_contact)}
+                        style={styles.telegramButton}
+                      >
+                        <User size={16} />
+                        Написать в Telegram
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -410,7 +574,7 @@ function RequestDetailModal({ onClose }) {
             <button style={styles.respondedButton} disabled>
               ✓ Вы откликнулись
             </button>
-          ) : timeInfo?.expired ? (
+          ) : datesInfo?.isExpired ? (
             <button style={styles.expiredButton} disabled>
               Запрос истёк
             </button>
@@ -424,6 +588,19 @@ function RequestDetailModal({ onClose }) {
             </button>
           )}
         </div>
+
+        {/* PHOTOVIEWER */}
+        {isPhotoViewerOpen && (
+          <PhotoViewer
+            photos={viewerPhotos}
+            initialIndex={currentImageIndex}
+            onClose={() => {
+              setIsPhotoViewerOpen(false);
+              setIsPhotoViewerJustClosed(true);
+              setTimeout(() => setIsPhotoViewerJustClosed(false), 100);
+            }}
+          />
+        )}
       </div>
     </>
   );
@@ -440,7 +617,7 @@ const styles = {
     background: 'rgba(0, 0, 0, 0.7)',
     backdropFilter: 'blur(4px)',
     zIndex: Z_MODAL_FORMS,
-    animation: 'fadeIn 0.3s ease'
+    animation: 'fadeIn 0.25s ease-out'
   },
 
   modal: {
@@ -448,14 +625,18 @@ const styles = {
     bottom: 0,
     left: 0,
     right: 0,
+    minHeight: '50vh',
     maxHeight: '90vh',
     background: theme.colors.bg,
     borderTopLeftRadius: theme.radius.xxl,
     borderTopRightRadius: theme.radius.xxl,
     zIndex: Z_MODAL_FORMS + 1,
-    animation: 'slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    animation: 'slideUp 0.3s ease-out',
+    WebkitFontSmoothing: 'antialiased',
+    MozOsxFontSmoothing: 'grayscale',
     overflowY: 'auto',
-    boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.5)'
+    boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.5)',
+    willChange: 'transform'
   },
 
   handle: {
@@ -480,8 +661,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    zIndex: 10,
-    transition: theme.transitions.normal
+    zIndex: 10
   },
 
   header: {
@@ -507,6 +687,12 @@ const styles = {
     fontWeight: theme.fontWeight.semibold
   },
 
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.xs
+  },
+
   timer: {
     display: 'flex',
     alignItems: 'center',
@@ -517,9 +703,23 @@ const styles = {
     borderRadius: theme.radius.md
   },
 
+  menuButton: {
+    background: 'rgba(0, 0, 0, 0.2)',
+    border: 'none',
+    borderRadius: theme.radius.sm,
+    width: 32,
+    height: 32,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#fff',
+    padding: 0
+  },
+
   content: {
     padding: theme.spacing.xl,
-    paddingBottom: 100
+    paddingBottom: 10
   },
 
   title: {
@@ -579,6 +779,34 @@ const styles = {
     fontWeight: theme.fontWeight.semibold
   },
 
+  rewardBlock: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    padding: theme.spacing.lg,
+    background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%)',
+    border: '2px solid rgba(255, 215, 0, 0.3)',
+    borderRadius: theme.radius.lg,
+    marginBottom: theme.spacing.xl
+  },
+
+  rewardInfo: {
+    flex: 1
+  },
+
+  rewardLabel: {
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.semibold,
+    color: '#FFD700',
+    marginBottom: 4
+  },
+
+  rewardValue: {
+    fontSize: theme.fontSize.base,
+    color: '#FFA500',
+    fontWeight: theme.fontWeight.medium
+  },
+
   section: {
     marginBottom: theme.spacing.xl
   },
@@ -587,16 +815,37 @@ const styles = {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.text,
-    marginBottom: theme.spacing.md,
-    paddingBottom: theme.spacing.sm,
-    borderBottom: `1px solid ${theme.colors.border}`
+    marginBottom: theme.spacing.md
   },
 
   body: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.lg,
+    color: theme.colors.text,
     lineHeight: 1.6,
     whiteSpace: 'pre-wrap'
+  },
+
+  imagesGrid: {
+    display: 'grid',
+    gap: theme.spacing.sm
+  },
+
+  imageItem: {
+    position: 'relative',
+    paddingTop: '100%',
+    background: theme.colors.bgSecondary,
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+    cursor: 'pointer'
+  },
+
+  image: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover'
   },
 
   tags: {
@@ -627,20 +876,7 @@ const styles = {
     gap: theme.spacing.sm,
     fontSize: theme.fontSize.base,
     color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.md
-  },
-
-  statsRow: {
-    display: 'flex',
-    gap: theme.spacing.xl
-  },
-
-  statItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textTertiary
+    marginBottom: theme.spacing.sm
   },
 
   responsesList: {
@@ -713,23 +949,7 @@ const styles = {
     borderRadius: theme.radius.md,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer',
-    transition: theme.transitions.normal
-  },
-
-  emptyResponses: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.xxxl,
-    textAlign: 'center'
-  },
-
-  emptyText: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.textTertiary,
-    marginTop: theme.spacing.md
+    cursor: 'pointer'
   },
 
   bottomBar: {
@@ -753,7 +973,6 @@ const styles = {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
-    transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
     boxShadow: '0 4px 12px rgba(135, 116, 225, 0.4)'
   },
 
@@ -792,9 +1011,29 @@ const styles = {
     borderRadius: theme.radius.lg,
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer',
-    transition: theme.transitions.normal
+    cursor: 'pointer'
   }
 };
+
+const keyframesStyles = `
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes slideUp {
+    from { 
+      transform: translateY(100%);
+    }
+    to { 
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+`;
 
 export default RequestDetailModal;

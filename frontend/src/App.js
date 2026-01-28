@@ -5,11 +5,8 @@ import { useStore } from './store';
 import { initTelegramApp } from './utils/telegram';
 import Navigation from './components/Navigation';
 import Feed from './components/Feed';
-import PostDetail from './components/posts/PostDetail';
-// ❌ УДАЛЕНО: import CreatePost from './components/posts/CreatePost';
-// ❌ УДАЛЕНО: import CreateRequestModal from './components/requests/CreateRequestModal';
-// ✅ ДОБАВЛЕНО: Новый общий компонент
 import CreateContentModal from './components/shared/CreateContentModal';
+import EditContentModal from './components/shared/EditContentModal';
 import Onboarding from './components/Onboarding';
 import AuthModal from './components/AuthModal';
 import EditProfile from './components/EditProfile';
@@ -18,22 +15,27 @@ import UserPosts from './components/UserPosts';
 import DatingFeed from './components/dating/DatingFeed';
 import Market from './components/market/Market';
 import CreateMarketItem from './components/market/CreateMarketItem';
+// 🔧 ИНТЕГРАЦИЯ: Импортируем PostDetail
+import PostDetail from './components/posts/PostDetail'; 
 import './App.css';
 
 function App() {
   const { 
     activeTab, 
-    viewPostId, 
     showCreateModal,
-    setShowCreateModal, // ✅ Добавили сеттер
-    // showCreateRequestModal, // Больше не нужно, так как модалка одна
+    setShowCreateModal,
     showCreateMarketItem,
     editingMarketItem,
     setEditingMarketItem,
     setShowCreateMarketItem,
     onboardingStep,
     showUserPosts,
-    showEditModal
+    showEditModal,
+    editingContent,
+    editingType,
+    closeEditing,
+    // 🔧 ИНТЕГРАЦИЯ: Достаем viewPostId
+    viewPostId 
   } = useStore();
 
   useEffect(() => {
@@ -41,7 +43,6 @@ function App() {
   }, []);
 
   const renderContent = () => {
-    if (viewPostId) return <PostDetail />;
     if (showUserPosts) return <UserPosts />;
 
     switch (activeTab) {
@@ -62,17 +63,29 @@ function App() {
       {renderContent()}
       <Navigation />
       
-      {/* ✅ ЕДИНАЯ МОДАЛКА ДЛЯ СОЗДАНИЯ КОНТЕНТА */}
+      {/* 🔧 ИНТЕГРАЦИЯ: Рендерим PostDetail поверх всего, если есть ID */}
+      {viewPostId && <PostDetail />}
+
+      {/* МОДАЛКА СОЗДАНИЯ */}
       {showCreateModal && (
         <CreateContentModal 
           onClose={() => setShowCreateModal(false)} 
         />
       )}
 
-      {/* CreateRequestModal убран, так как CreateContentModal обрабатывает и посты, и запросы.
-        Логика переключения таба внутри модалки зависит от feedSubTab в store.
-      */}
+      {/* МОДАЛКА РЕДАКТИРОВАНИЯ */}
+      {editingContent && (
+        <EditContentModal
+          contentType={editingType}
+          initialData={editingContent}
+          onClose={closeEditing}
+          onSuccess={(updatedData) => {
+             closeEditing();
+          }}
+        />
+      )}
 
+      {/* MARKET MODAL */}
       {showCreateMarketItem && (
         <CreateMarketItem 
           editItem={editingMarketItem}
@@ -99,8 +112,8 @@ const styles = {
     minHeight: '100vh',
     backgroundColor: '#121212',
     color: '#fff',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  },
+    paddingBottom: '80px',
+  }
 };
 
 export default App;

@@ -298,7 +298,12 @@ class PostResponse(BaseModel):
     event_contact: Optional[str] = None
     
     # News
-    is_important: bool = False
+    is_important: Optional[bool] = False 
+    
+    @field_validator('is_important', mode='before')
+    @classmethod
+    def set_default_important(cls, v):
+        return v or False
     
     # Опрос
     poll: Optional[PollResponse] = None
@@ -386,12 +391,23 @@ class RequestCreate(BaseModel):
     expires_at: datetime
     max_responses: Optional[int] = Field(default=5, ge=1, le=20)
     
+    reward_type: Optional[str] = None
+    reward_value: Optional[str] = None
+    images: List[str] = Field(default=[], max_length=3)
+    
     @field_validator('tags')
     @classmethod
     def validate_tags(cls, v):
         if len(v) > 5:
             raise ValueError('Максимум 5 тегов')
         return [tag[:20] for tag in v]
+    
+    @field_validator('images')
+    @classmethod
+    def validate_images(cls, v):
+        if len(v) > 3:
+            raise ValueError('Максимум 3 изображения')
+        return v
 
 class RequestUpdate(BaseModel):
     """Обновление запроса"""
@@ -399,6 +415,8 @@ class RequestUpdate(BaseModel):
     body: Optional[str] = Field(None, min_length=20, max_length=500)
     tags: Optional[List[str]] = None
     is_closed: Optional[bool] = None
+    reward_type: Optional[str] = None
+    reward_value: Optional[str] = None
 
 class RequestAuthor(BaseModel):
     """Автор запроса"""
@@ -427,6 +445,9 @@ class RequestResponse(BaseModel):
     author: RequestAuthor
     is_author: bool = False
     has_responded: bool = False
+    reward_type: Optional[str] = None
+    reward_value: Optional[str] = None
+    images: List[ImageMeta] = []
     
     @field_validator('tags', mode='before')
     @classmethod
@@ -436,6 +457,21 @@ class RequestResponse(BaseModel):
         if isinstance(v, str):
             import json
             return json.loads(v) if v else []
+        return v
+    
+    @field_validator('images', mode='before')
+    @classmethod
+    def parse_images(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v) if v else []
+            except:
+                return []
         return v
     
     class Config:

@@ -1,9 +1,8 @@
-// ===== src/components/Feed/Feed.js =====
+// ===== 📄 ФАЙЛ: src/components/Feed.js =====
 
 import React, { useEffect, useState, useCallback } from 'react';
 import PostCard from './posts/PostCard';
 import RequestsFeed from './requests/RequestsFeed';
-// import CreatePost from './posts/CreatePost';
 import CreateContentModal from './shared/CreateContentModal';
 import { getPosts } from '../api';
 import { useStore } from '../store';
@@ -63,10 +62,19 @@ function Feed() {
     }
   };
 
+  // ✅ ИСПРАВЛЕНО: явно указываем обновление is_liked и likes_count
   const handleLikeUpdate = useCallback((postId, updates) => {
-    setPosts(prevPosts => prevPosts.map(post =>
-      post.id === postId ? { ...post, ...updates } : post
-    ));
+    setPosts(prevPosts => 
+      prevPosts.map(post => 
+        post.id === postId 
+          ? { 
+              ...post, 
+              is_liked: updates.is_liked, 
+              likes_count: updates.likes_count 
+            } 
+          : post
+      )
+    );
   }, []);
 
   const handlePostDeleted = useCallback((postId) => {
@@ -104,7 +112,6 @@ function Feed() {
   useEffect(() => {
     if (storePosts.length > 0 && feedSubTab === 'posts') {
       setPosts(prevPosts => {
-        // Объединяем новые посты из store с существующими
         const storePostIds = new Set(storePosts.map(p => p.id));
         const existingPosts = prevPosts.filter(p => !storePostIds.has(p.id));
         return [...storePosts, ...existingPosts];
@@ -137,10 +144,9 @@ function Feed() {
   const handleSearchChange = (query) => setSearchQuery(query);
   const handleFiltersClick = () => haptic('medium');
 
-  // ✅ НОВЫЙ ХЕНДЛЕР ТАБОВ
   const handleTabSwitch = (tab) => {
     if (feedSubTab !== tab) {
-      haptic('medium'); // Более ощутимый отклик при смене режима
+      haptic('medium');
       setFeedSubTab(tab);
     }
   };
@@ -164,10 +170,10 @@ function Feed() {
         onFiltersClick={handleFiltersClick}
         activeFiltersCount={0}
       >
-        {/* ✅ НОВЫЕ КРАСИВЫЕ ТАБЫ (SEGMENTED CONTROL) */}
+        {/* ТАБЫ (SEGMENTED CONTROL) */}
         <div style={styles.tabsWrapper}>
           <div style={styles.tabsContainer}>
-            {/* Скользящий фон (индикатор) */}
+            {/* Скользящий фон */}
             <div 
               style={{
                 ...styles.activeIndicator,
@@ -241,7 +247,7 @@ function Feed() {
         <CreateContentModal 
           onClose={() => {
             setShowCreateModal(false);
-            loadPosts(); // Обновит список после создания
+            loadPosts();
           }} 
         />
       )}
@@ -256,18 +262,17 @@ const styles = {
     minHeight: '100vh',
   },
 
-  // ✅ СТИЛИ ДЛЯ НОВЫХ ТАБОВ
   tabsWrapper: {
-    padding: '0 12px 12px 12px', // Отступ внутри хедера
+    padding: '0 12px 12px 12px',
   },
 
   tabsContainer: {
     position: 'relative',
     display: 'flex',
-    backgroundColor: theme.colors.bg, // Темнее фона хедера
+    backgroundColor: theme.colors.bg,
     borderRadius: theme.radius.lg,
-    padding: '4px', // Отступ для "воздуха" вокруг индикатора
-    height: 44, // Высота табов
+    padding: '4px',
+    height: 44,
     border: `1px solid ${theme.colors.border}`,
   },
 
@@ -276,18 +281,18 @@ const styles = {
     top: 4,
     bottom: 4,
     left: 4,
-    width: 'calc(50% - 4px)', // Половина минус отступы
-    backgroundColor: theme.colors.primary, // Фиолетовый акцент
+    width: 'calc(50% - 4px)',
+    backgroundColor: theme.colors.primary,
     borderRadius: theme.radius.md,
-    boxShadow: '0 2px 8px rgba(135, 116, 225, 0.3)', // Красивая тень под цвет
-    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)', // Пружинистая анимация (Spring)
+    boxShadow: '0 2px 8px rgba(135, 116, 225, 0.3)',
+    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
     zIndex: 1,
   },
 
   tabButton: {
     flex: 1,
     position: 'relative',
-    zIndex: 2, // Текст поверх индикатора
+    zIndex: 2,
     background: 'transparent',
     border: 'none',
     fontSize: 15,
@@ -297,7 +302,6 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    // color задается инлайном для анимации
   },
 
   content: {

@@ -1,7 +1,7 @@
 // ===== 📄 ФАЙЛ: src/components/shared/PhotoViewer.js =====
 
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom'; // ✅ NEW
+import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Z_PHOTO_VIEWER = 4000;
@@ -77,7 +77,6 @@ function PhotoViewer({ photos = [], initialIndex = 0, onClose }) {
   const currentPhoto = photos[currentIndex];
   const photoUrl = currentPhoto?.url || currentPhoto;
 
-  // ✅ РЕНДЕРИМ В ПОРТАЛ (в document.body)
   return createPortal(
     <>
       <style>{styles.keyframes}</style>
@@ -85,18 +84,30 @@ function PhotoViewer({ photos = [], initialIndex = 0, onClose }) {
       {/* Overlay */}
       <div 
         style={styles.overlay} 
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
       />
 
       {/* Container */}
-      <div style={styles.container}>
+      <div 
+        style={styles.container}
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div style={styles.header}>
           <div style={styles.counter}>
             {currentIndex + 1} / {photos.length}
           </div>
-          <button style={styles.closeButton} onClick={onClose}>
+          <button 
+            style={styles.closeButton} 
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+          >
             <X size={24} />
           </button>
         </div>
@@ -107,6 +118,7 @@ function PhotoViewer({ photos = [], initialIndex = 0, onClose }) {
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
+          onClick={(e) => e.stopPropagation()}
         >
           <img
             ref={imageRef}
@@ -125,12 +137,24 @@ function PhotoViewer({ photos = [], initialIndex = 0, onClose }) {
         {photos.length > 1 && (
           <>
             {currentIndex > 0 && (
-              <button style={styles.navButtonLeft} onClick={goToPrev}>
+              <button 
+                style={styles.navButtonLeft} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goToPrev();
+                }}
+              >
                 <ChevronLeft size={32} strokeWidth={3} />
               </button>
             )}
             {currentIndex < photos.length - 1 && (
-              <button style={styles.navButtonRight} onClick={goToNext}>
+              <button 
+                style={styles.navButtonRight} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goToNext();
+                }}
+              >
                 <ChevronRight size={32} strokeWidth={3} />
               </button>
             )}
@@ -147,7 +171,10 @@ function PhotoViewer({ photos = [], initialIndex = 0, onClose }) {
                   ...styles.indicator,
                   opacity: idx === currentIndex ? 1 : 0.4,
                 }}
-                onClick={() => setCurrentIndex(idx)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentIndex(idx);
+                }}
               />
             ))}
           </div>
@@ -155,7 +182,7 @@ function PhotoViewer({ photos = [], initialIndex = 0, onClose }) {
 
       </div>
     </>,
-    document.body // ✅ МАГИЯ: рендерим прямо в body
+    document.body
   );
 }
 

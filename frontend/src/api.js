@@ -135,24 +135,33 @@ export async function createPost(postData, onProgress = null) {
   try {
     const telegram_id = getTelegramId();
     
+    console.log('📤 FormData contents:');
+    for (let [key, value] of postData.entries()) {
+      console.log(`  ${key}:`, value);
+    }
+    
     const config = {
       params: { telegram_id },
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     };
-    
+
     if (onProgress) {
       config.onUploadProgress = onProgress;
     }
-    
+
     const response = await api.post('/posts/create', postData, config);
     return response.data;
   } catch (error) {
-    console.error('Ошибка создания поста:', error);
+    console.error('❌ Ошибка создания поста:', error);
+    console.error('📍 Response:', error.response?.data);
+    console.error('📍 Status:', error.response?.status);
+    console.error('📍 Headers:', error.response?.headers);
     throw error;
   }
 }
+
 
 export async function updatePost(postId, postData, onProgress = null) {
   try {
@@ -314,12 +323,21 @@ export async function reportComment(commentId, reason, description = null) {
   }
 }
 
-export async function createRequest(requestData) {
+export async function createRequest(requestData, onProgress = null) {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.post('/api/requests/create', requestData, {
-      params: { telegram_id }
-    });
+    
+    const config = {
+      params: { telegram_id },
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    };
+    if (onProgress) {
+      config.onUploadProgress = onProgress;
+    }
+    
+    const response = await api.post('/api/requests/create', requestData, config);
     return response.data;
   } catch (error) {
     console.error('Ошибка создания запроса:', error);
