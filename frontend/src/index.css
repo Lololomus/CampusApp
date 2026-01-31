@@ -197,3 +197,45 @@ button[style*="translateY(-50%)"]:hover {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
 }
+
+:root {
+  --info-bar-min-height: 260px;
+  --header-height: 350px;
+}
+
+/* Компенсация для iPhone с home indicator */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  :root {
+    --info-bar-min-height: calc(280px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Маленькие экраны */
+@media (max-height: 700px) {
+  :root {
+    --info-bar-min-height: 240px;
+    --header-height: 100px;
+  }
+}
+
+/* Большие экраны */
+@media (min-height: 900px) {
+  :root {
+    --info-bar-min-height: 300px;
+  }
+}
+
+/* Блокировка скролла ТОЛЬКО для Dating */
+body.dating-active {
+  overflow: hidden !important;
+  height: 100vh;
+  max-height: 100vh;
+  position: fixed;
+  width: 100%;
+}
+
+#root.dating-active {
+  overflow: hidden !important;
+  height: 100vh;
+  max-height: 100vh;
+}

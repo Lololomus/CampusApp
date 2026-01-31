@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { registerUser } from './api';
 
+
 const API_URL = 'http://localhost:8000';
+
 
 export const useStore = create(
   persist(
@@ -52,6 +54,7 @@ export const useStore = create(
         isRegistered: false 
       }),
 
+
       // ===== NAVIGATION STATE =====
       activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile' | 'market'
       feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
@@ -59,6 +62,7 @@ export const useStore = create(
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
       setFeedSubTab: (tab) => set({ feedSubTab: tab }),
+
 
       // ===== MODAL STATES =====
       showAuthModal: false,
@@ -75,6 +79,7 @@ export const useStore = create(
       setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
+
       editingContent: null, // Данные поста или запроса
       editingType: null,    // 'post' | 'request'
       
@@ -88,9 +93,11 @@ export const useStore = create(
         editingType: null 
       }),
 
+
       // My posts screen
       showUserPosts: false,
       setShowUserPosts: (show) => set({ showUserPosts: show }),
+
 
       // ===== ONBOARDING STATE =====
       onboardingStep: 0,
@@ -99,6 +106,7 @@ export const useStore = create(
       setOnboardingData: (data) => set((state) => ({
         onboardingData: { ...state.onboardingData, ...data }
       })),
+
 
       // ===== POSTS STATE (НЕ СОХРАНЯЕМ В LOCALSTORAGE!) =====
       posts: [],
@@ -111,6 +119,7 @@ export const useStore = create(
           p.id === postId ? { ...p, ...updates } : p
         )
       })),
+
 
       // Синхронизация между PostDetail и Feed
       updatedPostId: null,
@@ -134,6 +143,63 @@ export const useStore = create(
           updatedPostData: {} 
         });
       },
+
+      // ===== 🎯 FILTERS STATE  =====
+      
+      // Фильтры постов
+      postsFilters: {
+        location: 'all',        // 'all' | 'my_university' | 'my_institute'
+        university: 'all',
+        institute: 'all',
+        tags: [],               // Массив тегов ['помощь', 'срочно']
+        dateRange: 'all',       // 'all' | 'today' | 'week' | 'month'
+        sort: 'newest',         // 'newest' | 'popular' | 'discussed'
+      },
+      
+      // Фильтры запросов
+      requestsFilters: {
+        location: 'all',        // 'all' | 'my_university' | 'my_institute'
+        university: 'all',
+        institute: 'all',
+        status: 'active',       // 'active' | 'all'
+        hasReward: 'all',       // 'all' | 'with' | 'without'
+        urgency: 'all',         // 'all' | 'soon' (<24h) | 'later'
+        sort: 'newest',         // 'newest' | 'expires_soon' | 'most_responses'
+      },
+      
+      // Actions для фильтров постов
+      setPostsFilters: (filters) => set((state) => ({
+        postsFilters: { ...state.postsFilters, ...filters }
+      })),
+      
+      clearPostsFilters: () => set({
+        postsFilters: {
+          location: 'all',
+          university: 'all',
+          institute: 'all',
+          tags: [],
+          dateRange: 'all',
+          sort: 'newest',
+        }
+      }),
+      
+      // Actions для фильтров запросов
+      setRequestsFilters: (filters) => set((state) => ({
+        requestsFilters: { ...state.requestsFilters, ...filters }
+      })),
+      
+      clearRequestsFilters: () => set({
+        requestsFilters: {
+          location: 'all',
+          university: 'all',
+          institute: 'all',
+          status: 'active',
+          hasReward: 'all',
+          urgency: 'all',
+          sort: 'newest',
+        }
+      }),
+
 
       // ===== REQUESTS STATE (ОБНОВЛЕНО) =====
       requests: [], // Лента запросов (текущая категория)
@@ -169,6 +235,7 @@ export const useStore = create(
       setRequestDraft: (draft) => set({ requestDraft: draft }),
       
       clearRequestDraft: () => set({ requestDraft: {} }),
+
 
       // ===== DATING STATE =====
       
@@ -236,6 +303,7 @@ export const useStore = create(
       onPrefetchNeeded: null,
       setOnPrefetchNeeded: (callback) => set({ onPrefetchNeeded: callback }),
 
+
       // Likes & Matches
       whoLikedMe: [],
       setWhoLikedMe: (usersOrUpdater) => set((state) => ({
@@ -244,14 +312,17 @@ export const useStore = create(
           : usersOrUpdater
       })),
 
+
       // активные мэтчи (24 часа)
       matches: [],
       setMatches: (matches) => set({ matches }),
+
 
       // удаление истёкшего мэтча
       removeMatch: (userId) => set((state) => ({
         matches: state.matches.filter(m => m.user_id !== userId)
       })),
+
 
       // Dating Modal states
       showLikesModal: false,
@@ -265,6 +336,7 @@ export const useStore = create(
         matchedUser: user,
       }),
 
+
       // Stats
       likesCount: 0,
       matchesCount: 0,
@@ -273,6 +345,7 @@ export const useStore = create(
         likesCount: stats.likes_count || 0,
         matchesCount: stats.matches_count || 0,
       }),
+
 
       // ===== LIKES STATE =====
       likedPosts: {},  // { 1: true, 5: true, 10: false }
@@ -285,6 +358,7 @@ export const useStore = create(
         const state = get();
         return state.likedPosts[postId];
       },
+
 
       // ===== MARKET STATE =====
       marketItems: [], // Текущая лента товаров
@@ -307,6 +381,7 @@ export const useStore = create(
       setMarketItems: (items) => set({ marketItems: items }),
       
       setEditingMarketItem: (item) => set({ editingMarketItem: item }),
+
 
       addMarketItem: (newItem) => set((state) => ({
         marketItems: [newItem, ...state.marketItems],
@@ -382,6 +457,7 @@ export const useStore = create(
           : state.currentMarketItem
       })),
 
+
       // ===== ACTIONS =====
       
       startRegistration: () => set({
@@ -389,6 +465,7 @@ export const useStore = create(
         onboardingStep: 1,
         onboardingData: {}
       }),
+
 
       finishRegistration: async (data) => {
         try {
@@ -400,6 +477,7 @@ export const useStore = create(
           console.log('📤 Отправляем данные:', fullData);
           const user = await registerUser(fullData);
           console.log('✅ Регистрация успешна:', user);
+
 
           set({
             user: user,
@@ -415,6 +493,7 @@ export const useStore = create(
       },
     }),
 
+
     {
       name: 'campus-storage',
       partialize: (state) => ({
@@ -427,9 +506,12 @@ export const useStore = create(
         likedPosts: state.likedPosts,
         requestDraft: state.requestDraft,
         marketFilters: state.marketFilters,
+        postsFilters: state.postsFilters,
+        requestsFilters: state.requestsFilters, 
       }),
     }
   )
 );
+
 
 export default useStore;

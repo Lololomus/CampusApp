@@ -60,6 +60,11 @@ const INTEREST_EMOJIS = {
 
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.REACT_APP_USE_MOCK === 'true';
 
+// 🎨 Генераторы SVG placeholder'ов для разных профилей
+const createAvatar = (letter, gradient1, gradient2, size = 400) => {
+  return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size * 1.2}'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:${gradient1};stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:${gradient2};stop-opacity:1' /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23grad)'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial,sans-serif' font-size='${size * 0.35}' font-weight='bold' fill='white' text-anchor='middle' dy='.35em'%3E${letter}%3C/text%3E%3C/svg%3E`;
+};
+
 const MOCK_PROFILES = [
   { 
     id: 1, 
@@ -76,8 +81,8 @@ const MOCK_PROFILES = [
       answer: 'Ночной хакатон с пиццей и Red Bull, потом встретить рассвет на крыше 🌅'
     },
     photos: [
-      { url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=1000&auto=format&fit=crop' },
-      { url: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=1000&auto=format&fit=crop' }
+      { url: createAvatar('А', '%23667eea', '%23764ba2') }, // Синий → Фиолетовый
+      { url: createAvatar('А', '%235e72e4', '%238e54e9') }  // Вариант 2
     ] 
   },
   { 
@@ -95,7 +100,7 @@ const MOCK_PROFILES = [
       answer: 'Закат в красивом месте — всегда беру камеру и ловлю момент'
     },
     photos: [
-      { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=1000&auto=format&fit=crop' },
+      { url: createAvatar('М', '%23f093fb', '%23f5576c') }, // Розовый → Красный
     ] 
   },
   { 
@@ -113,7 +118,7 @@ const MOCK_PROFILES = [
       answer: 'Гитара на общаге = автоматически +100 к популярности'
     },
     photos: [
-      { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=1000&auto=format&fit=crop' },
+      { url: createAvatar('Д', '%234facfe', '%2300f2fe') }, // Голубой → Бирюзовый
     ] 
   },
   { 
@@ -131,7 +136,7 @@ const MOCK_PROFILES = [
       answer: 'Сразу в зал! А потом протеиновый смузи и планы на вечер'
     },
     photos: [
-      { url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=1000&auto=format&fit=crop' },
+      { url: createAvatar('С', '%2343e97b', '%2338f9d7') }, // Зелёный → Мятный
     ] 
   },
   { 
@@ -149,10 +154,11 @@ const MOCK_PROFILES = [
       answer: 'Google в Калифорнии или OpenAI — хочу быть там, где создаётся будущее'
     },
     photos: [
-      { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1000&auto=format&fit=crop' },
+      { url: createAvatar('М', '%23fa709a', '%23fee140') }, // Розовый → Жёлтый
     ] 
   },
 ];
+
 
 const MOCK_LIKES = [
   {
@@ -164,9 +170,9 @@ const MOCK_LIKES = [
     course: 1,
     bio: 'Люблю театры и литературу 🎭\n\nМечтаю стать журналистом и писать о культуре.',
     photos: [
-      { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=800' },
-      { url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=800' },
-      { url: 'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?q=80&w=800' },
+      { url: createAvatar('А', '%23ff6b6b', '%23ee5a6f', 600) }, // Красный
+      { url: createAvatar('А', '%23ff8787', '%23f06595', 600) }, // Вариант 2
+      { url: createAvatar('А', '%23ff5e5e', '%23d946ef', 600) }, // Вариант 3
     ],
     interests: ['books', 'art', 'movies', 'coffee'],
     goals: ['friends', 'hangout'],
@@ -184,8 +190,8 @@ const MOCK_LIKES = [
     course: 4,
     bio: 'Физтех, люблю математику и шахматы ♟️\n\nРешаю олимпиадные задачи для души.',
     photos: [
-      { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=800' },
-      { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=800' },
+      { url: createAvatar('И', '%235b21b6', '%237c3aed', 600) }, // Фиолетовый
+      { url: createAvatar('И', '%236d28d9', '%238b5cf6', 600) }, // Вариант 2
     ],
     interests: ['science', 'books', 'games', 'coffee'],
     goals: ['study', 'friends'],
@@ -199,9 +205,9 @@ const MOCK_LIKES = [
     course: 2,
     bio: 'UI/UX дизайнер и художник 🎨\n\nРисую акварелью и делаю крутые интерфейсы.',
     photos: [
-      { url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=800' },
-      { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=800' },
-      { url: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?q=80&w=800' },
+      { url: createAvatar('К', '%2314b8a6', '%2306b6d4', 600) }, // Бирюзовый
+      { url: createAvatar('К', '%2310b981', '%233b82f6', 600) }, // Зелёный → Синий
+      { url: createAvatar('К', '%230891b2', '%235eead4', 600) }, // Вариант 3
     ],
     interests: ['art', 'photo', 'coffee', 'music', 'travel'],
     goals: ['friends', 'relationship'],
@@ -219,7 +225,7 @@ const MOCK_LIKES = [
     course: 4,
     bio: 'Гитарист и меломан 🎸\n\nИграю в группе, пишу свою музыку.',
     photos: [
-      { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=800' },
+      { url: createAvatar('Д', '%231e3a8a', '%232563eb', 600) }, // Тёмно-синий
     ],
     interests: ['music', 'party', 'sport', 'coffee'],
     goals: ['friends', 'hangout'],
@@ -233,9 +239,9 @@ const MOCK_LIKES = [
     course: 3,
     bio: 'Спортсменка и фитнес-тренер 💪\n\nЗОЖ - мой образ жизни!',
     photos: [
-      { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=800' },
-      { url: 'https://images.unsplash.com/photo-1518459031867-a89b944bffe4?q=80&w=800' },
-      { url: 'https://images.unsplash.com/photo-1548690312-e3b507d8c110?q=80&w=800' },
+      { url: createAvatar('П', '%23c026d3', '%23e879f9', 600) }, // Пурпурный
+      { url: createAvatar('П', '%23a21caf', '%23f0abfc', 600) }, // Вариант 2
+      { url: createAvatar('П', '%23be185d', '%23fb7185', 600) }, // Розовый
     ],
     interests: ['fitness', 'sport', 'food', 'travel', 'music'],
     goals: ['friends', 'relationship'],
@@ -253,13 +259,14 @@ const MOCK_LIKES = [
     course: 5,
     bio: 'Запускаю EdTech стартап 🚀\n\nВсегда рад новым знакомствам и идеям.',
     photos: [
-      { url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=800' },
-      { url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=800' },
+      { url: createAvatar('А', '%23f97316', '%23fbbf24', 600) }, // Оранжевый → Жёлтый
+      { url: createAvatar('А', '%23ea580c', '%23fb923c', 600) }, // Вариант 2
     ],
     interests: ['startup', 'it', 'coffee', 'books', 'travel'],
     goals: ['study', 'friends'],
   },
 ];
+
 
 const MOCK_MATCHES = [
   {
@@ -272,7 +279,7 @@ const MOCK_MATCHES = [
     institute: 'Филологический',
     course: 1,
     photos: [
-      { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=800', w: 800, h: 1000 }
+      { url: createAvatar('А', '%23ff6b6b', '%23ee5a6f', 600), w: 600, h: 720 }
     ],
     interests: ['books', 'art', 'coffee'],
     goals: ['friends', 'study'],
@@ -295,7 +302,7 @@ const MOCK_MATCHES = [
     institute: 'ФПМИ',
     course: 4,
     photos: [
-      { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=800', w: 800, h: 1000 }
+      { url: createAvatar('И', '%235b21b6', '%237c3aed', 600), w: 600, h: 720 }
     ],
     interests: ['science', 'games', 'coffee'],
     goals: ['study', 'friends'],
@@ -318,7 +325,7 @@ const MOCK_MATCHES = [
     institute: 'Дизайн',
     course: 2,
     photos: [
-      { url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=800', w: 800, h: 1000 }
+      { url: createAvatar('К', '%2314b8a6', '%2306b6d4', 600), w: 600, h: 720 }
     ],
     interests: ['art', 'photo', 'coffee', 'travel'],
     goals: ['friends', 'relationship'],
@@ -623,6 +630,16 @@ function DatingFeed() {
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
   
+  useEffect(() => {
+    document.body.classList.add('dating-active');
+    document.getElementById('root')?.classList.add('dating-active');
+    
+    return () => {
+      document.body.classList.remove('dating-active');
+      document.getElementById('root')?.classList.remove('dating-active');
+    };
+  }, []);
+
   const isLoadingRef = useRef(false);
   const offset = useRef(0);
   const swipeThreshold = 100;
@@ -1036,7 +1053,7 @@ function DatingFeed() {
                       const zIndex = 10 - index;
                       
                       const scale = index === 0 ? 1 : 1 - (index * 0.05);
-                      const translateY = index * 16;
+                      const translateY = isActive ? 0 : 16;
                       const opacity = index === 0 ? 1 : 0.6 - (index * 0.1);
                       
                       const rotation = isActive ? dragX * 0.05 : 0;
@@ -1317,13 +1334,15 @@ function DatingFeed() {
   );
 }
 
-// STYLES
+// Dating feed STYLES
 const styles = {
   container: {
     flex: 1,
     backgroundColor: theme.colors.bg,
     minHeight: '100vh',
+    maxHeight: '100vh',
     position: 'relative',
+    overflow: 'hidden',
   },
   centerContainer: {
     flex: 1,
@@ -1433,15 +1452,19 @@ const styles = {
     flexDirection: 'column',
     flex: 1,
     paddingTop: 'calc(var(--header-padding, 104px) + 16px)',
-    paddingBottom: 100,
+    paddingBottom: 0,
+    overflow: 'hidden',
+    maxHeight: '100vh',
   },
   cardWrapper: {
     position: 'relative',
-    flex: 1,
     padding: '0 12px',
-    minHeight: 500,
-    maxHeight: 'calc(100vh - 380px)',
-    marginBottom: 12,
+    minHeight: 400,
+    height: 'calc(100vh - var(--info-bar-min-height) - var(--header-height) + 250px)',
+    maxHeight: 'calc(100vh - var(--info-bar-min-height) - var(--header-height) + 250px)',
+    marginTop: 'auto',
+    marginBottom: 0,
+    overflow: 'hidden',
   },
   swipeOverlay: {
     position: 'absolute',

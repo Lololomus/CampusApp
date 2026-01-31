@@ -267,7 +267,7 @@ function ProfileCard({
   );
 }
 
-// ===== STYLES =====
+// ===== Profile card STYLES =====
 const styles = {
   card: {
     position: 'relative',
@@ -278,7 +278,9 @@ const styles = {
     overflow: 'hidden',
     boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
     touchAction: 'none',
-    userSelect: 'none'
+    userSelect: 'none',
+    display: 'flex',
+    flexDirection: 'column',
   },
   imageContainer: {
     position: 'relative',
@@ -286,9 +288,9 @@ const styles = {
     height: '100%',
     backgroundColor: theme.colors.bgSecondary,
     cursor: 'grab',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    flex: 1, 
   },
-  // ✅ НОВОЕ: Стек для crossfade
   photosStack: {
     position: 'relative',
     width: '100%',
@@ -303,7 +305,7 @@ const styles = {
     objectFit: 'cover',
     pointerEvents: 'none',
     userSelect: 'none',
-    transition: 'opacity 0.3s ease, filter 0.3s ease, transform 0.3s ease', // ✅ НОВОЕ
+    transition: 'opacity 0.3s ease, filter 0.3s ease, transform 0.3s ease',
   },
   imageSkeleton: {
     position: 'absolute',

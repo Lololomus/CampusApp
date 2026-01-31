@@ -7,13 +7,12 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path="../.env")
 
 # Читаем переменные
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./campus.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://campus:campus123@localhost:5432/campusapp")
 
 # Создаём engine
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Для SQLite
-    echo=True  # Логирует SQL запросы
+    echo=True
 )
 
 # Создаём фабрику сессий

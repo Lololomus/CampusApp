@@ -76,6 +76,7 @@ function App() {
       {/* МОДАЛКА РЕДАКТИРОВАНИЯ */}
       {editingContent && (
         <EditContentModal
+          key={editingContent?.id || Date.now()} 
           contentType={editingType}
           initialData={editingContent}
           onClose={closeEditing}

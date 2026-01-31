@@ -4,11 +4,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import PostCard from './posts/PostCard';
 import RequestsFeed from './requests/RequestsFeed';
 import CreateContentModal from './shared/CreateContentModal';
+import FiltersModal from './shared/FiltersModal';
 import { getPosts } from '../api';
 import { useStore } from '../store';
 import PostCardSkeleton from './posts/PostCardSkeleton';
 import theme from '../theme';
 import AppHeader from './shared/AppHeader';
+
 
 function Feed() {
   const [posts, setPosts] = useState([]);
@@ -17,6 +19,7 @@ function Feed() {
   const [searchQuery, setSearchQuery] = useState('');
   const [requestsCategory, setRequestsCategory] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
   
   const { 
     feedSubTab, 
@@ -26,14 +29,18 @@ function Feed() {
     updatedPostId, 
     getUpdatedPost, 
     clearUpdatedPost,
-    posts: storePosts
+    posts: storePosts,
+    postsFilters,
+    requestsFilters,
   } = useStore();
+
 
   const haptic = (type = 'light') => {
     if (window.Telegram?.WebApp?.HapticFeedback) {
       window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
     }
   };
+
 
   const postCategories = [
     { id: 'all', label: 'Все', emoji: '' },
@@ -43,12 +50,14 @@ function Feed() {
     { id: 'lost_found', label: 'Находки', emoji: '🔍' },
   ];
 
+
   const requestCategories = [
     { id: 'all', label: 'Все', emoji: '' },
     { id: 'study', label: 'Учёба', emoji: '📚' },
     { id: 'help', label: 'Помощь', emoji: '🤝' },
     { id: 'hangout', label: 'Движ', emoji: '🎉' }
   ];
+
 
   const getDynamicTitle = () => {
     if (feedSubTab === 'posts') {
@@ -62,7 +71,28 @@ function Feed() {
     }
   };
 
-  // ✅ ИСПРАВЛЕНО: явно указываем обновление is_liked и likes_count
+
+  // ПОДСЧЁТ АКТИВНЫХ ФИЛЬТРОВ
+  const countActiveFilters = useCallback(() => {
+    if (feedSubTab === 'posts') {
+      let count = 0;
+      if (postsFilters.location !== 'all') count++;
+      if (postsFilters.tags && postsFilters.tags.length > 0) count++;
+      if (postsFilters.dateRange !== 'all') count++;
+      if (postsFilters.sort !== 'newest') count++;
+      return count;
+    } else {
+      let count = 0;
+      if (requestsFilters.location !== 'all') count++;
+      if (requestsFilters.status !== 'active') count++;
+      if (requestsFilters.hasReward !== 'all') count++;
+      if (requestsFilters.urgency !== 'all') count++;
+      if (requestsFilters.sort !== 'newest') count++;
+      return count;
+    }
+  }, [feedSubTab, postsFilters, requestsFilters]);
+
+
   const handleLikeUpdate = useCallback((postId, updates) => {
     setPosts(prevPosts => 
       prevPosts.map(post => 
@@ -77,16 +107,42 @@ function Feed() {
     );
   }, []);
 
+
   const handlePostDeleted = useCallback((postId) => {
     setPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
   }, []);
 
+
+  // передаём фильтры в API
   const loadPosts = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getPosts({ 
-        category: activeCategory === 'all' ? null : activeCategory
-      });
+      // Подготовка фильтров для API
+      const apiFilters = {
+        category: activeCategory === 'all' ? null : activeCategory,
+      };
+
+      // Добавляем фильтры из store
+      if (postsFilters.location === 'my_university') {
+        apiFilters.university = postsFilters.university;
+      } else if (postsFilters.location === 'my_institute') {
+        apiFilters.university = postsFilters.university;
+        apiFilters.institute = postsFilters.institute;
+      }
+
+      if (postsFilters.tags && postsFilters.tags.length > 0) {
+        apiFilters.tags = postsFilters.tags;
+      }
+
+      if (postsFilters.dateRange !== 'all') {
+        apiFilters.dateRange = postsFilters.dateRange;
+      }
+
+      if (postsFilters.sort !== 'newest') {
+        apiFilters.sort = postsFilters.sort;
+      }
+
+      const data = await getPosts(apiFilters);
       
       const postsWithImages = (data.items || []).map(post => {
         let images = [];
@@ -103,11 +159,13 @@ function Feed() {
     } finally {
       setLoading(false);
     }
-  }, [activeCategory]);
+  }, [activeCategory, postsFilters]);
+
 
   useEffect(() => {
     if (feedSubTab === 'posts') loadPosts();
   }, [feedSubTab, loadPosts]);
+
 
   useEffect(() => {
     if (storePosts.length > 0 && feedSubTab === 'posts') {
@@ -118,6 +176,7 @@ function Feed() {
       });
     }
   }, [storePosts, feedSubTab]);
+
 
   useEffect(() => {
     if (!viewPostId && updatedPostId) {
@@ -133,7 +192,9 @@ function Feed() {
     }
   }, [viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost]);
 
+
   const handlePostClick = (postId) => setViewPostId(postId);
+
 
   const handleCategoryChange = (category) => {
     if (feedSubTab === 'posts') setActiveCategory(category);
@@ -141,8 +202,23 @@ function Feed() {
     haptic('light');
   };
 
+
   const handleSearchChange = (query) => setSearchQuery(query);
-  const handleFiltersClick = () => haptic('medium');
+  
+  // открытие модалки фильтров
+  const handleFiltersClick = () => {
+    haptic('medium');
+    setShowFiltersModal(true);
+  };
+
+  // применение фильтров
+  const handleFiltersApply = () => {
+    if (feedSubTab === 'posts') {
+      loadPosts(); // Перезагрузить посты с новыми фильтрами
+    }
+    // Для запросов RequestsFeed сам обновится через useEffect
+  };
+
 
   const handleTabSwitch = (tab) => {
     if (feedSubTab !== tab) {
@@ -151,8 +227,10 @@ function Feed() {
     }
   };
 
+
   const currentCategories = feedSubTab === 'posts' ? postCategories : requestCategories;
   const selectedCategory = feedSubTab === 'posts' ? activeCategory : requestsCategory;
+
 
   return (
     <div style={styles.container}>
@@ -168,7 +246,7 @@ function Feed() {
         onCategoryChange={handleCategoryChange}
         showFilters={true}
         onFiltersClick={handleFiltersClick}
-        activeFiltersCount={0}
+        activeFiltersCount={countActiveFilters()} // ✅ ПЕРЕДАЁМ СЧЁТЧИК
       >
         {/* ТАБЫ (SEGMENTED CONTROL) */}
         <div style={styles.tabsWrapper}>
@@ -192,6 +270,7 @@ function Feed() {
               Посты
             </button>
 
+
             {/* Кнопка Запросы */}
             <button 
               onClick={() => handleTabSwitch('requests')}
@@ -206,6 +285,7 @@ function Feed() {
         </div>
       </AppHeader>
 
+
       <div style={styles.content}>
         {feedSubTab === 'posts' ? (
           <>
@@ -216,6 +296,7 @@ function Feed() {
               </>
             )}
 
+
             {!loading && posts.length === 0 && (
               <div style={styles.empty}>
                 <div style={styles.emptyIcon}>📝</div>
@@ -223,6 +304,7 @@ function Feed() {
                 <p style={styles.emptyHint}>Будь первым!</p>
               </div>
             )}
+
 
             {!loading && posts.length > 0 && posts.map((post) => (
               <div key={post.id} style={{ marginBottom: 16 }}>
@@ -243,6 +325,8 @@ function Feed() {
         )}
       </div>
 
+
+      {/* МОДАЛКА СОЗДАНИЯ */}
       {showCreateModal && (
         <CreateContentModal 
           onClose={() => {
@@ -251,9 +335,18 @@ function Feed() {
           }} 
         />
       )}
+
+      {/* МОДАЛКА ФИЛЬТРОВ */}
+      {showFiltersModal && (
+        <FiltersModal
+          onClose={() => setShowFiltersModal(false)}
+          onApply={handleFiltersApply}
+        />
+      )}
     </div>
   );
 }
+
 
 const styles = {
   container: {
@@ -262,9 +355,11 @@ const styles = {
     minHeight: '100vh',
   },
 
+
   tabsWrapper: {
     padding: '0 12px 12px 12px',
   },
+
 
   tabsContainer: {
     position: 'relative',
@@ -275,6 +370,7 @@ const styles = {
     height: 44,
     border: `1px solid ${theme.colors.border}`,
   },
+
 
   activeIndicator: {
     position: 'absolute',
@@ -288,6 +384,7 @@ const styles = {
     transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
     zIndex: 1,
   },
+
 
   tabButton: {
     flex: 1,
@@ -304,6 +401,7 @@ const styles = {
     justifyContent: 'center',
   },
 
+
   content: {
     display: 'block',
     paddingTop: 'calc(var(--header-padding, 104px) + 16px)', 
@@ -312,6 +410,7 @@ const styles = {
     paddingBottom: 100, 
     transition: 'padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
   },
+
 
   empty: {
     display: 'flex',
@@ -322,9 +421,11 @@ const styles = {
     padding: '60px 20px',
   },
 
+
   emptyIcon: { fontSize: 64, marginBottom: 16, opacity: 0.5 },
   emptyTitle: { fontSize: 18, fontWeight: 600, color: theme.colors.text, marginBottom: 8 },
   emptyHint: { fontSize: 15, color: theme.colors.textDisabled, marginTop: 8 },
 };
+
 
 export default Feed;

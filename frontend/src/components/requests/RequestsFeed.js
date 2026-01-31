@@ -1,17 +1,25 @@
-// ===== RequestsFeed.js (РЕФАКТОРЕННЫЙ) =====
+// ===== 📄 ФАЙЛ: frontend/src/components/requests/RequestsFeed.js (ОБНОВЛЕНО) =====
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../../store';
-import { getRequestsFeed } from '../../api';
+import { getRequestsFeed, deleteRequest, getRequestById } from '../../api';
 import RequestCard from './RequestCard';
 import RequestCardSkeleton from './RequestCardSkeleton';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import RequestDetailModal from './RequestDetailModal';
 
-// ✅ ДОБАВЛЕНЫ PROPS: category, searchQuery
+
 function RequestsFeed({ category = 'all', searchQuery = '' }) {
-  const { requests, setRequests, setCurrentRequest } = useStore();
+  const { 
+    requests, 
+    setRequests, 
+    setCurrentRequest,
+    user,
+    deleteRequest: deleteStoreRequest,
+    setEditingContent,
+    requestsFilters,
+  } = useStore();
   
   // ===== STATE =====
   const [loading, setLoading] = useState(false);
@@ -22,6 +30,7 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
   const isLoadingRef = useRef(false);
   const observerRef = useRef(null);
   const lastCardRef = useRef(null);
+
 
   // ===== ЗАГРУЗКА ЗАПРОСОВ =====
   const loadRequests = useCallback(async (reset = false) => {
@@ -36,8 +45,44 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
         setRequests([]);
       }
 
-      const cat = category === 'all' ? null : category;
-      const response = await getRequestsFeed(cat, 20, offsetRef.current);
+      // ПОДГОТОВКА ФИЛЬТРОВ ДЛЯ API
+      const apiFilters = {
+        category: category === 'all' ? null : category,
+        limit: 20,
+        offset: offsetRef.current,
+      };
+
+      // Локация
+      if (requestsFilters.location === 'my_university') {
+        apiFilters.university = requestsFilters.university;
+      } else if (requestsFilters.location === 'my_institute') {
+        apiFilters.university = requestsFilters.university;
+        apiFilters.institute = requestsFilters.institute;
+      }
+
+      // Статус
+      if (requestsFilters.status !== 'active') {
+        apiFilters.status = requestsFilters.status;
+      }
+
+      // Вознаграждение
+      if (requestsFilters.hasReward !== 'all') {
+        apiFilters.hasReward = requestsFilters.hasReward;
+      }
+
+      // Срочность
+      if (requestsFilters.urgency !== 'all') {
+        apiFilters.urgency = requestsFilters.urgency;
+      }
+
+      // Сортировка
+      if (requestsFilters.sort !== 'newest') {
+        apiFilters.sort = requestsFilters.sort;
+      }
+
+      console.log('📡 Загрузка запросов с фильтрами:', apiFilters);
+
+      const response = await getRequestsFeed(apiFilters);
 
       console.log('✅ Загружено запросов:', response.items?.length || 0);
 
@@ -58,12 +103,14 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
       setLoading(false);
       isLoadingRef.current = false;
     }
-  }, [category, requests, setRequests]);
+  }, [category, requests, setRequests, requestsFilters]); // ✅ ДОБАВИЛИ requestsFilters
 
-  // ===== INITIAL LOAD =====
+
+  // ===== INITIAL LOAD (ОБНОВЛЕНО) =====
   useEffect(() => {
     loadRequests(true);
-  }, [category]);
+  }, [category, requestsFilters]); // ✅ ДОБАВИЛИ requestsFilters
+
 
   // ===== INFINITE SCROLL =====
   useEffect(() => {
@@ -92,11 +139,83 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
     };
   }, [loading, hasMore, loadRequests]);
 
+
+  // ===== РЕДАКТИРОВАТЬ ЗАПРОС =====
+  const handleEdit = async (request) => {
+    console.log('✏️ Редактирование запроса:', request.id);
+    
+    // Загружаем ПОЛНЫЕ данные с сервера
+    try {
+      hapticFeedback('light');
+      
+      // Закрываем модалки
+      setShowDetailModal(false);
+      setCurrentRequest(null);
+      
+      // Загружаем полные данные запроса
+      console.log('📡 Загружаем полные данные запроса...');
+      const fullRequest = await getRequestById(request.id);
+      
+      console.log('✅ Полные данные получены:', fullRequest);
+      
+      // Открываем EditContentModal с ПОЛНЫМИ данными
+      setEditingContent(fullRequest, 'request');
+      
+    } catch (error) {
+      console.error('❌ Ошибка загрузки запроса:', error);
+      hapticFeedback('error');
+      alert('Не удалось загрузить данные запроса');
+    }
+  };
+
+
+  // ===== УДАЛИТЬ ЗАПРОС =====
+  const handleDelete = async (request) => {
+    console.log('🗑️ Удаление запроса:', request.id);
+    
+    if (!window.confirm(`Удалить запрос "${request.title}"? Это действие нельзя отменить.`)) {
+      return;
+    }
+
+    try {
+      hapticFeedback('medium');
+      
+      await deleteRequest(request.id);
+      
+      // Удаляем из store
+      deleteStoreRequest(request.id);
+      
+      // Закрываем модалку (если открыта)
+      setShowDetailModal(false);
+      setCurrentRequest(null);
+      
+      hapticFeedback('success');
+      
+      console.log('✅ Запрос удалён:', request.id);
+      
+    } catch (error) {
+      console.error('❌ Ошибка удаления:', error);
+      hapticFeedback('error');
+      alert('❌ Не удалось удалить запрос. Попробуйте ещё раз.');
+    }
+  };
+
+
+  // ===== ПОЖАЛОВАТЬСЯ =====
+  const handleReport = (request) => {
+    console.log('🚩 Жалоба на запрос:', request.id);
+    hapticFeedback('light');
+    alert('⚠️ Функция жалоб будет добавлена в следующем обновлении.');
+    // TODO: Реализовать систему жалоб
+  };
+
+
   // ===== КЛИК НА КАРТОЧКУ =====
   const handleCardClick = (request) => {
     setCurrentRequest(request);
     setShowDetailModal(true);
   };
+
 
   // ===== ФИЛЬТРАЦИЯ ПО ПОИСКУ =====
   const filteredRequests = requests.filter(req => {
@@ -110,10 +229,9 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
     );
   });
 
+
   return (
     <div style={styles.container}>
-      {/* ✅ УБРАН HEADER И FILTERS (теперь в Feed.js) */}
-
       {/* ЛЕНТА КАРТОЧЕК */}
       <div style={styles.feed}>
         {loading && requests.length === 0 ? (
@@ -132,6 +250,10 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
                 <RequestCard
                   request={request}
                   onClick={handleCardClick}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onReport={handleReport}
+                  currentUserId={user?.id}
                 />
               </div>
             ))}
@@ -146,13 +268,19 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
         )}
       </div>
 
-      {/* МОДАЛКИ */}
+      {/* МОДАЛКА ДЕТАЛЬНОГО ПРОСМОТРА */}
       {showDetailModal && (
-        <RequestDetailModal onClose={() => setShowDetailModal(false)} />
+        <RequestDetailModal 
+          onClose={() => setShowDetailModal(false)}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onReport={handleReport}
+        />
       )}
     </div>
   );
 }
+
 
 // ===== EMPTY STATE =====
 function EmptyState({ category, hasSearch }) {
@@ -202,21 +330,17 @@ function EmptyState({ category, hasSearch }) {
   );
 }
 
-// ===== СТИЛИ (УПРОЩЕНЫ) =====
+
+// ===== СТИЛИ =====
 const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    // Убрали все отступы, так как они задаются в родителе (Feed.js)
   },
 
   feed: {
     flex: 1,
-    // Убрали overflowY, так как скроллится вся страница (window)
-    
-    // ✅ ИСПРАВЛЕНИЕ: Убрали padding-top, padding-left, padding-right, padding-bottom.
-    // Теперь этот блок просто занимает доступное место внутри Feed.js.
     display: 'block', 
   },
 
@@ -249,5 +373,6 @@ const styles = {
     maxWidth: 300,
   },
 };
+
 
 export default RequestsFeed;

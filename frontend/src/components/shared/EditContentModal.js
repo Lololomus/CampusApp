@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, 
   Image as ImageIcon, Trash2, BarChart2, Clock, EyeOff, Eye,
-  Loader2, Star, Lock, Info
+  Loader2, Star, Lock, Info, Gift
 } from 'lucide-react';
 import { updatePost, updateRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
@@ -50,18 +50,17 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
   const category = initialData.category || 'general';
 
   // Common Fields
-  const [title, setTitle] = useState(initialData.title || '');
-  const [body, setBody] = useState(initialData.body || '');
+  const [title, setTitle] = useState(() => initialData?.title || '');
+  const [body, setBody] = useState(() => initialData?.body || '');
   const [tags, setTags] = useState(() => {
+    if (!initialData) return [];
     if (Array.isArray(initialData.tags)) return initialData.tags;
     try { return JSON.parse(initialData.tags); } catch { return []; }
   });
   const [tagInput, setTagInput] = useState('');
 
-  // Post Specific
-  // images теперь хранит объекты { url, filename, isNew, file }
+  // Images (для постов И запросов)
   const [images, setImages] = useState(() => {
-    if (!isPost) return [];
     const rawImages = initialData.images || [];
     let parsedImages = rawImages;
     
@@ -84,31 +83,43 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
   const [processingImages, setProcessingImages] = useState([]); // { id, progress }
 
   // Flags
-  const [isAnonymous, setIsAnonymous] = useState(initialData.is_anonymous || false);
-  const [isImportant, setIsImportant] = useState(initialData.is_important || false);
+  const [isAnonymous, setIsAnonymous] = useState(() => initialData?.is_anonymous || false);
+  const [isImportant, setIsImportant] = useState(() => initialData?.is_important || false);
   
   // Lost & Found
-  const [lostOrFound, setLostOrFound] = useState(initialData.lost_or_found || 'lost');
-  const [itemDescription, setItemDescription] = useState(initialData.item_description || '');
-  const [location, setLocation] = useState(initialData.location || '');
-  const [rewardType, setRewardType] = useState(initialData.reward_type || REWARD_TYPES.NONE);
-  const [rewardValue, setRewardValue] = useState(initialData.reward_value || '');
+  const [lostOrFound, setLostOrFound] = useState(() => initialData?.lost_or_found || 'lost');
+  const [itemDescription, setItemDescription] = useState(() => initialData?.item_description || '');
+  const [location, setLocation] = useState(() => initialData?.location || '');
+  const [rewardType, setRewardType] = useState(() => initialData?.reward_type || REWARD_TYPES.NONE);
+  const [rewardValue, setRewardValue] = useState(() => initialData?.reward_value || '');
 
   // Events
-  const [eventName, setEventName] = useState(initialData.event_name || '');
-  const [eventDate, setEventDate] = useState(
-    initialData.event_date ? new Date(initialData.event_date).toISOString().slice(0, 16) : ''
+  const [eventName, setEventName] = useState(() => initialData?.event_name || '');
+  const [eventDate, setEventDate] = useState(() => 
+    initialData?.event_date ? new Date(initialData.event_date).toISOString().slice(0, 16) : ''
   );
-  const [eventLocation, setEventLocation] = useState(initialData.event_location || '');
-  const [eventContact, setEventContact] = useState(initialData.event_contact || '');
+  const [eventLocation, setEventLocation] = useState(() => initialData?.event_location || '');
+  const [eventContact, setEventContact] = useState(() => initialData?.event_contact || '');
   const [activeEventDateBtn, setActiveEventDateBtn] = useState(null);
 
-  // Polls (ReadOnly structure)
-  const poll = initialData.poll || null;
+  // Polls
+  const poll = initialData?.poll || null;
 
   // Request Specific
-  const [expiresAt, setExpiresAt] = useState(initialData.expires_at || '');
-  const [activeTimeBtn, setActiveTimeBtn] = useState(0);
+  const [expiresAt, setExpiresAt] = useState(() => initialData?.expires_at || '');
+  const [activeTimeBtn, setActiveTimeBtn] = useState(() => {
+    if (!initialData || !initialData.expires_at) return 72;
+    
+    const now = new Date();
+    const expires = new Date(initialData.expires_at);
+    const diffHours = Math.round((expires - now) / (1000 * 60 * 60));
+    
+    if (Math.abs(diffHours - 24) < 2) return 24;
+    if (Math.abs(diffHours - 72) < 2) return 72;
+    if (Math.abs(diffHours - 168) < 2) return 168;
+    
+    return 0;
+  });
 
   // Refs
   const titleInputRef = useRef(null);
@@ -337,11 +348,14 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
             showSuccessToast('Пост обновлён!');
 
         } else {
-            // REQUEST UPDATE
-            const requestData = {
+                // REQUEST UPDATE
+                const requestData = {
                 title: title.trim(),
                 body: body.trim(),
                 tags: tags,
+                reward_type: rewardType,           
+                reward_value: rewardValue || '',   
+                expires_at: expiresAt              
             };
             
             const updatedReq = await updateRequest(initialData.id, requestData);
@@ -635,7 +649,154 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
                       )}
                     </div>
                   )}
+                  {/* ПОЛЯ ДЛЯ ЗАПРОСОВ */}
+                  {!isPost && (
+                    <>
+                      {/* НАГРАДА */}
+                      <div style={styles.section}>
+                        <label style={styles.label}>
+                          <div style={{display:'flex',alignItems:'center',gap:6}}>
+                            <Gift size={16}/> Награда
+                          </div>
+                          <span style={{fontSize: theme.fontSize.xs, color: theme.colors.textTertiary, fontWeight: 400}}>опционально</span>
+                        </label>
+                        <div style={{
+                          padding: theme.spacing.md,
+                          borderRadius: theme.radius.lg,
+                          background: `linear-gradient(135deg, rgba(255,215,0,0.08) 0%, rgba(255,165,0,0.08) 100%)`,
+                          border: `2px dashed rgba(255,215,0,0.25)`
+                        }}>
+                          <select 
+                            value={rewardType} 
+                            onChange={e=>setRewardType(e.target.value)} 
+                            style={{...styles.input, marginBottom: rewardType !== REWARD_TYPES.NONE ? theme.spacing.sm : 0}}
+                            disabled={isSubmitting}
+                          >
+                            {Object.entries(REWARD_TYPE_LABELS).map(([k,l])=>(
+                              <option key={k} value={k}>{REWARD_TYPE_ICONS[k]} {l}</option>
+                            ))}
+                          </select>
+                          {rewardType !== REWARD_TYPES.NONE && (
+                            <input 
+                              type="text" 
+                              placeholder={
+                                rewardType==='money' ? "Например: 500₽" :
+                                rewardType==='help_back' ? "Например: Помогу с программированием" :
+                                rewardType==='food' ? "Например: Кофе в буфете" :
+                                "Опишите награду"
+                              }
+                              value={rewardValue} 
+                              onChange={e=>setRewardValue(e.target.value)} 
+                              style={styles.input}
+                              maxLength={100}
+                              disabled={isSubmitting}
+                            />
+                          )}
+                        </div>
+                      </div>
 
+                      {/* ИЗОБРАЖЕНИЯ ДЛЯ ЗАПРОСОВ */}
+                      <div style={styles.section}>
+                        <label style={styles.label}>
+                            Изображения (опционально)
+                            <span style={styles.charCount}>{images.length + processingImages.length}/{MAX_IMAGES}</span>
+                        </label>
+                        <input 
+                          ref={fileInputRef} 
+                          type="file" 
+                          accept="image/*" 
+                          multiple 
+                          onChange={handleFileSelect} 
+                          style={{ display: 'none' }} 
+                        />
+                        
+                        {(images.length > 0 || processingImages.length > 0) ? (
+                          <div style={styles.imagesPreview}>
+                              {images.map((img, i) => (
+                              <div key={i} style={styles.imagePreviewItem}>
+                                  <img src={img.url} style={styles.previewImage} alt="" />
+                                  <button 
+                                    onClick={() => handleRemoveImage(i)} 
+                                    style={styles.removeImageButton}
+                                    disabled={isSubmitting}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                  {img.isNew && <div style={styles.newBadge}>NEW</div>}
+                              </div>
+                              ))}
+                              
+                              {processingImages.map((proc) => (
+                                  <div key={proc.id} style={styles.imagePreviewItem}>
+                                      <div style={styles.loadingOverlay}>
+                                          <CircularProgress progress={proc.progress} />
+                                          <span style={styles.loadingPercent}>{Math.round(proc.progress)}%</span>
+                                      </div>
+                                  </div>
+                              ))}
+                              
+                              {(images.length + processingImages.length) < MAX_IMAGES && (
+                              <button 
+                                onClick={() => fileInputRef.current?.click()} 
+                                style={styles.addImagePlaceholder} 
+                                disabled={isSubmitting}
+                              >
+                                  <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                                      <Plus size={24} />
+                                  </div>
+                              </button>
+                              )}
+                          </div>
+                        ) : (
+                            <button 
+                              onClick={() => fileInputRef.current?.click()} 
+                              style={styles.addImageButton} 
+                              disabled={isSubmitting}
+                            >
+                                <ImageIcon size={20} /> Добавить фото
+                            </button>
+                        )}
+                      </div>
+
+                      {/* ВРЕМЯ ИСТЕЧЕНИЯ */}
+                      <div style={styles.section}>
+                        <label style={styles.label}>
+                          <div style={{display:'flex',alignItems:'center',gap:6}}>
+                            <Clock size={16}/> Актуально до*
+                          </div>
+                        </label>
+                        <div style={styles.quickDateButtons}>
+                          {[24, 72, 168].map(h => (
+                              <button 
+                                key={h}
+                                onClick={() => { 
+                                  const now = new Date();
+                                  const future = new Date(now.getTime() + h * 60 * 60 * 1000);
+                                  setExpiresAt(future.toISOString()); 
+                                  setActiveTimeBtn(h); 
+                                  hapticFeedback('light');
+                                }} 
+                                style={activeTimeBtn === h ? styles.quickDateBtnActive : styles.quickDateBtn}
+                                type="button"
+                                disabled={isSubmitting}
+                              >
+                                  {h === 24 ? '24ч' : h === 72 ? '3 дня' : 'Неделя'}
+                              </button>
+                          ))}
+                        </div>
+                        <input 
+                          type="datetime-local" 
+                          value={expiresAt ? new Date(expiresAt).toISOString().slice(0, 16) : ''}
+                          onChange={(e) => { 
+                            setExpiresAt(new Date(e.target.value).toISOString()); 
+                            setActiveTimeBtn(0); 
+                          }}
+                          style={{...styles.input, marginTop: theme.spacing.sm, borderColor: attemptedSubmit && !expiresAt ? theme.colors.error : theme.colors.border}}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </>
+                  )}
                   {/* TAGS */}
                   <div style={styles.section}>
                     <label style={styles.label}>Теги</label>

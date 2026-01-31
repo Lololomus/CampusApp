@@ -95,19 +95,39 @@ export async function getUserStats(userId) {
   }
 }
 
-export async function getPosts({ category, university, course } = {}) {
+export async function getPosts(filters = {}) {
   try {
     const telegram_id = getTelegramId();
     const params = { telegram_id, skip: 0, limit: 50 };
     
-    if (category && category !== 'all') {
-      params.category = category;
+    // Категория
+    if (filters.category && filters.category !== 'all') {
+      params.category = filters.category;
     }
-    if (university) {
-      params.university = university;
+    
+    // Университет
+    if (filters.university && filters.university !== 'all') {
+      params.university = filters.university;
     }
-    if (course) {
-      params.course = course;
+    
+    // Институт
+    if (filters.institute && filters.institute !== 'all') {
+      params.institute = filters.institute;
+    }
+    
+    // Теги (массив → comma-separated строка)
+    if (filters.tags && Array.isArray(filters.tags) && filters.tags.length > 0) {
+      params.tags = filters.tags.join(',');
+    }
+    
+    // Диапазон дат
+    if (filters.dateRange && filters.dateRange !== 'all') {
+      params.date_range = filters.dateRange;
+    }
+    
+    // Сортировка
+    if (filters.sort && filters.sort !== 'newest') {
+      params.sort = filters.sort;
     }
 
     const response = await api.get('/posts/feed', { params });
@@ -345,13 +365,50 @@ export async function createRequest(requestData, onProgress = null) {
   }
 }
 
-export async function getRequestsFeed(category = null, limit = 20, offset = 0) {
+export async function getRequestsFeed(filters = {}) {
   try {
     const telegram_id = getTelegramId();
-    const params = { limit, offset };
+    const params = { 
+      limit: filters.limit || 20, 
+      offset: filters.offset || 0 
+    };
     
     if (telegram_id) params.telegram_id = telegram_id;
-    if (category && category !== 'all') params.category = category;
+    
+    // Категория
+    if (filters.category && filters.category !== 'all') {
+      params.category = filters.category;
+    }
+    
+    // Университет
+    if (filters.university && filters.university !== 'all') {
+      params.university = filters.university;
+    }
+    
+    // Институт
+    if (filters.institute && filters.institute !== 'all') {
+      params.institute = filters.institute;
+    }
+    
+    // Статус
+    if (filters.status && filters.status !== 'active') {
+      params.status = filters.status;
+    }
+    
+    // Вознаграждение
+    if (filters.hasReward && filters.hasReward !== 'all') {
+      params.has_reward = filters.hasReward;
+    }
+    
+    // Срочность
+    if (filters.urgency && filters.urgency !== 'all') {
+      params.urgency = filters.urgency;
+    }
+    
+    // Сортировка
+    if (filters.sort && filters.sort !== 'newest') {
+      params.sort = filters.sort;
+    }
     
     const response = await api.get('/api/requests/feed', { params });
     return response.data;

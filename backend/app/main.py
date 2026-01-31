@@ -216,44 +216,61 @@ def get_user_stats(user_id: int, db: Session = Depends(get_db)):
     }
 
 # ===== POST ENDPOINTS + POLLS =====
-
 @app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
 def get_posts_feed(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     category: Optional[str] = Query(None),
     telegram_id: int = Query(...),
+    
+    # ПАРАМЕТРЫ ФИЛЬТРАЦИИ
+    university: Optional[str] = Query(None),      # Фильтр по университету
+    institute: Optional[str] = Query(None),       # Фильтр по институту
+    tags: Optional[str] = Query(None),            # Comma-separated: "помощь,срочно"
+    date_range: Optional[str] = Query(None),      # 'today' | 'week' | 'month'
+    sort: Optional[str] = Query('newest'),        # 'newest' | 'popular' | 'discussed'
+    
     db: Session = Depends(get_db)
 ):
+    """Лента постов с фильтрацией"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    posts = crud.get_posts(db, skip=skip, limit=limit, category=category)
-    
+
+    # Передаем все параметры фильтрации в CRUD
+    posts = crud.get_posts(
+        db, 
+        skip=skip, 
+        limit=limit, 
+        category=category,
+        university=university,
+        institute=institute,
+        tags=tags,
+        date_range=date_range,
+        sort=sort
+    )
+
     result = []
     for post in posts:
         tags = json.loads(post.tags) if post.tags else []
         is_liked = crud.is_post_liked_by_user(db, post.id, user.id)
         images = get_image_urls(post.images) if post.images else []
-        
+
         author_id_data = post.author_id if post.is_anonymous else post.author_id
-        
         if post.is_anonymous:
             author_data = {"name": "Аноним"}
             author_id_data = None
         else:
             author_data = schemas.UserShort.from_orm(post.author) if post.author else None
-        
+
         poll_response = None
         if post.poll:
             user_vote = db.query(models.PollVote).filter(
                 models.PollVote.poll_id == post.poll.id,
                 models.PollVote.user_id == user.id
             ).first()
-            
             user_votes_indices = json.loads(user_vote.option_indices) if user_vote else []
-            
+
             options_data = json.loads(post.poll.options)
             options_response = []
             for opt in options_data:
@@ -263,7 +280,7 @@ def get_posts_feed(
                     "votes": opt['votes'],
                     "percentage": round(percentage, 1)
                 })
-            
+
             poll_response = {
                 "id": post.poll.id,
                 "post_id": post.poll.post_id,
@@ -278,7 +295,7 @@ def get_posts_feed(
                 "is_closed": False,
                 "user_votes": user_votes_indices
             }
-        
+
         post_dict = {
             "id": post.id,
             "author_id": author_id_data,
@@ -309,7 +326,7 @@ def get_posts_feed(
             "updated_at": post.updated_at
         }
         result.append(post_dict)
-    
+
     return {
         "items": result,
         "total": len(result),
@@ -793,7 +810,7 @@ def toggle_comment_like_endpoint(
     
     return crud.toggle_comment_like(db, comment_id, user.id)
 
-# ===== REQUEST ENDPOINTS (✅ ОБНОВЛЕНО) =====
+# ===== REQUEST ENDPOINTS =====
 
 @app.post("/api/requests/create", response_model=schemas.RequestResponse)
 async def create_request_endpoint(
@@ -876,16 +893,39 @@ def get_requests_feed_endpoint(
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
     telegram_id: Optional[int] = Query(None),
+    
+    # ПАРАМЕТРЫ ФИЛЬТРАЦИИ
+    university: Optional[str] = Query(None),      # Фильтр по университету
+    institute: Optional[str] = Query(None),       # Фильтр по институту
+    status: Optional[str] = Query('active'),      # 'active' | 'all'
+    has_reward: Optional[str] = Query(None),      # 'with' | 'without'
+    urgency: Optional[str] = Query(None),         # 'soon' (<24h) | 'later'
+    sort: Optional[str] = Query('newest'),        # 'newest' | 'expires_soon' | 'most_responses'
+    
     db: Session = Depends(get_db)
 ):
+    """Лента запросов с фильтрацией"""
     current_user_id = None
     if telegram_id:
         user = crud.get_user_by_telegram_id(db, telegram_id)
         if user:
             current_user_id = user.id
-    
-    feed_data = crud.get_requests_feed(db, category, limit, offset, current_user_id)
-    
+
+    # Передаем все параметры фильтрации в CRUD
+    feed_data = crud.get_requests_feed(
+        db, 
+        category, 
+        limit, 
+        offset, 
+        current_user_id,
+        university=university,
+        institute=institute,
+        status=status,
+        has_reward=has_reward,
+        urgency=urgency,
+        sort=sort
+    )
+
     items = []
     for req_dict in feed_data['items']:
         author_data = schemas.RequestAuthor(
@@ -896,7 +936,7 @@ def get_requests_feed_endpoint(
             institute=req_dict['author'].institute,
             username=req_dict['author'].username
         )
-        
+
         items.append(schemas.RequestResponse(
             id=req_dict['id'],
             category=req_dict['category'],
@@ -915,7 +955,7 @@ def get_requests_feed_endpoint(
             reward_value=req_dict.get('reward_value'),
             images=req_dict.get('images', [])
         ))
-    
+
     return schemas.RequestsFeedResponse(
         items=items,
         total=feed_data['total'],

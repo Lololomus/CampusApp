@@ -75,29 +75,83 @@ def get_posts(
     limit: int = 20,
     category: Optional[str] = None,
     university: Optional[str] = None,
-    course: Optional[int] = None
+    institute: Optional[str] = None,
+    tags: Optional[str] = None,            # comma-separated
+    date_range: Optional[str] = None,      # 'today' | 'week' | 'month'
+    sort: str = 'newest',                  # 'newest' | 'popular' | 'discussed'
 ) -> List[models.Post]:
-    """Получить список постов с фильтрами + Опросы"""
+    """Получение постов с фильтрацией"""
     query = db.query(models.Post).options(
         joinedload(models.Post.author),
-        joinedload(models.Post.poll).joinedload(models.Poll.votes) # ✅ Подгружаем опросы
+        joinedload(models.Post.poll).joinedload(models.Poll.votes)
     )
-    
-    # Фильтр категорий
-    if category and category != "all":
+
+    # Фильтр по категории
+    if category and category != 'all':
         query = query.filter(models.Post.category == category)
-    
-    # Фильтры (если будут нужны для ленты университета)
-    # Примечание: В модели Post нет прямого поля university/course, 
-    # обычно фильтруют через author.university, но оставим как в твоем коде
-    # если ты добавил эти поля в Post. Если нет - этот код нужно убрать.
-    if hasattr(models.Post, 'university') and university and university != "all":
-        query = query.filter(models.Post.university == university)
-    
-    return query.order_by(
-        models.Post.is_important.desc(),
-        models.Post.created_at.desc()
-    ).offset(skip).limit(limit).all()
+
+    # Фильтр по университету
+    if university and university != 'all':
+        if hasattr(models.Post, 'university'):
+            query = query.filter(models.Post.university == university)
+        else:
+            # Фильтрация через автора если нет поля university в Post
+            query = query.join(models.User).filter(models.User.university == university)
+
+    # Фильтр по институту
+    if institute and institute != 'all':
+        if hasattr(models.Post, 'institute'):
+            query = query.filter(models.Post.institute == institute)
+        else:
+            # Фильтрация через автора
+            if university:  # Уже есть join
+                query = query.filter(models.User.institute == institute)
+            else:
+                query = query.join(models.User).filter(models.User.institute == institute)
+
+    # Фильтр по тегам (хотя бы один из указанных)
+    if tags:
+        tags_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        if tags_list:
+            # Поиск постов с хотя бы одним из тегов
+            tag_conditions = [models.Post.tags.like(f'%"{tag}"%') for tag in tags_list]
+            query = query.filter(or_(*tag_conditions))
+
+    # Фильтр по дате
+    if date_range:
+        now = datetime.now(timezone.utc)
+        if date_range == 'today':
+            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            query = query.filter(models.Post.created_at >= start_date)
+        elif date_range == 'week':
+            start_date = now - timedelta(days=7)
+            query = query.filter(models.Post.created_at >= start_date)
+        elif date_range == 'month':
+            start_date = now - timedelta(days=30)
+            query = query.filter(models.Post.created_at >= start_date)
+
+    # Сортировка
+    if sort == 'popular':
+        # По количеству лайков
+        query = query.order_by(
+            models.Post.is_important.desc(),
+            models.Post.likes_count.desc(),
+            models.Post.created_at.desc()
+        )
+    elif sort == 'discussed':
+        # По количеству комментариев
+        query = query.order_by(
+            models.Post.is_important.desc(),
+            models.Post.comments_count.desc(),
+            models.Post.created_at.desc()
+        )
+    else:  # 'newest' (по умолчанию)
+        query = query.order_by(
+            models.Post.is_important.desc(),
+            models.Post.created_at.desc()
+        )
+
+    return query.offset(skip).limit(limit).all()
 
 def get_post(db: Session, post_id: int) -> Optional[models.Post]:
     """Получить пост по ID"""
@@ -618,40 +672,115 @@ def get_requests_feed(
     category: Optional[str] = None,
     limit: int = 20,
     offset: int = 0,
-    current_user_id: Optional[int] = None
+    current_user_id: Optional[int] = None,
+    university: Optional[str] = None,
+    institute: Optional[str] = None,
+    status: str = 'active',                # 'active' | 'all'
+    has_reward: Optional[str] = None,      # 'with' | 'without'
+    urgency: Optional[str] = None,         # 'soon' (<24h) | 'later'
+    sort: str = 'newest',                  # 'newest' | 'expires_soon' | 'most_responses'
 ) -> Dict:
+    """Лента запросов с фильтрацией"""
     now = datetime.now(timezone.utc)
-    urgent_threshold = now + timedelta(hours=3)
-    
-    query = db.query(models.Request).options(joinedload(models.Request.author)).filter(
-        models.Request.status == 'active',
-        models.Request.expires_at > now
+    urgent_threshold = now + timedelta(hours=24)  # Срочно = <24 часа
+
+    query = db.query(models.Request).options(
+        joinedload(models.Request.author)
     )
-    
+
+    # Фильтр по статусу
+    if status == 'active':
+        query = query.filter(
+            models.Request.status == 'active',
+            models.Request.expires_at > now
+        )
+    elif status == 'all':
+        # Показывать все (включая expired)
+        pass
+
+    # Фильтр по категории
     if category and category != 'all':
         query = query.filter(models.Request.category == category)
-    
+
+    # Фильтр по университету
+    if university and university != 'all':
+        if hasattr(models.Request, 'university'):
+            query = query.filter(models.Request.university == university)
+        else:
+            # Фильтрация через автора
+            query = query.join(models.User).filter(models.User.university == university)
+
+    # Фильтр по институту
+    if institute and institute != 'all':
+        if hasattr(models.Request, 'institute'):
+            query = query.filter(models.Request.institute == institute)
+        else:
+            # Фильтрация через автора
+            if university:  # Уже есть join
+                query = query.filter(models.User.institute == institute)
+            else:
+                query = query.join(models.User).filter(models.User.institute == institute)
+
+    # Фильтр по наличию вознаграждения
+    if has_reward == 'with':
+        query = query.filter(
+            models.Request.reward_type.isnot(None),
+            models.Request.reward_type != ''
+        )
+    elif has_reward == 'without':
+        query = query.filter(
+            or_(
+                models.Request.reward_type.is_(None),
+                models.Request.reward_type == ''
+            )
+        )
+
+    # Фильтр по срочности
+    if urgency == 'soon':
+        # Срочные: истекают в течение 24 часов
+        query = query.filter(
+            models.Request.expires_at > now,
+            models.Request.expires_at <= urgent_threshold
+        )
+    elif urgency == 'later':
+        # Не срочные: истекают позже 24 часов
+        query = query.filter(models.Request.expires_at > urgent_threshold)
+
     total = query.count()
-    
-    query = query.order_by(
-        case(
-            (models.Request.expires_at < urgent_threshold, 0),
-            else_=1
-        ),
-        case(
-            (models.Request.expires_at < urgent_threshold, models.Request.expires_at),
-            else_=None
-        ),
-        models.Request.created_at.desc()
-    )
-    
+
+    # Сортировка
+    if sort == 'expires_soon':
+        # По ближайшему истечению
+        query = query.filter(models.Request.expires_at > now).order_by(
+            models.Request.expires_at.asc()
+        )
+    elif sort == 'most_responses':
+        # По количеству откликов
+        query = query.order_by(
+            models.Request.responses_count.desc(),
+            models.Request.created_at.desc()
+        )
+    else:  # 'newest' (по умолчанию)
+        # Срочные в приоритете, затем по дате создания
+        query = query.order_by(
+            case(
+                (models.Request.expires_at <= urgent_threshold, 0),
+                else_=1
+            ),
+            case(
+                (models.Request.expires_at <= urgent_threshold, models.Request.expires_at),
+                else_=None
+            ),
+            models.Request.created_at.desc()
+        )
+
     requests = query.offset(offset).limit(limit).all()
-    
+
     result = []
     for req in requests:
         tags = json.loads(req.tags) if req.tags else []
         images = get_image_urls(req.images) if req.images else []
-        
+
         req_dict = {
             'id': req.id,
             'category': req.category,
@@ -671,7 +800,7 @@ def get_requests_feed(
             'images': images
         }
         result.append(req_dict)
-    
+
     return {
         'items': result,
         'total': total,
