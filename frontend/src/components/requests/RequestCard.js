@@ -1,7 +1,8 @@
 // ===== RequestCard.js =====
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Clock, Gift, Image as ImageIcon, MoreVertical, Edit2, Trash2, Flag } from 'lucide-react';
+import { Clock, Gift, Image as ImageIcon, MoreVertical } from 'lucide-react';
+import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { REWARD_TYPE_LABELS, REWARD_TYPE_ICONS } from '../../types';
@@ -202,10 +203,25 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
 
   // ===== МЕНЮ ДЕЙСТВИЙ =====
   const menuItems = [
+    // Скопировать ссылку — для ВСЕХ
+    {
+      label: 'Скопировать ссылку',
+      icon: '🔗',  // ✅ Эмодзи вместо <LinkIcon />
+      actionType: MENU_ACTIONS.COPY,
+      onClick: () => {
+        hapticFeedback('success');
+        setMenuOpen(false);
+        const link = `campusapp://request/${request.id}`;
+        navigator.clipboard.writeText(link);
+      }
+    },
+    
+    // Действия АВТОРА
     ...(isAuthor ? [
       {
         label: 'Редактировать',
-        icon: <Edit2 size={18} />,
+        icon: '✏️',
+        actionType: MENU_ACTIONS.EDIT,
         onClick: () => {
           hapticFeedback('light');
           setMenuOpen(false);
@@ -214,25 +230,27 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
       },
       {
         label: 'Удалить',
-        icon: <Trash2 size={18} />,
-        danger: true,
+        icon: '🗑️',
+        actionType: MENU_ACTIONS.DELETE,
         onClick: () => {
           hapticFeedback('medium');
           setMenuOpen(false);
           if (onDelete) onDelete(request);
         }
       }
-    ] : []),
-    {
-      label: 'Пожаловаться',
-      icon: <Flag size={18} />,
-      danger: !isAuthor,
-      onClick: () => {
-        hapticFeedback('light');
-        setMenuOpen(false);
-        if (onReport) onReport(request);
+    ] : [
+      // Пожаловаться — только для НЕ-автора
+      {
+        label: 'Пожаловаться',
+        icon: '🚩',
+        actionType: MENU_ACTIONS.REPORT,
+        onClick: () => {
+          hapticFeedback('light');
+          setMenuOpen(false);
+          if (onReport) onReport(request);
+        }
       }
-    }
+    ])
   ];
 
   return (

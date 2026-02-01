@@ -8,6 +8,7 @@ import MarketCard from './MarketCard';
 import MarketDetail from './MarketDetail';
 import MarketFilters from './MarketFilters';
 import CreateMarketItem from './CreateMarketItem';
+import EditMarketItemModal from './EditMarketItemModal';
 import theme from '../../theme';
 
 const Market = () => {
@@ -15,7 +16,10 @@ const Market = () => {
     marketItems, 
     setMarketItems, 
     marketFilters, 
-    user 
+    user,
+    editingMarketItem,
+    setEditingMarketItem,
+    updateMarketItem
   } = useStore();
 
   // ===== STATE =====
@@ -303,6 +307,10 @@ const Market = () => {
 
       {showDetail && (
         <MarketDetail item={showDetail} onClose={() => setShowDetail(null)} onUpdate={handleRefresh} />
+      )}
+
+      {editingMarketItem && (
+        <EditMarketItemModal item={editingMarketItem} onClose={() => setEditingMarketItem(null)} onSuccess={(item) => { updateMarketItem(item.id, item); setEditingMarketItem(null); loadItems(true); }} />
       )}
     </div>
   );

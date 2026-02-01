@@ -3,8 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
-
-const Z_PHOTO_VIEWER = 4000;
+import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
 
 function PhotoViewer({ photos = [], initialIndex = 0, onClose }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);

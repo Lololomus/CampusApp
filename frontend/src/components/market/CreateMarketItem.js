@@ -41,6 +41,7 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
   const [location, setLocation] = useState(editItem?.location || '');
 
   const [errors, setErrors] = useState({});
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const fileInputRef = useRef(null);
 
   // ===== CONSTANTS =====
@@ -68,7 +69,10 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
   ];
 
   // ===== VALIDATION HELPERS =====
-
+  const getBorderColor = (isValid, attemptedSubmit) => {
+    if (!attemptedSubmit) return theme.colors.border;
+    return isValid ? theme.colors.success : theme.colors.error;
+  };
   const isStep1Valid = () => !!category && category.trim().length > 0;
   const isStep2Valid = () => images.length > 0;
   const isStep3Valid = () => (
@@ -147,7 +151,12 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
   };
 
   const handleSubmit = async () => {
-    if (!isStep3Valid()) return;
+    setAttemptedSubmit(true);
+    
+    if (!isStep3Valid()) {
+      haptic('error');
+      return;
+    }
 
     setLoading(true);
     haptic('heavy');
@@ -202,13 +211,10 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
     }
   };
 
-  // ✅ ЛОГИКА СЧЕТЧИКА (Идентична CreatePost)
   const renderInputLabel = (labelText, currentVal, min, max, isRequired = false) => {
     const len = currentVal ? currentVal.trim().length : 0;
     const isValid = len >= min && len <= max;
     const isError = len > 0 && !isValid;
-    
-    // Цвет счетчика
     let counterColor = theme.colors.textTertiary;
     if (isError) counterColor = theme.colors.error;
     if (isValid) counterColor = theme.colors.success;
@@ -216,8 +222,7 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
     return (
       <div style={styles.labelRow}>
         <span style={styles.label}>
-          {labelText}
-          {isRequired && <span style={{color: theme.colors.error, marginLeft: 2}}>*</span>}
+          {labelText}{isRequired && '*'}
         </span>
         
         <div style={styles.counterContainer}>
@@ -349,9 +354,7 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
           {step === 2 && (
             <div style={styles.stepContent}>
               <div style={styles.sectionHeader}>
-                <span style={styles.sectionTitle}>
-                  Фотографии<span style={{color: theme.colors.error, marginLeft: 2}}>*</span>
-                </span>
+                <span style={styles.sectionTitle}>Фотографии*</span>
                 <span style={styles.counter}>{images.length}/{MAX_IMAGES}</span>
               </div>
 
@@ -394,18 +397,15 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
 
               <div style={styles.divider} />
               
-              <div style={styles.sectionTitle}>
-                Состояние<span style={{color: theme.colors.error, marginLeft: 2}}>*</span>
-              </div>
+              <div style={styles.sectionTitle}>Состояние*</div>
               <div style={styles.conditionsGrid}>
                 {conditions.map(c => {
                   const isActive = condition === c.id;
                   return (
                     <button
                       key={c.id}
-                      // ✅ ФИКС ЦВЕТА: Явно задаем цвета через условие, никаких наложений стилей
                       style={{
-                        ...styles.conditionChip, // Базовые размеры
+                        ...styles.conditionChip,
                         backgroundColor: isActive ? theme.colors.market : theme.colors.bgSecondary,
                         borderColor: isActive ? theme.colors.market : theme.colors.border,
                         color: isActive ? '#ffffff' : theme.colors.text,
@@ -429,7 +429,10 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
               <div style={styles.inputGroup}>
                 {renderInputLabel("Название", title, MIN_TITLE_LEN, MAX_TITLE_LEN, true)}
                 <input
-                  style={styles.input}
+                  style={{
+                    ...styles.input,
+                    borderColor: getBorderColor(title.trim().length >= MIN_TITLE_LEN, attemptedSubmit)
+                  }}
                   placeholder="iPhone 13, Велосипед..."
                   value={title}
                   onChange={e => setTitle(e.target.value)}
@@ -440,13 +443,14 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
               {/* ЦЕНА */}
               <div style={styles.inputGroup}>
                 <div style={styles.labelRow}>
-                  <span style={styles.label}>
-                    Цена (₽)<span style={{color: theme.colors.error, marginLeft: 2}}>*</span>
-                  </span>
+                  <span style={styles.label}>Цена (₽)*</span>
                 </div>
                 <input
                   type="number"
-                  style={styles.input}
+                  style={{
+                    ...styles.input,
+                    borderColor: getBorderColor(price && parseInt(price) >= 0, attemptedSubmit)
+                  }}
                   placeholder="0"
                   value={price}
                   onChange={e => setPrice(e.target.value)}
@@ -457,7 +461,10 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
               <div style={styles.inputGroup}>
                 {renderInputLabel("Описание", description, MIN_DESC_LEN, MAX_DESC_LEN, true)}
                 <textarea
-                  style={styles.textarea}
+                  style={{
+                    ...styles.textarea,
+                    borderColor: getBorderColor(description.trim().length >= MIN_DESC_LEN, attemptedSubmit)
+                  }}
                   placeholder={`Минимум ${MIN_DESC_LEN} символов...`}
                   value={description}
                   onChange={e => setDescription(e.target.value)}

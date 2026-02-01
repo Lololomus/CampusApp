@@ -9,6 +9,7 @@ const ACTION_COLORS = {
   copy: '#8b5cf6',
   delete: '#ef4444',
   report: '#f59e0b',
+  share: '#3b82f6',
   default: theme.colors.primary,
 };
 

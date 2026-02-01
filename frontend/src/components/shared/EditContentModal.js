@@ -9,7 +9,7 @@ import {
 import { updatePost, updateRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import { Z_CREATE_POST } from '../../constants/zIndex';
+import { Z_CREATE_POST, Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
 import imageCompression from 'browser-image-compression';
 import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from '../../types';
 
@@ -35,6 +35,11 @@ const REQUEST_CATEGORIES = [
   { value: 'help', label: 'Помощь', icon: '🤝', color: '#10b981' },
   { value: 'hangout', label: 'Движ', icon: '🎉', color: '#f59e0b' }
 ];
+
+const getBorderColor = (isValid, attemptedSubmit) => {
+  if (!attemptedSubmit) return theme.colors.border;
+  return isValid ? theme.colors.success : theme.colors.error;
+};
 
 function EditContentModal({ contentType = 'post', initialData, onClose, onSuccess }) {
   // ===== GLOBAL STATE =====
@@ -504,12 +509,17 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
                           {isPost ? 'Заголовок' : 'Суть запроса'}
                           <CharCounter current={title.length} min={3} max={MAX_TITLE_LENGTH} isValid={title.trim().length >= 3} />
                         </label>
-                        <input 
-                            ref={titleInputRef}
-                            type="text" 
-                            value={title} onChange={(e) => setTitle(e.target.value)}
-                            style={{...styles.input, borderColor: attemptedSubmit && title.trim().length < 3 ? theme.colors.error : theme.colors.border}} 
-                            maxLength={MAX_TITLE_LENGTH} disabled={isSubmitting}
+                        <input
+                          ref={titleInputRef}
+                          type="text"
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          style={{
+                            ...styles.input,
+                            borderColor: getBorderColor(title.trim().length >= 3, attemptedSubmit)
+                          }}
+                          maxLength={MAX_TITLE_LENGTH}
+                          disabled={isSubmitting}
                         />
                       </div>
                       <div style={styles.section}>
@@ -517,10 +527,16 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
                           {isPost ? 'Текст поста' : 'Подробности'}
                           <CharCounter current={body.length} min={10} max={MAX_BODY_LENGTH} isValid={body.trim().length >= 10} />
                         </label>
-                        <textarea 
-                            value={body} onChange={(e) => setBody(e.target.value)}
-                            style={{...styles.textarea, borderColor: attemptedSubmit && body.trim().length < 10 ? theme.colors.error : theme.colors.border}}
-                            rows={6} maxLength={MAX_BODY_LENGTH} disabled={isSubmitting}
+                        <textarea
+                          value={body}
+                          onChange={(e) => setBody(e.target.value)}
+                          style={{
+                            ...styles.textarea,
+                            borderColor: getBorderColor(body.trim().length >= 10, attemptedSubmit)
+                          }}
+                          rows={6}
+                          maxLength={MAX_BODY_LENGTH}
+                          disabled={isSubmitting}
                         />
                       </div>
                     </>
@@ -589,7 +605,17 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
                              <button onClick={()=>setQuickDate('tomorrow')} style={activeEventDateBtn === 'tomorrow' ? styles.quickDateBtnActive : styles.quickDateBtn} type="button">Завтра</button>
                              <button onClick={()=>setQuickDate('week')} style={activeEventDateBtn === 'week' ? styles.quickDateBtnActive : styles.quickDateBtn} type="button">Через неделю</button>
                          </div>
-                         <input type="datetime-local" value={eventDate} onChange={e=>{setEventDate(e.target.value); setActiveEventDateBtn(null);}} style={{...styles.input, marginTop:theme.spacing.sm, borderColor: attemptedSubmit && !eventDate ? theme.colors.error : theme.colors.border}} disabled={isSubmitting} />
+                         <input
+                          type="datetime-local"
+                          value={eventDate}
+                          onChange={(e) => { setEventDate(e.target.value); setActiveEventDateBtn(null); }}
+                          style={{
+                            ...styles.input,
+                            marginTop: theme.spacing.sm,
+                            borderColor: getBorderColor(!!eventDate, attemptedSubmit)
+                          }}
+                          disabled={isSubmitting}
+                        />
                       </div>
                       <div style={styles.section}>
                          <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><MapPin size={14}/> Место*</div></label>
@@ -784,14 +810,18 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
                               </button>
                           ))}
                         </div>
-                        <input 
-                          type="datetime-local" 
+                        <input
+                          type="datetime-local"
                           value={expiresAt ? new Date(expiresAt).toISOString().slice(0, 16) : ''}
-                          onChange={(e) => { 
-                            setExpiresAt(new Date(e.target.value).toISOString()); 
-                            setActiveTimeBtn(0); 
+                          onChange={(e) => {
+                            setExpiresAt(new Date(e.target.value).toISOString());
+                            setActiveTimeBtn(0);
                           }}
-                          style={{...styles.input, marginTop: theme.spacing.sm, borderColor: attemptedSubmit && !expiresAt ? theme.colors.error : theme.colors.border}}
+                          style={{
+                            ...styles.input,
+                            marginTop: theme.spacing.sm,
+                            borderColor: getBorderColor(!!expiresAt, attemptedSubmit)
+                          }}
                           disabled={isSubmitting}
                         />
                       </div>
@@ -1073,9 +1103,15 @@ const styles = {
 
   // CONFIRMATION
   confirmationOverlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
-    backdropFilter: 'blur(4px)', zIndex: Z_CREATE_POST + 2,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease',
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.75)',
+    backdropFilter: 'blur(4px)',
+    zIndex: Z_CONFIRMATION_DIALOG,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    animation: 'fadeIn 0.2s ease',
   },
   confirmationDialog: {
     background: theme.colors.bg, borderRadius: theme.radius.xl,

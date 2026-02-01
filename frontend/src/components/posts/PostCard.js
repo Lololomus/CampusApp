@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight, Calendar, Link as LinkIcon } from 'lucide-react';
+import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { likePost, deletePost } from '../../api';
 import { useStore } from '../../store';
@@ -183,12 +184,32 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   };
 
   const menuItems = [
-    { label: 'Скопировать ссылку', icon: <LinkIcon size={18} />, onClick: handleCopyLink },
+    { 
+      label: 'Скопировать ссылку', 
+      icon: '🔗',
+      onClick: handleCopyLink,
+      actionType: MENU_ACTIONS.COPY
+    },
     ...(isOwner ? [
-      { label: 'Редактировать', icon: '✏️', onClick: handleEdit },
-      { label: 'Удалить', icon: '🗑️', danger: true, onClick: handleDelete }
+      { 
+        label: 'Редактировать', 
+        icon: '✏️', 
+        onClick: handleEdit,
+        actionType: MENU_ACTIONS.EDIT
+      },
+      { 
+        label: 'Удалить', 
+        icon: '🗑️', 
+        onClick: handleDelete,
+        actionType: MENU_ACTIONS.DELETE
+      }
     ] : [
-      { label: 'Пожаловаться', icon: '🚩', danger: true, onClick: () => { alert('Жалоба отправлена'); setMenuOpen(false); } }
+      { 
+        label: 'Пожаловаться', 
+        icon: '🚩', 
+        onClick: () => { alert('Жалоба отправлена'); setMenuOpen(false); },
+        actionType: MENU_ACTIONS.REPORT
+      }
     ])
   ];
 

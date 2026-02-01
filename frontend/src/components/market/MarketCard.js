@@ -5,6 +5,8 @@ import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem } from '../../api';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
+import { MENU_ACTIONS } from '../../constants/contentConstants';
+import { hapticFeedback } from '../../utils/telegram';
 
 const MarketCard = ({ item, onClick, index = 0 }) => {
   const { 
@@ -60,8 +62,8 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
 
   const handleEdit = () => {
     setIsMenuOpen(false);
-    setEditingMarketItem(item); // Записываем товар в стор
-    setShowCreateMarketItem(true); // Открываем модалку
+    hapticFeedback('light');
+    setEditingMarketItem(item);
   };
 
   const handleDelete = async () => {
@@ -89,15 +91,50 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   };
 
   // Меню действий
-  const menuItems = isOwner 
-    ? [
-        { icon: '✏️', label: 'Редактировать', onClick: handleEdit },
-        { icon: '🗑️', label: 'Удалить', onClick: handleDelete, danger: true },
-      ]
-    : [
-        { icon: '⚠️', label: 'Пожаловаться', onClick: handleReport },
-        { icon: '↗️', label: 'Поделиться', onClick: handleShare },
-      ];
+  const menuItems = [
+    // Скопировать ссылку — для ВСЕХ (консистентность)
+    {
+      icon: '🔗',
+      label: 'Скопировать ссылку',
+      actionType: MENU_ACTIONS.COPY,
+      onClick: () => {
+        setIsMenuOpen(false);
+        hapticFeedback('success');
+        const link = `campusapp://market/${item.id}`;
+        navigator.clipboard.writeText(link);
+      }
+    },
+    
+    // Действия ВЛАДЕЛЬЦА
+    ...(isOwner ? [
+      {
+        icon: '✏️',
+        label: 'Редактировать',
+        actionType: MENU_ACTIONS.EDIT,
+        onClick: handleEdit
+      },
+      {
+        icon: '🗑️',
+        label: 'Удалить',
+        actionType: MENU_ACTIONS.DELETE,
+        onClick: handleDelete
+      }
+    ] : [
+      // Действия НЕ-владельца
+      {
+        icon: '🚩',
+        label: 'Пожаловаться',
+        actionType: MENU_ACTIONS.REPORT,
+        onClick: handleReport
+      },
+      {
+        icon: '↗️',
+        label: 'Поделиться',
+        actionType: MENU_ACTIONS.SHARE,
+        onClick: handleShare
+      }
+    ])
+  ];
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('ru-RU').format(price);

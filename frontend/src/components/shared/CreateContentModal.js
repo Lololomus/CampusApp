@@ -8,20 +8,27 @@ import { useStore } from '../../store';
 import { createPost, createRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import { Z_CREATE_POST } from '../../constants/zIndex';
+import { Z_MODAL_CREATE_POST, getOverlayZIndex } from '../../constants/zIndex';
 import imageCompression from 'browser-image-compression';
 import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from '../../types';
 import PollCreator from '../posts/PollCreator'; 
+import ConfirmationDialog from './ConfirmationDialog';
+import { CharCounter, getBorderColor } from './FormValidation';
+import { 
+  POST_LIMITS, 
+  REQUEST_LIMITS, 
+  IMAGE_SETTINGS 
+} from '../../constants/contentConstants';
 
 // ===== CONSTANTS =====
 const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'сопромат'];
 const REQUEST_TAGS = ['помощь', 'срочно', 'курсовая', 'спорт', 'подвезти'];
 
-const MAX_TITLE_LENGTH = 100;
-const MAX_BODY_LENGTH = 500;
-const MAX_TAGS = 5;
-const MAX_IMAGES = 3;
-const ALLOWED_FORMATS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MAX_TITLE_LENGTH = POST_LIMITS.TITLE_MAX;
+const MAX_BODY_LENGTH = POST_LIMITS.BODY_MAX;
+const MAX_TAGS = POST_LIMITS.TAGS_MAX;
+const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
+const ALLOWED_FORMATS = IMAGE_SETTINGS.ALLOWED_FORMATS;
 
 const POST_CATEGORIES = CATEGORIES.map(cat => ({
   ...cat,
@@ -380,7 +387,7 @@ function CreateContentModal({ onClose }) {
       position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
       background: ${theme.colors.success}; color: white; padding: 12px 24px;
       border-radius: 24px; font-weight: bold; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      z-index: ${Z_CREATE_POST + 10}; opacity: 0; transition: all 0.3s ease;
+      z-index: ${Z_MODAL_CREATE_POST + 10}; opacity: 0; transition: all 0.3s ease;
       display: flex; align-items: center; gap: 8px;
     `;
     toast.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> ${msg}`;
@@ -575,16 +582,6 @@ function CreateContentModal({ onClose }) {
     </span>
   );
 
-  const CharCounter = ({ current, min, max, isValid }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: theme.fontSize.xs }}>
-        {!isValid && <span style={{ color: theme.colors.textTertiary }}>мин. {min} символов</span>}
-        <span style={{color: isValid ? theme.colors.textTertiary : theme.colors.error}}>
-            {current}/{max} 
-        </span>
-        {isValid && <Check size={14} color={theme.colors.success} />}
-    </div>
-  );
-
   const CircularProgress = ({ progress }) => (
     <div style={{ position: 'relative', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <svg width="40" height="40" viewBox="0 0 40 40" style={{ transform: 'rotate(-90deg)' }}>
@@ -754,14 +751,20 @@ function CreateContentModal({ onClose }) {
                           <CharCounter current={postTitle.length} min={3} max={MAX_TITLE_LENGTH} isValid={postTitle.trim().length >= 3} />
                         </label>
                         <div style={styles.inputWrapper}>
-                            <input 
+                          <input 
                             ref={postTitleRef}
-                            type="text" placeholder={placeholders.title} 
-                            value={postTitle} onChange={(e) => setPostTitle(e.target.value)}
-                            style={{...styles.input, borderColor: attemptedSubmit && postTitle.trim().length < 3 ? theme.colors.error : (postTitle.length > 0 ? theme.colors.primary : theme.colors.border)}} 
-                            maxLength={MAX_TITLE_LENGTH} disabled={isSubmitting}
-                            />
-                            {postTitle.trim().length >= 3 && <Check size={20} style={styles.inputCheckIcon} />}
+                            type="text" 
+                            placeholder={placeholders.title} 
+                            value={postTitle} 
+                            onChange={(e) => setPostTitle(e.target.value)}
+                            style={{
+                              ...styles.input, 
+                              borderColor: getBorderColor(postTitle.trim().length >= 3, attemptedSubmit)
+                            }} 
+                            maxLength={MAX_TITLE_LENGTH} 
+                            disabled={isSubmitting}
+                          />
+                          {postTitle.trim().length >= 3 && <Check size={20} style={styles.inputCheckIcon} />}
                         </div>
                       </div>
                       <div style={styles.section}>
@@ -770,13 +773,19 @@ function CreateContentModal({ onClose }) {
                           <CharCounter current={postBody.length} min={10} max={MAX_BODY_LENGTH} isValid={postBody.trim().length >= 10} />
                         </label>
                         <div style={styles.inputWrapper}>
-                            <textarea 
+                          <textarea 
                             placeholder={placeholders.body}
-                            value={postBody} onChange={(e) => setPostBody(e.target.value)}
-                            style={{...styles.textarea, borderColor: attemptedSubmit && postBody.trim().length < 10 ? theme.colors.error : (postBody.length > 0 ? theme.colors.primary : theme.colors.border)}}
-                            rows={6} maxLength={MAX_BODY_LENGTH} disabled={isSubmitting}
-                            />
-                            {postBody.trim().length >= 10 && <Check size={20} style={styles.textareaCheckIcon} />}
+                            value={postBody} 
+                            onChange={(e) => setPostBody(e.target.value)}
+                            style={{
+                              ...styles.textarea, 
+                              borderColor: getBorderColor(postBody.trim().length >= 10, attemptedSubmit)
+                            }}
+                            rows={6} 
+                            maxLength={MAX_BODY_LENGTH} 
+                            disabled={isSubmitting}
+                          />
+                          {postBody.trim().length >= 10 && <Check size={20} style={styles.textareaCheckIcon} />}
                         </div>
                       </div>
                     </>
@@ -792,14 +801,38 @@ function CreateContentModal({ onClose }) {
                             <button onClick={()=>{setLostOrFound('found'); hapticFeedback('light');}} style={lostOrFound==='found' ? {...styles.toggleButton, ...styles.toggleButtonActive} : styles.toggleButton}>🎉 Нашёл</button>
                         </div>
                       </div>
-                      <div style={styles.section}>
-                        <label style={styles.label}>Что именно?*</label>
-                        <input type="text" placeholder="Например: Чёрный рюкзак Nike" value={itemDescription} onChange={e=>setItemDescription(e.target.value)} style={{...styles.input, borderColor: attemptedSubmit && itemDescription.length<5 ? theme.colors.error : theme.colors.border}} disabled={isSubmitting} />
-                      </div>
-                      <div style={styles.section}>
-                         <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><MapPin size={14}/> Где?*</div></label>
-                         <input type="text" placeholder="Например: Возле столовой ГУК" value={location} onChange={e=>setLocation(e.target.value)} style={{...styles.input, borderColor: attemptedSubmit && location.length<3 ? theme.colors.error : theme.colors.border}} disabled={isSubmitting} />
-                      </div>
+                        <div style={styles.section}>
+                          <label style={styles.label}>Что именно?*</label>
+                          <input 
+                            type="text" 
+                            placeholder="Например: Чёрный рюкзак Nike" 
+                            value={itemDescription} 
+                            onChange={e => setItemDescription(e.target.value)} 
+                            style={{
+                              ...styles.input, 
+                              borderColor: getBorderColor(itemDescription.trim().length >= 5, attemptedSubmit)
+                            }} 
+                            disabled={isSubmitting} 
+                          />
+                        </div>
+                        <div style={styles.section}>
+                          <label style={styles.label}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                              <MapPin size={14} /> Где?*
+                            </div>
+                          </label>
+                          <input 
+                            type="text" 
+                            placeholder="Например: Возле столовой ГУК" 
+                            value={location} 
+                            onChange={e => setLocation(e.target.value)} 
+                            style={{
+                              ...styles.input, 
+                              borderColor: getBorderColor(location.trim().length >= 3, attemptedSubmit)
+                            }} 
+                            disabled={isSubmitting} 
+                          />
+                        </div>
                       
                       {lostOrFound === 'lost' && (
                         <div style={styles.section}>
@@ -820,7 +853,17 @@ function CreateContentModal({ onClose }) {
                     <>
                       <div style={styles.section}>
                         <label style={styles.label}>Название события*</label>
-                        <input type="text" placeholder="Например: Хакатон 2025" value={eventName} onChange={e=>setEventName(e.target.value)} style={{...styles.input, borderColor: attemptedSubmit && eventName.length<3 ? theme.colors.error : theme.colors.border}} disabled={isSubmitting} />
+                        <input 
+                          type="text" 
+                          placeholder="Например: Хакатон 2025" 
+                          value={eventName} 
+                          onChange={e => setEventName(e.target.value)} 
+                          style={{
+                            ...styles.input, 
+                            borderColor: getBorderColor(eventName.trim().length >= 3, attemptedSubmit)
+                          }} 
+                          disabled={isSubmitting} 
+                        />
                       </div>
                       <div style={styles.section}>
                          <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><Calendar size={14}/> Дата и время*</div></label>
@@ -847,11 +890,35 @@ function CreateContentModal({ onClose }) {
                                 Через неделю
                              </button>
                          </div>
-                         <input type="datetime-local" value={eventDate} onChange={e=>{setEventDate(e.target.value); setActiveEventDateBtn(null);}} style={{...styles.input, marginTop:theme.spacing.sm, borderColor: attemptedSubmit && !eventDate ? theme.colors.error : theme.colors.border}} disabled={isSubmitting} />
+                         <input 
+                            type="datetime-local" 
+                            value={eventDate} 
+                            onChange={e => { setEventDate(e.target.value); setActiveEventDateBtn(null); }} 
+                            style={{
+                              ...styles.input, 
+                              marginTop: theme.spacing.sm, 
+                              borderColor: getBorderColor(!!eventDate, attemptedSubmit)
+                            }} 
+                            disabled={isSubmitting} 
+                          />
                       </div>
                       <div style={styles.section}>
-                         <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><MapPin size={14}/> Место проведения*</div></label>
-                         <input type="text" placeholder="Например: Актовый зал" value={eventLocation} onChange={e=>setEventLocation(e.target.value)} style={{...styles.input, borderColor: attemptedSubmit && eventLocation.length<3 ? theme.colors.error : theme.colors.border}} disabled={isSubmitting} />
+                        <label style={styles.label}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                            <MapPin size={14} /> Место проведения*
+                          </div>
+                        </label>
+                        <input 
+                          type="text" 
+                          placeholder="Например: Актовый зал" 
+                          value={eventLocation} 
+                          onChange={e => setEventLocation(e.target.value)} 
+                          style={{
+                            ...styles.input, 
+                            borderColor: getBorderColor(eventLocation.trim().length >= 3, attemptedSubmit)
+                          }} 
+                          disabled={isSubmitting} 
+                        />
                       </div>
                       <div style={styles.section}>
                           <label style={styles.label}>Контакт (опционально)</label>
@@ -981,14 +1048,20 @@ function CreateContentModal({ onClose }) {
                         <CharCounter current={reqTitle.length} min={10} max={MAX_TITLE_LENGTH} isValid={reqTitle.length >= 10} />
                     </label>
                     <div style={styles.inputWrapper}>
-                        <input 
+                      <input 
                         ref={reqTitleRef}
-                        type="text" placeholder="Например: Ищу репетитора по английскому" 
-                        value={reqTitle} onChange={(e) => setReqTitle(e.target.value)}
-                        style={{...styles.input, borderColor: attemptedSubmit && reqTitle.length<10 ? theme.colors.error : (reqTitle.length>0?theme.colors.primary:theme.colors.border)}}
-                        maxLength={MAX_TITLE_LENGTH} disabled={isSubmitting}
-                        />
-                        {reqTitle.length >= 10 && <Check size={20} style={styles.inputCheckIcon} />}
+                        type="text" 
+                        placeholder="Помогите с курсовой по сопромату" 
+                        value={reqTitle} 
+                        onChange={e => setReqTitle(e.target.value)}
+                        style={{
+                          ...styles.input, 
+                          borderColor: getBorderColor(reqTitle.trim().length >= 10, attemptedSubmit)
+                        }} 
+                        maxLength={MAX_TITLE_LENGTH} 
+                        disabled={isSubmitting}
+                      />
+                      {reqTitle.trim().length >= 10 && <Check size={20} style={styles.inputCheckIcon} />}
                     </div>
                   </div>
                   <div style={styles.section}>
@@ -997,13 +1070,19 @@ function CreateContentModal({ onClose }) {
                         <CharCounter current={reqBody.length} min={20} max={MAX_BODY_LENGTH} isValid={reqBody.length >= 20} />
                     </label>
                     <div style={styles.inputWrapper}>
-                        <textarea 
-                        placeholder="Опишите, что именно требуется, сроки и бюджет..." 
-                        value={reqBody} onChange={(e) => setReqBody(e.target.value)}
-                        style={{...styles.textarea, borderColor: attemptedSubmit && reqBody.length<20 ? theme.colors.error : (reqBody.length>0?theme.colors.primary:theme.colors.border)}}
-                        rows={6} maxLength={MAX_BODY_LENGTH} disabled={isSubmitting}
-                        />
-                        {reqBody.length >= 20 && <Check size={20} style={styles.textareaCheckIcon} />}
+                      <textarea 
+                        placeholder="Описание, сроки, требования..."
+                        value={reqBody} 
+                        onChange={e => setReqBody(e.target.value)}
+                        style={{
+                          ...styles.textarea, 
+                          borderColor: getBorderColor(reqBody.trim().length >= 20, attemptedSubmit)
+                        }}
+                        rows={6} 
+                        maxLength={MAX_BODY_LENGTH} 
+                        disabled={isSubmitting}
+                      />
+                      {reqBody.trim().length >= 20 && <Check size={20} style={styles.textareaCheckIcon} />}
                     </div>
                   </div>
 
@@ -1131,10 +1210,17 @@ function CreateContentModal({ onClose }) {
                     </div>
                     <input 
                       type="datetime-local" 
-                      value={expiresAt ? expiresAt.slice(0, 16) : ''}
-                      onChange={(e) => { setExpiresAt(new Date(e.target.value).toISOString()); setActiveTimeBtn(0); }}
-                      style={{...styles.input, marginTop: theme.spacing.sm, borderColor: attemptedSubmit && !expiresAt ? theme.colors.error : theme.colors.border}}
-                      disabled={isSubmitting}
+                      value={expiresAt ? expiresAt.slice(0, 16) : ''} 
+                      onChange={e => { 
+                        setExpiresAt(new Date(e.target.value).toISOString()); 
+                        setActiveTimeBtn(0); 
+                      }}
+                      style={{
+                        ...styles.input, 
+                        marginTop: theme.spacing.sm, 
+                        borderColor: getBorderColor(!!expiresAt, attemptedSubmit)
+                      }} 
+                      disabled={isSubmitting} 
                     />
                   </div>
 
@@ -1204,18 +1290,16 @@ function CreateContentModal({ onClose }) {
       </div>
 
       {/* CONFIRMATION DIALOG */}
-      {showConfirmation && (
-        <div style={styles.confirmationOverlay}>
-          <div style={styles.confirmationDialog}>
-            <h3 style={styles.confirmationTitle}>Отменить создание?</h3>
-            <p style={styles.confirmationText}>Весь введённый текст будет потерян</p>
-            <div style={styles.confirmationButtons}>
-              <button onClick={() => setShowConfirmation(false)} style={styles.confirmationCancel}>Остаться</button>
-              <button onClick={confirmClose} style={styles.confirmationConfirm}>Да, отменить</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationDialog
+        isOpen={showConfirmation}
+        title="Выйти из редактора?"
+        message="Весь введённый текст будет потерян"
+        confirmText="Да, выйти"
+        cancelText="Продолжить"
+        confirmType="danger"
+        onConfirm={confirmClose}
+        onCancel={() => setShowConfirmation(false)}
+      />
     </>
   );
 }
@@ -1225,7 +1309,7 @@ const styles = {
   overlay: {
     position: 'fixed', inset: 0,
     background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)',
-    zIndex: Z_CREATE_POST, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    zIndex: getOverlayZIndex(Z_MODAL_CREATE_POST), display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     transition: 'opacity 0.3s ease',
   },
   modal: {
@@ -1500,7 +1584,7 @@ const styles = {
 
   confirmationOverlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
-    backdropFilter: 'blur(4px)', zIndex: Z_CREATE_POST + 1,
+    backdropFilter: 'blur(4px)', zIndex: Z_MODAL_CREATE_POST,
     display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease',
   },
   confirmationDialog: {
