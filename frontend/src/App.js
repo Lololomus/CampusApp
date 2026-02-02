@@ -1,5 +1,3 @@
-// ===== 📄 ФАЙЛ: src/App.js =====
-
 import React, { useEffect } from 'react';
 import { useStore } from './store';
 import { initTelegramApp } from './utils/telegram';
@@ -15,8 +13,8 @@ import UserPosts from './components/UserPosts';
 import DatingFeed from './components/dating/DatingFeed';
 import Market from './components/market/Market';
 import CreateMarketItem from './components/market/CreateMarketItem';
-// 🔧 ИНТЕГРАЦИЯ: Импортируем PostDetail
-import PostDetail from './components/posts/PostDetail'; 
+import PostDetail from './components/posts/PostDetail';
+import ToastContainer from './components/shared/Toast';
 import './App.css';
 
 function App() {
@@ -34,7 +32,6 @@ function App() {
     editingContent,
     editingType,
     closeEditing,
-    // 🔧 ИНТЕГРАЦИЯ: Достаем viewPostId
     viewPostId 
   } = useStore();
 
@@ -54,26 +51,30 @@ function App() {
     }
   };
   
+  // Экран онбординга
   if (onboardingStep > 0) {
     return <div style={styles.app}><Onboarding /></div>;
   }
 
   return (
     <div style={styles.app}>   
+      {/* Основной контент (лента, маркет, знакомства, профиль) */}
       {renderContent()}
+      
+      {/* Нижняя навигация */}
       <Navigation />
       
-      {/* 🔧 ИНТЕГРАЦИЯ: Рендерим PostDetail поверх всего, если есть ID */}
+      {/* Детальный просмотр поста (поверх всего) */}
       {viewPostId && <PostDetail />}
 
-      {/* МОДАЛКА СОЗДАНИЯ */}
+      {/* Модалка создания поста/запроса */}
       {showCreateModal && (
         <CreateContentModal 
           onClose={() => setShowCreateModal(false)} 
         />
       )}
 
-      {/* МОДАЛКА РЕДАКТИРОВАНИЯ */}
+      {/* Модалка редактирования поста/запроса */}
       {editingContent && (
         <EditContentModal
           key={editingContent?.id || Date.now()} 
@@ -86,7 +87,7 @@ function App() {
         />
       )}
 
-      {/* MARKET MODAL */}
+      {/* Модалка создания/редактирования товара */}
       {showCreateMarketItem && (
         <CreateMarketItem 
           editItem={editingMarketItem}
@@ -101,9 +102,14 @@ function App() {
         />
       )}
 
+      {/* Модалка авторизации */}
       <AuthModal />
-      {showEditModal && <EditProfile />} 
       
+      {/* Модалка редактирования профиля */}
+      {showEditModal && <EditProfile />}
+      
+      {/* Контейнер уведомлений (тосты) */}
+      <ToastContainer />
     </div>
   );
 }

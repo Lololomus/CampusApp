@@ -13,6 +13,7 @@ import { Z_MODAL_FORMS } from '../../constants/zIndex';
 import theme from '../../theme';
 import PollView from './PollView';
 import PhotoViewer from '../shared/PhotoViewer';
+import { toast } from '../shared/Toast'; 
 
 const API_URL = 'http://localhost:8000';
 
@@ -75,6 +76,7 @@ function PostDetail() {
       }
     } catch (error) {
       console.error('Post loading error:', error);
+      toast.error('Не удалось загрузить пост');
     } finally {
       setLoading(false);
     }
@@ -207,18 +209,26 @@ function PostDetail() {
       hapticFeedback('heavy');
       try {
         await deletePost(post.id);
+        toast.success('Пост удалён');
         handleBack();
       } catch (error) {
-        alert('Ошибка удаления');
+        console.error('Ошибка удаления:', error);
+        toast.error('Не удалось удалить пост');
       }
     }
   };
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     setPostMenuOpen(false);
     hapticFeedback('success');
     const link = `campusapp://post/${post.id}`;
-    navigator.clipboard.writeText(link);
+    
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success('Ссылка скопирована');
+    } catch (error) {
+      toast.error('Не удалось скопировать ссылку');
+    }
   };
 
   const handleSendComment = async (text) => {
@@ -229,7 +239,10 @@ function PostDetail() {
       setCommentLikes(prev => ({ ...prev, [comment.id]: { isLiked: false, count: 0 } }));
       setReplyTo(null);
       await refreshPost();
-    } catch (error) { alert('Не удалось отправить комментарий'); }
+    } catch (error) { 
+  console.error('Ошибка отправки комментария:', error);
+  toast.error('Не удалось отправить комментарий'); 
+   }
   };
 
   const handleDirectSend = (text) => {
@@ -283,7 +296,10 @@ function PostDetail() {
       setComments(prev => prev.map(c => c.id === commentId ? { ...c, body: updated.body, is_edited: true, updated_at: updated.updated_at } : c));
       setEditingComment(null);
       setEditText('');
-    } catch (error) { alert('Не удалось отредактировать'); }
+    } catch (error) { 
+  console.error('Ошибка редактирования:', error);
+  toast.error('Не удалось отредактировать комментарий'); 
+   }
   };
 
   const handleReportComment = (commentId) => {
@@ -298,8 +314,11 @@ function PostDetail() {
       await reportComment(reportingComment, reason);
       setReportingComment(null);
       hapticFeedback('success');
-      alert('Жалоба отправлена.');
-    } catch (error) {}
+      toast.success('Жалоба отправлена');
+    } catch (error) {
+      console.error('Ошибка отправки жалобы:', error);
+      toast.error('Не удалось отправить жалобу');
+    }
   };
 
   const commentTree = useMemo(() => {
@@ -320,7 +339,10 @@ function PostDetail() {
       { label: 'Редактировать', icon: <Edit2 size={18} />, onClick: handleEditPost },
       { label: 'Удалить', icon: <Trash2 size={18} />, danger: true, onClick: handleDeletePost }
     ] : [
-      { label: 'Пожаловаться', icon: <Flag size={18} />, danger: true, onClick: () => { alert('Жалоба отправлена'); setPostMenuOpen(false); } }
+      { label: 'Пожаловаться', icon: <Flag size={18} />, danger: true, onClick: () => { 
+        toast.success('Жалоба отправлена'); 
+        setPostMenuOpen(false); 
+      }}
     ])
   ];
 

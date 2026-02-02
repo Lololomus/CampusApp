@@ -7,6 +7,7 @@ import { createMarketItem, updateMarketItem } from '../../api';
 import theme from '../../theme';
 import { Z_CREATE_MARKET_ITEM } from '../../constants/zIndex';
 import { processImageFiles } from '../../utils/media';
+import { toast } from '../shared/Toast';
 
 const MAX_IMAGES = 3;
 const MIN_TITLE_LEN = 5;
@@ -20,7 +21,6 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
   // ===== STATE =====
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
   
   // Data
   const [category, setCategory] = useState(editItem?.category || '');
@@ -91,7 +91,7 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
 
     if (images.length + files.length > MAX_IMAGES) {
       haptic('error');
-      alert(`Максимум ${MAX_IMAGES} фото`);
+      toast.warning(`Максимум ${MAX_IMAGES} фото`);
       return;
     }
 
@@ -103,7 +103,7 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
       haptic('light');
     } catch (err) {
       console.error("Ошибка фото:", err);
-      alert("Ошибка загрузки фото");
+      toast.error("Ошибка загрузки фото");
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -195,19 +195,19 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
       }
 
       setLoading(false);
-      setShowSuccess(true);
       haptic('success');
-      
+      toast.success(editItem ? 'Товар обновлён' : 'Товар опубликован');
+
       setTimeout(() => {
         if (onSuccess) onSuccess();
         onClose();
-      }, 1500);
+      }, 300);
 
     } catch (err) {
       console.error(err);
       setLoading(false);
       haptic('error');
-      alert('Ошибка при создании.');
+      toast.error(err.response?.data?.detail || 'Ошибка публикации');
     }
   };
 
@@ -244,19 +244,6 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
     <div style={styles.overlay}>
       <div style={styles.modal}>
         
-        {/* SUCCESS POPUP */}
-        {showSuccess && (
-          <div style={styles.successOverlay}>
-            <div style={styles.successCard}>
-              <div style={styles.successIconCircle}>
-                <Check size={40} color="#fff" />
-              </div>
-              <h3 style={styles.successTitle}>Товар опубликован!</h3>
-              <p style={styles.successText}>Удачи в продаже</p>
-            </div>
-          </div>
-        )}
-
         {/* HEADER */}
         <div style={styles.header}>
           <button style={styles.closeButton} onClick={onClose} disabled={loading}>
@@ -541,24 +528,6 @@ const styles = {
     position: 'relative',
   },
 
-  // Success Popup
-  successOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    background: 'rgba(10, 10, 10, 0.95)', zIndex: 10,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    borderRadius: '24px 24px 0 0', animation: 'fadeIn 0.3s ease',
-  },
-  successCard: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'popIn 0.4s ease',
-  },
-  successIconCircle: {
-    width: 80, height: 80, borderRadius: '50%', background: theme.colors.market,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 16, boxShadow: '0 8px 24px rgba(16, 185, 129, 0.4)',
-  },
-  successTitle: { fontSize: 22, fontWeight: 700, color: '#fff', marginBottom: 8 },
-  successText: { fontSize: 15, color: theme.colors.textSecondary },
-
   // Header
   header: {
     padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -719,7 +688,6 @@ const styles = {
 const styleSheet = document.createElement('style');
 styleSheet.textContent = `
   @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes popIn { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
 `;
 document.head.appendChild(styleSheet);
 

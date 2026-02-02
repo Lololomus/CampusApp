@@ -2,9 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { registerUser } from './api';
 
-
 const API_URL = 'http://localhost:8000';
-
 
 export const useStore = create(
   persist(
@@ -54,7 +52,6 @@ export const useStore = create(
         isRegistered: false 
       }),
 
-
       // ===== NAVIGATION STATE =====
       activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile' | 'market'
       feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
@@ -62,7 +59,6 @@ export const useStore = create(
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
       setFeedSubTab: (tab) => set({ feedSubTab: tab }),
-
 
       // ===== MODAL STATES =====
       showAuthModal: false,
@@ -79,7 +75,6 @@ export const useStore = create(
       setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
-
       editingContent: null, // Данные поста или запроса
       editingType: null,    // 'post' | 'request'
       
@@ -93,11 +88,9 @@ export const useStore = create(
         editingType: null 
       }),
 
-
       // My posts screen
       showUserPosts: false,
       setShowUserPosts: (show) => set({ showUserPosts: show }),
-
 
       // ===== ONBOARDING STATE =====
       onboardingStep: 0,
@@ -106,7 +99,6 @@ export const useStore = create(
       setOnboardingData: (data) => set((state) => ({
         onboardingData: { ...state.onboardingData, ...data }
       })),
-
 
       // ===== POSTS STATE (НЕ СОХРАНЯЕМ В LOCALSTORAGE!) =====
       posts: [],
@@ -119,7 +111,6 @@ export const useStore = create(
           p.id === postId ? { ...p, ...updates } : p
         )
       })),
-
 
       // Синхронизация между PostDetail и Feed
       updatedPostId: null,
@@ -144,7 +135,7 @@ export const useStore = create(
         });
       },
 
-      // ===== 🎯 FILTERS STATE  =====
+      // ===== 🎯 FILTERS STATE =====
       
       // Фильтры постов
       postsFilters: {
@@ -200,7 +191,6 @@ export const useStore = create(
         }
       }),
 
-
       // ===== REQUESTS STATE (ОБНОВЛЕНО) =====
       requests: [], // Лента запросов (текущая категория)
       myRequests: [], // Мои запросы
@@ -235,7 +225,6 @@ export const useStore = create(
       setRequestDraft: (draft) => set({ requestDraft: draft }),
       
       clearRequestDraft: () => set({ requestDraft: {} }),
-
 
       // ===== DATING STATE =====
       
@@ -303,7 +292,6 @@ export const useStore = create(
       onPrefetchNeeded: null,
       setOnPrefetchNeeded: (callback) => set({ onPrefetchNeeded: callback }),
 
-
       // Likes & Matches
       whoLikedMe: [],
       setWhoLikedMe: (usersOrUpdater) => set((state) => ({
@@ -312,17 +300,14 @@ export const useStore = create(
           : usersOrUpdater
       })),
 
-
       // активные мэтчи (24 часа)
       matches: [],
       setMatches: (matches) => set({ matches }),
-
 
       // удаление истёкшего мэтча
       removeMatch: (userId) => set((state) => ({
         matches: state.matches.filter(m => m.user_id !== userId)
       })),
-
 
       // Dating Modal states
       showLikesModal: false,
@@ -336,7 +321,6 @@ export const useStore = create(
         matchedUser: user,
       }),
 
-
       // Stats
       likesCount: 0,
       matchesCount: 0,
@@ -345,7 +329,6 @@ export const useStore = create(
         likesCount: stats.likes_count || 0,
         matchesCount: stats.matches_count || 0,
       }),
-
 
       // ===== LIKES STATE =====
       likedPosts: {},  // { 1: true, 5: true, 10: false }
@@ -358,7 +341,6 @@ export const useStore = create(
         const state = get();
         return state.likedPosts[postId];
       },
-
 
       // ===== MARKET STATE =====
       marketItems: [], // Текущая лента товаров
@@ -380,30 +362,42 @@ export const useStore = create(
       // Market Actions
       setMarketItems: (items) => set({ marketItems: items }),
       
-      setEditingMarketItem: (item) => set({ editingMarketItem: item }),
-
-
-      addMarketItem: (newItem) => set((state) => ({
-        marketItems: [newItem, ...state.marketItems],
-        myMarketItems: [newItem, ...state.myMarketItems]
-      })),
+      // ✅ ЕДИНСТВЕННЫЙ updateMarketItem (объединённая версия)
+      updateMarketItem: (updatedItem) => {
+        set((state) => ({
+          marketItems: state.marketItems.map(item => 
+            item.id === updatedItem.id 
+              ? { ...item, ...updatedItem }
+              : item
+          ),
+          myMarketItems: state.myMarketItems.map(item =>
+            item.id === updatedItem.id 
+              ? { ...item, ...updatedItem }
+              : item
+          ),
+          marketFavorites: state.marketFavorites.map(item =>
+            item.id === updatedItem.id 
+              ? { ...item, ...updatedItem }
+              : item
+          ),
+          currentMarketItem: state.currentMarketItem?.id === updatedItem.id
+            ? { ...state.currentMarketItem, ...updatedItem }
+            : state.currentMarketItem
+        }));
+      },
       
-      updateMarketItem: (itemId, updates) => set((state) => ({
-        marketItems: state.marketItems.map(item =>
-          item.id === itemId ? { ...item, ...updates } : item
-        ),
-        myMarketItems: state.myMarketItems.map(item =>
-          item.id === itemId ? { ...item, ...updates } : item
-        ),
-        marketFavorites: state.marketFavorites.map(item =>
-          item.id === itemId ? { ...item, ...updates } : item
-        )
-      })),
-      
+      // ✅ ЕДИНСТВЕННЫЙ deleteMarketItem (расширенная версия)
       deleteMarketItem: (itemId) => set((state) => ({
         marketItems: state.marketItems.filter(item => item.id !== itemId),
         myMarketItems: state.myMarketItems.filter(item => item.id !== itemId),
         marketFavorites: state.marketFavorites.filter(item => item.id !== itemId)
+      })),
+      
+      setEditingMarketItem: (item) => set({ editingMarketItem: item }),
+      
+      addMarketItem: (newItem) => set((state) => ({
+        marketItems: [newItem, ...state.marketItems],
+        myMarketItems: [newItem, ...state.myMarketItems]
       })),
       
       setMyMarketItems: (items) => set({ myMarketItems: items }),
@@ -457,6 +451,32 @@ export const useStore = create(
           : state.currentMarketItem
       })),
 
+      // ===== TOASTS STATE =====
+      toasts: [],
+
+      addToast: (toast) => set((state) => {
+        const id = Date.now() + Math.random().toString(36).substr(2, 9);
+        const newToast = {
+          id,
+          type: 'info',
+          duration: 3000,
+          ...toast,
+        };
+        
+        // Макс 3 тоста одновременно
+        const toasts = [...state.toasts, newToast];
+        if (toasts.length > 3) {
+          toasts.shift(); // Удалить самый старый
+        }
+        
+        return { toasts };
+      }),
+
+      removeToast: (id) => set((state) => ({
+        toasts: state.toasts.filter(t => t.id !== id)
+      })),
+
+      clearToasts: () => set({ toasts: [] }),
 
       // ===== ACTIONS =====
       
@@ -465,7 +485,6 @@ export const useStore = create(
         onboardingStep: 1,
         onboardingData: {}
       }),
-
 
       finishRegistration: async (data) => {
         try {
@@ -477,7 +496,6 @@ export const useStore = create(
           console.log('📤 Отправляем данные:', fullData);
           const user = await registerUser(fullData);
           console.log('✅ Регистрация успешна:', user);
-
 
           set({
             user: user,
@@ -493,7 +511,6 @@ export const useStore = create(
       },
     }),
 
-
     {
       name: 'campus-storage',
       partialize: (state) => ({
@@ -507,11 +524,11 @@ export const useStore = create(
         requestDraft: state.requestDraft,
         marketFilters: state.marketFilters,
         postsFilters: state.postsFilters,
-        requestsFilters: state.requestsFilters, 
+        requestsFilters: state.requestsFilters,
+        // Тосты НЕ сохраняем в localStorage (они временные)
       }),
     }
   )
 );
-
 
 export default useStore;

@@ -1359,14 +1359,13 @@ def get_market_item(db: Session, item_id: int) -> Optional[models.MarketItem]:
     return item
 
 async def update_market_item(
-    db: Session,
-    item_id: int,
-    seller_id: int,
+    db: Session, 
+    item_id: int, 
+    seller_id: int, 
     item_update: schemas.MarketItemUpdate,
     new_files: List = None,
     keep_filenames: List[str] = None
 ) -> Optional[models.MarketItem]:
-    """Обновление товара (только продавец)"""
     from app.utils import process_uploaded_files
     
     db_item = db.query(models.MarketItem).filter(
@@ -1379,9 +1378,9 @@ async def update_market_item(
     
     update_data = item_update.model_dump(exclude_unset=True)
     
+    # Обработка изображений (если есть)
     if new_files is not None or keep_filenames is not None:
         raw_old_images = json.loads(db_item.images) if db_item.images else []
-        
         old_images_map = {}
         for item in raw_old_images:
             if isinstance(item, str):
@@ -1401,22 +1400,20 @@ async def update_market_item(
                 new_saved_meta = await process_uploaded_files(new_files)
                 final_images_meta.extend(new_saved_meta)
             except Exception as e:
-                raise ValueError(f"Ошибка обновления изображений: {str(e)}")
+                raise ValueError(f"Ошибка обработки новых файлов: {str(e)}")
         
         if not final_images_meta:
-            raise ValueError("Минимум 1 фото обязательно")
+            raise ValueError("Должно быть хотя бы 1 изображение")
         
         kept_urls = {img["url"] for img in final_images_meta}
-        files_to_delete = []
-        
-        for url in old_images_map:
-            if url not in kept_urls:
-                files_to_delete.append(url)
+        files_to_delete = [url for url in old_images_map if url not in kept_urls]
         
         if files_to_delete:
             delete_images(files_to_delete)
         
-        update_data['images'] = sanitize_json_field(final_images_meta)
+        update_data["images"] = sanitize_json_field(final_images_meta)
+
+    update_data = {k: v for k, v in update_data.items() if v is not None}
     
     for key, value in update_data.items():
         setattr(db_item, key, value)

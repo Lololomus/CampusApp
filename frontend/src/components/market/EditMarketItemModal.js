@@ -6,7 +6,7 @@ import { updateMarketItem } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import imageCompression from 'browser-image-compression';
-import { Z_CREATE_POST, Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
+import { Z_MODAL_MARKET_DETAIL, Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
 import { 
   CharCounter, 
   FieldHint,
@@ -15,6 +15,7 @@ import {
   getBorderColor,
 } from '../shared/FormValidation';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
+import { toast } from '../shared/Toast';
 
 const API_URL = 'http://localhost:8000';
 
@@ -133,7 +134,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
     const remainingSlots = MAX_IMAGES - images.length - processingImages.length;
     if (remainingSlots <= 0) {
       hapticFeedback('error');
-      setError(`Максимум ${MAX_IMAGES} фотографии`);
+      toast.warning(`Максимум ${MAX_IMAGES} фотографии`);
       return;
     }
 
@@ -184,6 +185,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
       hapticFeedback('success');
     } catch (err) {
       console.error(err);
+      toast.error('Ошибка загрузки изображений');
       setProcessingImages([]);
     }
 
@@ -222,41 +224,6 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
     setTimeout(() => {
       onClose();
     }, 300);
-  };
-
-  const showSuccessToast = (msg) => {
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      position: fixed;
-      bottom: 80px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: ${theme.colors.success};
-      color: white;
-      padding: 12px 24px;
-      border-radius: 24px;
-      font-weight: bold;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      z-index: ${Z_CREATE_POST + 10};
-      opacity: 0;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    `;
-    toast.innerHTML = `<span style="font-size: 18px;">✓</span> ${msg}`;
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateX(-50%) translateY(0)';
-    }, 10);
-    
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateX(-50%) translateY(20px)';
-      setTimeout(() => document.body.removeChild(toast), 300);
-    }, 2500);
   };
 
   const handleSubmit = async () => {
@@ -310,16 +277,17 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
       );
 
       if (onSuccess) onSuccess(updatedItem);
-      
+
       hapticFeedback('success');
-      showSuccessToast('Товар обновлён! 🎉');
-      
+      toast.success('Изменения сохранены');
+
       setUploadProgress(100);
       setTimeout(confirmClose, 100);
       
     } catch (e) {
       console.error(e);
-      setError(e.response?.data?.detail || 'Ошибка сохранения');
+      const errorMsg = e.response?.data?.detail || 'Ошибка сохранения';
+      toast.error(errorMsg);
       hapticFeedback('error');
       setIsSubmitting(false);
       setUploadProgress(0);
@@ -747,7 +715,7 @@ const styles = {
     background: 'rgba(0, 0, 0, 0.8)',
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
-    zIndex: Z_CREATE_POST,
+    zIndex: Z_MODAL_MARKET_DETAIL + 9,
     transition: 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     },
     modal: {
@@ -757,7 +725,7 @@ const styles = {
     right: 0,
     bottom: 0,
     background: theme.colors.bg,
-    zIndex: Z_CREATE_POST + 1,
+    zIndex: Z_MODAL_MARKET_DETAIL + 10,
     display: 'flex',
     flexDirection: 'column',
     transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',

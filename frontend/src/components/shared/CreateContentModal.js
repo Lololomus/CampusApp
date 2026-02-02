@@ -14,6 +14,7 @@ import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from 
 import PollCreator from '../posts/PollCreator'; 
 import ConfirmationDialog from './ConfirmationDialog';
 import { CharCounter, getBorderColor } from './FormValidation';
+import { toast } from './Toast';
 import { 
   POST_LIMITS, 
   REQUEST_LIMITS, 
@@ -184,14 +185,14 @@ function CreateContentModal({ onClose }) {
     if (files.length === 0) return;
     if (postCategory === 'confessions' || postCategory === 'polls') {
       hapticFeedback('error');
-      setError(`В категории ${postCategory === 'confessions' ? 'Признания' : 'Опросы'} нельзя прикреплять изображения`);
+      toast.error(`В категории ${postCategory === 'confessions' ? 'Признания' : 'Опросы'} нельзя прикреплять изображения`);
       return;
     }
 
     const remainingSlots = MAX_IMAGES - images.length - processingImages.length;
     if (remainingSlots <= 0) {
       hapticFeedback('error');
-      setError(`Максимум ${MAX_IMAGES} изображений`);
+      toast.error(`Максимум ${MAX_IMAGES} изображений`);
       return;
     }
 
@@ -244,7 +245,7 @@ function CreateContentModal({ onClose }) {
     const remainingSlots = MAX_IMAGES - reqImages.length - reqProcessingImages.length;
     if (remainingSlots <= 0) {
       hapticFeedback('error');
-      setError(`Максимум ${MAX_IMAGES} изображений`);
+      toast.error(`Максимум ${MAX_IMAGES} изображений`);
       return;
     }
 
@@ -381,21 +382,6 @@ function CreateContentModal({ onClose }) {
     }, 300);
   };
 
-  const showSuccessToast = (msg) => {
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
-      background: ${theme.colors.success}; color: white; padding: 12px 24px;
-      border-radius: 24px; font-weight: bold; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      z-index: ${Z_MODAL_CREATE_POST + 10}; opacity: 0; transition: all 0.3s ease;
-      display: flex; align-items: center; gap: 8px;
-    `;
-    toast.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> ${msg}`;
-    document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '1'; toast.style.transform = 'translateX(-50%) translateY(0)'; }, 10);
-    setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(-50%) translateY(20px)'; setTimeout(() => document.body.removeChild(toast), 300); }, 2500);
-  };
-
   const handleSubmit = async () => {
     setAttemptedSubmit(true);
     setError('');
@@ -469,10 +455,10 @@ function CreateContentModal({ onClose }) {
         localStorage.removeItem('createPostDraft');
         setUploadProgress(100);
         hapticFeedback('success');
-        showSuccessToast('Пост опубликован!');
+        toast.success('Пост опубликован!');
         setTimeout(confirmClose, 100);
       } catch (e) {
-        console.error(e);
+        console.error(e); 
 
         let errorMsg = 'Ошибка публикации';
         
@@ -486,7 +472,7 @@ function CreateContentModal({ onClose }) {
           }
         }
         
-        setError(errorMsg);
+        toast.error(errorMsg);
         setIsSubmitting(false);
         setUploadProgress(0);
       }
@@ -535,12 +521,12 @@ function CreateContentModal({ onClose }) {
         localStorage.removeItem('createRequestDraft');
         setUploadProgress(100);
         hapticFeedback('success');
-        showSuccessToast('Запрос создан!');
-        
+        toast.success('Запрос создан!');
+
         if (feedSubTab !== 'requests') {
           setFeedSubTab('requests');
         }
-        
+
         setTimeout(confirmClose, 100);
       } catch (e) {
         console.error('❌ Ошибка создания запроса:', e);
@@ -564,7 +550,7 @@ function CreateContentModal({ onClose }) {
           }
         }
         
-        setError(errorMsg);
+        toast.error(errorMsg);
         setIsSubmitting(false);
         setUploadProgress(0);
       }

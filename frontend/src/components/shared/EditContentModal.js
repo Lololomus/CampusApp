@@ -6,6 +6,7 @@ import {
   Image as ImageIcon, Trash2, BarChart2, Clock, EyeOff, Eye,
   Loader2, Star, Lock, Info, Gift
 } from 'lucide-react';
+import { toast } from './Toast';
 import { updatePost, updateRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
@@ -156,14 +157,14 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
 
     if (category === 'confessions' || category === 'polls') {
       hapticFeedback('error');
-      setError(`В категории ${category === 'confessions' ? 'Признания' : 'Опросы'} нельзя менять изображения`);
+      toast.error(`В категории ${category === 'confessions' ? 'Признания' : 'Опросы'} нельзя менять изображения`);
       return;
     }
 
     const remainingSlots = MAX_IMAGES - images.length - processingImages.length;
     if (remainingSlots <= 0) {
       hapticFeedback('error');
-      setError(`Максимум ${MAX_IMAGES} изображений`);
+      toast.error(`Максимум ${MAX_IMAGES} изображений`);
       return;
     }
 
@@ -275,21 +276,6 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
     }, 300);
   };
 
-  const showSuccessToast = (msg) => {
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
-      background: ${theme.colors.success}; color: white; padding: 12px 24px;
-      border-radius: 24px; font-weight: bold; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      z-index: ${Z_CREATE_POST + 10}; opacity: 0; transition: all 0.3s ease;
-      display: flex; align-items: center; gap: 8px;
-    `;
-    toast.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> ${msg}`;
-    document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '1'; toast.style.transform = 'translateX(-50%) translateY(0)'; }, 10);
-    setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(-50%) translateY(20px)'; setTimeout(() => document.body.removeChild(toast), 300); }, 2500);
-  };
-
   const handleSubmit = async () => {
     setAttemptedSubmit(true);
     setError('');
@@ -350,7 +336,7 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
             
             if (onSuccess) onSuccess(updatedPost);
             hapticFeedback('success');
-            showSuccessToast('Пост обновлён!');
+            toast.success('Пост обновлён!');
 
         } else {
                 // REQUEST UPDATE
@@ -366,18 +352,29 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
             const updatedReq = await updateRequest(initialData.id, requestData);
             if (onSuccess) onSuccess(updatedReq);
             hapticFeedback('success');
-            showSuccessToast('Запрос обновлён!');
+            toast.success('Запрос обновлён!');
         }
 
         setUploadProgress(100);
         setTimeout(confirmClose, 100);
 
-    } catch (e) {
+      } catch (e) {
         console.error(e);
-        setError(e.response?.data?.detail || 'Ошибка сохранения');
+        
+        let errorMsg = 'Ошибка сохранения';
+        if (e.response?.data?.detail) {
+          const detail = e.response.data.detail;
+          if (Array.isArray(detail)) {
+            errorMsg = detail.map(err => err.msg || err.type).join(', ');
+          } else if (typeof detail === 'string') {
+            errorMsg = detail;
+          }
+        }
+        
+        toast.error(errorMsg);
         setIsSubmitting(false);
         setUploadProgress(0);
-    }
+      }
   };
 
   // ===== RENDER HELPERS =====
