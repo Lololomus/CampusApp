@@ -1,10 +1,12 @@
-// ===== 📄 ФАЙЛ: src/components/Market/MarketCard.js =====
+// ===== 📄 ФАЙЛ: frontend/src/components/market/MarketCard.js =====
 
 import React, { useRef, useState } from 'react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem } from '../../api';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
+import { toast } from '../shared/Toast';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 
@@ -18,6 +20,8 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   } = useStore();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [likeAnimating, setLikeAnimating] = useState(false);  
   const menuButtonRef = useRef(null);
   
   const isOwner = user?.id === item.seller_id;
@@ -37,9 +41,51 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
     return gradients[item.category] || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
   };
 
+  const getCategoryInfo = () => {
+    const categories = {
+      textbooks: { emoji: '📚', label: 'Учебники' },
+      electronics: { emoji: '💻', label: 'Электроника' },
+      furniture: { emoji: '🛋️', label: 'Мебель' },
+      clothing: { emoji: '👕', label: 'Одежда' },
+      sports: { emoji: '⚽', label: 'Спорт' },
+      appliances: { emoji: '🔌', label: 'Техника' }
+    };
+    return categories[item.category] || { emoji: '📦', label: item.category };
+  };
+
+  const getConditionText = () => {
+    const conditions = {
+      'new': '✨ Новое',
+      'like_new': '⭐ Как новое',
+      'good': '👍 Хорошее',
+      'fair': '👌 Нормальное'
+    };
+    return conditions[item.condition] || item.condition;
+  };
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('ru-RU').format(price);
+  };
+
+  const formatRelativeDate = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'сегодня';
+    if (diffDays === 1) return 'вчера';
+    if (diffDays < 7) return `${diffDays}д`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}н`;
+    return `${Math.floor(diffDays / 30)}м`;
+  };
+
   const handleFavorite = async (e) => {
     e.stopPropagation();
-    if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+    hapticFeedback('medium');
+
+    setLikeAnimating(true);
+    setTimeout(() => setLikeAnimating(false), 400);
 
     const newState = !item.is_favorited;
     toggleMarketFavoriteOptimistic(item.id, newState);
@@ -49,16 +95,15 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
     } catch (error) {
       console.error('Ошибка toggle избранного:', error);
       toggleMarketFavoriteOptimistic(item.id, !newState);
+      toast.error('Не удалось обновить избранное');
     }
   };
 
   const handleMenuClick = (e) => {
     e.stopPropagation();
-    if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+    hapticFeedback('light');
     setIsMenuOpen(true);
   };
-
-  // ===== ACTIONS =====
 
   const handleEdit = () => {
     setIsMenuOpen(false);
@@ -67,45 +112,62 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   };
 
   const handleDelete = async () => {
-    setIsMenuOpen(false);
-    if (window.confirm('Удалить это объявление?')) {
-      if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
-      try {
-        await deleteMarketItem(item.id); // API запрос
-        deleteFromStore(item.id); // Удаляем из UI
-      } catch (error) {
-        alert('Ошибка при удалении');
-      }
+    hapticFeedback('heavy');
+    try {
+      await deleteMarketItem(item.id);
+      deleteFromStore(item.id);
+      toast.success('Товар удалён');
+    } catch (error) {
+      console.error('Ошибка удаления:', error);
+      toast.error('Не удалось удалить товар');
     }
   };
 
   const handleReport = () => {
     setIsMenuOpen(false);
-    alert('Жалоба отправлена модераторам');
+    hapticFeedback('medium');
+    toast.info('Функция "Пожаловаться" в разработке');
+  };
+
+  const handleCopyLink = () => {
+    setIsMenuOpen(false);
+    hapticFeedback('light');
+    const link = `${window.location.origin}/market/${item.id}`;
+    
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link)
+        .then(() => toast.success('Ссылка скопирована'))
+        .catch(() => toast.error('Не удалось скопировать'));
+    } else {
+      toast.info(`Ссылка: ${link}`);
+    }
   };
 
   const handleShare = () => {
     setIsMenuOpen(false);
-    // TODO: Реализовать share через Telegram WebApp
-    console.log('Share item:', item.id);
+    hapticFeedback('light');
+    
+    const url = `${window.location.origin}/market/${item.id}`;
+    const text = `${item.title} - ${formatPrice(item.price)} ₽`;
+    
+    if (window.Telegram?.WebApp?.openTelegramLink) {
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+      window.Telegram.WebApp.openTelegramLink(shareUrl);
+    } else if (navigator.share) {
+      navigator.share({ title: item.title, text, url }).catch(() => {});
+    } else {
+      handleCopyLink();
+    }
   };
 
-  // Меню действий
   const menuItems = [
-    // Скопировать ссылку — для ВСЕХ (консистентность)
     {
       icon: '🔗',
-      label: 'Скопировать ссылку',
+      label: 'Копировать ссылку',
       actionType: MENU_ACTIONS.COPY,
-      onClick: () => {
-        setIsMenuOpen(false);
-        hapticFeedback('success');
-        const link = `campusapp://market/${item.id}`;
-        navigator.clipboard.writeText(link);
-      }
+      onClick: handleCopyLink
     },
     
-    // Действия ВЛАДЕЛЬЦА
     ...(isOwner ? [
       {
         icon: '✏️',
@@ -117,10 +179,12 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
         icon: '🗑️',
         label: 'Удалить',
         actionType: MENU_ACTIONS.DELETE,
-        onClick: handleDelete
+        onClick: () => {
+          setIsMenuOpen(false);
+          setShowDeleteDialog(true);
+        }
       }
     ] : [
-      // Действия НЕ-владельца
       {
         icon: '🚩',
         label: 'Пожаловаться',
@@ -136,9 +200,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
     ])
   ];
 
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('ru-RU').format(price);
-  };
+  const categoryInfo = getCategoryInfo();
 
   return (
     <>
@@ -165,10 +227,15 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
               background: getCategoryGradient(),
             }}>
               <div style={styles.placeholderText}>
-                {item.category}
+                {categoryInfo.emoji} {categoryInfo.label}
               </div>
             </div>
           )}
+
+          {/* Категория badge */}
+          <div style={styles.categoryBadge}>
+            {categoryInfo.emoji} {categoryInfo.label}
+          </div>
 
           {/* Badge "1/N" */}
           {item.images && item.images.length > 1 && (
@@ -177,8 +244,21 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
             </div>
           )}
 
+          {/* Статус "Срочно" */}
+          {item.is_urgent && (
+            <div style={styles.urgentBadge}>
+              ⚡ Срочно
+            </div>
+          )}
+
           {/* ❤️ Лайк */}
-          <button style={styles.likeButton} onClick={handleFavorite}>
+          <button 
+            style={{
+              ...styles.likeButton,
+              ...(likeAnimating ? styles.likeButtonAnimating : {}),
+            }} 
+            onClick={handleFavorite}
+          >
             <span style={{
               ...styles.likeIcon,
               transform: item.is_favorited ? 'scale(1.1)' : 'scale(1)',
@@ -194,7 +274,6 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
           <div style={styles.topRow}>
             <div style={styles.price}>{formatPrice(item.price)} ₽</div>
             
-            {/* ⋯ Меню (с ref) */}
             <button 
               ref={menuButtonRef}
               style={styles.menuButton} 
@@ -208,24 +287,43 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
           
           <div style={styles.metaRow}>
             <span style={styles.metaText}>
-              {item.condition === 'new' && 'Новое'}
-              {item.condition === 'like-new' && 'Как новое'}
-              {item.condition === 'good' && 'Хорошее'}
-              {item.condition === 'fair' && 'Удовлетв.'}
+              {getConditionText()}
             </span>
             <span style={styles.metaDivider}>•</span>
-            <span style={styles.metaText}>{item.location || 'Нет локации'}</span>
+            <span style={styles.metaText}>
+              {item.seller?.university || 'Университет'}
+              {item.seller?.institute && `, ${item.seller.institute.slice(0, 10)}`}
+            </span>
+            <span style={styles.metaDivider}>•</span>
+            <span style={styles.metaText}>
+              {formatRelativeDate(item.created_at)}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Выпадающее меню (через портал) */}
       <DropdownMenu 
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         anchorRef={menuButtonRef}
         items={menuItems}
       />
+
+      {showDeleteDialog && (
+        <ConfirmationDialog
+          isOpen={showDeleteDialog}
+          onCancel={() => setShowDeleteDialog(false)}
+          onConfirm={() => {
+            setShowDeleteDialog(false);
+            handleDelete();
+          }}
+          title="Удалить товар?"
+          message={`Вы уверены, что хотите удалить "${item.title}"? Это действие нельзя отменить.`}
+          confirmText="Удалить"
+          cancelText="Отмена"
+          confirmType="danger"
+        />
+      )}
     </>
   );
 };
@@ -239,12 +337,13 @@ const styles = {
     transition: 'transform 0.1s ease',
     animation: 'fadeInUp 0.4s ease forwards',
     opacity: 0,
+    fontFamily: 'Arial, sans-serif',
   },
   imageContainer: {
     position: 'relative',
     width: '100%',
-    height: 160,
-    backgroundColor: theme.colors.bgTertiary,
+    height: 180,
+    backgroundColor: theme.colors.bgSecondary,
     overflow: 'hidden',
   },
   image: {
@@ -254,41 +353,76 @@ const styles = {
     display: 'block',
   },
   imagePlaceholder: {
-    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   placeholderText: {
     color: theme.colors.text,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
+    fontSize: 16,
+    fontWeight: 600,
+    fontFamily: 'Arial, sans-serif',
     textTransform: 'capitalize',
     textShadow: '0 2px 4px rgba(0,0,0,0.5)',
   },
-  
-  // Badge (Счетчик фото)
-  photoBadge: {
+
+  categoryBadge: {
     position: 'absolute',
-    top: theme.spacing.sm,
-    right: theme.spacing.sm,
-    background: 'rgba(0,0,0,0.6)',
+    top: 8,
+    left: 8,
+    background: 'rgba(0,0,0,0.65)',
     backdropFilter: 'blur(4px)',
     color: theme.colors.text,
     fontSize: 10,
-    fontWeight: theme.fontWeight.bold,
-    padding: '2px 6px',
-    borderRadius: theme.radius.sm,
+    fontWeight: 600,
+    fontFamily: 'Arial, sans-serif',
+    padding: '3px 7px',
+    borderRadius: 6,
+    zIndex: 2,
+  },
+  
+  photoBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    background: 'rgba(0,0,0,0.65)',
+    backdropFilter: 'blur(4px)',
+    color: theme.colors.text,
+    fontSize: 11,                    
+    fontWeight: 700,                 
+    fontFamily: 'Arial, sans-serif', 
+    padding: '3px 7px',              
+    borderRadius: 6,
     zIndex: 2,
   },
 
-  // Кнопка Лайка (на картинке)
+  urgentBadge: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    background: theme.colors.warning,
+    color: theme.colors.textInverted,
+    fontSize: 10,
+    fontWeight: 700,
+    fontFamily: 'Arial, sans-serif',
+    padding: '3px 8px',
+    borderRadius: 6,
+    zIndex: 2,
+  },
+
   likeButton: {
     position: 'absolute',
-    bottom: theme.spacing.sm,
-    right: theme.spacing.sm,
-    width: 32,
-    height: 32,
+    bottom: 8,
+    right: 8,
+    width: 36,
+    height: 36,
     borderRadius: '50%',
-    background: 'rgba(0,0,0,0.4)', // Полупрозрачная подложка
+    background: 'rgba(0,0,0,0.4)',
     backdropFilter: 'blur(4px)',
     border: 'none',
     display: 'flex',
@@ -305,77 +439,83 @@ const styles = {
     filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
   },
 
+  likeButtonAnimating: {
+    animation: 'likeAnimation 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+  },
+
   info: {
-    padding: theme.spacing.md,
-    paddingTop: theme.spacing.sm,
+    padding: '10px 12px',
   },
   
-  // Строка с ценой и меню
   topRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 4,
   },
   
   price: {
     color: theme.colors.market,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.bold,
-    lineHeight: '1.2',
+    fontSize: 20,
+    fontWeight: 700,
+    fontFamily: 'Arial, sans-serif',
+    lineHeight: 1,
   },
 
-  // Кнопка меню
   menuButton: {
     background: 'transparent',
     border: 'none',
-    padding: 4,
-    marginRight: -4,
-    marginTop: -4,
+    width: 40,
+    height: 40,
     color: theme.colors.textTertiary,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: -8,
+    marginTop: -8,
   },
   menuIcon: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
-    lineHeight: 0.5,
+    lineHeight: 1,
+    fontFamily: 'Arial, sans-serif',
   },
 
   title: {
     color: theme.colors.text,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    marginBottom: theme.spacing.xs,
+    fontSize: 15,
+    fontWeight: 500,
+    fontFamily: 'Arial, sans-serif',
     display: '-webkit-box',
     WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    lineHeight: '1.3',
-    height: '2.6em', 
+    lineHeight: 1.3,
+    minHeight: '2.6em',
   },
   
   metaRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.xs,
+    flexWrap: 'wrap',
+    gap: 6,
     fontSize: 11,
+    fontFamily: 'Arial, sans-serif',
     color: theme.colors.textSecondary,
-    opacity: 0.7,
+    opacity: 0.75,
+    lineHeight: 1.3,
   },
   metaText: {
-    whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    maxWidth: '60px',
   },
-  metaDivider: { color: theme.colors.textTertiary },
+  metaDivider: { 
+    color: theme.colors.textTertiary 
+  },
 };
 
-// CSS Animation + Active State (Touch)
 const styleSheet = document.createElement('style');
 styleSheet.textContent = `
   @keyframes fadeInUp {
@@ -383,11 +523,19 @@ styleSheet.textContent = `
     to { opacity: 1; transform: translateY(0); }
   }
 
+  @keyframes likeAnimation {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.25); }
+    60% { transform: scale(0.95); }
+    100% { transform: scale(1); }
+  }
+
   .market-card-touch:active {
     transform: scale(0.98);
     opacity: 0.95;
   }
 `;
+
 document.head.appendChild(styleSheet);
 
 export default MarketCard;

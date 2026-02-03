@@ -1242,6 +1242,59 @@ def get_market_feed_endpoint(
         "has_more": feed_data['has_more']
     }
 
+@app.get("/market/favorites", response_model=List[schemas.MarketItemResponse])
+def get_market_favorites_endpoint(
+    telegram_id: int = Query(...),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    items = crud.get_user_favorites(db, user.id, limit, offset)
+    
+    result = []
+    for item in items:
+        images = get_image_urls(item.images) if item.images else []
+        
+        seller_data = schemas.MarketSeller(
+            id=item.seller.id,
+            name=item.seller.name,
+            username=item.seller.username,
+            university=item.seller.university,
+            institute=item.seller.institute,
+            course=item.seller.course
+        )
+        
+        is_seller = item.seller_id == user.id
+        
+        item_dict = {
+            "id": item.id,
+            "seller_id": item.seller_id,
+            "seller": seller_data,
+            "category": item.category,
+            "title": item.title,
+            "description": item.description,
+            "price": item.price,
+            "condition": item.condition,
+            "location": item.location,
+            "images": images,
+            "status": item.status,
+            "university": item.university,
+            "institute": item.institute,
+            "views_count": item.views_count,
+            "favorites_count": item.favorites_count,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "is_seller": is_seller,
+            "is_favorited": True
+        }
+        result.append(item_dict)
+    
+    return result
+
 @app.get("/market/{item_id}", response_model=schemas.MarketItemResponse)
 def get_market_item_endpoint(
     item_id: int,
@@ -1473,59 +1526,6 @@ def toggle_market_favorite_endpoint(
         raise HTTPException(status_code=404, detail="User not found")
     
     result = crud.toggle_market_favorite(db, item_id, user.id)
-    return result
-
-@app.get("/market/favorites", response_model=List[schemas.MarketItemResponse])
-def get_market_favorites_endpoint(
-    telegram_id: int = Query(...),
-    limit: int = Query(20, ge=1, le=50),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
-):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    items = crud.get_user_favorites(db, user.id, limit, offset)
-    
-    result = []
-    for item in items:
-        images = get_image_urls(item.images) if item.images else []
-        
-        seller_data = schemas.MarketSeller(
-            id=item.seller.id,
-            name=item.seller.name,
-            username=item.seller.username,
-            university=item.seller.university,
-            institute=item.seller.institute,
-            course=item.seller.course
-        )
-        
-        is_seller = item.seller_id == user.id
-        
-        item_dict = {
-            "id": item.id,
-            "seller_id": item.seller_id,
-            "seller": seller_data,
-            "category": item.category,
-            "title": item.title,
-            "description": item.description,
-            "price": item.price,
-            "condition": item.condition,
-            "location": item.location,
-            "images": images,
-            "status": item.status,
-            "university": item.university,
-            "institute": item.institute,
-            "views_count": item.views_count,
-            "favorites_count": item.favorites_count,
-            "created_at": item.created_at,
-            "updated_at": item.updated_at,
-            "is_seller": is_seller,
-            "is_favorited": True
-        }
-        result.append(item_dict)
-    
     return result
 
 @app.get("/market/my-items", response_model=List[schemas.MarketItemResponse])

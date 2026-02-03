@@ -63,7 +63,7 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
 
   const conditions = [
     { id: 'new', label: 'Новое', icon: '✨' },
-    { id: 'like-new', label: 'Как новое', icon: '⭐' },
+    { id: 'like_new', label: 'Как новое', icon: '⭐' },
     { id: 'good', label: 'Хорошее', icon: '👍' },
     { id: 'fair', label: 'Норм', icon: '👌' },
   ];
@@ -292,7 +292,13 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
                         key={cat.id}
                         style={{
                           ...styles.catCard,
-                          ...(category === cat.id ? styles.catCardActive : {})
+                          background: category === cat.id 
+                            ? 'rgba(16, 185, 129, 0.1)' 
+                            : theme.colors.bgSecondary,
+                          borderColor: category === cat.id 
+                            ? theme.colors.market 
+                            : theme.colors.border,
+                          color: theme.colors.text,
                         }}
                         onClick={() => handleSelectCategory(cat.id)}
                       >
@@ -394,7 +400,7 @@ const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
                       style={{
                         ...styles.conditionChip,
                         backgroundColor: isActive ? theme.colors.market : theme.colors.bgSecondary,
-                        borderColor: isActive ? theme.colors.market : theme.colors.border,
+                        border: `1px solid ${isActive ? theme.colors.market : theme.colors.border}`,
                         color: isActive ? '#ffffff' : theme.colors.text,
                         fontWeight: isActive ? 600 : 400
                       }}
@@ -628,7 +634,6 @@ const styles = {
   conditionChip: {
     borderRadius: 12, padding: '10px',
     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, cursor: 'pointer',
-    borderWidth: 1, borderStyle: 'solid',
     transition: 'all 0.2s',
   },
 

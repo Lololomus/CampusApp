@@ -311,9 +311,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
   return (
     <>
-      <div style={styles.overlay} onClick={onClose} />
-      
-      <div style={styles.modal}>
+      <div style={styles.container}>
         {images.length > 0 && (
           <div style={styles.galleryContainer}>
             <div
@@ -548,18 +546,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
 // Стили (без изменений)
 const styles = {
-  overlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: theme.colors.overlayDark,
-    zIndex: Z_MARKET_DETAIL - 1,
-    animation: 'fadeIn 0.2s ease',
-  },
-
-  modal: {
+  container: {
     position: 'fixed',
     top: 0,
     left: 0,
@@ -567,7 +554,10 @@ const styles = {
     bottom: 0,
     background: theme.colors.bg,
     zIndex: Z_MARKET_DETAIL,
-    animation: 'slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    animation: 'slideInRight 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+    willChange: 'transform',
+    transform: 'translate3d(0,0,0)',
+    WebkitOverflowScrolling: 'touch',
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
@@ -952,14 +942,9 @@ const styles = {
 
 const styleSheet = document.createElement('style');
 styleSheet.textContent = `
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  @keyframes slideUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
+  @keyframes slideInRight {
+    from { transform: translate3d(100%, 0, 0); }
+    to { transform: translate3d(0, 0, 0); }
   }
 
   @keyframes spin {

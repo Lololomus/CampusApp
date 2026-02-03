@@ -20,19 +20,19 @@ const MarketFilters = ({ onClose, onApply }) => {
     { value: 'my_institute', label: `Мой институт (${user?.institute || 'ФКН'})` },
   ];
 
-  // ✅ БЫСТРЫЕ ФИЛЬТРЫ ЦЕНЫ (ОБНОВЛЕНО)
+  // БЫСТРЫЕ ФИЛЬТРЫ ЦЕНЫ
   const priceQuickFilters = [
     { label: 'До 500₽', min: null, max: 500 },
     { label: '500-2000₽', min: 500, max: 2000 },
-    { label: '2000-5000₽', min: 2000, max: 5000 },   // ✅ Добавлено
-    { label: '5000-10000₽', min: 5000, max: 10000 }, // ✅ Изменено
+    { label: '2000-5000₽', min: 2000, max: 5000 },   
+    { label: '5000-10000₽', min: 5000, max: 10000 }, 
     { label: '10000+₽', min: 10000, max: null },
   ];
 
   // Состояние товара
   const conditionOptions = [
     { value: 'new', label: 'Новое', icon: '✨' },
-    { value: 'like-new', label: 'Как новое', icon: '⭐' },
+    { value: 'like_new', label: 'Как новое', icon: '⭐' },
     { value: 'good', label: 'Хорошее', icon: '👍' },
     { value: 'fair', label: 'Удовл.', icon: '👌' },
   ];
