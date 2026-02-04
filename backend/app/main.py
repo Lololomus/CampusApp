@@ -3,7 +3,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict
 from app import models, schemas, crud
 from app.database import get_db, init_db
@@ -13,7 +13,7 @@ from app.routers import dating
 import shutil
 import uuid
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 app = FastAPI(
     title="Campus App API",
@@ -165,8 +165,6 @@ def get_user_posts_endpoint(
         tags = json.loads(post.tags) if post.tags else []
         images = get_image_urls(post.images) if post.images else []
         
-        author_id_data = post.author_id if post.is_anonymous else post.author_id
-        
         if post.is_anonymous:
             author_data = {"name": "Аноним"}
         else:
@@ -174,7 +172,7 @@ def get_user_posts_endpoint(
         
         post_dict = {
             "id": post.id,
-            "author_id": author_id_data,
+            "author_id": post.author_id,
             "author": author_data,
             "category": post.category,
             "title": post.title,
@@ -1068,7 +1066,7 @@ def delete_request_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
 
-@app.get("/api/requests/my/list")
+@app.get("/api/requests/my/list", response_model=List[schemas.RequestResponse])
 def get_my_requests_endpoint(
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
@@ -1077,7 +1075,7 @@ def get_my_requests_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    return crud.get_my_requests(db, user.id)
+    return crud.get_my_requests(db, user.id) 
 
 @app.post("/api/requests/{request_id}/respond", response_model=schemas.ResponseItem)
 def create_response_endpoint(
@@ -1290,6 +1288,58 @@ def get_market_favorites_endpoint(
             "updated_at": item.updated_at,
             "is_seller": is_seller,
             "is_favorited": True
+        }
+        result.append(item_dict)
+    
+    return result
+
+@app.get("/market/my-items", response_model=List[schemas.MarketItemResponse])
+def get_my_market_items_endpoint(
+    telegram_id: int = Query(...),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """Получить МОИ товары (которые Я продаю)"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    items = crud.get_user_market_items(db, user.id, limit, offset)
+    
+    result = []
+    for item in items:
+        images = get_image_urls(item.images) if item.images else []
+        
+        seller_data = schemas.MarketSeller(
+            id=user.id,
+            name=user.name,
+            username=user.username,
+            university=user.university,
+            institute=user.institute,
+            course=user.course
+        )
+        
+        item_dict = {
+            "id": item.id,
+            "seller_id": item.seller_id,
+            "seller": seller_data,
+            "category": item.category,
+            "title": item.title,
+            "description": item.description,
+            "price": item.price,
+            "condition": item.condition,
+            "location": item.location,
+            "images": images,
+            "status": item.status,
+            "university": item.university,
+            "institute": item.institute,
+            "views_count": item.views_count,
+            "favorites_count": item.favorites_count,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "is_seller": True,
+            "is_favorited": False
         }
         result.append(item_dict)
     
@@ -1528,56 +1578,52 @@ def toggle_market_favorite_endpoint(
     result = crud.toggle_market_favorite(db, item_id, user.id)
     return result
 
-@app.get("/market/my-items", response_model=List[schemas.MarketItemResponse])
-def get_my_market_items_endpoint(
+@app.get("/api/requests/my-items", response_model=List[schemas.RequestResponse])
+def get_my_requests_endpoint(
     telegram_id: int = Query(...),
-    limit: int = Query(20, ge=1, le=50),
-    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
+    """Получить МОИ запросы"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    items = crud.get_user_market_items(db, user.id, limit, offset)
+    # Используем готовую CRUD функцию
+    requests = crud.get_my_requests(db, user.id)
     
     result = []
-    for item in items:
-        images = get_image_urls(item.images) if item.images else []
+    for req in requests:
+        tags = json.loads(req.tags) if req.tags else []
+        images = get_image_urls(req.images) if req.images else []
         
-        seller_data = schemas.MarketSeller(
+        author_data = schemas.RequestAuthor(
             id=user.id,
             name=user.name,
-            username=user.username,
+            course=user.course,
             university=user.university,
             institute=user.institute,
-            course=user.course
+            username=user.username
         )
         
-        is_favorited = crud.is_item_favorited(db, item.id, user.id)
-        
-        item_dict = {
-            "id": item.id,
-            "seller_id": item.seller_id,
-            "seller": seller_data,
-            "category": item.category,
-            "title": item.title,
-            "description": item.description,
-            "price": item.price,
-            "condition": item.condition,
-            "location": item.location,
-            "images": images,
-            "status": item.status,
-            "university": item.university,
-            "institute": item.institute,
-            "views_count": item.views_count,
-            "favorites_count": item.favorites_count,
-            "created_at": item.created_at,
-            "updated_at": item.updated_at,
-            "is_seller": True,
-            "is_favorited": is_favorited
-        }
-        result.append(item_dict)
+        req_dict = schemas.RequestResponse(
+            id=req.id,
+            category=req.category,
+            title=req.title,
+            body=req.body,
+            tags=tags,
+            expires_at=req.expires_at,
+            status=req.status,
+            views_count=req.views_count,
+            responses_count=len(req.responses) if req.responses else 0,
+            created_at=req.created_at,
+            author=author_data,
+            is_author=True,
+            has_responded=False,
+            reward_type=req.reward_type,
+            reward_value=req.reward_value,
+            images=images
+        )
+        result.append(req_dict)
     
     return result
 

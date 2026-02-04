@@ -5,10 +5,10 @@ import {
   X, Camera, User, AtSign, 
   BookOpen, Layers, Hash, ChevronRight 
 } from 'lucide-react';
-import { useStore } from '../store';
-import { updateUserProfile, uploadUserAvatar } from '../api'; 
-import { hapticFeedback } from '../utils/telegram';
-import { Z_EDIT_PROFILE } from '../constants/zIndex';
+import { useStore } from '../../store';
+import { updateUserProfile, uploadUserAvatar } from '../../api';
+import { hapticFeedback } from '../../utils/telegram';
+import { Z_EDIT_PROFILE } from '../../constants/zIndex';
 
 // КОНСТАНТЫ
 const UNIVERSITIES = ["РУК", "МГУ", "ВШЭ", "МГТУ", "РАНХиГС", "Другой"];

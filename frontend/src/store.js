@@ -7,16 +7,15 @@ const API_URL = 'http://localhost:8000';
 export const useStore = create(
   persist(
     (set, get) => ({
-      // ===== AUTH STATE =====
+      // AUTH STATE
       isRegistered: false,
       user: {},
       
-      // ✅ ОБНОВЛЕНО: setUser с автозагрузкой dating профиля
       setUser: (user) => {
         const state = get();
         
         if (!user) {
-          // Logout/новый профиль → очистить всё
+          // Logout — очистить всё
           set({ 
             user: {}, 
             datingProfile: null,
@@ -27,7 +26,7 @@ export const useStore = create(
         } else {
           set({ user, isRegistered: true });
           
-          // ✅ НОВОЕ: автозагрузка dating профиля при входе
+          // Автозагрузка dating профиля при входе
           if (user.show_in_dating) {
             import('./api').then(({ getMyDatingProfile }) => {
               getMyDatingProfile()
@@ -36,9 +35,7 @@ export const useStore = create(
                     state.setDatingProfile(profile);
                   }
                 })
-                .catch(() => {
-                  // Профиль не найден — это нормально
-                });
+                .catch(() => {});
             });
           }
         }
@@ -52,15 +49,15 @@ export const useStore = create(
         isRegistered: false 
       }),
 
-      // ===== NAVIGATION STATE =====
-      activeTab: 'feed', // 'feed' | 'search' | 'people' | 'profile' | 'market'
-      feedMode: 'global', // 'global' | 'my-university' | 'my-institute'
-      feedSubTab: 'posts', // 'posts' | 'requests' (ДЛЯ ТАБОВ В ГЛАВНОЙ)
+      // NAVIGATION STATE
+      activeTab: 'feed',
+      feedMode: 'global',
+      feedSubTab: 'posts',
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
       setFeedSubTab: (tab) => set({ feedSubTab: tab }),
 
-      // ===== MODAL STATES =====
+      // MODAL STATES
       showAuthModal: false,
       showCreateModal: false,
       showCreateRequestModal: false,
@@ -75,8 +72,8 @@ export const useStore = create(
       setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
 
-      editingContent: null, // Данные поста или запроса
-      editingType: null,    // 'post' | 'request'
+      editingContent: null,
+      editingType: null,
       
       setEditingContent: (content, type = 'post') => set({ 
         editingContent: content, 
@@ -88,11 +85,14 @@ export const useStore = create(
         editingType: null 
       }),
 
-      // My posts screen
+      // Fullscreen модалки профиля
       showUserPosts: false,
       setShowUserPosts: (show) => set({ showUserPosts: show }),
+      
+      showUserMarketItems: false,
+      setShowUserMarketItems: (show) => set({ showUserMarketItems: show }),
 
-      // ===== ONBOARDING STATE =====
+      // ONBOARDING STATE
       onboardingStep: 0,
       onboardingData: {},
       setOnboardingStep: (step) => set({ onboardingStep: step }),
@@ -100,7 +100,7 @@ export const useStore = create(
         onboardingData: { ...state.onboardingData, ...data }
       })),
 
-      // ===== POSTS STATE (НЕ СОХРАНЯЕМ В LOCALSTORAGE!) =====
+      // POSTS STATE
       posts: [],
       setPosts: (posts) => set({ posts }),
       addNewPost: (newPost) => set((state) => ({
@@ -135,30 +135,26 @@ export const useStore = create(
         });
       },
 
-      // ===== 🎯 FILTERS STATE =====
-      
-      // Фильтры постов
+      // FILTERS STATE
       postsFilters: {
-        location: 'all',        // 'all' | 'my_university' | 'my_institute'
+        location: 'all',
         university: 'all',
         institute: 'all',
-        tags: [],               // Массив тегов ['помощь', 'срочно']
-        dateRange: 'all',       // 'all' | 'today' | 'week' | 'month'
-        sort: 'newest',         // 'newest' | 'popular' | 'discussed'
+        tags: [],
+        dateRange: 'all',
+        sort: 'newest',
       },
       
-      // Фильтры запросов
       requestsFilters: {
-        location: 'all',        // 'all' | 'my_university' | 'my_institute'
+        location: 'all',
         university: 'all',
         institute: 'all',
-        status: 'active',       // 'active' | 'all'
-        hasReward: 'all',       // 'all' | 'with' | 'without'
-        urgency: 'all',         // 'all' | 'soon' (<24h) | 'later'
-        sort: 'newest',         // 'newest' | 'expires_soon' | 'most_responses'
+        status: 'active',
+        hasReward: 'all',
+        urgency: 'all',
+        sort: 'newest',
       },
       
-      // Actions для фильтров постов
       setPostsFilters: (filters) => set((state) => ({
         postsFilters: { ...state.postsFilters, ...filters }
       })),
@@ -174,7 +170,6 @@ export const useStore = create(
         }
       }),
       
-      // Actions для фильтров запросов
       setRequestsFilters: (filters) => set((state) => ({
         requestsFilters: { ...state.requestsFilters, ...filters }
       })),
@@ -191,11 +186,11 @@ export const useStore = create(
         }
       }),
 
-      // ===== REQUESTS STATE (ОБНОВЛЕНО) =====
-      requests: [], // Лента запросов (текущая категория)
-      myRequests: [], // Мои запросы
-      currentRequest: null, // Текущий открытый запрос (для модалки)
-      requestDraft: {}, // Черновик запроса (автосохранение)
+      // REQUESTS STATE
+      requests: [],
+      myRequests: [],
+      currentRequest: null,
+      requestDraft: {},
       
       setRequests: (requests) => set({ requests }),
       
@@ -219,20 +214,14 @@ export const useStore = create(
       })),
       
       setMyRequests: (requests) => set({ myRequests: requests }),
-      
       setCurrentRequest: (request) => set({ currentRequest: request }),
-      
       setRequestDraft: (draft) => set({ requestDraft: draft }),
-      
       clearRequestDraft: () => set({ requestDraft: {} }),
 
-      // ===== DATING STATE =====
-      
-      // Dating Profile
-      datingProfile: null, // null = не зарегистрирован в знакомствах
+      // DATING STATE
+      datingProfile: null,
       setDatingProfile: (profile) => set({ datingProfile: profile }),
       
-      // ✅ НОВОЕ: очистка dating профиля
       clearDatingProfile: () => set({ 
         datingProfile: null,
         currentProfile: null,
@@ -240,16 +229,14 @@ export const useStore = create(
         hasMoreProfiles: true,
       }),
       
-      // Профили (карточки для свайпа)
+      // Профили для свайпа
       currentProfile: null,
       profilesQueue: [],
       isLoadingProfiles: false,
       hasMoreProfiles: true,
       
       setCurrentProfile: (profile) => set({ currentProfile: profile }),
-      
       setIsLoadingProfiles: (isLoading) => set({ isLoadingProfiles: isLoading }),
-      
       setHasMoreProfiles: (hasMore) => set({ hasMoreProfiles: hasMore }),
       
       addProfilesToQueue: (profiles) => set((state) => ({
@@ -265,7 +252,7 @@ export const useStore = create(
         
         console.log('📊 После: newCurrent =', newCurrent?.id, ', newQueue length =', newQueue.length);
         
-        // PREFETCH: если осталось < 3 анкет и не идёт загрузка
+        // PREFETCH: если осталось < 3 анкет
         if (newQueue.length < 3 && !state.isLoadingProfiles && state.hasMoreProfiles) {
           console.log('⚡ PREFETCH TRIGGERED: осталось', newQueue.length, 'анкет');
           setTimeout(() => {
@@ -288,7 +275,6 @@ export const useStore = create(
         hasMoreProfiles: true 
       }),
       
-      // Callback для prefetch (устанавливается в DatingFeed.js)
       onPrefetchNeeded: null,
       setOnPrefetchNeeded: (callback) => set({ onPrefetchNeeded: callback }),
 
@@ -300,16 +286,14 @@ export const useStore = create(
           : usersOrUpdater
       })),
 
-      // активные мэтчи (24 часа)
       matches: [],
       setMatches: (matches) => set({ matches }),
-
-      // удаление истёкшего мэтча
+      
       removeMatch: (userId) => set((state) => ({
         matches: state.matches.filter(m => m.user_id !== userId)
       })),
 
-      // Dating Modal states
+      // Dating модалки
       showLikesModal: false,
       showMatchModal: false,
       matchedUser: null,
@@ -330,8 +314,8 @@ export const useStore = create(
         matchesCount: stats.matches_count || 0,
       }),
 
-      // ===== LIKES STATE =====
-      likedPosts: {},  // { 1: true, 5: true, 10: false }
+      // LIKES STATE
+      likedPosts: {},
       
       setPostLiked: (postId, isLiked) => set((state) => ({
         likedPosts: { ...state.likedPosts, [postId]: isLiked }
@@ -342,12 +326,12 @@ export const useStore = create(
         return state.likedPosts[postId];
       },
 
-      // ===== MARKET STATE =====
-      marketItems: [], // Текущая лента товаров
-      myMarketItems: [], // Мои объявления
-      marketFavorites: [], // Избранные товары
-      currentMarketItem: null, // Открытый товар (детальная модалка)
-      editingMarketItem: null, // Товар, который редактируется
+      // MARKET STATE
+      marketItems: [],
+      myMarketItems: [],
+      marketFavorites: [],
+      currentMarketItem: null,
+      editingMarketItem: null,
       
       marketFilters: {
         category: 'all',
@@ -359,10 +343,8 @@ export const useStore = create(
         sort: 'newest'
       },
       
-      // Market Actions
       setMarketItems: (items) => set({ marketItems: items }),
       
-      // ✅ ЕДИНСТВЕННЫЙ updateMarketItem (объединённая версия)
       updateMarketItem: (updatedItem) => {
         set((state) => ({
           marketItems: state.marketItems.map(item => 
@@ -386,7 +368,6 @@ export const useStore = create(
         }));
       },
       
-      // ✅ ЕДИНСТВЕННЫЙ deleteMarketItem (расширенная версия)
       deleteMarketItem: (itemId) => set((state) => ({
         marketItems: state.marketItems.filter(item => item.id !== itemId),
         myMarketItems: state.myMarketItems.filter(item => item.id !== itemId),
@@ -401,9 +382,7 @@ export const useStore = create(
       })),
       
       setMyMarketItems: (items) => set({ myMarketItems: items }),
-      
       setMarketFavorites: (items) => set({ marketFavorites: items }),
-      
       setCurrentMarketItem: (item) => set({ currentMarketItem: item }),
       
       setMarketFilters: (filters) => set((state) => ({
@@ -422,7 +401,6 @@ export const useStore = create(
         }
       }),
       
-      // Оптимистичное обновление избранного
       toggleMarketFavoriteOptimistic: (itemId, isFavorited) => set((state) => ({
         marketItems: state.marketItems.map(item =>
           item.id === itemId 
@@ -451,7 +429,7 @@ export const useStore = create(
           : state.currentMarketItem
       })),
 
-      // ===== TOASTS STATE =====
+      // TOASTS STATE
       toasts: [],
 
       addToast: (toast) => set((state) => {
@@ -463,10 +441,9 @@ export const useStore = create(
           ...toast,
         };
         
-        // Макс 3 тоста одновременно
         const toasts = [...state.toasts, newToast];
         if (toasts.length > 3) {
-          toasts.shift(); // Удалить самый старый
+          toasts.shift();
         }
         
         return { toasts };
@@ -478,8 +455,7 @@ export const useStore = create(
 
       clearToasts: () => set({ toasts: [] }),
 
-      // ===== ACTIONS =====
-      
+      // ACTIONS
       startRegistration: () => set({
         showAuthModal: false,
         onboardingStep: 1,
@@ -525,7 +501,6 @@ export const useStore = create(
         marketFilters: state.marketFilters,
         postsFilters: state.postsFilters,
         requestsFilters: state.requestsFilters,
-        // Тосты НЕ сохраняем в localStorage (они временные)
       }),
     }
   )

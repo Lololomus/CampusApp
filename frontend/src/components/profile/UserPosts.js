@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import EditPost from './shared/EditContentModal';
-import { getUserPosts, deletePost } from '../api';
-import { useStore } from '../store';
-import { hapticFeedback } from '../utils/telegram';
-import PostCard from './posts/PostCard';
-import { Z_USER_POSTS } from '../constants/zIndex';
-import PostCardSkeleton from './posts/PostCardSkeleton';
+import EditPost from '../shared/EditContentModal';
+import { getUserPosts, deletePost } from '../../api';
+import { useStore } from '../../store';
+import { hapticFeedback } from '../../utils/telegram';
+import PostCard from '../posts/PostCard';
+import { Z_USER_POSTS } from '../../constants/zIndex';
+import PostCardSkeleton from '../posts/PostCardSkeleton';
 
 function UserPosts() {
   const { user, setViewPostId, setShowUserPosts, viewPostId, showUserPosts } = useStore();

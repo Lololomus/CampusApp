@@ -1,5 +1,3 @@
-// ===== 📄 ФАЙЛ: src/components/Profile.js =====
-
 import React, { useEffect, useState } from 'react';
 import { 
   Edit2, GraduationCap, Grid, ShoppingBag, 
@@ -7,17 +5,18 @@ import {
   Heart, MessageCircle, Calendar, ChevronRight, LogOut
 } from 'lucide-react';
 
-import { useStore } from '../store';
-import { hapticFeedback } from '../utils/telegram';
+import { useStore } from '../../store';
+import { hapticFeedback } from '../../utils/telegram';
 import { 
   getUserPosts, getMyRequests, getMyMarketItems, 
-  getMyDatingProfile, getUserStats, updateDatingSettings 
-} from '../api';
-import theme from '../theme';
+  getMyDatingProfile, getUserStats, updateDatingSettings,
+  deleteMarketItem
+} from '../../api';
+import theme from '../../theme';
 
-import PostCard from './posts/PostCard';
-import MarketCard from './market/MarketCard';
-import RequestCard from './requests/RequestCard';
+import PostCard from '../posts/PostCard';
+import RequestCard from '../requests/RequestCard';
+import MyMarketCard from './MyMarketCard';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
@@ -35,7 +34,18 @@ const TAB_COLORS = {
 };
 
 function Profile() {
-  const { user, setUser, datingProfile, setDatingProfile, setShowEditModal, setShowUserPosts, logout } = useStore();
+  const { 
+    user, 
+    setUser, 
+    datingProfile, 
+    setDatingProfile, 
+    setShowEditModal, 
+    setShowUserPosts,
+    setShowUserMarketItems,
+    setEditingMarketItem,
+    setShowCreateMarketItem,
+    logout 
+  } = useStore();
   
   const [activeTab, setActiveTab] = useState('about');
   const [loading, setLoading] = useState(false);
@@ -43,35 +53,59 @@ function Profile() {
   const [posts, setPosts] = useState([]);
   const [marketItems, setMarketItems] = useState([]);
   const [requests, setRequests] = useState([]);
-  
-  // Добавил likes_count в стейт
   const [stats, setStats] = useState({ posts_count: 0, comments_count: 0, likes_count: 0 });
 
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const [postsData, marketData, requestsData, datingData, userStats] = await Promise.all([
-          getUserPosts(user.id, 3).catch(() => []),
-          getMyMarketItems(10).catch(() => []),
-          getMyRequests().catch(() => []),
-          !datingProfile ? getMyDatingProfile().catch(() => null) : Promise.resolve(datingProfile),
-          getUserStats(user.id).catch(() => ({ posts_count: 0, comments_count: 0, likes_count: 0 }))
-        ]);
+      const loadData = async () => {
+        setLoading(true);
+        
+        // 🔍 ДЛЯ ДЕБАГА: Проверяем user.id
+        console.log('🔍 Profile loading, user:', user);
+        console.log('🔍 user.id:', user?.id);
+        console.log('🔍 user.telegram_id:', user?.telegram_id);
+        
+        try {
+          // ✅ Запросы БЕЗ .catch() — ошибки будут видны!
+          const postsData = await getUserPosts(user.id, 3);
+          console.log('✅ Posts loaded:', postsData);
+          
+          const marketData = await getMyMarketItems(10);
+          console.log('✅ Market items loaded:', marketData);
+          
+          const requestsData = await getMyRequests();
+          console.log('✅ Requests loaded:', requestsData);
+          
+          const datingData = !datingProfile ? await getMyDatingProfile() : datingProfile;
+          
+          const userStats = await getUserStats(user.id);
+          console.log('✅ Stats loaded:', userStats);
 
-        setPosts(postsData);
-        setMarketItems(marketData);
-        setRequests(requestsData);
-        setStats(userStats);
-        if (datingData) setDatingProfile(datingData);
-      } catch (error) {
-        console.error('Profile load error:', error);
-      } finally {
-        setLoading(false);
+          setPosts(postsData);
+          setMarketItems(marketData);
+          setRequests(requestsData);
+          setStats(userStats);
+          if (datingData) setDatingProfile(datingData);
+          
+        } catch (error) {
+          console.error('❌ Profile load error:', error);
+          console.error('📍 Response:', error.response?.data);
+          console.error('📍 Status:', error.response?.status);
+          
+          // ⚠️ Показываем пользователю, если критическая ошибка
+          if (error.response?.status === 404) {
+            alert('Пользователь не найден. Перелогиньтесь.');
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      if (user?.id) {
+        loadData();
+      } else {
+        console.warn('⚠️ user.id отсутствует, данные не загружаются');
       }
-    };
-    if (user?.id) loadData();
-  }, [user?.id]);
+    }, [user?.id]);
 
   const heroImage = datingProfile?.photos?.[0]?.url || datingProfile?.photos?.[0] || user?.avatar;
 
@@ -88,6 +122,27 @@ function Profile() {
   const handleOpenMyPosts = () => {
     hapticFeedback('medium');
     setShowUserPosts(true);
+  };
+
+  const handleOpenMyMarketItems = () => {
+    hapticFeedback('medium');
+    setShowUserMarketItems(true);
+  };
+
+  const handleEditMarketItem = (item) => {
+    setEditingMarketItem(item);
+    setShowCreateMarketItem(true);
+  };
+
+  const handleDeleteMarketItem = async (itemId) => {
+    try {
+      await deleteMarketItem(itemId);
+      setMarketItems(prev => prev.filter(i => i.id !== itemId));
+      hapticFeedback('success');
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Ошибка при удалении');
+    }
   };
 
   const handleShareProfile = () => {
@@ -122,7 +177,7 @@ function Profile() {
   return (
     <div style={styles.container}>
       
-      {/* ФОН (Градиент) */}
+      {/* ФОН */}
       <div style={styles.heroBackground}>
         {heroImage ? (
            <img src={heroImage} alt="" style={styles.heroImageBlur} />
@@ -134,7 +189,7 @@ function Profile() {
 
       <div style={styles.contentWrapper}>
         
-        {/* === CAMPUS ID === */}
+        {/* CAMPUS ID */}
         <div style={styles.cardWrapper} className="fade-in-up">
           <div style={styles.campusCard}>
             <div style={styles.watermark}>CAMPUS ID</div>
@@ -190,7 +245,6 @@ function Profile() {
 
         {/* Кнопки действий */}
         <div style={styles.actionContainer}>
-            {/* Старая кнопка редактирования */}
             <button 
                 style={styles.editButton} 
                 onClick={() => { hapticFeedback('light'); setShowEditModal(true); }}
@@ -213,7 +267,7 @@ function Profile() {
             </button>
         </div>
 
-        {/* === TABS === */}
+        {/* TABS */}
         <div style={styles.tabsContainer}>
           <div style={styles.tabsWrapper}>
             <div 
@@ -241,7 +295,7 @@ function Profile() {
           </div>
         </div>
 
-        {/* === КОНТЕНТ === */}
+        {/* КОНТЕНТ */}
         <div style={styles.feedContainer}>
             
             {activeTab === 'about' && (
@@ -261,7 +315,6 @@ function Profile() {
                         </div>
                         <div style={styles.statItem}>
                             <Heart size={20} color="#ec4899" />
-                            {/* ТЕПЕРЬ ПОКАЗЫВАЕМ ЛАЙКИ */}
                             <span style={styles.statValue}>{stats.likes_count || 0}</span>
                             <span style={styles.statLabel}>Лайков</span>
                         </div>
@@ -272,11 +325,10 @@ function Profile() {
                         </div>
                     </div>
 
-                    {/* Анкета знакомств (ДИНАМИЧЕСКИЙ СТИЛЬ) */}
+                    {/* Анкета знакомств */}
                     <div 
                         style={{
                             ...styles.datingStatusCard,
-                            // Убираем градиент если выключено
                             backgroundImage: user.show_in_dating 
                                 ? 'linear-gradient(#1e1e1e, #1e1e1e), linear-gradient(135deg, #ec4899, #8b5cf6)'
                                 : 'none',
@@ -362,9 +414,38 @@ function Profile() {
 
             {activeTab === 'market' && (
                 <div className="fade-in">
+                    {/* Кнопка "Мои товары" */}
+                    <div style={{padding: '0 16px', marginBottom: 16}}>
+                        <div 
+                            style={{...styles.myPostsButton, borderColor: TAB_COLORS.market}} 
+                            onClick={handleOpenMyMarketItems}
+                        >
+                            <div style={{...styles.mpIconBg, backgroundColor: TAB_COLORS.market}}>
+                                <ShoppingBag size={20} color="#fff" />
+                            </div>
+                            <div style={styles.mpContent}>
+                                <div style={styles.mpTitle}>Мои товары</div>
+                                <div style={styles.mpSubtitle}>{marketItems.length} шт</div>
+                            </div>
+                            <ChevronRight size={20} color="#666" />
+                        </div>
+                    </div>
+
+                    {/* Превью: первые 4 товара */}
                     {marketItems.length > 0 ? (
-                        <div style={styles.marketGrid}>{marketItems.map(item => <MarketCard key={item.id} item={item} />)}</div>
-                    ) : <EmptyState text="Барахолка пуста" icon="🛍" />}
+                        <div style={styles.listGap}>
+                            {marketItems.slice(0, 4).map(item => (
+                                <MyMarketCard 
+                                    key={item.id} 
+                                    item={item}
+                                    onEdit={handleEditMarketItem}
+                                    onDelete={handleDeleteMarketItem}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <EmptyState text="Пока нет товаров" icon="📦" />
+                    )}
                 </div>
             )}
             
@@ -478,7 +559,6 @@ const styles = {
 
   feedContainer: { paddingTop: 0 },
   listGap: { display: 'flex', flexDirection: 'column', gap: 12, padding: '0 16px' },
-  marketGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, padding: '0 16px' },
   
   statsGrid: {
     display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, marginBottom: 12,

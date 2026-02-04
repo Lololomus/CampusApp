@@ -460,12 +460,12 @@ export async function deleteRequest(requestId) {
 export async function getMyRequests() {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.get('/api/requests/my/list', {
+    const response = await api.get(`/api/requests/my-items`, {
       params: { telegram_id }
     });
     return response.data;
   } catch (error) {
-    console.error('Ошибка получения моих запросов:', error);
+    console.error('Get my requests error:', error);
     return [];
   }
 }
@@ -655,15 +655,17 @@ export async function getMarketFavorites(limit = 20, offset = 0) {
 export async function getMyMarketItems(limit = 20, offset = 0) {
   try {
     const telegram_id = getTelegramId();
-    const response = await api.get('/market/my-items', {
+    const response = await api.get(`/market/my-items`, {
       params: { telegram_id, limit, offset }
     });
     return response.data;
   } catch (error) {
-    console.error('Ошибка получения моих объявлений:', error);
-    return [];
+    console.error('❌ Get my market items error:', error);
+    console.error('📍 Response:', error.response?.data);
+    throw error;
   }
 }
+
 
 export async function getMarketCategories() {
   try {

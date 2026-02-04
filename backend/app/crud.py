@@ -878,37 +878,12 @@ def delete_request(db: Session, request_id: int, user_id: int) -> bool:
     db.commit()
     return True
 
-def get_my_requests(db: Session, user_id: int) -> List[Dict]:
-    requests = db.query(models.Request).options(
+def get_my_requests(db: Session, user_id: int) -> List[models.Request]:
+    return db.query(models.Request).options(
         joinedload(models.Request.responses)
     ).filter(
         models.Request.author_id == user_id
     ).order_by(models.Request.created_at.desc()).all()
-    
-    result = []
-    for req in requests:
-        tags = json.loads(req.tags) if req.tags else []
-        images = get_image_urls(req.images) if req.images else []
-        
-        req_dict = {
-            'id': req.id,
-            'category': req.category,
-            'title': req.title,
-            'body': req.body,
-            'tags': tags,
-            'expires_at': req.expires_at,
-            'status': req.status,
-            'views_count': req.views_count,
-            'responses_count': len(req.responses) if req.responses else 0,
-            'created_at': req.created_at,
-            'is_expired': req.expires_at < datetime.now(timezone.utc),
-            'reward_type': req.reward_type,
-            'reward_value': req.reward_value,
-            'images': images
-        }
-        result.append(req_dict)
-    
-    return result
 
 # ===== RESPONSES =====
 

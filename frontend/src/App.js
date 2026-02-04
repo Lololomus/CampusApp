@@ -7,9 +7,10 @@ import CreateContentModal from './components/shared/CreateContentModal';
 import EditContentModal from './components/shared/EditContentModal';
 import Onboarding from './components/Onboarding';
 import AuthModal from './components/AuthModal';
-import EditProfile from './components/EditProfile';
-import Profile from './components/Profile';
-import UserPosts from './components/UserPosts';
+import EditProfile from './components/profile/EditProfile'; 
+import Profile from './components/profile/Profile';
+import UserPosts from './components/profile/UserPosts';
+import UserMarketItems from './components/profile/UserMarketItems';
 import DatingFeed from './components/dating/DatingFeed';
 import Market from './components/market/Market';
 import CreateMarketItem from './components/market/CreateMarketItem';
@@ -28,6 +29,7 @@ function App() {
     setShowCreateMarketItem,
     onboardingStep,
     showUserPosts,
+    showUserMarketItems,
     showEditModal,
     editingContent,
     editingType,
@@ -40,6 +42,7 @@ function App() {
   }, []);
 
   const renderContent = () => {
+    if (showUserMarketItems) return <UserMarketItems />;
     if (showUserPosts) return <UserPosts />;
 
     switch (activeTab) {
@@ -51,30 +54,24 @@ function App() {
     }
   };
   
-  // Экран онбординга
   if (onboardingStep > 0) {
     return <div style={styles.app}><Onboarding /></div>;
   }
 
   return (
     <div style={styles.app}>   
-      {/* Основной контент (лента, маркет, знакомства, профиль) */}
       {renderContent()}
       
-      {/* Нижняя навигация */}
       <Navigation />
       
-      {/* Детальный просмотр поста (поверх всего) */}
       {viewPostId && <PostDetail />}
 
-      {/* Модалка создания поста/запроса */}
       {showCreateModal && (
         <CreateContentModal 
           onClose={() => setShowCreateModal(false)} 
         />
       )}
 
-      {/* Модалка редактирования поста/запроса */}
       {editingContent && (
         <EditContentModal
           key={editingContent?.id || Date.now()} 
@@ -87,7 +84,6 @@ function App() {
         />
       )}
 
-      {/* Модалка создания/редактирования товара */}
       {showCreateMarketItem && (
         <CreateMarketItem 
           editItem={editingMarketItem}
@@ -102,13 +98,10 @@ function App() {
         />
       )}
 
-      {/* Модалка авторизации */}
       <AuthModal />
       
-      {/* Модалка редактирования профиля */}
       {showEditModal && <EditProfile />}
       
-      {/* Контейнер уведомлений (тосты) */}
       <ToastContainer />
     </div>
   );
