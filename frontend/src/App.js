@@ -10,6 +10,7 @@ import AuthModal from './components/AuthModal';
 import EditProfile from './components/profile/EditProfile'; 
 import Profile from './components/profile/Profile';
 import UserPosts from './components/profile/UserPosts';
+import UserRequests from './components/profile/UserRequests';
 import UserMarketItems from './components/profile/UserMarketItems';
 import DatingFeed from './components/dating/DatingFeed';
 import Market from './components/market/Market';
@@ -29,6 +30,7 @@ function App() {
     setShowCreateMarketItem,
     onboardingStep,
     showUserPosts,
+    showUserRequests,
     showUserMarketItems,
     showEditModal,
     editingContent,
@@ -44,6 +46,7 @@ function App() {
   const renderContent = () => {
     if (showUserMarketItems) return <UserMarketItems />;
     if (showUserPosts) return <UserPosts />;
+    if (showUserRequests) return <UserRequests />;
 
     switch (activeTab) {
       case 'feed': return <Feed />;

@@ -1,18 +1,16 @@
-// ===== 📄 ФАЙЛ: src/components/profile/UserMarketItems.js =====
-
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Filter } from 'lucide-react';
-import { getMyMarketItems, deleteMarketItem } from '../../api';
+import { ArrowLeft } from 'lucide-react';
+import { getMyRequests, deleteRequest } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
-import MyMarketCard from './MyMarketCard';
-import { Z_USER_MARKET_ITEMS } from '../../constants/zIndex';
+import RequestCard from '../requests/RequestCard';
+import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import theme from '../../theme';
 
-function UserMarketItems() {
-  const { user, setShowUserMarketItems, setEditingMarketItem, setShowCreateMarketItem } = useStore();
-  const [items, setItems] = useState([]);
+function UserRequests() {
+  const { user, setShowUserRequests } = useStore();
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
@@ -21,20 +19,25 @@ function UserMarketItems() {
   const LIMIT = 20;
 
   useEffect(() => {
-    loadItems();
+    loadRequests();
   }, []);
 
-  const loadItems = async () => {
+  const loadRequests = async () => {
     if (loading || !hasMore) return;
+    
     setLoading(true);
     try {
-      const newItems = await getMyMarketItems(LIMIT, offset);
-      if (newItems.length < LIMIT) setHasMore(false);
-      setItems([...items, ...newItems]);
+      const newRequests = await getMyRequests(LIMIT, offset);
+      
+      if (newRequests.length < LIMIT) {
+        setHasMore(false);
+      }
+      
+      setRequests([...requests, ...newRequests]);
       setOffset(offset + LIMIT);
     } catch (error) {
-      console.error('Error loading items:', error);
-      toast.error('Не удалось загрузить товары');
+      console.error('Ошибка загрузки запросов:', error);
+      toast.error('Не удалось загрузить запросы');
     } finally {
       setLoading(false);
     }
@@ -42,45 +45,38 @@ function UserMarketItems() {
 
   const handleBack = () => {
     hapticFeedback('light');
-    setShowUserMarketItems(false);
+    setShowUserRequests(false);
   };
 
-  const handleEdit = (item) => {
-    hapticFeedback('light');
-    setEditingMarketItem(item);
-    setShowCreateMarketItem(true);
-  };
-
-  const handleDelete = async (itemId) => {
-    try {
-      await deleteMarketItem(itemId);
-      setItems(items.filter(i => i.id !== itemId));
-      toast.success('Товар удалён');
-      hapticFeedback('success');
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error('Ошибка при удалении');
-    }
+  const handleRequestDeleted = (requestId) => {
+    setRequests(requests.filter(r => r.id !== requestId));
+    toast.success('Запрос удалён');
+    hapticFeedback('success');
   };
 
   const handleScroll = (e) => {
-    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
+    const bottom = e.target.scrollHeight - e.target.scrollTop === e.target.clientHeight;
     if (bottom && hasMore && !loading) {
-      loadItems();
+      loadRequests();
     }
   };
 
-  const filteredItems = items.filter(item => {
+  const now = new Date();
+  const filteredRequests = requests.filter(request => {
     if (filter === 'all') return true;
-    if (filter === 'active') return item.status === 'active';
-    if (filter === 'sold') return item.status === 'sold';
+    if (filter === 'active') {
+      return request.expires_at ? new Date(request.expires_at) > now : true;
+    }
+    if (filter === 'expired') {
+      return request.expires_at ? new Date(request.expires_at) <= now : false;
+    }
     return true;
   });
 
   const counts = {
-    all: items.length,
-    active: items.filter(i => i.status === 'active').length,
-    sold: items.filter(i => i.status === 'sold').length,
+    all: requests.length,
+    active: requests.filter(r => !r.expires_at || new Date(r.expires_at) > now).length,
+    expired: requests.filter(r => r.expires_at && new Date(r.expires_at) <= now).length,
   };
 
   return (
@@ -90,7 +86,7 @@ function UserMarketItems() {
         <button onClick={handleBack} style={styles.backButton}>
           <ArrowLeft size={24} />
         </button>
-        <span style={styles.headerTitle}>Мои товары ({counts.all})</span>
+        <span style={styles.headerTitle}>Мои запросы ({counts.all})</span>
         <div style={{ width: 44 }}></div>
       </div>
 
@@ -109,45 +105,49 @@ function UserMarketItems() {
           Активные {counts.active > 0 && `(${counts.active})`}
         </button>
         <button 
-          onClick={() => { hapticFeedback('selection'); setFilter('sold'); }} 
-          style={{...styles.filterTab, ...(filter === 'sold' && styles.filterTabActive)}}
+          onClick={() => { hapticFeedback('selection'); setFilter('expired'); }} 
+          style={{...styles.filterTab, ...(filter === 'expired' && styles.filterTabActive)}}
         >
-          Проданные {counts.sold > 0 && `(${counts.sold})`}
+          Истёкшие {counts.expired > 0 && `(${counts.expired})`}
         </button>
       </div>
 
-      {/* Items List */}
+      {/* Requests List */}
       <div style={styles.content}>
-        {filteredItems.length > 0 ? (
-          filteredItems.map((item, idx) => (
-            <div key={item.id} style={{ animation: `fadeInUp 0.4s ease ${idx * 0.05}s both` }}>
-              <MyMarketCard 
-                item={item} 
-                onEdit={handleEdit}
-                onDelete={handleDelete}
+        {filteredRequests.length > 0 ? (
+          filteredRequests.map((request, idx) => (
+            <div 
+              key={request.id} 
+              style={{
+                animation: `fadeInUp 0.4s ease ${idx * 0.05}s both`
+              }}
+            >
+              <RequestCard 
+                request={request} 
+                onRequestDeleted={handleRequestDeleted}
               />
             </div>
           ))
         ) : (
           <div style={styles.empty}>
-            <div style={styles.emptyEmoji}>📦</div>
-            <p style={styles.emptyText}>Нет товаров</p>
+            <div style={styles.emptyEmoji}>⚡</div>
+            <p style={styles.emptyText}>Нет запросов</p>
             <p style={styles.emptySubtext}>
-              {filter === 'all' && 'Создайте первое объявление'}
-              {filter === 'active' && 'Все товары проданы'}
-              {filter === 'sold' && 'Пока ничего не продано'}
+              {filter === 'all' && 'Создайте первый запрос'}
+              {filter === 'active' && 'Все запросы истекли'}
+              {filter === 'expired' && 'Нет истёкших запросов'}
             </p>
           </div>
         )}
-        
+
         {loading && (
           <div style={styles.loading}>Загрузка...</div>
         )}
-        
-        {!hasMore && items.length > 0 && (
+
+        {!hasMore && requests.length > 0 && (
           <div style={styles.endMessage}>
-            <div style={styles.endIcon}>✅</div>
-            <div>Все товары загружены</div>
+            <div style={styles.endIcon}>✨</div>
+            <div>Это все ваши запросы</div>
           </div>
         )}
       </div>
@@ -175,48 +175,44 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: Z_USER_MARKET_ITEMS,
+    zIndex: Z_MODAL_REQUEST_DETAIL,
     backgroundColor: theme.colors.bg,
     overflowY: 'auto',
-    paddingBottom: 20,
+    paddingBottom: '20px',
   },
-  
   header: {
     position: 'sticky',
     top: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: '12px',
     padding: '12px 16px',
     backgroundColor: '#1a1a1a',
     borderBottom: `1px solid ${theme.colors.border}`,
     zIndex: 10,
     backdropFilter: 'blur(10px)',
   },
-  
   backButton: {
     background: 'none',
     border: 'none',
     color: theme.colors.text,
     cursor: 'pointer',
-    padding: 8,
+    padding: '8px',
     display: 'flex',
     alignItems: 'center',
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: '44px',
+    minHeight: '44px',
     borderRadius: '50%',
     transition: 'background 0.2s',
   },
-  
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 600,
+    fontSize: '18px',
+    fontWeight: '600',
     color: theme.colors.text,
     flex: 1,
     textAlign: 'center',
   },
-  
   filterTabs: {
     display: 'flex',
     gap: 8,
@@ -227,7 +223,6 @@ const styles = {
     top: 57,
     zIndex: 9,
   },
-  
   filterTab: {
     flex: 1,
     padding: '8px 12px',
@@ -240,64 +235,52 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.2s ease',
   },
-  
   filterTabActive: {
-    backgroundColor: theme.colors.market,
+    backgroundColor: theme.colors.primary,
     color: '#fff',
   },
-  
   content: {
-    padding: 16,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
+    padding: '16px',
   },
-  
   empty: {
     textAlign: 'center',
     padding: '80px 20px',
     animation: 'fadeInUp 0.5s ease',
   },
-  
   emptyEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: '64px',
+    marginBottom: '16px',
   },
-  
   emptyText: {
-    fontSize: 18,
+    fontSize: '18px',
     color: theme.colors.text,
-    fontWeight: 600,
-    marginBottom: 8,
+    fontWeight: '600',
+    marginBottom: '8px',
   },
-  
   emptySubtext: {
-    fontSize: 14,
+    fontSize: '14px',
     color: theme.colors.textSecondary,
-    lineHeight: 1.5,
+    lineHeight: '1.5',
   },
-  
   loading: {
     textAlign: 'center',
     color: theme.colors.textTertiary,
     padding: 20,
     fontSize: 14,
   },
-  
   endMessage: {
     textAlign: 'center',
     color: theme.colors.textTertiary,
     padding: '32px 20px',
-    fontSize: 14,
+    fontSize: '14px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    gap: '8px',
   },
-  
   endIcon: {
-    fontSize: 24,
+    fontSize: '24px',
   },
 };
 
-export default UserMarketItems;
+export default UserRequests;

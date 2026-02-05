@@ -92,6 +92,9 @@ export const useStore = create(
       showUserMarketItems: false,
       setShowUserMarketItems: (show) => set({ showUserMarketItems: show }),
 
+      showUserRequests: false,
+      setShowUserRequests: (show) => set({ showUserRequests: show }),
+
       // ONBOARDING STATE
       onboardingStep: 0,
       onboardingData: {},

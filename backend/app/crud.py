@@ -878,12 +878,12 @@ def delete_request(db: Session, request_id: int, user_id: int) -> bool:
     db.commit()
     return True
 
-def get_my_requests(db: Session, user_id: int) -> List[models.Request]:
+def get_my_requests(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.Request]:
     return db.query(models.Request).options(
         joinedload(models.Request.responses)
     ).filter(
         models.Request.author_id == user_id
-    ).order_by(models.Request.created_at.desc()).all()
+    ).order_by(models.Request.created_at.desc()).limit(limit).offset(offset).all()
 
 # ===== RESPONSES =====
 

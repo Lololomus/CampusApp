@@ -1,4 +1,4 @@
-// ===== 📄 ФАЙЛ: src/components/EditProfile.js =====
+// ===== 📄 ФАЙЛ: src/components/profile/EditProfile.js =====
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -8,9 +8,9 @@ import {
 import { useStore } from '../../store';
 import { updateUserProfile, uploadUserAvatar } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
+import { toast } from '../shared/Toast';
 import { Z_EDIT_PROFILE } from '../../constants/zIndex';
 
-// КОНСТАНТЫ
 const UNIVERSITIES = ["РУК", "МГУ", "ВШЭ", "МГТУ", "РАНХиГС", "Другой"];
 const INSTITUTES = ["ИСА", "Юридический", "Экономический", "Менеджмент", "Гостиничный сервис", "Другой"];
 const COURSES = [1, 2, 3, 4, 5, 6];
@@ -67,10 +67,11 @@ function EditProfile() {
         const newAvatarData = await uploadUserAvatar(file);
         if (newAvatarData && newAvatarData.avatar) {
            setUser({ ...user, avatar: newAvatarData.avatar });
+           toast.success('Фото обновлено');
         }
       } catch (error) {
         console.error("Ошибка загрузки фото", error);
-        alert("Не удалось загрузить фото");
+        toast.error("Не удалось загрузить фото");
         setAvatarPreview(user.avatar);
       } finally {
         setLoading(false);
@@ -88,7 +89,6 @@ function EditProfile() {
       const updateData = {
         name: formData.name,
         username: cleanUsername,
-        // Bio не отправляем
         university: formData.university,
         institute: formData.institute,
         course: parseInt(formData.course),
@@ -97,13 +97,14 @@ function EditProfile() {
 
       const updatedUser = await updateUserProfile(updateData);
       setUser(updatedUser);
+      toast.success('Профиль обновлён');
       handleClose();
     } catch (error) {
       console.error("Ошибка сохранения", error);
       if (error.response && error.response.status === 403) {
-          alert(error.response.data.detail || "Нельзя часто менять учебные данные");
+          toast.error(error.response.data.detail || "Нельзя часто менять учебные данные");
       } else {
-          alert("Ошибка сохранения изменений");
+          toast.error("Ошибка сохранения изменений");
       }
     } finally {
       setLoading(false);
@@ -261,10 +262,8 @@ function EditProfile() {
         .slide-in-right { animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
         
-        /* Убираем дефолтные стрелки */
         select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
         
-        /* 🔥 ВАЖНО: Делаем выпадающий список темным */
         select option {
             background-color: #1e1e1e;
             color: #fff;
@@ -303,7 +302,6 @@ const styles = {
     flex: 1, overflowY: 'auto', padding: '20px',
   },
   
-  // Avatar
   avatarSection: { display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 32 },
   avatarWrapper: { position: 'relative', width: 100, height: 100 },
   avatarImg: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: '2px solid #333' },
@@ -311,20 +309,17 @@ const styles = {
   cameraButton: { position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: '50%', backgroundColor: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid #121212', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.3)' },
   avatarHint: { marginTop: 12, fontSize: '13px', color: '#666' },
 
-  // Sections
   sectionTitle: { fontSize: '12px', fontWeight: '700', color: '#666', marginBottom: 8, paddingLeft: 12, letterSpacing: '0.5px' },
   card: { backgroundColor: '#1e1e1e', borderRadius: 16, overflow: 'hidden', marginBottom: 24 },
   
-  // Inputs
   inputGroup: { display: 'flex', alignItems: 'center', minHeight: 48, padding: '0 16px' },
   inputIcon: { marginRight: 12, display: 'flex', alignItems: 'center' },
   input: { flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '16px', height: '100%', outline: 'none', padding: '12px 0' },
   
-  // Selects (Background must be set explicitly here too)
   selectWrapper: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
   select: { 
     width: '100%', 
-    background: 'transparent', // Фон самого инпута прозрачный
+    background: 'transparent',
     border: 'none', 
     color: '#fff', 
     fontSize: '16px', height: '48px', 

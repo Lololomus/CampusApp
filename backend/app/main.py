@@ -960,6 +960,56 @@ def get_requests_feed_endpoint(
         has_more=feed_data['has_more']
     )
 
+@app.get("/api/requests/my-items", response_model=List[schemas.RequestResponse])
+def get_my_requests_endpoint(
+    telegram_id: int = Query(...),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """Получить МОИ запросы"""
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    requests = crud.get_my_requests(db, user.id, limit=limit, offset=offset)
+    
+    result = []
+    for req in requests:
+        tags = json.loads(req.tags) if req.tags else []
+        images = get_image_urls(req.images) if req.images else []
+        
+        author_data = schemas.RequestAuthor(
+            id=user.id,
+            name=user.name,
+            course=user.course,
+            university=user.university,
+            institute=user.institute,
+            username=user.username
+        )
+        
+        req_dict = {
+            "id": req.id,
+            "category": req.category,
+            "title": req.title,
+            "body": req.body,
+            "tags": tags,
+            "expires_at": req.expires_at,
+            "status": req.status,
+            "views_count": req.views_count,
+            "responses_count": len(req.responses) if req.responses else 0,
+            "created_at": req.created_at,
+            "author": author_data,
+            "is_author": True,
+            "has_responded": False,
+            "reward_type": req.reward_type,
+            "reward_value": req.reward_value,
+            "images": images
+        }
+        result.append(req_dict)
+    
+    return result
+
 @app.get("/api/requests/{request_id}", response_model=schemas.RequestResponse)
 def get_request_endpoint(
     request_id: int,
@@ -1065,17 +1115,6 @@ def delete_request_endpoint(
         return {"success": True}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
-
-@app.get("/api/requests/my/list", response_model=List[schemas.RequestResponse])
-def get_my_requests_endpoint(
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    return crud.get_my_requests(db, user.id) 
 
 @app.post("/api/requests/{request_id}/respond", response_model=schemas.ResponseItem)
 def create_response_endpoint(
@@ -1576,55 +1615,6 @@ def toggle_market_favorite_endpoint(
         raise HTTPException(status_code=404, detail="User not found")
     
     result = crud.toggle_market_favorite(db, item_id, user.id)
-    return result
-
-@app.get("/api/requests/my-items", response_model=List[schemas.RequestResponse])
-def get_my_requests_endpoint(
-    telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Получить МОИ запросы"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Используем готовую CRUD функцию
-    requests = crud.get_my_requests(db, user.id)
-    
-    result = []
-    for req in requests:
-        tags = json.loads(req.tags) if req.tags else []
-        images = get_image_urls(req.images) if req.images else []
-        
-        author_data = schemas.RequestAuthor(
-            id=user.id,
-            name=user.name,
-            course=user.course,
-            university=user.university,
-            institute=user.institute,
-            username=user.username
-        )
-        
-        req_dict = schemas.RequestResponse(
-            id=req.id,
-            category=req.category,
-            title=req.title,
-            body=req.body,
-            tags=tags,
-            expires_at=req.expires_at,
-            status=req.status,
-            views_count=req.views_count,
-            responses_count=len(req.responses) if req.responses else 0,
-            created_at=req.created_at,
-            author=author_data,
-            is_author=True,
-            has_responded=False,
-            reward_type=req.reward_type,
-            reward_value=req.reward_value,
-            images=images
-        )
-        result.append(req_dict)
-    
     return result
 
 # ===== DEV ENDPOINTS =====

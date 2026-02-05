@@ -1,27 +1,56 @@
 // ===== 📄 ФАЙЛ: src/components/profile/MyMarketCard.js =====
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Edit2, Trash2, Eye, Heart } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
 import theme from '../../theme';
 
 function MyMarketCard({ item, onEdit, onDelete }) {
-  const primaryImage = item.images && item.images.length > 0 ? item.images[0] : null;
-  
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const parseImages = (imagesData) => {
+    if (!imagesData) return [];
     
-    if (diffHours < 1) return 'только что';
-    if (diffHours < 24) return `${diffHours} ч назад`;
-    if (diffDays === 1) return 'вчера';
-    if (diffDays < 7) return `${diffDays} дн назад`;
+    if (typeof imagesData === 'string') {
+      try {
+        return JSON.parse(imagesData);
+      } catch {
+        return [];
+      }
+    }
     
-    return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    return Array.isArray(imagesData) ? imagesData : [];
   };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Недавно';
+    
+    try {
+      const date = new Date(dateString);
+      
+      if (isNaN(date.getTime())) {
+        return 'Недавно';
+      }
+      
+      const now = new Date();
+      const diffMs = now - date;
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffDays = Math.floor(diffHours / 24);
+      
+      if (diffHours < 1) return 'только что';
+      if (diffHours < 24) return `${diffHours} ч назад`;
+      if (diffDays === 1) return 'вчера';
+      if (diffDays < 7) return `${diffDays} дн назад`;
+      
+      return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    } catch {
+      return 'Недавно';
+    }
+  };
+
+  const images = parseImages(item.images);
+  const primaryImage = images.length > 0 ? images[0].url : null;
 
   const getStatusConfig = (status) => {
     switch (status) {
@@ -42,64 +71,80 @@ function MyMarketCard({ item, onEdit, onDelete }) {
     onEdit(item);
   };
 
-  const handleDelete = (e) => {
+  const handleDeleteClick = (e) => {
     e.stopPropagation();
     hapticFeedback('medium');
-    if (window.confirm(`Удалить "${item.title}"?`)) {
-      onDelete(item.id);
-    }
+    setShowConfirm(true);
+  };
+
+  const handleConfirmDelete = () => {
+    onDelete(item.id);
+    setShowConfirm(false);
   };
 
   return (
-    <div style={styles.card}>
-      {/* ЛЕВАЯ ЧАСТЬ: Фото */}
-      <div style={styles.imageContainer}>
-        {primaryImage ? (
-          <img src={primaryImage} alt={item.title} style={styles.image} />
-        ) : (
-          <div style={styles.imagePlaceholder}>📦</div>
-        )}
+    <>
+      <div style={styles.card}>
+        {/* ЛЕВАЯ ЧАСТЬ: Фото */}
+        <div style={styles.imageContainer}>
+          {primaryImage ? (
+            <img src={primaryImage} alt={item.title} style={styles.image} />
+          ) : (
+            <div style={styles.imagePlaceholder}>📦</div>
+          )}
+        </div>
+
+        {/* ПРАВАЯ ЧАСТЬ: Инфо */}
+        <div style={styles.content}>
+          {/* ВЕРХ: Цена + Статус */}
+          <div style={styles.header}>
+            <span style={styles.price}>{item.price} ₽</span>
+            <span style={{...styles.statusBadge, color: statusConfig.color, backgroundColor: statusConfig.bg}}>
+              {statusConfig.label}
+            </span>
+          </div>
+
+          {/* НАЗВАНИЕ */}
+          <div style={styles.title}>{item.title}</div>
+
+          {/* МИНИ-СТАТИСТИКА */}
+          <div style={styles.stats}>
+            <div style={styles.statItem}>
+              <Eye size={14} color={theme.colors.textTertiary} />
+              <span style={styles.statValue}>{item.views_count || 0}</span>
+            </div>
+            <div style={styles.statItem}>
+              <Heart size={14} color={theme.colors.textTertiary} />
+              <span style={styles.statValue}>{item.favorites_count || 0}</span>
+            </div>
+            <span style={styles.date}>{formatDate(item.created_at)}</span>
+          </div>
+
+          {/* КНОПКИ ДЕЙСТВИЙ */}
+          <div style={styles.actions}>
+            <button onClick={handleEdit} style={styles.actionBtn}>
+              <Edit2 size={16} color={theme.colors.market} />
+              <span style={{...styles.actionLabel, color: theme.colors.market}}>Редактировать</span>
+            </button>
+            <button onClick={handleDeleteClick} style={styles.actionBtn}>
+              <Trash2 size={16} color="#ef4444" />
+              <span style={{...styles.actionLabel, color: '#ef4444'}}>Удалить</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* ПРАВАЯ ЧАСТЬ: Инфо */}
-      <div style={styles.content}>
-        {/* ВЕРХ: Цена + Статус */}
-        <div style={styles.header}>
-          <span style={styles.price}>{item.price} ₽</span>
-          <span style={{...styles.statusBadge, color: statusConfig.color, backgroundColor: statusConfig.bg}}>
-            {statusConfig.label}
-          </span>
-        </div>
-
-        {/* НАЗВАНИЕ */}
-        <div style={styles.title}>{item.title}</div>
-
-        {/* МИНИ-СТАТИСТИКА */}
-        <div style={styles.stats}>
-          <div style={styles.statItem}>
-            <Eye size={14} color={theme.colors.textTertiary} />
-            <span style={styles.statValue}>{item.viewscount || 0}</span>
-          </div>
-          <div style={styles.statItem}>
-            <Heart size={14} color={theme.colors.textTertiary} />
-            <span style={styles.statValue}>{item.favoritescount || 0}</span>
-          </div>
-          <span style={styles.date}>{formatDate(item.createdat)}</span>
-        </div>
-
-        {/* КНОПКИ ДЕЙСТВИЙ */}
-        <div style={styles.actions}>
-          <button onClick={handleEdit} style={styles.actionBtn}>
-            <Edit2 size={16} color={theme.colors.market} />
-            <span style={{...styles.actionLabel, color: theme.colors.market}}>Редактировать</span>
-          </button>
-          <button onClick={handleDelete} style={styles.actionBtn}>
-            <Trash2 size={16} color="#ef4444" />
-            <span style={{...styles.actionLabel, color: '#ef4444'}}>Удалить</span>
-          </button>
-        </div>
-      </div>
-    </div>
+      <ConfirmationDialog
+        isOpen={showConfirm}
+        title="Удалить товар?"
+        message={`Вы уверены, что хотите удалить "${item.title}"?`}
+        confirmText="Удалить"
+        cancelText="Отмена"
+        confirmType="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowConfirm(false)}
+      />
+    </>
   );
 }
 

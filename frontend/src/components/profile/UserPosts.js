@@ -4,6 +4,7 @@ import EditPost from '../shared/EditContentModal';
 import { getUserPosts, deletePost } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
+import { toast } from '../shared/Toast';
 import PostCard from '../posts/PostCard';
 import { Z_USER_POSTS } from '../../constants/zIndex';
 import PostCardSkeleton from '../posts/PostCardSkeleton';
@@ -22,7 +23,6 @@ function UserPosts() {
   }, []);
 
   useEffect(() => {
-    // Когда возвращаемся из детального просмотра - перезагружаем
     if (!viewPostId && showUserPosts) {
       setPosts([]);
       setOffset(0);
@@ -46,6 +46,7 @@ function UserPosts() {
       setOffset(offset + LIMIT);
     } catch (error) {
       console.error('Ошибка загрузки постов:', error);
+      toast.error('Не удалось загрузить посты');
     } finally {
       setLoading(false);
     }

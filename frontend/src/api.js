@@ -457,11 +457,11 @@ export async function deleteRequest(requestId) {
   }
 }
 
-export async function getMyRequests() {
+export async function getMyRequests(limit = 20, offset = 0) {
   try {
     const telegram_id = getTelegramId();
     const response = await api.get(`/api/requests/my-items`, {
-      params: { telegram_id }
+      params: { telegram_id, limit, offset }
     });
     return response.data;
   } catch (error) {
