@@ -8,6 +8,8 @@ import theme from '../../theme';
 import { REWARD_TYPE_LABELS, REWARD_TYPE_ICONS } from '../../types';
 import DropdownMenu from '../DropdownMenu';
 import PhotoViewer from '../shared/PhotoViewer';
+import ReportModal from '../shared/ReportModal';
+import { useModerationActions } from '../shared/ModerationMenu';
 
 const API_URL = 'http://localhost:8000';
 
@@ -16,6 +18,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   
   const menuButtonRef = useRef(null);
 
@@ -43,6 +46,14 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
 
   const categoryConfig = CATEGORIES[request.category] || CATEGORIES.study;
   const isAuthor = currentUserId && request.author?.id === currentUserId;
+
+  // ===== MODERATION HOOK =====
+  const { moderationMenuItems, moderationModals } = useModerationActions({
+    targetType: 'request',
+    targetId: request.id,
+    targetUserId: request.author?.id,
+    onDeleted: () => { if (onDelete) onDelete(request); },
+  });
 
   // ===== ПАРСИНГ ИЗОБРАЖЕНИЙ =====
   const images = useMemo(() => {
@@ -109,12 +120,10 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
 
   // ===== КЛИК =====
   const handleClick = (e) => {
-    // ✅ Блокируем клик если только что закрыли PhotoViewer
     if (isPhotoViewerJustClosed) {
       return;
     }
     
-    // Игнорируем клик если нажали на меню
     if (e.target.closest('.dropdown-menu-trigger') || e.target.closest('.dropdown-menu-content')) {
       return;
     }
@@ -203,10 +212,9 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
 
   // ===== МЕНЮ ДЕЙСТВИЙ =====
   const menuItems = [
-    // Скопировать ссылку — для ВСЕХ
     {
       label: 'Скопировать ссылку',
-      icon: '🔗',  // ✅ Эмодзи вместо <LinkIcon />
+      icon: '🔗',
       actionType: MENU_ACTIONS.COPY,
       onClick: () => {
         hapticFeedback('success');
@@ -216,7 +224,6 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
       }
     },
     
-    // Действия АВТОРА
     ...(isAuthor ? [
       {
         label: 'Редактировать',
@@ -239,7 +246,6 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
         }
       }
     ] : [
-      // Пожаловаться — только для НЕ-автора
       {
         label: 'Пожаловаться',
         icon: '🚩',
@@ -247,10 +253,12 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
         onClick: () => {
           hapticFeedback('light');
           setMenuOpen(false);
-          if (onReport) onReport(request);
+          setShowReportModal(true);
         }
       }
-    ])
+    ]),
+    // ✅ Модерация
+    ...moderationMenuItems,
   ];
 
   return (
@@ -352,13 +360,23 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
             initialIndex={currentImageIndex}
             onClose={() => {
               setIsPhotoViewerOpen(false);
-              // ✅ Блокируем клик на 100ms после закрытия
               setIsPhotoViewerJustClosed(true);
               setTimeout(() => setIsPhotoViewerJustClosed(false), 100);
             }}
           />
         )}
-      </div>  
+      </div>
+
+      {/* ✅ Модалка жалобы */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        targetType="request"
+        targetId={request.id}
+      />
+
+      {/* ✅ Модалки модерации */}
+      {moderationModals}
     </>  
   );
 }

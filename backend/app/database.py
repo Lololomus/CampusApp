@@ -1,3 +1,5 @@
+# ===== 📄 ФАЙЛ: backend/app/database.py =====
+
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -36,5 +38,11 @@ def get_db():
 # Функция создания таблиц
 def init_db():
     """Создаёт все таблицы в БД"""
-    from app.models import User, Post, Comment
+    from app.models import (
+        User, Post, Poll, PollVote, PostLike,
+        Request, RequestResponse, Comment, CommentLike,
+        Like, Match, MarketItem, MarketFavorite,
+        DatingProfile, DatingLike,
+        ModerationLog, Report, Appeal
+    )
     Base.metadata.create_all(bind=engine)

@@ -1,3 +1,5 @@
+# ===== 📄 ФАЙЛ: backend/app/schemas.py =====
+
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional, List, Union, Dict, Any
@@ -48,6 +50,9 @@ class UserResponse(BaseModel):
     interests: List[str] = []
     show_in_dating: bool = True
     hide_course_group: bool = False
+    role: str = 'user'
+    is_shadow_banned_posts: bool = False
+    is_shadow_banned_comments: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     last_profile_edit: Optional[datetime] = None
@@ -75,6 +80,7 @@ class UserShort(BaseModel):
     university: Optional[str] = None
     institute: Optional[str] = None
     course: Optional[int] = None
+    role: str = 'user'
     
     class Config:
         from_attributes = True
@@ -106,14 +112,14 @@ class UserPublic(BaseModel):
     class Config:
         from_attributes = True
 
-# ===== POLL SCHEMAS (NEW) =====
+# ===== POLL SCHEMAS =====
 
 class PollCreate(BaseModel):
     """Создание опроса"""
     question: str
-    options: List[str]  # Минимум 2, максимум 10
-    type: str = "regular"  # "regular" | "quiz"
-    correct_option: Optional[int] = None  # Только для quiz
+    options: List[str]
+    type: str = "regular"
+    correct_option: Optional[int] = None
     allow_multiple: bool = False
     is_anonymous: bool = True
     closes_at: Optional[datetime] = None
@@ -130,21 +136,20 @@ class PollCreate(BaseModel):
     @field_validator('correct_option')
     @classmethod
     def validate_correct_option(cls, v, info):
-        # В Pydantic v2 доступ к values через info.data
         if info.data.get('type') == 'quiz' and v is None:
             raise ValueError('Для quiz обязателен correct_option')
         return v
 
 class PollVoteCreate(BaseModel):
     """Голосование в опросе"""
-    option_indices: List[int]  # [0] для одиночного, [0, 2] для множественного
+    option_indices: List[int]
 
 class PollOptionResponse(BaseModel):
     """Вариант ответа в опросе"""
     text: str
     votes: int
     percentage: float
-    voters: Optional[List[UserShort]] = None  # Только для неанонимных опросов
+    voters: Optional[List[UserShort]] = None
 
 class PollResponse(BaseModel):
     """Полная информация об опросе"""
@@ -159,7 +164,7 @@ class PollResponse(BaseModel):
     closes_at: Optional[datetime] = None
     total_votes: int
     is_closed: bool
-    user_votes: List[int]  # Индексы вариантов, за которые проголосовал текущий юзер
+    user_votes: List[int]
     
     class Config:
         from_attributes = True
@@ -167,9 +172,7 @@ class PollResponse(BaseModel):
 # ===== POST SCHEMAS =====
 
 class ImageMeta(BaseModel):
-    """
-    Модель изображения с метаданными.
-    """
+    """Модель изображения с метаданными"""
     url: str
     w: int
     h: int
@@ -182,7 +185,6 @@ class PostCreate(BaseModel):
     is_anonymous: bool = False
     enable_anonymous_comments: bool = False
     
-    # Изображения
     images: List[str] = Field(default=[], max_length=3)
     
     # Lost & Found
@@ -201,7 +203,7 @@ class PostCreate(BaseModel):
     # News
     is_important: bool = False
     
-    # ✅ Polls
+    # Polls
     poll_data: Optional[dict] = None
     
     @field_validator('images')
@@ -214,7 +216,6 @@ class PostCreate(BaseModel):
     @field_validator('title')
     @classmethod
     def validate_title(cls, v, info):
-        """Для polls заголовок опционален (используется вопрос опроса)"""
         category = info.data.get('category')
         if category != 'polls' and (not v or len(v.strip()) < 3):
             raise ValueError('Заголовок обязателен (мин. 3 символа)')
@@ -223,7 +224,6 @@ class PostCreate(BaseModel):
     @field_validator('body')
     @classmethod
     def validate_body(cls, v, info):
-        """Для polls описание опционально"""
         category = info.data.get('category')
         if category != 'polls' and (not v or len(v.strip()) < 10):
             raise ValueError('Описание обязательно (мин. 10 символов)')
@@ -232,7 +232,6 @@ class PostCreate(BaseModel):
     @field_validator('poll_data')
     @classmethod
     def validate_poll_required(cls, v, info):
-        """Для category=polls опрос обязателен"""
         category = info.data.get('category')
         if category == 'polls' and not v:
             raise ValueError('Для категории Опросы обязательно создать опрос')
@@ -247,7 +246,6 @@ class PostUpdate(BaseModel):
     
     images: Optional[List[str]] = Field(None, max_length=3)
     
-    # Специфичные поля
     lost_or_found: Optional[str] = None
     item_description: Optional[str] = None
     location: Optional[str] = None
@@ -307,6 +305,10 @@ class PostResponse(BaseModel):
     
     # Опрос
     poll: Optional[PollResponse] = None
+    
+    # Модерация (видно только модераторам, но поля безопасны)
+    is_deleted: bool = False
+    deleted_reason: Optional[str] = None
     
     # Статистика
     likes_count: int = 0
@@ -369,6 +371,7 @@ class CommentResponse(BaseModel):
     is_liked: bool = False
     is_deleted: bool = False
     is_edited: bool = False
+    deleted_reason: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -448,6 +451,7 @@ class RequestResponse(BaseModel):
     reward_type: Optional[str] = None
     reward_value: Optional[str] = None
     images: List[ImageMeta] = []
+    is_deleted: bool = False
     
     @field_validator('tags', mode='before')
     @classmethod
@@ -512,22 +516,176 @@ class ResponseItem(BaseModel):
 
 # ===== REPORT SCHEMAS =====
 
-class CommentReportCreate(BaseModel):
-    """Создание жалобы на комментарий"""
-    reason: str = Field(..., pattern="^(spam|abuse|inappropriate)$")
-    description: Optional[str] = None
+VALID_REPORT_REASONS = ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other']
+VALID_TARGET_TYPES = ['post', 'comment', 'request', 'market_item', 'dating_profile']
 
-class CommentReport(BaseModel):
-    """Информация о жалобе"""
-    id: int
-    comment_id: int
-    reporter_id: int
+class ReportCreate(BaseModel):
+    """Создание жалобы на любой контент"""
+    target_type: str
+    target_id: int
     reason: str
-    description: Optional[str]
-    created_at: datetime
+    description: Optional[str] = Field(None, max_length=1000)
+    
+    @field_validator('target_type')
+    @classmethod
+    def validate_target_type(cls, v):
+        if v not in VALID_TARGET_TYPES:
+            raise ValueError(f'Допустимые типы: {", ".join(VALID_TARGET_TYPES)}')
+        return v
+    
+    @field_validator('reason')
+    @classmethod
+    def validate_reason(cls, v):
+        if v not in VALID_REPORT_REASONS:
+            raise ValueError(f'Допустимые причины: {", ".join(VALID_REPORT_REASONS)}')
+        return v
 
+class ReportResponse(BaseModel):
+    """Жалоба (для модераторов)"""
+    id: int
+    reporter_id: int
+    reporter: Optional[UserShort] = None
+    target_type: str
+    target_id: int
+    reason: str
+    description: Optional[str] = None
+    status: str
+    university: Optional[str] = None
+    moderator_note: Optional[str] = None
+    created_at: datetime
+    reviewed_at: Optional[datetime] = None
+    
     class Config:
         from_attributes = True
+
+class ReportsFeedResponse(BaseModel):
+    """Лента жалоб"""
+    items: List[ReportResponse]
+    total: int
+    has_more: bool
+
+# ===== APPEAL SCHEMAS =====
+
+class AppealCreate(BaseModel):
+    """Обжалование решения модератора"""
+    moderation_log_id: int
+    message: str = Field(..., min_length=10, max_length=1000)
+
+class AppealResponse(BaseModel):
+    """Обжалование (для суперадмина)"""
+    id: int
+    user_id: int
+    user: Optional[UserShort] = None
+    moderation_log_id: int
+    message: str
+    status: str
+    reviewer_note: Optional[str] = None
+    created_at: datetime
+    reviewed_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class AppealsFeedResponse(BaseModel):
+    """Лента обжалований"""
+    items: List[AppealResponse]
+    total: int
+    has_more: bool
+
+# ===== MODERATION SCHEMAS =====
+
+class ModerationAction(BaseModel):
+    """Действие модерации (удаление контента)"""
+    reason: str = Field(..., min_length=3, max_length=500)
+
+class ShadowBanCreate(BaseModel):
+    """Теневой бан пользователя"""
+    user_id: int
+    ban_posts: bool = True
+    ban_comments: bool = True
+    duration_days: Optional[int] = None  # null = перманентный
+    reason: str = Field(..., min_length=3, max_length=500)
+    
+    @field_validator('duration_days')
+    @classmethod
+    def validate_duration(cls, v):
+        if v is not None and (v < 1 or v > 365):
+            raise ValueError('Длительность бана: 1-365 дней')
+        return v
+
+class ShadowBanResponse(BaseModel):
+    """Информация о бане"""
+    user_id: int
+    is_shadow_banned_posts: bool
+    is_shadow_banned_comments: bool
+    shadow_ban_expires_at: Optional[datetime] = None
+    shadow_ban_reason: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+class ModerationLogResponse(BaseModel):
+    """Запись лога модерации"""
+    id: int
+    moderator: Optional[UserShort] = None
+    action: str
+    target_type: str
+    target_id: int
+    target_user: Optional[UserShort] = None
+    reason: Optional[str] = None
+    university: Optional[str] = None
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ModerationLogsFeedResponse(BaseModel):
+    """Лента логов модерации"""
+    items: List[ModerationLogResponse]
+    total: int
+    has_more: bool
+
+class PinPostAction(BaseModel):
+    """Закрепление/открепление поста"""
+    reason: Optional[str] = None
+
+# ===== ADMIN SCHEMAS =====
+
+class AssignAmbassadorRequest(BaseModel):
+    """Назначение амбассадора"""
+    telegram_id: int
+    university: Optional[str] = None  # если не указан — берём из профиля
+
+class AmbassadorInfo(BaseModel):
+    """Информация об амбассадоре"""
+    id: int
+    telegram_id: int
+    name: str
+    username: Optional[str] = None
+    university: str
+    institute: str
+    role: str
+    actions_count: int = 0
+    assigned_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class AdminStatsResponse(BaseModel):
+    """Статистика для суперадмина"""
+    total_users: int = 0
+    dau: int = 0  # daily active users
+    wau: int = 0  # weekly active users
+    mau: int = 0  # monthly active users
+    total_posts: int = 0
+    total_comments: int = 0
+    total_requests: int = 0
+    total_market_items: int = 0
+    total_reports_pending: int = 0
+    total_appeals_pending: int = 0
+    ambassadors_count: int = 0
+    moderation_actions_today: int = 0
+    top_universities: List[Dict[str, Any]] = []
 
 # ===== AUTH SCHEMAS =====
 
@@ -692,6 +850,7 @@ class MarketItemResponse(BaseModel):
     updated_at: Optional[datetime] = None
     is_seller: bool = False
     is_favorited: bool = False
+    is_deleted: bool = False
     
     @field_validator('images', mode='before')
     @classmethod
@@ -728,11 +887,9 @@ class DatingProfileCreate(BaseModel):
     looking_for: str
     bio: Optional[str] = None
     goals: List[str] = []
-    lifestyle: List[str] = Field(default=[], max_length=2)  # макс 2 элемента
+    lifestyle: List[str] = Field(default=[], max_length=2)
     prompt_question: Optional[str] = Field(None, max_length=100)
     prompt_answer: Optional[str] = Field(None, max_length=100)
-    # Фотографии загружаются отдельным списком файлов (UploadFile), 
-    # но здесь мы можем принимать метаданные, если нужно.
 
     @field_validator('goals', mode='before')
     @classmethod
@@ -750,12 +907,11 @@ class DatingProfileResponse(BaseModel):
     looking_for: str
     bio: Optional[str] = None
     goals: List[str] = []
-    photos: List[Any] = [] # List[ImageMeta] или List[str]
+    photos: List[Any] = []
     lifestyle: List[str] = []
-    prompts: Optional[Dict[str, str]] = None  # {"question": "...", "answer": "..."}
+    prompts: Optional[Dict[str, str]] = None
     is_active: bool
     
-    # Данные пользователя (для удобства)
     name: str
     age: Optional[int] = None
     university: str

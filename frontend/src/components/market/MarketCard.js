@@ -9,6 +9,8 @@ import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { toast } from '../shared/Toast';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
+import ReportModal from '../shared/ReportModal';
+import { useModerationActions } from '../shared/ModerationMenu';
 
 const MarketCard = ({ item, onClick, index = 0 }) => {
   const { 
@@ -22,9 +24,18 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [likeAnimating, setLikeAnimating] = useState(false);  
+  const [showReportModal, setShowReportModal] = useState(false);
   const menuButtonRef = useRef(null);
   
   const isOwner = user?.id === item.seller_id;
+
+  // ===== MODERATION HOOK =====
+  const { moderationMenuItems, moderationModals } = useModerationActions({
+    targetType: 'market_item',
+    targetId: item.id,
+    targetUserId: item.seller_id,
+    onDeleted: () => { deleteFromStore(item.id); },
+  });
 
   const coverImage = item.images && item.images.length > 0 ? item.images[0] : null;
   const imageUrl = coverImage?.url || coverImage;
@@ -123,12 +134,6 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
     }
   };
 
-  const handleReport = () => {
-    setIsMenuOpen(false);
-    hapticFeedback('medium');
-    toast.info('Функция "Пожаловаться" в разработке');
-  };
-
   const handleCopyLink = () => {
     setIsMenuOpen(false);
     hapticFeedback('light');
@@ -189,7 +194,10 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
         icon: '🚩',
         label: 'Пожаловаться',
         actionType: MENU_ACTIONS.REPORT,
-        onClick: handleReport
+        onClick: () => {
+          setIsMenuOpen(false);
+          setShowReportModal(true);
+        }
       },
       {
         icon: '↗️',
@@ -197,7 +205,9 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
         actionType: MENU_ACTIONS.SHARE,
         onClick: handleShare
       }
-    ])
+    ]),
+    // ✅ Модерация
+    ...moderationMenuItems,
   ];
 
   const categoryInfo = getCategoryInfo();
@@ -324,6 +334,17 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
           confirmType="danger"
         />
       )}
+
+      {/* ✅ Модалка жалобы */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        targetType="market_item"
+        targetId={item.id}
+      />
+
+      {/* ✅ Модалки модерации */}
+      {moderationModals}
     </>
   );
 };

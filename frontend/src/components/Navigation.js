@@ -1,4 +1,7 @@
 // ===== 📄 ФАЙЛ: src/components/Navigation.js =====
+// 4 таба: Лента, Барахолка, Знакомства, Профиль
+// Центральная кнопка "+" между 2-м и 3-м табом
+// Доступ к модерации/админке — через кнопки в Profile
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Home, ShoppingBag, PlusCircle, User, Heart } from 'lucide-react';
@@ -16,7 +19,7 @@ function Navigation() {
     setShowCreateMarketItem,
     feedSubTab,
     isRegistered,
-    setShowAuthModal
+    setShowAuthModal,
   } = useStore();
 
   const [isBouncing, setIsBouncing] = useState(false);
@@ -24,15 +27,19 @@ function Navigation() {
   const prevActiveTabRef = useRef(activeTab);
   const bounceTimeoutRef = useRef(null);
 
-  // Боковые табы (без кнопки создания)
+  // 4 боковых таба (без кнопки создания)
   const sideTabs = [
     { id: 'feed', icon: Home, label: 'Лента' },
     { id: 'market', icon: ShoppingBag, label: 'Барахолка' },
+    // — центральная кнопка "+" вставляется между 2-м и 3-м —
     { id: 'people', icon: Heart, label: 'Знакомства' },
     { id: 'profile', icon: User, label: 'Профиль' },
   ];
 
   const shouldShowCreateButton = activeTab === 'feed' || activeTab === 'market';
+
+  // Индекс, после которого вставляем пустое место под "+" кнопку
+  const middleInsertAfter = 1;
 
   useEffect(() => {
     setIsFirstRender(false);
@@ -40,7 +47,7 @@ function Navigation() {
 
   useEffect(() => {
     const prevTab = prevActiveTabRef.current;
-    
+
     if (!isFirstRender && prevTab !== activeTab && shouldShowCreateButton) {
       if (bounceTimeoutRef.current) {
         clearTimeout(bounceTimeoutRef.current);
@@ -63,12 +70,12 @@ function Navigation() {
 
   const handleTabClick = (tabId) => {
     hapticFeedback('light');
-    
+
     if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people' || tabId === 'market')) {
       setShowAuthModal(true);
       return;
     }
-    
+
     if (tabId === 'create') {
       if (activeTab === 'market') {
         setShowCreateMarketItem(true);
@@ -77,12 +84,12 @@ function Navigation() {
       }
       return;
     }
-    
+
     setActiveTab(tabId);
   };
 
   const isMarketContext = activeTab === 'market';
-  
+
   const marketColor = theme.colors.market || '#10b981';
   const marketGradient = `linear-gradient(135deg, ${theme.colors.marketGradientStart || '#059669'} 0%, ${theme.colors.marketGradientEnd || '#10b981'} 100%)`;
   const marketShadow = `0 8px 24px rgba(16, 185, 129, 0.4)`;
@@ -100,8 +107,8 @@ function Navigation() {
           const isActive = activeTab === tab.id;
           const activeColor = tab.id === 'market' ? marketColor : primaryColor;
 
-          // Вставляем пустое место посередине для кнопки "+"
-          const isAfterMiddle = index >= 2;
+          // Сдвигаем кнопки когда центральная кнопка скрыта
+          const isAfterMiddle = index >= middleInsertAfter + 1;
 
           return (
             <React.Fragment key={tab.id}>
@@ -110,38 +117,38 @@ function Navigation() {
                 style={{
                   ...styles.button,
                   color: isActive ? activeColor : theme.colors.textDisabled,
-                  // Сдвигаем боковые кнопки когда центральная скрыта
-                  transform: !shouldShowCreateButton 
+                  // Сдвиг боковых кнопок когда центральная скрыта
+                  transform: !shouldShowCreateButton
                     ? (isAfterMiddle ? 'translateX(-20px)' : 'translateX(20px)')
                     : 'translateX(0)',
                 }}
               >
                 <Icon size={24} />
                 {tab.label && (
-                  <span 
+                  <span
                     style={{
                       ...styles.label,
-                      fontWeight: isActive ? 700 : 500 
+                      fontWeight: isActive ? 700 : 500,
                     }}
                   >
                     {tab.label}
                   </span>
                 )}
               </button>
-              
+
               {/* Пустое место для центральной кнопки (после 2-го таба) */}
-              {index === 1 && <div style={{ flex: 1 }} />}
+              {index === middleInsertAfter && <div style={{ flex: 1 }} />}
             </React.Fragment>
           );
         })}
       </div>
 
       {/* Центральная кнопка "+" (абсолютное позиционирование) */}
-      <div 
+      <div
         style={{
           ...styles.createButtonWrapper,
-          transform: shouldShowCreateButton 
-            ? 'translateY(0)' 
+          transform: shouldShowCreateButton
+            ? 'translateY(0)'
             : 'translateY(100px)',
           opacity: shouldShowCreateButton ? 1 : 0,
           pointerEvents: shouldShowCreateButton ? 'auto' : 'none',
@@ -228,7 +235,7 @@ const styles = {
     position: 'absolute',
     left: '50%',
     top: -20,
-    marginLeft: -28, // Центрируем (половина ширины кнопки 56px)
+    marginLeft: -28,
     transition: `transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease`,
     willChange: 'transform, opacity',
     zIndex: 10,
@@ -247,7 +254,7 @@ const styles = {
     cursor: 'pointer',
     transition: `background ${theme.transitions.normal}, box-shadow ${theme.transitions.normal}`,
     willChange: 'transform',
-  }
+  },
 };
 
 export default Navigation;

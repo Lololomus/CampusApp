@@ -9,7 +9,7 @@ from app import models, schemas, crud
 from app.database import get_db, init_db
 from app.utils import get_image_urls, BASE_URL
 import json
-from app.routers import dating
+from app.routers import dating, moderation
 import shutil
 import uuid
 import os
@@ -23,6 +23,7 @@ app = FastAPI(
 
 # ===== ROUTERS =====
 app.include_router(dating.router)
+app.include_router(moderation.router)
 
 # ===== CORS =====
 app.add_middleware(
@@ -245,7 +246,8 @@ def get_posts_feed(
         institute=institute,
         tags=tags,
         date_range=date_range,
-        sort=sort
+        sort=sort,
+        current_user_id=user.id
     )
 
     result = []

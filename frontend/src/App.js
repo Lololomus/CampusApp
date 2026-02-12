@@ -1,22 +1,34 @@
+// ===== 📄App.js =====
 import React, { useEffect } from 'react';
 import { useStore } from './store';
 import { initTelegramApp } from './utils/telegram';
+
+// Основные экраны
 import Navigation from './components/Navigation';
 import Feed from './components/Feed';
+import Market from './components/market/Market';
+import DatingFeed from './components/dating/DatingFeed';
+import Profile from './components/profile/Profile';
+
+// Модалки
 import CreateContentModal from './components/shared/CreateContentModal';
 import EditContentModal from './components/shared/EditContentModal';
-import Onboarding from './components/Onboarding';
+import CreateMarketItem from './components/market/CreateMarketItem';
 import AuthModal from './components/AuthModal';
-import EditProfile from './components/profile/EditProfile'; 
-import Profile from './components/profile/Profile';
+import EditProfile from './components/profile/EditProfile';
+
+// Дополнительные компоненты
+import Onboarding from './components/Onboarding';
 import UserPosts from './components/profile/UserPosts';
 import UserRequests from './components/profile/UserRequests';
 import UserMarketItems from './components/profile/UserMarketItems';
-import DatingFeed from './components/dating/DatingFeed';
-import Market from './components/market/Market';
-import CreateMarketItem from './components/market/CreateMarketItem';
 import PostDetail from './components/posts/PostDetail';
 import ToastContainer from './components/shared/Toast';
+
+// Панели модерации (новое)
+import AmbassadorPanel from './components/moderation/AmbassadorPanel';
+import AdminPanel from './components/moderation/AdminPanel';
+
 import './App.css';
 
 function App() {
@@ -39,42 +51,70 @@ function App() {
     viewPostId 
   } = useStore();
 
+  // Инициализация Telegram при монтировании
   useEffect(() => {
     initTelegramApp();
   }, []);
 
+  // Рендеринг основного контента
   const renderContent = () => {
+    // Приоритет: дополнительные экраны профиля
     if (showUserMarketItems) return <UserMarketItems />;
     if (showUserPosts) return <UserPosts />;
     if (showUserRequests) return <UserRequests />;
 
+    // Основные табы
     switch (activeTab) {
-      case 'feed': return <Feed />;
-      case 'market': return <Market />;
-      case 'people': return <DatingFeed />;
-      case 'profile': return <Profile />;
-      default: return <Feed />;
+      case 'feed': 
+        return <Feed />;
+      case 'market': 
+        return <Market />;
+      case 'people': 
+        return <DatingFeed />; // или <People /> если переименовали
+      case 'profile': 
+        return <Profile />;
+      
+      // Панели модерации (новое)
+      case 'ambassador': 
+        return <AmbassadorPanel />;
+      case 'admin': 
+        return <AdminPanel />;
+      
+      default: 
+        return <Feed />;
     }
   };
   
+  // Скрываем навигацию на панелях модерации (новое)
+  const hideNavigation = activeTab === 'ambassador' || activeTab === 'admin';
+
+  // Ранний выход для онбординга
   if (onboardingStep > 0) {
-    return <div style={styles.app}><Onboarding /></div>;
+    return (
+      <div style={styles.app}>
+        <Onboarding />
+      </div>
+    );
   }
 
   return (
     <div style={styles.app}>   
       {renderContent()}
       
-      <Navigation />
+      {/* Условно скрываем навигацию на панелях модерации */}
+      {!hideNavigation && <Navigation />}
       
+      {/* Детальный просмотр поста */}
       {viewPostId && <PostDetail />}
 
+      {/* Модалка создания контента */}
       {showCreateModal && (
         <CreateContentModal 
           onClose={() => setShowCreateModal(false)} 
         />
       )}
 
+      {/* Модалка редактирования контента */}
       {editingContent && (
         <EditContentModal
           key={editingContent?.id || Date.now()} 
@@ -82,11 +122,12 @@ function App() {
           initialData={editingContent}
           onClose={closeEditing}
           onSuccess={(updatedData) => {
-             closeEditing();
+            closeEditing();
           }}
         />
       )}
 
+      {/* Модалка создания/редактирования товара */}
       {showCreateMarketItem && (
         <CreateMarketItem 
           editItem={editingMarketItem}
@@ -101,11 +142,21 @@ function App() {
         />
       )}
 
+      {/* Модалка авторизации */}
       <AuthModal />
       
+      {/* Модалка редактирования профиля */}
       {showEditModal && <EditProfile />}
       
+      {/* Toast уведомления */}
       <ToastContainer />
+
+      {/* CSS анимации (из нового кода) */}
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Edit2, Grid, ShoppingBag, FileText, Share2, Heart, 
-  MessageCircle, Calendar, Building2, Users, Award, ChevronRight
+  MessageCircle, Calendar, Building2, Users, Award, ChevronRight,
+  Shield, Zap, TrendingUp
 } from 'lucide-react';
 
 import { useStore } from '../../store';
@@ -41,7 +42,8 @@ function Profile() {
   const { 
     user, datingProfile, setDatingProfile, setShowEditModal, 
     setShowUserPosts, setShowUserRequests, setShowUserMarketItems,
-    setEditingMarketItem, setShowCreateMarketItem
+    setEditingMarketItem, setShowCreateMarketItem,
+    moderationRole, setActiveTab: setNavigationTab
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('posts');
@@ -167,7 +169,6 @@ function Profile() {
           <StudentIDCard 
             key={user.avatar}
             user={user} 
-            stats={stats}
             onAvatarClick={handleAvatarClick}
           />
         </div>
@@ -180,6 +181,44 @@ function Profile() {
             <Edit2 size={18} />
             <span>Редактировать профиль</span>
           </button>
+
+          {/* Кнопки модерации — видны только по роли */}
+          {moderationRole?.can_moderate && (
+            <button 
+              style={styles.moderationButton} 
+              onClick={() => { hapticFeedback('medium'); setNavigationTab('ambassador'); }}
+            >
+              <div style={styles.modButtonIcon}>
+                <Shield size={18} color="#fff" />
+              </div>
+              <div style={styles.modButtonText}>
+                <span style={styles.modButtonTitle}>Панель модерации</span>
+                <span style={styles.modButtonSubtitle}>Жалобы и очередь</span>
+              </div>
+              {moderationRole?.pending_reports > 0 && (
+                <div style={styles.modBadge}>
+                  {moderationRole.pending_reports > 99 ? '99+' : moderationRole.pending_reports}
+                </div>
+              )}
+              <ChevronRight size={18} color={theme.colors.textTertiary} />
+            </button>
+          )}
+
+          {moderationRole?.can_admin && (
+            <button 
+              style={styles.adminButton} 
+              onClick={() => { hapticFeedback('medium'); setNavigationTab('admin'); }}
+            >
+              <div style={styles.adminButtonIcon}>
+                <Zap size={18} color="#fff" />
+              </div>
+              <div style={styles.modButtonText}>
+                <span style={styles.modButtonTitle}>Админ-панель</span>
+                <span style={styles.modButtonSubtitle}>Статистика и контроль</span>
+              </div>
+              <ChevronRight size={18} color={theme.colors.textTertiary} />
+            </button>
+          )}
           
           <div style={styles.secondaryButtons}>
             <button style={styles.secondaryButton} onClick={handleShareProfile}>
@@ -188,6 +227,9 @@ function Profile() {
             </button>
           </div>
         </div>
+
+        {/* Статистика в виде квадратов */}
+        <StatsGrid stats={stats} />
 
         <div style={styles.tabsContainer}>
           <div style={styles.tabsWrapper}>
@@ -331,7 +373,7 @@ function Profile() {
   );
 }
 
-const StudentIDCard = ({ user, stats, onAvatarClick }) => (
+const StudentIDCard = ({ user, onAvatarClick }) => (
   <div style={styles.studentCard}>
     <div style={styles.cardHeader}>
       <div style={styles.universityLogo}>
@@ -363,10 +405,6 @@ const StudentIDCard = ({ user, stats, onAvatarClick }) => (
           <div style={styles.username}>@{user.username}</div>
         )}
         
-        <div style={styles.statsLine}>
-          {stats.posts_count} постов · {stats.comments_count} комментов · {stats.likes_count} лайков
-        </div>
-        
         <div style={styles.infoRow}>
           <Building2 size={14} color={theme.colors.textSecondary} />
           <span style={styles.infoText}>{user.course} курс · {user.institute}</span>
@@ -394,6 +432,59 @@ const StudentIDCard = ({ user, stats, onAvatarClick }) => (
     <div style={styles.magneticStripe} />
   </div>
 );
+
+const StatsGrid = ({ stats }) => {
+  const statCards = [
+    {
+      icon: Grid,
+      label: 'Постов',
+      value: stats.posts_count || 0,
+      color: '#3b82f6',
+      gradient: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08))',
+      borderColor: 'rgba(59, 130, 246, 0.3)',
+    },
+    {
+      icon: MessageCircle,
+      label: 'Комментов',
+      value: stats.comments_count || 0,
+      color: '#8b5cf6',
+      gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.08))',
+      borderColor: 'rgba(139, 92, 246, 0.3)',
+    },
+    {
+      icon: Heart,
+      label: 'Лайков',
+      value: stats.likes_count || 0,
+      color: '#ef4444',
+      gradient: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))',
+      borderColor: 'rgba(239, 68, 68, 0.3)',
+    },
+  ];
+
+  return (
+    <div style={styles.statsGrid}>
+      {statCards.map((card, i) => {
+        const Icon = card.icon;
+        return (
+          <div
+            key={i}
+            style={{
+              ...styles.statCard,
+              background: card.gradient,
+              borderColor: card.borderColor,
+            }}
+          >
+            <div style={{ ...styles.statIconWrap, backgroundColor: `${card.color}20` }}>
+              <Icon size={18} color={card.color} />
+            </div>
+            <div style={{ ...styles.statValue, color: card.color }}>{card.value}</div>
+            <div style={styles.statLabel}>{card.label}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 const ActionCard = ({ icon, title, subtitle, gradient, onClick }) => (
   <div 
@@ -566,13 +657,6 @@ const styles = {
     fontWeight: 600,
   },
   
-  statsLine: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    fontWeight: 500,
-    marginBottom: 4,
-  },
-  
   infoRow: {
     display: 'flex',
     alignItems: 'center',
@@ -640,6 +724,89 @@ const styles = {
     boxShadow: `0 4px 16px ${theme.colors.primaryGlow}`,
     transition: 'all 0.3s',
   },
+
+  moderationButton: {
+    width: '100%',
+    padding: '12px 14px',
+    background: theme.colors.card,
+    border: `1.5px solid ${theme.colors.border}`,
+    borderRadius: 14,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+
+  modButtonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  adminButton: {
+    width: '100%',
+    padding: '12px 14px',
+    background: theme.colors.card,
+    border: `1.5px solid ${theme.colors.border}`,
+    borderRadius: 14,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+
+  adminButtonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  modButtonText: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
+  },
+
+  modButtonTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: theme.colors.text,
+  },
+
+  modButtonSubtitle: {
+    fontSize: 12,
+    color: theme.colors.textTertiary,
+    fontWeight: 500,
+  },
+
+  modBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#ef4444',
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 6px',
+    lineHeight: 1,
+  },
   
   secondaryButtons: {
     display: 'flex',
@@ -661,6 +828,48 @@ const styles = {
     gap: 6,
     cursor: 'pointer',
     transition: 'all 0.2s',
+  },
+
+  // Статистика
+  statsGrid: {
+    padding: '0 16px',
+    marginBottom: 16,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: 8,
+  },
+
+  statCard: {
+    borderRadius: 14,
+    padding: '14px 10px',
+    border: '1px solid',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
+    backdropFilter: 'blur(10px)',
+  },
+
+  statIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  statValue: {
+    fontSize: 22,
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+
+  statLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
   },
 
   tabsContainer: {

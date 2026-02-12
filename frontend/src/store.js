@@ -21,7 +21,8 @@ export const useStore = create(
             datingProfile: null,
             currentProfile: null,
             profilesQueue: [],
-            isRegistered: false 
+            isRegistered: false,
+            moderationRole: null,
           });
         } else {
           set({ user, isRegistered: true });
@@ -38,6 +39,26 @@ export const useStore = create(
                 .catch(() => {});
             });
           }
+
+          // Автозагрузка роли модерации
+          if (user.role && user.role !== 'user') {
+            import('./api').then(({ getMyModerationRole }) => {
+              getMyModerationRole()
+                .then(roleData => {
+                  set({ moderationRole: roleData });
+                })
+                .catch(() => {});
+            });
+          } else {
+            set({ 
+              moderationRole: { 
+                role: 'user', 
+                can_moderate: false, 
+                can_admin: false, 
+                scope: null 
+              } 
+            });
+          }
         }
       },
       
@@ -46,8 +67,26 @@ export const useStore = create(
         datingProfile: null,
         currentProfile: null,
         profilesQueue: [],
-        isRegistered: false 
+        isRegistered: false,
+        moderationRole: null,
       }),
+
+      // MODERATION STATE
+      moderationRole: null, // { role, university, can_moderate, can_admin, scope, pending_reports }
+      
+      setModerationRole: (roleData) => set({ moderationRole: roleData }),
+      
+      /** Быстрая проверка: может ли юзер модерировать */
+      canModerate: () => {
+        const { moderationRole } = get();
+        return moderationRole?.can_moderate === true;
+      },
+      
+      /** Быстрая проверка: суперадмин ли юзер */
+      isSuperAdmin: () => {
+        const { moderationRole } = get();
+        return moderationRole?.can_admin === true;
+      },
 
       // NAVIGATION STATE
       activeTab: 'feed',
@@ -504,6 +543,7 @@ export const useStore = create(
         marketFilters: state.marketFilters,
         postsFilters: state.postsFilters,
         requestsFilters: state.requestsFilters,
+        // НЕ персистим moderationRole — запрашиваем с сервера при каждом входе
       }),
     }
   )

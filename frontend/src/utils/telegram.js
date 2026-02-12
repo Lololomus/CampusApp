@@ -1,4 +1,4 @@
-// Telegram Mini App SDK helpers
+// Telegram Mini App SDK helpers (telegram.js)
 
 export const tg = window.Telegram?.WebApp;
 

@@ -1,4 +1,6 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Enum, CheckConstraint, UniqueConstraint
+# ===== 📄 ФАЙЛ: backend/app/models.py =====
+
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Enum, CheckConstraint, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone 
 from .database import Base
@@ -21,9 +23,18 @@ class User(Base):
     course = Column(Integer, nullable=True)
     group = Column(String(100), nullable=True)
     
+    # Роль (user / ambassador / superadmin)
+    role = Column(String(20), default='user', nullable=False, index=True)
+    
+    # Теневой бан (забаненный не знает что забанен, его контент виден только ему)
+    is_shadow_banned_posts = Column(Boolean, default=False)
+    is_shadow_banned_comments = Column(Boolean, default=False)
+    shadow_ban_expires_at = Column(DateTime, nullable=True)  # null = перманентный
+    shadow_ban_reason = Column(String(500), nullable=True)
+    
     # Dating поля
-    show_in_dating = Column(Boolean, default=True)  # показывать в знакомствах
-    hide_course_group = Column(Boolean, default=False)  # скрыть курс/группу
+    show_in_dating = Column(Boolean, default=True)
+    hide_course_group = Column(Boolean, default=False)
     interests = Column(Text, nullable=True)  # JSON array как строка: ["python", "спорт"]
     dating_profile = relationship("DatingProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
@@ -31,20 +42,61 @@ class User(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     last_active_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    last_profile_edit = Column(DateTime, nullable=True)  # для cooldown редактирования
+    last_profile_edit = Column(DateTime, nullable=True)
     
     # Отношения
-    posts = relationship('Post', back_populates='author', cascade='all, delete-orphan')
-    requests = relationship('Request', back_populates='author', cascade='all, delete-orphan')
-    comments = relationship('Comment', back_populates='author', cascade='all, delete-orphan')
+    posts = relationship(
+        'Post', 
+        foreign_keys='[Post.author_id]',
+        back_populates='author', 
+        cascade='all, delete-orphan'
+    )
+    
+    # для постов, которые закрепил этот юзер
+    pinned_posts = relationship(
+        'Post',
+        foreign_keys='[Post.pinned_by]',
+        cascade='save-update, merge'
+    )
+    
+    # для постов, которые удалил этот модератор
+    deleted_posts = relationship(
+        'Post',
+        foreign_keys='[Post.deleted_by]',
+        cascade='save-update, merge'
+    )
+    requests = relationship(
+        'Request', 
+        foreign_keys='[Request.author_id]',
+        back_populates='author', 
+        cascade='all, delete-orphan'
+    )
+    
+    comments = relationship(
+        'Comment', 
+        foreign_keys='[Comment.author_id]',
+        back_populates='author', 
+        cascade='all, delete-orphan'
+    )
     
     # Dating отношения
     likes_given = relationship('Like', foreign_keys='Like.liker_id', back_populates='liker', cascade='all, delete-orphan')
     likes_received = relationship('Like', foreign_keys='Like.liked_id', back_populates='liked', cascade='all, delete-orphan')
     
     # Market отношения
-    market_items = relationship('MarketItem', back_populates='seller', cascade='all, delete-orphan')
-    market_favorites = relationship('MarketFavorite', back_populates='user', cascade='all, delete-orphan')
+    market_items = relationship(
+        'MarketItem', 
+        foreign_keys='[MarketItem.seller_id]',
+        back_populates='seller', 
+        cascade='all, delete-orphan'
+    )
+    
+    market_favorites = relationship(
+        'MarketFavorite', 
+        foreign_keys='[MarketFavorite.user_id]',
+        back_populates='user', 
+        cascade='all, delete-orphan'
+    )
 
 
 class Post(Base):
@@ -53,7 +105,6 @@ class Post(Base):
     id = Column(Integer, primary_key=True, index=True)
     author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
-    # НОВЫЕ категории (general/confessions/lost_found/news/events)
     category = Column(
         Enum('general', 'confessions', 'lost_found', 'news', 'events', 'polls', name='post_category_enum'),
         nullable=False,
@@ -63,33 +114,36 @@ class Post(Base):
     title = Column(String(200), nullable=True)
     body = Column(Text, nullable=False)
     tags = Column(Text, nullable=True)  # JSON array: '["python", "react"]'
-    images = Column(Text, nullable=True)  # JSON array Base64 строк
+    images = Column(Text, nullable=True)  # JSON array
     
     # АНОНИМНОСТЬ
-    is_anonymous = Column(Boolean, default=False)  # пост анонимный
-    enable_anonymous_comments = Column(Boolean, default=False)  # комменты анонимные
+    is_anonymous = Column(Boolean, default=False)
+    enable_anonymous_comments = Column(Boolean, default=False)
     
     # Для lost_found
     lost_or_found = Column(Enum('lost', 'found', name='lost_found_enum'), nullable=True)
     item_description = Column(String(500), nullable=True)
     location = Column(String(200), nullable=True)
     
-    # ✅ НОВЫЕ ПОЛЯ (REFACTOR)
-    reward_type = Column(String(50), nullable=True)    # "money" | "gift" | "favor"
-    reward_value = Column(String(255), nullable=True)  # "500 руб" или описание
+    reward_type = Column(String(50), nullable=True)
+    reward_value = Column(String(255), nullable=True)
     
     # Для events
     event_name = Column(String(200), nullable=True)
     event_date = Column(DateTime, nullable=True)
     event_location = Column(String(200), nullable=True)
+    event_contact = Column(String(255), nullable=True)
     
-    # ✅ НОВЫЕ ПОЛЯ (REFACTOR)
-    event_contact = Column(String(255), nullable=True) # Telegram или email организатора
+    # Закреплённость
+    is_important = Column(Boolean, default=False)
+    pinned_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    pinned_at = Column(DateTime, nullable=True)
     
-    # Общее
-    is_important = Column(Boolean, default=False)  # закреплённость (для news)
-    
-    # ❌ УДАЛЕНО: expires_at (больше не используем автоудаление для lost_found)
+    # Мягкое удаление (модерация)
+    is_deleted = Column(Boolean, default=False, index=True)
+    deleted_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    deleted_reason = Column(String(500), nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
     
     # Счётчики
     likes_count = Column(Integer, default=0)
@@ -100,17 +154,13 @@ class Post(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Отношения
-    author = relationship('User', back_populates='posts')
+    author = relationship('User', foreign_keys=[author_id], back_populates='posts')
     comments = relationship('Comment', back_populates='post', cascade='all, delete-orphan')
-    
-    # ✅ НОВОЕ ОТНОШЕНИЕ (Polls)
     poll = relationship("Poll", back_populates="post", uselist=False, cascade="all, delete-orphan")
 
 
 class Poll(Base):
-    """
-    Модель опроса для постов (НОВОЕ)
-    """
+    """Модель опроса для постов"""
     __tablename__ = "polls"
     
     id = Column(Integer, primary_key=True, index=True)
@@ -120,7 +170,7 @@ class Poll(Base):
     options = Column(Text, nullable=False)  # JSON: [{"text": "Вариант 1", "votes": 5}, ...]
     
     type = Column(String(20), default="regular")  # "regular" | "quiz"
-    correct_option = Column(Integer, nullable=True)  # Индекс правильного ответа для quiz
+    correct_option = Column(Integer, nullable=True)
     
     allow_multiple = Column(Boolean, default=False)
     is_anonymous = Column(Boolean, default=True)
@@ -136,16 +186,14 @@ class Poll(Base):
 
 
 class PollVote(Base):
-    """
-    Голос пользователя в опросе (НОВОЕ)
-    """
+    """Голос пользователя в опросе"""
     __tablename__ = "poll_votes"
     
     id = Column(Integer, primary_key=True, index=True)
     poll_id = Column(Integer, ForeignKey("polls.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
-    option_indices = Column(Text, nullable=False)  # JSON: [0, 2] (для множественного выбора)
+    option_indices = Column(Text, nullable=False)  # JSON: [0, 2]
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
@@ -158,9 +206,7 @@ class PollVote(Base):
 
 
 class PostLike(Base):
-    """
-    Лайки для постов
-    """
+    """Лайки для постов"""
     __tablename__ = 'post_likes'
     
     id = Column(Integer, primary_key=True, index=True)
@@ -168,23 +214,18 @@ class PostLike(Base):
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
-    # Ограничения
     __table_args__ = (
         UniqueConstraint('post_id', 'user_id', name='unique_post_like'),
     )
 
 
 class Request(Base):
-    """
-    Запросы для карточек Dating (study/help/hangout)
-    Временные, исчезают после откликов или expires_at
-    """
+    """Запросы (study/help/hangout)"""
     __tablename__ = 'requests'
     
     id = Column(Integer, primary_key=True, index=True)
     author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
-    # Только 3 категории для карточек
     category = Column(
         Enum('study', 'help', 'hangout', name='request_category_enum'),
         nullable=False,
@@ -193,9 +234,8 @@ class Request(Base):
     
     title = Column(String(200), nullable=False)
     body = Column(Text, nullable=False)
-    tags = Column(Text, nullable=True)  # JSON array
+    tags = Column(Text, nullable=True)
     
-    # Временность (ОБЯЗАТЕЛЬНО)
     expires_at = Column(DateTime, nullable=False, index=True)
     max_responses = Column(Integer, default=5)
     status = Column(
@@ -204,9 +244,15 @@ class Request(Base):
         index=True
     )
     
-    reward_type = Column(String(50), nullable=True)  # 'none' | 'money' | 'help_back' | 'food' | 'gratitude'
-    reward_value = Column(String(255), nullable=True)  # "500₽" | "Помогу взамен"
-    images = Column(Text, nullable=True)  # JSON array [{url: '...', w: 800, h: 600}, ...]
+    reward_type = Column(String(50), nullable=True)
+    reward_value = Column(String(255), nullable=True)
+    images = Column(Text, nullable=True)
+    
+    # Мягкое удаление (модерация)
+    is_deleted = Column(Boolean, default=False, index=True)
+    deleted_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    deleted_reason = Column(String(500), nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
     
     # Счётчики
     responses_count = Column(Integer, default=0)
@@ -216,23 +262,20 @@ class Request(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Отношения
-    author = relationship('User', back_populates='requests')
+    author = relationship('User', foreign_keys=[author_id], back_populates='requests')
     responses = relationship('RequestResponse', back_populates='request', cascade='all, delete-orphan')
 
 
 class RequestResponse(Base):
-    """
-    Отклики на запросы (ведут в Telegram чат)
-    """
+    """Отклики на запросы (ведут в Telegram чат)"""
     __tablename__ = 'request_responses'
     
     id = Column(Integer, primary_key=True, index=True)
     request_id = Column(Integer, ForeignKey('requests.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
-    # Контакт (берётся из профиля User.username)
-    message = Column(String(500), nullable=True)  # optional сообщение
-    telegram_contact = Column(String(255), nullable=True)  # @username
+    message = Column(String(500), nullable=True)
+    telegram_contact = Column(String(255), nullable=True)
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
@@ -240,7 +283,6 @@ class RequestResponse(Base):
     request = relationship('Request', back_populates='responses')
     author = relationship('User')
     
-    # Ограничения (один пользователь = один отклик на запрос)
     __table_args__ = (
         UniqueConstraint('request_id', 'user_id', name='unique_request_response'),
     )
@@ -262,6 +304,8 @@ class Comment(Base):
     # СТАТУС
     is_deleted = Column(Boolean, default=False)
     is_edited = Column(Boolean, default=False)
+    deleted_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    deleted_reason = Column(String(500), nullable=True)
     
     # ЛАЙКИ
     likes_count = Column(Integer, default=0)
@@ -271,13 +315,11 @@ class Comment(Base):
     
     # Отношения
     post = relationship('Post', back_populates='comments')
-    author = relationship('User', back_populates='comments')
+    author = relationship('User', foreign_keys=[author_id], back_populates='comments')
 
 
 class CommentLike(Base):
-    """
-    Лайки для комментариев
-    """
+    """Лайки для комментариев"""
     __tablename__ = 'comment_likes'
     
     id = Column(Integer, primary_key=True, index=True)
@@ -285,16 +327,13 @@ class CommentLike(Base):
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
-    # Ограничения
     __table_args__ = (
         UniqueConstraint('comment_id', 'user_id', name='unique_comment_like'),
     )
 
 
 class Like(Base):
-    """
-    Лайки для знакомств (dating режим)
-    """
+    """Лайки для знакомств (dating режим)"""
     __tablename__ = 'likes'
     
     id = Column(Integer, primary_key=True, index=True)
@@ -306,7 +345,6 @@ class Like(Base):
     liker = relationship('User', foreign_keys=[liker_id], back_populates='likes_given')
     liked = relationship('User', foreign_keys=[liked_id], back_populates='likes_received')
     
-    # Ограничения
     __table_args__ = (
         UniqueConstraint('liker_id', 'liked_id', name='unique_like'),
         CheckConstraint('liker_id != liked_id', name='no_self_like'),
@@ -314,9 +352,7 @@ class Like(Base):
 
 
 class Match(Base):
-    """
-    Матчи для знакомств (взаимные лайки)
-    """
+    """Матчи для знакомств (взаимные лайки)"""
     __tablename__ = 'matches'
     
     id = Column(Integer, primary_key=True, index=True)
@@ -328,7 +364,6 @@ class Match(Base):
     user_a = relationship('User', foreign_keys=[user_a_id])
     user_b = relationship('User', foreign_keys=[user_b_id])
     
-    # Ограничения (user_a_id всегда меньше user_b_id для нормализации)
     __table_args__ = (
         UniqueConstraint('user_a_id', 'user_b_id', name='unique_match'),
         CheckConstraint('user_a_id < user_b_id', name='ordered_match'),
@@ -341,37 +376,27 @@ class Match(Base):
 
 
 class MarketItem(Base):
-    """
-    Товары барахолки
-    """
+    """Товары барахолки"""
     __tablename__ = 'market_items'
     
     id = Column(Integer, primary_key=True, index=True)
     seller_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
-    # Категория (String, не Enum! Для кастомных категорий)
     category = Column(String(50), nullable=False, index=True)
     
-    # Основная информация
-    title = Column(String(100), nullable=False)  # 5-100 символов
-    description = Column(Text, nullable=False)  # 20-1000 символов
-    price = Column(Integer, nullable=False)  # 0-1000000 рублей
+    title = Column(String(100), nullable=False)
+    description = Column(Text, nullable=False)
+    price = Column(Integer, nullable=False)
     
-    # Состояние товара
     condition = Column(
         Enum('new', 'like_new', 'good', 'fair', name='item_condition_enum'),
         nullable=False,
         default='good'
     )
     
-    # Локация (опционально, автозаполнение из профиля)
     location = Column(String(200), nullable=True)
+    images = Column(Text, nullable=False)
     
-    # Изображения (JSON array, первое = обложка)
-    # Формат: [{"url": "abc.jpg", "w": 800, "h": 600}, ...]
-    images = Column(Text, nullable=False)  # минимум 1 фото, максимум 5
-    
-    # Статус товара
     status = Column(
         Enum('active', 'sold', name='market_status_enum'),
         nullable=False,
@@ -379,27 +404,33 @@ class MarketItem(Base):
         index=True
     )
     
-    # Университет/институт продавца (копируются из User при создании)
     university = Column(String(255), nullable=False)
     institute = Column(String(255), nullable=False)
+    
+    # Мягкое удаление (модерация)
+    is_deleted = Column(Boolean, default=False, index=True)
+    deleted_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    deleted_reason = Column(String(500), nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
     
     # Счётчики
     views_count = Column(Integer, default=0)
     favorites_count = Column(Integer, default=0)
     
-    # Временные метки
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Отношения
-    seller = relationship('User', back_populates='market_items')
+    seller = relationship(
+    'User', 
+    foreign_keys=[seller_id],
+    back_populates='market_items'
+    )
     favorites = relationship('MarketFavorite', back_populates='item', cascade='all, delete-orphan')
 
 
 class MarketFavorite(Base):
-    """
-    Избранные товары пользователей
-    """
+    """Избранные товары пользователей"""
     __tablename__ = 'market_favorites'
     
     id = Column(Integer, primary_key=True, index=True)
@@ -407,17 +438,17 @@ class MarketFavorite(Base):
     item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
-    # Отношения
     user = relationship('User', back_populates='market_favorites')
     item = relationship('MarketItem', back_populates='favorites')
     
-    # Ограничения (один пользователь = один лайк на товар)
     __table_args__ = (
         UniqueConstraint('user_id', 'item_id', name='unique_market_favorite'),
     )
 
 
-# ===== DATING MODELS =====
+# ========================================
+# DATING MODELS
+# ========================================
 
 
 class DatingProfile(Base):
@@ -425,21 +456,20 @@ class DatingProfile(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
-    gender = Column(String(50), nullable=False)  # 'male' | 'female'
-    age = Column(Integer, nullable=False)  # 16-50
-    looking_for = Column(String(50), nullable=False)  # 'male' | 'female' | 'all'
+    gender = Column(String(50), nullable=False)
+    age = Column(Integer, nullable=False)
+    looking_for = Column(String(50), nullable=False)
     bio = Column(Text, nullable=True)
-    goals = Column(Text, nullable=True)  # JSON string ["relationship", "friends"]
-    photos = Column(Text, nullable=True)  # JSON string [{"url": "...", "w": 1000, "h": 1000}]
-    lifestyle = Column(Text, nullable=True)  # JSON string ["nightowl", "coffeelover"]
-    prompts = Column(Text, nullable=True)  # JSON string [{"question": "...", "answer": "..."}]
+    goals = Column(Text, nullable=True)
+    photos = Column(Text, nullable=True)
+    lifestyle = Column(Text, nullable=True)
+    prompts = Column(Text, nullable=True)
     
     is_active = Column(Boolean, default=True)
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
-    # Relationship
     user = relationship("User", back_populates="dating_profile")
 
 
@@ -449,6 +479,126 @@ class DatingLike(Base):
     id = Column(Integer, primary_key=True, index=True)
     who_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     whom_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    is_like = Column(Boolean, default=True)  # True = лайк, False = дизлайк/скип
+    is_like = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     matched_at = Column(DateTime, nullable=True)
+
+
+# ========================================
+# МОДЕРАЦИЯ И ЖАЛОБЫ
+# ========================================
+
+
+class ModerationLog(Base):
+    """
+    Лог всех действий модераторов.
+    Каждое действие амбассадора/суперадмина фиксируется здесь.
+    """
+    __tablename__ = 'moderation_logs'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    moderator_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    
+    # Что сделал
+    action = Column(String(50), nullable=False, index=True)
+    # Допустимые значения action:
+    # delete_post, delete_comment, delete_request, delete_market_item,
+    # restore_post, restore_comment, restore_request, restore_market_item,
+    # pin_post, unpin_post,
+    # shadow_ban, shadow_unban,
+    # assign_ambassador, remove_ambassador,
+    # dismiss_report, resolve_report,
+    # approve_appeal, reject_appeal
+    
+    # Над чем
+    target_type = Column(String(30), nullable=False, index=True)  # post / comment / request / market_item / user
+    target_id = Column(Integer, nullable=False)
+    
+    # Над кем (владелец контента / забаненный юзер)
+    target_user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    
+    # Контекст
+    reason = Column(String(500), nullable=True)
+    university = Column(String(255), nullable=True)  # вуз в момент действия (для аналитики)
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    
+    # Отношения
+    moderator = relationship('User', foreign_keys=[moderator_id])
+    target_user = relationship('User', foreign_keys=[target_user_id])
+    
+    __table_args__ = (
+        Index('ix_mod_log_moderator_created', 'moderator_id', 'created_at'),
+        Index('ix_mod_log_target', 'target_type', 'target_id'),
+    )
+
+
+class Report(Base):
+    """
+    Жалобы пользователей на контент.
+    Универсальная таблица для любого типа контента.
+    """
+    __tablename__ = 'reports'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    reporter_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    
+    # Что жалуемся
+    target_type = Column(String(30), nullable=False, index=True)  # post / comment / request / market_item / dating_profile
+    target_id = Column(Integer, nullable=False)
+    
+    # Причина
+    reason = Column(String(50), nullable=False)
+    # Допустимые значения: spam, abuse, inappropriate, scam, nsfw, harassment, misinformation, other
+    description = Column(String(1000), nullable=True)  # опциональное описание от юзера
+    
+    # Статус обработки
+    status = Column(String(20), default='pending', nullable=False, index=True)  # pending / reviewed / dismissed
+    reviewed_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    moderator_note = Column(String(500), nullable=True)  # заметка модератора при обработке
+    
+    # Вуз автора контента (для скоупинга амбассадоров)
+    university = Column(String(255), nullable=True)
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    
+    # Отношения
+    reporter = relationship('User', foreign_keys=[reporter_id])
+    reviewer = relationship('User', foreign_keys=[reviewed_by])
+    
+    __table_args__ = (
+        Index('ix_report_status_university', 'status', 'university'),
+        Index('ix_report_target', 'target_type', 'target_id'),
+    )
+
+
+class Appeal(Base):
+    """
+    Обжалования решений модераторов.
+    Пользователь может обжаловать удаление своего контента или бан.
+    """
+    __tablename__ = 'appeals'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    moderation_log_id = Column(Integer, ForeignKey('moderation_logs.id', ondelete='CASCADE'), nullable=False)
+    
+    message = Column(String(1000), nullable=False)  # текст обжалования
+    
+    # Статус
+    status = Column(String(20), default='pending', nullable=False, index=True)  # pending / approved / rejected
+    reviewed_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    reviewer_note = Column(String(500), nullable=True)
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    
+    # Отношения
+    user = relationship('User', foreign_keys=[user_id])
+    moderation_log = relationship('ModerationLog')
+    reviewer = relationship('User', foreign_keys=[reviewed_by])
+    
+    __table_args__ = (
+        UniqueConstraint('user_id', 'moderation_log_id', name='unique_appeal_per_action'),
+    )

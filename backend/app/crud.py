@@ -76,44 +76,49 @@ def get_posts(
     category: Optional[str] = None,
     university: Optional[str] = None,
     institute: Optional[str] = None,
-    tags: Optional[str] = None,            # comma-separated
-    date_range: Optional[str] = None,      # 'today' | 'week' | 'month'
-    sort: str = 'newest',                  # 'newest' | 'popular' | 'discussed'
+    tags: Optional[str] = None,
+    date_range: Optional[str] = None,
+    sort: str = 'newest',
+    current_user_id: Optional[int] = None,
 ) -> List[models.Post]:
-    """Получение постов с фильтрацией"""
+    """Получение постов с фильтрацией + soft delete + shadow ban"""
     query = db.query(models.Post).options(
         joinedload(models.Post.author),
         joinedload(models.Post.poll).joinedload(models.Poll.votes)
     )
 
+    # Фильтр soft delete
+    query = query.filter(models.Post.is_deleted == False)
+
+    # Фильтр shadow ban (забаненный видит свои посты, остальные — нет)
+    if current_user_id:
+        query = query.join(models.User, models.Post.author_id == models.User.id).filter(
+            or_(
+                models.User.is_shadow_banned_posts == False,
+                models.Post.author_id == current_user_id
+            )
+        )
+    else:
+        query = query.join(models.User, models.Post.author_id == models.User.id).filter(
+            models.User.is_shadow_banned_posts == False
+        )
+
     # Фильтр по категории
     if category and category != 'all':
         query = query.filter(models.Post.category == category)
 
-    # Фильтр по университету
+    # Фильтр по университету (join уже выполнен выше)
     if university and university != 'all':
-        if hasattr(models.Post, 'university'):
-            query = query.filter(models.Post.university == university)
-        else:
-            # Фильтрация через автора если нет поля university в Post
-            query = query.join(models.User).filter(models.User.university == university)
+        query = query.filter(models.User.university == university)
 
     # Фильтр по институту
     if institute and institute != 'all':
-        if hasattr(models.Post, 'institute'):
-            query = query.filter(models.Post.institute == institute)
-        else:
-            # Фильтрация через автора
-            if university:  # Уже есть join
-                query = query.filter(models.User.institute == institute)
-            else:
-                query = query.join(models.User).filter(models.User.institute == institute)
+        query = query.filter(models.User.institute == institute)
 
-    # Фильтр по тегам (хотя бы один из указанных)
+    # Фильтр по тегам
     if tags:
         tags_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
         if tags_list:
-            # Поиск постов с хотя бы одним из тегов
             tag_conditions = [models.Post.tags.like(f'%"{tag}"%') for tag in tags_list]
             query = query.filter(or_(*tag_conditions))
 
@@ -132,20 +137,18 @@ def get_posts(
 
     # Сортировка
     if sort == 'popular':
-        # По количеству лайков
         query = query.order_by(
             models.Post.is_important.desc(),
             models.Post.likes_count.desc(),
             models.Post.created_at.desc()
         )
     elif sort == 'discussed':
-        # По количеству комментариев
         query = query.order_by(
             models.Post.is_important.desc(),
             models.Post.comments_count.desc(),
             models.Post.created_at.desc()
         )
-    else:  # 'newest' (по умолчанию)
+    else:
         query = query.order_by(
             models.Post.is_important.desc(),
             models.Post.created_at.desc()
@@ -154,11 +157,14 @@ def get_posts(
     return query.offset(skip).limit(limit).all()
 
 def get_post(db: Session, post_id: int) -> Optional[models.Post]:
-    """Получить пост по ID"""
+    """Получить пост по ID (только неудалённые)"""
     return db.query(models.Post).options(
         joinedload(models.Post.author),
         joinedload(models.Post.poll).joinedload(models.Poll.votes)
-    ).filter(models.Post.id == post_id).first()
+    ).filter(
+        models.Post.id == post_id,
+        models.Post.is_deleted == False
+    ).first()
 
 async def create_post(db: Session, post: schemas.PostCreate, author_id: int, uploaded_files: List = None) -> models.Post:
     """
@@ -438,20 +444,33 @@ def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
 # ===== COMMENT CRUD =====
 
 def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) -> List[models.Comment]:
-    """Получить все комментарии к посту"""
-    comments = db.query(models.Comment)\
+    """Получить комментарии к посту (с фильтрацией shadow ban)"""
+    query = db.query(models.Comment)\
         .options(joinedload(models.Comment.author))\
-        .filter(models.Comment.post_id == post_id)\
-        .order_by(models.Comment.created_at)\
-        .all()
-    
+        .filter(models.Comment.post_id == post_id)
+
+    # Shadow ban: забаненный видит свои комменты, остальные — нет
+    if user_id:
+        query = query.join(models.User, models.Comment.author_id == models.User.id).filter(
+            or_(
+                models.User.is_shadow_banned_comments == False,
+                models.Comment.author_id == user_id
+            )
+        )
+    else:
+        query = query.join(models.User, models.Comment.author_id == models.User.id).filter(
+            models.User.is_shadow_banned_comments == False
+        )
+
+    comments = query.order_by(models.Comment.created_at).all()
+
     if user_id:
         for comment in comments:
             comment.is_liked = is_comment_liked_by_user(db, comment.id, user_id)
     else:
         for comment in comments:
             comment.is_liked = False
-    
+
     return comments
 
 def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
@@ -579,14 +598,20 @@ def count_post_comments(db: Session, post_id: int) -> int:
 
 def get_user_posts(db: Session, user_id: int, limit: int = 5, offset: int = 0) -> List[models.Post]:
     return db.query(models.Post)\
-        .filter(models.Post.author_id == user_id)\
+        .filter(
+            models.Post.author_id == user_id,
+            models.Post.is_deleted == False
+        )\
         .order_by(models.Post.created_at.desc())\
         .offset(offset)\
         .limit(limit)\
         .all()
 
 def count_user_posts(db: Session, user_id: int) -> int:
-    return db.query(models.Post).filter(models.Post.author_id == user_id).count()
+    return db.query(models.Post).filter(
+        models.Post.author_id == user_id,
+        models.Post.is_deleted == False
+    ).count()
 
 def count_user_comments(db: Session, user_id: int) -> int:
     return db.query(models.Comment).filter(
@@ -687,6 +712,7 @@ def get_requests_feed(
     query = db.query(models.Request).options(
         joinedload(models.Request.author)
     )
+    query = query.filter(models.Request.is_deleted == False)
 
     # Фильтр по статусу
     if status == 'active':
@@ -1271,6 +1297,7 @@ def get_market_items(
     query = db.query(models.MarketItem).options(joinedload(models.MarketItem.seller))
     
     query = query.filter(models.MarketItem.status == 'active')
+    query = query.filter(models.MarketItem.is_deleted == False)
 
     # Search
     if search:
@@ -1325,12 +1352,15 @@ def get_market_item(db: Session, item_id: int) -> Optional[models.MarketItem]:
     """Получить товар по ID и увеличить просмотры"""
     item = db.query(models.MarketItem).options(
         joinedload(models.MarketItem.seller)
-    ).filter(models.MarketItem.id == item_id).first()
-    
+    ).filter(
+        models.MarketItem.id == item_id,
+        models.MarketItem.is_deleted == False
+    ).first()
+
     if item:
         item.views_count += 1
         db.commit()
-    
+
     return item
 
 async def update_market_item(

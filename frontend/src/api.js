@@ -11,11 +11,19 @@ const api = axios.create({
   },
 });
 
+// function getTelegramId() {
+//   if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+//     return window.Telegram.WebApp.initDataUnsafe.user.id;
+//   }
+//   return 999999;
+// }
+
 function getTelegramId() {
   if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
     return window.Telegram.WebApp.initDataUnsafe.user.id;
   }
-  return 999999;
+  // ДЛЯ ТЕСТОВ
+  return 333333;  // ← МЕНЯТЬ ЭТУ СТРОКУ
 }
 
 export async function authWithTelegram(initData) {
@@ -100,32 +108,21 @@ export async function getPosts(filters = {}) {
     const telegram_id = getTelegramId();
     const params = { telegram_id, skip: 0, limit: 50 };
     
-    // Категория
     if (filters.category && filters.category !== 'all') {
       params.category = filters.category;
     }
-    
-    // Университет
     if (filters.university && filters.university !== 'all') {
       params.university = filters.university;
     }
-    
-    // Институт
     if (filters.institute && filters.institute !== 'all') {
       params.institute = filters.institute;
     }
-    
-    // Теги (массив → comma-separated строка)
     if (filters.tags && Array.isArray(filters.tags) && filters.tags.length > 0) {
       params.tags = filters.tags.join(',');
     }
-    
-    // Диапазон дат
     if (filters.dateRange && filters.dateRange !== 'all') {
       params.date_range = filters.dateRange;
     }
-    
-    // Сортировка
     if (filters.sort && filters.sort !== 'newest') {
       params.sort = filters.sort;
     }
@@ -375,37 +372,24 @@ export async function getRequestsFeed(filters = {}) {
     
     if (telegram_id) params.telegram_id = telegram_id;
     
-    // Категория
     if (filters.category && filters.category !== 'all') {
       params.category = filters.category;
     }
-    
-    // Университет
     if (filters.university && filters.university !== 'all') {
       params.university = filters.university;
     }
-    
-    // Институт
     if (filters.institute && filters.institute !== 'all') {
       params.institute = filters.institute;
     }
-    
-    // Статус
     if (filters.status && filters.status !== 'active') {
       params.status = filters.status;
     }
-    
-    // Вознаграждение
     if (filters.hasReward && filters.hasReward !== 'all') {
       params.has_reward = filters.hasReward;
     }
-    
-    // Срочность
     if (filters.urgency && filters.urgency !== 'all') {
       params.urgency = filters.urgency;
     }
-    
-    // Сортировка
     if (filters.sort && filters.sort !== 'newest') {
       params.sort = filters.sort;
     }
@@ -830,5 +814,224 @@ export async function uploadUserAvatar(file) {
   });
   return response.data;
 }
+
+
+// ========================================
+// МОДЕРАЦИЯ
+// ========================================
+
+/** Получить свою роль и возможности */
+export async function getMyModerationRole() {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get('/moderation/my-role', {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения роли:', error);
+    return { role: 'user', can_moderate: false, can_admin: false };
+  }
+}
+
+/** Удалить пост (модерация) */
+export async function moderateDeletePost(postId, reason) {
+  const telegram_id = getTelegramId();
+  const response = await api.delete(`/moderation/posts/${postId}`, {
+    params: { telegram_id },
+    data: { reason }
+  });
+  return response.data;
+}
+
+/** Удалить комментарий (модерация) */
+export async function moderateDeleteComment(commentId, reason) {
+  const telegram_id = getTelegramId();
+  const response = await api.delete(`/moderation/comments/${commentId}`, {
+    params: { telegram_id },
+    data: { reason }
+  });
+  return response.data;
+}
+
+/** Удалить запрос (модерация) */
+export async function moderateDeleteRequest(requestId, reason) {
+  const telegram_id = getTelegramId();
+  const response = await api.delete(`/moderation/requests/${requestId}`, {
+    params: { telegram_id },
+    data: { reason }
+  });
+  return response.data;
+}
+
+/** Удалить товар (модерация) */
+export async function moderateDeleteMarketItem(itemId, reason) {
+  const telegram_id = getTelegramId();
+  const response = await api.delete(`/moderation/market/${itemId}`, {
+    params: { telegram_id },
+    data: { reason }
+  });
+  return response.data;
+}
+
+/** Закрепить/открепить пост */
+export async function togglePinPost(postId, reason = null) {
+  const telegram_id = getTelegramId();
+  const response = await api.post(`/moderation/posts/${postId}/pin`, 
+    { reason },
+    { params: { telegram_id } }
+  );
+  return response.data;
+}
+
+/** Теневой бан */
+export async function shadowBanUser(data) {
+  const telegram_id = getTelegramId();
+  const response = await api.post('/moderation/ban', data, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Снять теневой бан */
+export async function shadowUnbanUser(userId) {
+  const telegram_id = getTelegramId();
+  const response = await api.delete(`/moderation/ban/${userId}`, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+
+// ========================================
+// ЖАЛОБЫ (REPORTS)
+// ========================================
+
+/** Отправить жалобу (любой пользователь) */
+export async function createReport(targetType, targetId, reason, description = null) {
+  const telegram_id = getTelegramId();
+  const response = await api.post('/reports', {
+    target_type: targetType,
+    target_id: targetId,
+    reason,
+    description
+  }, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Получить список жалоб (модератор) */
+export async function getReports(status = 'pending', targetType = null, limit = 20, offset = 0) {
+  const telegram_id = getTelegramId();
+  const params = { telegram_id, status, limit, offset };
+  if (targetType) params.target_type = targetType;
+  const response = await api.get('/reports', { params });
+  return response.data;
+}
+
+/** Обработать жалобу (модератор) */
+export async function reviewReport(reportId, status, moderatorNote = null) {
+  const telegram_id = getTelegramId();
+  const params = { telegram_id, status };
+  if (moderatorNote) params.moderator_note = moderatorNote;
+  const response = await api.patch(`/reports/${reportId}`, null, { params });
+  return response.data;
+}
+
+
+// ========================================
+// ОБЖАЛОВАНИЯ (APPEALS)
+// ========================================
+
+/** Создать обжалование */
+export async function createAppeal(moderationLogId, message) {
+  const telegram_id = getTelegramId();
+  const response = await api.post('/appeals', {
+    moderation_log_id: moderationLogId,
+    message
+  }, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Получить список обжалований (суперадмин) */
+export async function getAppeals(status = 'pending', limit = 20, offset = 0) {
+  const telegram_id = getTelegramId();
+  const response = await api.get('/appeals', {
+    params: { telegram_id, status, limit, offset }
+  });
+  return response.data;
+}
+
+/** Рассмотреть обжалование (суперадмин) */
+export async function reviewAppeal(appealId, status, reviewerNote = null) {
+  const telegram_id = getTelegramId();
+  const params = { telegram_id, status };
+  if (reviewerNote) params.reviewer_note = reviewerNote;
+  const response = await api.patch(`/appeals/${appealId}`, null, { params });
+  return response.data;
+}
+
+
+// ========================================
+// АДМИНКА
+// ========================================
+
+/** Список амбассадоров */
+export async function getAmbassadors() {
+  const telegram_id = getTelegramId();
+  const response = await api.get('/admin/ambassadors', {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Назначить амбассадора */
+export async function assignAmbassador(targetTelegramId, university = null) {
+  const telegram_id = getTelegramId();
+  const response = await api.post('/admin/ambassadors', {
+    telegram_id: targetTelegramId,
+    university
+  }, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Снять амбассадора */
+export async function removeAmbassador(userId) {
+  const telegram_id = getTelegramId();
+  const response = await api.delete(`/admin/ambassadors/${userId}`, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Логи модерации */
+export async function getModerationLogs(filters = {}) {
+  const telegram_id = getTelegramId();
+  const params = { 
+    telegram_id,
+    limit: filters.limit || 50,
+    offset: filters.offset || 0
+  };
+  if (filters.moderator_id) params.moderator_id = filters.moderator_id;
+  if (filters.action) params.action = filters.action;
+  if (filters.university) params.university = filters.university;
+  const response = await api.get('/admin/logs', { params });
+  return response.data;
+}
+
+/** Статистика (суперадмин) */
+export async function getAdminStats() {
+  const telegram_id = getTelegramId();
+  const response = await api.get('/admin/stats', {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
 
 export { api };

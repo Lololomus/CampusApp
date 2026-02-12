@@ -8,6 +8,8 @@ import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
 import PollWidget from './PollWidget';
 import PhotoViewer from '../shared/PhotoViewer';
+import ReportModal from '../shared/ReportModal';
+import { useModerationActions } from '../shared/ModerationMenu';
 
 const API_URL = 'http://localhost:8000';
 
@@ -17,6 +19,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const menuButtonRef = useRef(null);
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // ✅ Local state для likes_count
   const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
@@ -92,6 +95,16 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       default: return { label: 'Пост', color: theme.colors.textSecondary };
     }
   }, [post.category]);
+
+  // ===== MODERATION HOOK =====
+  const { moderationMenuItems, moderationModals } = useModerationActions({
+    targetType: 'post',
+    targetId: post.id,
+    targetUserId: post.author_id,
+    isPinned: post.is_important,
+    onDeleted: () => { if (onPostDeleted) onPostDeleted(post.id); },
+    onPinToggled: (pinned) => { /* parent refresh */ },
+  });
 
   const handleCardClick = () => {
     if (onClick) onClick(post.id);
@@ -207,10 +220,12 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       { 
         label: 'Пожаловаться', 
         icon: '🚩', 
-        onClick: () => { alert('Жалоба отправлена'); setMenuOpen(false); },
+        onClick: () => { setMenuOpen(false); setShowReportModal(true); },
         actionType: MENU_ACTIONS.REPORT
       }
-    ])
+    ]),
+    // ✅ Модерация (пустой массив если юзер не модератор)
+    ...moderationMenuItems,
   ];
 
   return (
@@ -403,6 +418,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           />
         )}
       </div>
+
+      {/* ✅ Модалка жалобы */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        targetType="post"
+        targetId={post.id}
+      />
+
+      {/* ✅ Модалки модерации (удаление с причиной, бан) */}
+      {moderationModals}
     </>
   );
 }
@@ -411,7 +437,7 @@ const styles = {
   card: {
     backgroundColor: theme.colors.bgSecondary,
     borderRadius: theme.radius.lg,
-    marginBottom: 8, // ✅ БЫЛО: 12 → СТАЛО: 8 (VK style)
+    marginBottom: 8,
     border: `1px solid ${theme.colors.border}`,
     overflow: 'hidden',
     position: 'relative',
@@ -635,7 +661,7 @@ const styles = {
   footerRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: 14, // ✅ БЫЛО: 16px (theme.spacing.lg) → СТАЛО: 14px (плотнее)
+    gap: 14,
   },
   statItem: {
     display: 'flex',
