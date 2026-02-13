@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Activity, Users, MessageSquare, BarChart3,
   Shield, Plus, Trash2, Pause, Play, Search, RefreshCw,
-  CheckCircle, XCircle, ChevronDown, ChevronUp
+  CheckCircle, XCircle, ChevronDown, ChevronUp, Megaphone
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
@@ -15,11 +15,13 @@ import {
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import ActionFeed from './ActionFeed';
+import AdManager from './AdManager';
 
 const TABS = [
   { id: 'feed', label: 'Лента', icon: Activity },
   { id: 'ambassadors', label: 'Люди', icon: Users },
-  { id: 'appeals', label: 'Апелляции', icon: MessageSquare },
+  { id: 'appeals', label: 'Апелл.', icon: MessageSquare },
+  { id: 'ads', label: 'Рекл.', icon: Megaphone },
   { id: 'stats', label: 'Статы', icon: BarChart3 },
 ];
 
@@ -95,6 +97,7 @@ function AdminPanel() {
         {tab === 'feed' && <ActionFeed onReverse={(log) => console.log('Reverse:', log)} />}
         {tab === 'ambassadors' && <AmbassadorManager />}
         {tab === 'appeals' && <AppealsSection />}
+        {tab === 'ads' && <AdManager isAdmin={true} />}
         {tab === 'stats' && <StatsSection />}
       </div>
     </div>
@@ -422,7 +425,7 @@ const styles = {
     top: 3, 
     bottom: 3, 
     left: 3,
-    width: 'calc((100% - 6px) / 4)', // ← ИСПРАВЛЕНО: 6px = padding 3px * 2, деление на 4 таба
+    width: 'calc((100% - 6px) / 5)', // 5 табов
     borderRadius: 10,
     background: 'linear-gradient(135deg, #ef4444, #dc2626)',
     boxShadow: theme.shadows.md,
@@ -432,7 +435,7 @@ const styles = {
 
   tabButton: {
     flex: 1, background: 'transparent', border: 'none',
-    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    fontSize: 11, fontWeight: 600, cursor: 'pointer',
     position: 'relative', zIndex: 2, transition: 'color 0.2s',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
   },

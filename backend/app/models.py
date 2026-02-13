@@ -106,7 +106,7 @@ class Post(Base):
     author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
     category = Column(
-        Enum('general', 'confessions', 'lost_found', 'news', 'events', 'polls', name='post_category_enum'),
+        Enum('general', 'confessions', 'lost_found', 'news', 'events', 'polls', 'ad', name='post_category_enum'),
         nullable=False,
         index=True
     )
@@ -601,4 +601,143 @@ class Appeal(Base):
     
     __table_args__ = (
         UniqueConstraint('user_id', 'moderation_log_id', name='unique_appeal_per_action'),
+    )
+
+
+class PostView(Base):
+    """
+    Журнал уникальных просмотров постов.
+    Гарантирует, что один юзер засчитывает +1 просмотр только один раз.
+    """
+    __tablename__ = 'post_views'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    viewed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        UniqueConstraint('post_id', 'user_id', name='unique_post_view'),
+        Index('ix_post_view_user', 'post_id', 'user_id'),
+    )
+
+
+class MarketItemView(Base):
+    """
+    Журнал уникальных просмотров товаров.
+    """
+    __tablename__ = 'market_item_views'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    viewed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    __table_args__ = (
+        UniqueConstraint('item_id', 'user_id', name='unique_market_view'),
+        Index('ix_market_view_user', 'item_id', 'user_id'),
+    )
+
+# ========================================
+# РЕКЛАМНАЯ СИСТЕМА (ADS)
+# ========================================
+
+
+class AdPost(Base):
+    """
+    Рекламный пост — метаданные поверх обычного поста.
+    Рекламный пост = обычный Post + запись в ad_posts с доп. полями.
+    """
+    __tablename__ = 'ad_posts'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), unique=True, nullable=False)
+    created_by = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    
+    # Рекламодатель
+    advertiser_name = Column(String(200), nullable=False)
+    advertiser_logo = Column(String(500), nullable=True)
+    
+    # Таргетинг
+    scope = Column(
+        Enum('university', 'city', 'all', name='ad_scope_enum'),
+        nullable=False,
+        default='university'
+    )
+    target_university = Column(String(255), nullable=True)
+    target_city = Column(String(255), nullable=True)
+    
+    # Расписание и лимиты
+    starts_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    ends_at = Column(DateTime, nullable=True)
+    impression_limit = Column(Integer, nullable=True)
+    daily_impression_cap = Column(Integer, nullable=True)
+    
+    # Статус
+    status = Column(
+        Enum('draft', 'pending_review', 'approved', 'active', 'paused', 'completed', 'rejected', name='ad_status_enum'),
+        nullable=False,
+        default='draft',
+        index=True
+    )
+    reviewed_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    reject_reason = Column(String(500), nullable=True)
+    
+    # Доп. параметры
+    priority = Column(Integer, default=5)  # 1-10
+    cta_text = Column(String(100), nullable=True)
+    cta_url = Column(String(500), nullable=True)
+    
+    # Счётчики (денормализованные)
+    impressions_count = Column(Integer, default=0)
+    unique_views_count = Column(Integer, default=0)
+    clicks_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Отношения
+    post = relationship('Post', backref='ad_data')
+    creator = relationship('User', foreign_keys=[created_by])
+    reviewer = relationship('User', foreign_keys=[reviewed_by])
+    impressions = relationship('AdImpression', back_populates='ad_post', cascade='all, delete-orphan')
+    clicks = relationship('AdClick', back_populates='ad_post', cascade='all, delete-orphan')
+    
+    __table_args__ = (
+        Index('ix_ad_status_scope', 'status', 'scope'),
+        Index('ix_ad_starts_ends', 'starts_at', 'ends_at'),
+    )
+
+
+class AdImpression(Base):
+    """Показ рекламного поста пользователю"""
+    __tablename__ = 'ad_impressions'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ad_post_id = Column(Integer, ForeignKey('ad_posts.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    viewed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    ad_post = relationship('AdPost', back_populates='impressions')
+    
+    __table_args__ = (
+        Index('ix_ad_imp_ad_user', 'ad_post_id', 'user_id'),
+        Index('ix_ad_imp_date', 'ad_post_id', 'viewed_at'),
+    )
+
+
+class AdClick(Base):
+    """Клик по CTA рекламного поста"""
+    __tablename__ = 'ad_clicks'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ad_post_id = Column(Integer, ForeignKey('ad_posts.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    clicked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    ad_post = relationship('AdPost', back_populates='clicks')
+    
+    __table_args__ = (
+        Index('ix_ad_click_ad_user', 'ad_post_id', 'user_id'),
     )

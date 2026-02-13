@@ -3,16 +3,17 @@ import hashlib
 import hmac
 from typing import Optional
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from app import models
 
 # Загружаем .env
 load_dotenv(dotenv_path="../.env")
-
 BOT_TOKEN = os.getenv("BOT_TOKEN", "test_token")
 
 def verify_telegram_auth(auth_data: dict) -> bool:
     """
     Проверяет что данные действительно пришли от Telegram
-    
     Telegram отправляет хеш для проверки подлинности.
     Документация: https://core.telegram.org/widgets/login
     """
@@ -42,10 +43,22 @@ def verify_telegram_auth(auth_data: dict) -> bool:
     # Сравниваем
     return calculated_hash == received_hash
 
-
 def get_current_user_id(telegram_id: Optional[int]) -> Optional[int]:
     """
     Простая функция для получения ID пользователя
     В production здесь будет JWT токен
     """
     return telegram_id
+
+def get_current_user(db: Session, telegram_id: int) -> models.User:
+    """
+    Получить пользователя по telegram_id или вернуть 404
+    """
+    user = db.query(models.User).filter(
+        models.User.telegram_id == telegram_id
+    ).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return user

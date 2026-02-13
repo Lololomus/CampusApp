@@ -9,7 +9,7 @@ from app import models, schemas, crud
 from app.database import get_db, init_db
 from app.utils import get_image_urls, BASE_URL
 import json
-from app.routers import dating, moderation
+from app.routers import dating, moderation, ads
 import shutil
 import uuid
 import os
@@ -24,6 +24,7 @@ app = FastAPI(
 # ===== ROUTERS =====
 app.include_router(dating.router)
 app.include_router(moderation.router)
+app.include_router(ads.router)
 
 # ===== CORS =====
 app.add_middleware(
@@ -171,6 +172,24 @@ def get_user_posts_endpoint(
         else:
             author_data = schemas.UserShort.from_orm(target_user)
         
+        # === ЛОГИКА ДЛЯ РЕКЛАМЫ ===
+        ad_data = {}
+        if post.category == 'ad':
+            # Ищем связанные данные рекламы
+            ad_info = db.query(models.AdPost).filter(models.AdPost.post_id == post.id).first()
+            if ad_info:
+                ad_data = {
+                    "ad_id": ad_info.id,
+                    "advertiser_name": ad_info.advertiser_name,
+                    "advertiser_logo": ad_info.advertiser_logo,
+                    "cta_text": ad_info.cta_text,
+                    "cta_url": ad_info.cta_url,
+                    "scope": ad_info.scope,
+                    "target_university": ad_info.target_university,
+                    "target_city": ad_info.target_city
+                }
+        # ==========================
+        
         post_dict = {
             "id": post.id,
             "author_id": post.author_id,
@@ -196,7 +215,8 @@ def get_user_posts_endpoint(
             "comments_count": post.comments_count,
             "views_count": post.views_count,
             "created_at": post.created_at,
-            "updated_at": post.updated_at
+            "updated_at": post.updated_at,
+            **ad_data # Распаковка данных рекламы
         }
         result.append(post_dict)
     
@@ -446,7 +466,7 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    crud.increment_post_views(db, post_id)
+    crud.increment_post_views(db, post_id, user.id)
     
     is_liked = crud.is_post_liked_by_user(db, post_id, user.id)
     tags = json.loads(post.tags) if post.tags else []
@@ -1396,6 +1416,8 @@ def get_market_item_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    item = crud.get_market_item(db, item_id, user_id=user.id)
+
     item = crud.get_market_item(db, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")

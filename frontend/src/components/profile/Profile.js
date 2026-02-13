@@ -401,8 +401,12 @@ const StudentIDCard = ({ user, onAvatarClick }) => (
 
       <div style={styles.infoSection}>
         <div style={styles.studentName}>{user.name}</div>
-        {user.username && (
+        
+        {/* Всегда показываем строку с никнеймом или подсказкой */}
+        {user.username ? (
           <div style={styles.username}>@{user.username}</div>
+        ) : (
+          <div style={styles.usernameHint}>Добавьте никнейм в профиле</div>
         )}
         
         <div style={styles.infoRow}>
@@ -655,6 +659,12 @@ const styles = {
     fontSize: 13,
     color: theme.colors.primary,
     fontWeight: 600,
+  },
+  usernameHint: {
+    fontSize: 13,
+    color: theme.colors.textTertiary,
+    fontWeight: 500,
+    fontStyle: 'italic',
   },
   
   infoRow: {

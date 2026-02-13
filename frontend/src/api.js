@@ -1034,4 +1034,145 @@ export async function getAdminStats() {
 }
 
 
+// ========================================
+// РЕКЛАМА (ADS)
+// ========================================
+
+/** Создать рекламный пост */
+export async function createAdPost(adData) {
+  const telegram_id = getTelegramId();
+  const response = await api.post('/ads/create', adData, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Список рекламных постов (для админки) */
+export async function getAdPosts(filters = {}) {
+  const telegram_id = getTelegramId();
+  const params = { telegram_id, limit: filters.limit || 20, offset: filters.offset || 0 };
+  if (filters.status) params.status = filters.status;
+  if (filters.scope) params.scope = filters.scope;
+  const response = await api.get('/ads/list', { params });
+  return response.data;
+}
+
+/** Получить рекламный пост по ID */
+export async function getAdPost(adId) {
+  const telegram_id = getTelegramId();
+  const response = await api.get(`/ads/${adId}`, { params: { telegram_id } });
+  return response.data;
+}
+
+/** Обновить рекламный пост */
+export async function updateAdPost(adId, updateData) {
+  const telegram_id = getTelegramId();
+  const response = await api.patch(`/ads/${adId}`, updateData, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Удалить рекламный пост */
+export async function deleteAdPost(adId) {
+  const telegram_id = getTelegramId();
+  const response = await api.delete(`/ads/${adId}`, { params: { telegram_id } });
+  return response.data;
+}
+
+/** Одобрить рекламный пост */
+export async function approveAdPost(adId) {
+  const telegram_id = getTelegramId();
+  const response = await api.post(`/ads/${adId}/approve`, null, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Отклонить рекламный пост */
+export async function rejectAdPost(adId, rejectReason = null) {
+  const telegram_id = getTelegramId();
+  const response = await api.post(`/ads/${adId}/reject`, {
+    reject_reason: rejectReason
+  }, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Пауза / снять паузу */
+export async function pauseAdPost(adId) {
+  const telegram_id = getTelegramId();
+  const response = await api.post(`/ads/${adId}/pause`, null, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+export async function resumeAdPost(adId) {
+  const telegram_id = getTelegramId();
+  const response = await api.post(`/ads/${adId}/resume`, null, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Получить рекламные посты для подмешивания в ленту */
+export async function getAdsForFeed(limit = 3) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get('/ads/feed/active', {
+      params: { telegram_id, limit }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка загрузки рекламы:', error);
+    return [];
+  }
+}
+
+/** Трекинг показа рекламы */
+export async function trackAdImpression(adId) {
+  try {
+    const telegram_id = getTelegramId();
+    await api.post(`/ads/${adId}/impression`, null, {
+      params: { telegram_id }
+    });
+  } catch (error) {
+    // Тихо проглатываем — трекинг не должен ломать UX
+    console.warn('Ad impression tracking failed:', error);
+  }
+}
+
+/** Трекинг клика по CTA */
+export async function trackAdClick(adId) {
+  try {
+    const telegram_id = getTelegramId();
+    await api.post(`/ads/${adId}/click`, null, {
+      params: { telegram_id }
+    });
+  } catch (error) {
+    console.warn('Ad click tracking failed:', error);
+  }
+}
+
+/** Статистика по рекламному посту */
+export async function getAdStats(adId) {
+  const telegram_id = getTelegramId();
+  const response = await api.get(`/ads/${adId}/stats`, {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+/** Сводная статистика рекламы */
+export async function getAdOverviewStats() {
+  const telegram_id = getTelegramId();
+  const response = await api.get('/ads/stats/overview', {
+    params: { telegram_id }
+  });
+  return response.data;
+}
+
+
 export { api };

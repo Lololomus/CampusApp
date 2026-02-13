@@ -1,8 +1,8 @@
-import React, { useState, useRef, useMemo } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight, Calendar, Link as LinkIcon } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight, Calendar, ExternalLink, Megaphone } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
-import { likePost, deletePost } from '../../api';
+import { likePost, deletePost, trackAdImpression, trackAdClick } from '../../api';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
@@ -23,6 +23,9 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
 
   // ✅ Local state для likes_count
   const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
+
+  // Определяем, является ли пост рекламой
+  const isAd = post.category === 'ad' || post._isAd;
 
   const images = useMemo(() => {
     if (!post.images) return [];
@@ -52,19 +55,46 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const isLiked = likedPosts[post.id] ?? post.is_liked ?? false;
 
   const isOwner = useMemo(() => {
+    if (isAd) return false; // Реклама не "своя" в контексте редактирования
     if (!user) return false;
     const userId = user.id || user.user_id;
     if (post.author_id && userId && String(post.author_id) === String(userId)) return true;
     if (post.author_telegram_id && user.telegram_id && String(user.telegram_id) === String(post.author_telegram_id)) return true;
     return false;
-  }, [user, post]);
+  }, [user, post, isAd]);
 
-  const authorMeta = !post.is_anonymous && post.author
-    ? [post.author.university, post.author.course ? `${post.author.course}к` : null]
-        .filter(Boolean).join(' · ')
-    : null;
+  // --- ЛОГИКА ЗАГОЛОВКА (АВТОР vs РЕКЛАМОДАТЕЛЬ) ---
+  const headerInfo = useMemo(() => {
+    if (isAd) {
+      // Логика для РЕКЛАМЫ
+      let subtitle = 'Спонсировано';
+      if (post.scope === 'university') subtitle = `Для ${post.target_university || 'ВУЗа'}`;
+      if (post.scope === 'city') subtitle = `Для г. ${post.target_city || 'твоего города'}`;
+      
+      return {
+        name: post.advertiser_name || 'Реклама',
+        avatarUrl: post.advertiser_logo, // Если null, покажем иконку
+        subtitle: subtitle,
+        isAd: true
+      };
+    } else {
+      // Логика для ОБЫЧНОГО ПОСТА
+      const subtitle = !post.is_anonymous && post.author
+        ? [post.author.university, post.author.course ? `${post.author.course}к` : null].filter(Boolean).join(' · ')
+        : null;
+        
+      return {
+        name: post.is_anonymous ? 'Аноним' : (post.author?.name || 'Пользователь'),
+        avatarUrl: post.is_anonymous ? null : post.author?.avatar,
+        subtitle: subtitle,
+        isAd: false
+      };
+    }
+  }, [post, isAd]);
 
   const { dateText, isEdited } = useMemo(() => {
+    if (isAd) return { dateText: '', isEdited: false }; // У рекламы нет даты
+
     const created = new Date(post.created_at);
     const now = new Date();
     const diffMs = now - created;
@@ -83,9 +113,10 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     const isEdited = (updated - created) > 5 * 60 * 1000;
 
     return { dateText, isEdited };
-  }, [post.created_at, post.updated_at]);
+  }, [post.created_at, post.updated_at, isAd]);
 
   const catInfo = useMemo(() => {
+    if (isAd) return { label: 'Реклама', color: theme.colors.textTertiary, bg: '#F3F4F6' };
     switch(post.category) {
       case 'news': return { label: 'Новости', color: theme.colors.news };
       case 'events': return { label: 'Событие', color: theme.colors.events };
@@ -94,7 +125,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       case 'polls': return { label: 'Опрос', color: theme.colors.primary };
       default: return { label: 'Пост', color: theme.colors.textSecondary };
     }
-  }, [post.category]);
+  }, [post.category, isAd]);
 
   // ===== MODERATION HOOK =====
   const { moderationMenuItems, moderationModals } = useModerationActions({
@@ -106,7 +137,23 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     onPinToggled: (pinned) => { /* parent refresh */ },
   });
 
+  // ===== AD TRACKING =====
+  useEffect(() => {
+    if (isAd && post.ad_id) trackAdImpression(post.ad_id);
+  }, [isAd, post.ad_id]);
+
+  const handleCtaClick = (e) => {
+    e.stopPropagation();
+    if (isAd && post.cta_url) {
+      hapticFeedback('light');
+      // Если это "настоящая" реклама с ID, трекаем клик
+      if (post.ad_id) trackAdClick(post.ad_id);
+      window.open(post.cta_url, '_blank');
+    }
+  };
+
   const handleCardClick = () => {
+    if (isAd) return; // На рекламу клик не открывает детальный вид
     if (onClick) onClick(post.id);
   };
 
@@ -118,18 +165,13 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     setTimeout(() => setIsLikeAnimating(false), 300);
 
     const newIsLiked = !isLiked;
-    
-    // Optimistic update
     setPostLiked(post.id, newIsLiked);
     setLocalLikesCount(prev => newIsLiked ? prev + 1 : prev - 1);
 
     try {
       const result = await likePost(post.id);
-      
-      // Применяем реальный ответ сервера
       setPostLiked(post.id, result.is_liked);
       setLocalLikesCount(result.likes);
-      
       if (onLikeUpdate) {
         onLikeUpdate(post.id, {
           is_liked: result.is_liked,
@@ -138,7 +180,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       }
     } catch (error) {
       console.error('Like error:', error);
-      // Откат при ошибке
       setPostLiked(post.id, isLiked);
       setLocalLikesCount(post.likes_count || 0);
     }
@@ -224,7 +265,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         actionType: MENU_ACTIONS.REPORT
       }
     ]),
-    // ✅ Модерация (пустой массив если юзер не модератор)
     ...moderationMenuItems,
   ];
 
@@ -239,32 +279,54 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       `}</style>
 
       <div style={styles.card} onClick={handleCardClick}>
+        
+        {/* === HEADER === */}
         <div style={styles.header}>
           <div style={styles.authorRow}>
+            {/* Аватар: Если реклама и есть лого - лого. Иначе заглушка */}
             <div style={{
               ...styles.avatar,
-              background: post.is_anonymous 
-                ? theme.colors.primary 
-                : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
+              background: isAd 
+                ? '#EEF2FF' // Светло-синий фон для рекламы
+                : (post.is_anonymous ? theme.colors.primary : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`)
             }}>
-              {post.is_anonymous ? 'A' : (post.author?.name?.[0] || 'A')}
+              {isAd ? (
+                 headerInfo.avatarUrl ? (
+                   <img src={headerInfo.avatarUrl} alt="" style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}} />
+                 ) : (
+                   <Megaphone size={18} color={theme.colors.primary} />
+                 )
+              ) : (
+                 post.is_anonymous ? 'A' : (headerInfo.name?.[0] || 'A')
+              )}
             </div>
 
             <div style={styles.authorInfo}>
               <div style={styles.nameRow}>
                 <span style={styles.authorName}>
-                  {post.is_anonymous ? 'Аноним' : (post.author?.name || 'Пользователь')}
+                  {headerInfo.name}
                 </span>
-                {post.is_important && <span style={styles.pinned}>📌</span>}
+                {post.is_important && !isAd && <span style={styles.pinned}>📌</span>}
               </div>
-              {authorMeta && <span style={styles.authorMeta}>{authorMeta}</span>}
+              {headerInfo.subtitle && <span style={styles.authorMeta}>{headerInfo.subtitle}</span>}
             </div>
           </div>
 
           <div style={styles.headerRight}>
-            <span style={{...styles.categoryText, color: catInfo.color}}>
-              {catInfo.label}
-            </span>
+            {isAd && (
+               <span style={{
+                 fontSize: 10, fontWeight: 700, textTransform: 'uppercase', 
+                 color: '#888', background: '#F0F0F0', padding: '3px 6px', borderRadius: 4, marginRight: 4
+               }}>
+                 Реклама
+               </span>
+            )}
+            
+            {!isAd && (
+              <span style={{...styles.categoryText, color: catInfo.color}}>
+                {catInfo.label}
+              </span>
+            )}
 
             <div style={{position: 'relative', display: 'flex', alignItems: 'center'}}>
               <button
@@ -284,6 +346,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           </div>
         </div>
 
+        {/* === CONTENT === */}
         <div style={styles.content}>
           {post.title && post.category !== 'polls' && (
             <h3 style={styles.title}>{post.title}</h3>
@@ -300,7 +363,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           </div>
         )}
 
-        {(post.event_date || post.lost_or_found || post.location) && (
+        {(post.event_date || post.lost_or_found || post.location) && !isAd && (
           <div style={styles.specialBlock}>
             {post.event_date && (
               <div style={styles.specialItem}>
@@ -314,16 +377,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
               <div style={styles.specialItem}>
                 <MapPin size={14} />
                 <span>{post.location}</span>
-              </div>
-            )}
-            {post.lost_or_found && (
-              <div style={{
-                ...styles.specialItem,
-                color: post.lost_or_found === 'lost' ? theme.colors.error : theme.colors.success,
-                background: post.lost_or_found === 'lost' ? `${theme.colors.error}15` : `${theme.colors.success}15`
-              }}>
-                {post.lost_or_found === 'lost' ? '🔍 Потерял' : '🎁 Нашёл'}
-                {post.item_description && ` — ${post.item_description}`}
               </div>
             )}
           </div>
@@ -340,10 +393,10 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
             {images.length > 1 && (
               <>
                 <div style={styles.imageCounter}>{currentImageIndex + 1}/{images.length}</div>
-                <button onClick={handlePrevImage} style={{...styles.navBtn, left: 10}}>
+                <button onClick={(e) => { handlePrevImage(e); }} style={{...styles.navBtn, left: 10}}>
                   <ChevronLeft size={20}/>
                 </button>
-                <button onClick={handleNextImage} style={{...styles.navBtn, right: 10}}>
+                <button onClick={(e) => { handleNextImage(e); }} style={{...styles.navBtn, right: 10}}>
                   <ChevronRight size={20}/>
                 </button>
                 <div style={styles.dots}>
@@ -356,59 +409,71 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           </div>
         )}
 
+        {/* === CTA BUTTON (AD ONLY) === */}
+        {isAd && post.cta_text && (
+          <div style={{ padding: '4px 16px 14px' }}>
+            <button onClick={handleCtaClick} style={styles.ctaButton}>
+              {post.cta_text} <ExternalLink size={16} />
+            </button>
+          </div>
+        )}
+
         {post.tags && post.tags.length > 0 && (
           <div style={styles.tags}>
             {post.tags.slice(0, 3).map(t => <span key={t} style={styles.tag}>#{t}</span>)}
           </div>
         )}
 
-        <div style={styles.footer}>
-          <div style={styles.footerLeft}>
-            <span style={styles.dateText}>{dateText}</span>
-            {isEdited && <span style={styles.editedLabel}>(изм.)</span>}
-          </div>
-
-          <div style={styles.footerRight}>
-            <div style={styles.statItem}>
-              <Eye size={20} color={theme.colors.textTertiary} strokeWidth={2} />
-              <span style={styles.statText}>{post.views_count || 0}</span>
+        {/* === FOOTER (СКРЫТ ДЛЯ РЕКЛАМЫ) === */}
+        {!isAd && (
+          <div style={styles.footer}>
+            <div style={styles.footerLeft}>
+              <span style={styles.dateText}>{dateText}</span>
+              {isEdited && <span style={styles.editedLabel}>(изм.)</span>}
             </div>
 
-            <button
-              style={styles.footerAction}
-              onClick={(e) => {
-                e.stopPropagation();
-                if(onClick) onClick(post.id);
-              }}
-            >
-              <MessageCircle size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-              <span style={{...styles.statText, color: theme.colors.textSecondary}}>
-                {post.comments_count || 0}
-              </span>
-            </button>
+            <div style={styles.footerRight}>
+              <div style={styles.statItem}>
+                <Eye size={20} color={theme.colors.textTertiary} strokeWidth={2} />
+                <span style={styles.statText}>{post.views_count || 0}</span>
+              </div>
 
-            <button
-              style={{
-                ...styles.footerAction,
-                animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none'
-              }}
-              onClick={handleLike}
-            >
-              <Heart
-                size={20}
-                fill={isLiked ? theme.colors.accent : 'none'}
-                color={isLiked ? theme.colors.accent : theme.colors.textSecondary}
-                strokeWidth={isLiked ? 0 : 2}
-              />
-              <span style={{
-                ...styles.statText,
-                color: isLiked ? theme.colors.accent : theme.colors.textSecondary
-              }}>
-                {localLikesCount}
-              </span>
-            </button>
+              <button
+                style={styles.footerAction}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if(onClick) onClick(post.id);
+                }}
+              >
+                <MessageCircle size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                <span style={{...styles.statText, color: theme.colors.textSecondary}}>
+                  {post.comments_count || 0}
+                </span>
+              </button>
+
+              <button
+                style={{
+                  ...styles.footerAction,
+                  animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none'
+                }}
+                onClick={handleLike}
+              >
+                <Heart
+                  size={20}
+                  fill={isLiked ? theme.colors.accent : 'none'}
+                  color={isLiked ? theme.colors.accent : theme.colors.textSecondary}
+                  strokeWidth={isLiked ? 0 : 2}
+                />
+                <span style={{
+                  ...styles.statText,
+                  color: isLiked ? theme.colors.accent : theme.colors.textSecondary
+                }}>
+                  {localLikesCount}
+                </span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {isPhotoViewerOpen && (
           <PhotoViewer
@@ -419,7 +484,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         )}
       </div>
 
-      {/* ✅ Модалка жалобы */}
       <ReportModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
@@ -427,7 +491,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         targetId={post.id}
       />
 
-      {/* ✅ Модалки модерации (удаление с причиной, бан) */}
       {moderationModals}
     </>
   );
@@ -469,6 +532,7 @@ const styles = {
     color: theme.colors.text,
     fontWeight: theme.fontWeight.bold,
     flexShrink: 0,
+    overflow: 'hidden',
   },
   authorInfo: {
     display: 'flex',
@@ -489,9 +553,7 @@ const styles = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
-  pinned: {
-    fontSize: 12,
-  },
+  pinned: { fontSize: 12 },
   authorMeta: {
     fontSize: 12,
     color: theme.colors.textTertiary,
@@ -543,9 +605,7 @@ const styles = {
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
   },
-  pollWrapper: {
-    margin: `0 16px 12px`,
-  },
+  pollWrapper: { margin: `0 16px 12px` },
   specialBlock: {
     margin: `0 16px 12px`,
     display: 'flex',
@@ -573,120 +633,96 @@ const styles = {
     borderRadius: '8px',
     overflow: 'hidden',
   },
-  image: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  },
+  image: { width: '100%', height: '100%', objectFit: 'cover' },
   imageCounter: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 12, right: 12,
     background: theme.colors.overlayDark,
     color: theme.colors.text,
     padding: '4px 10px',
     borderRadius: theme.radius.md,
-    fontSize: 12,
-    fontWeight: theme.fontWeight.bold,
+    fontSize: 12, fontWeight: theme.fontWeight.bold,
   },
   navBtn: {
     position: 'absolute',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    width: 32,
-    height: 32,
+    top: '50%', transform: 'translateY(-50%)',
+    width: 32, height: 32,
     borderRadius: theme.radius.full,
     background: theme.colors.overlay,
     color: theme.colors.text,
     border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
     cursor: 'pointer',
     backdropFilter: 'blur(4px)',
   },
   dots: {
-    position: 'absolute',
-    bottom: 10,
-    left: 0,
-    right: 0,
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 6,
+    position: 'absolute', bottom: 10, left: 0, right: 0,
+    display: 'flex', justifyContent: 'center', gap: 6,
   },
   dot: {
-    width: 6,
-    height: 6,
+    width: 6, height: 6,
     borderRadius: theme.radius.full,
     background: theme.colors.text,
     transition: theme.transitions.fast,
   },
   tags: {
     padding: `0 16px`,
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
+    display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm,
     marginBottom: 10,
   },
   tag: {
     color: theme.colors.primary,
-    fontSize: 13,
-    fontWeight: theme.fontWeight.medium,
+    fontSize: 13, fontWeight: theme.fontWeight.medium,
   },
   footer: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '6px 16px',
     backgroundColor: theme.colors.bgSecondary,
     minHeight: 40,
   },
   footerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    minWidth: 0,
+    display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0,
   },
   dateText: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    fontWeight: theme.fontWeight.medium,
+    fontSize: 12, color: theme.colors.textTertiary, fontWeight: theme.fontWeight.medium,
   },
   editedLabel: {
-    fontSize: 11,
-    color: theme.colors.textTertiary,
-    opacity: 0.7,
-    fontStyle: 'italic',
+    fontSize: 11, color: theme.colors.textTertiary, opacity: 0.7, fontStyle: 'italic',
   },
   footerRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14,
+    display: 'flex', alignItems: 'center', gap: 14,
   },
   statItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
+    display: 'flex', alignItems: 'center', gap: theme.spacing.xs,
     color: theme.colors.textTertiary,
   },
   footerAction: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-    background: 'transparent',
-    border: 'none',
-    padding: 0,
-    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: theme.spacing.xs,
+    background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
     color: theme.colors.textTertiary,
   },
   statText: {
-    fontSize: 14,
-    fontWeight: theme.fontWeight.medium,
+    fontSize: 14, fontWeight: theme.fontWeight.medium,
     color: theme.colors.textTertiary,
-    minWidth: 14,
-    textAlign: 'center',
-    lineHeight: 1,
+    minWidth: 14, textAlign: 'center', lineHeight: 1,
   },
+  ctaButton: {
+    width: '100%',
+    padding: '12px 16px',
+    borderRadius: 12,
+    background: `linear-gradient(135deg, ${theme.colors.primary}, ${theme.colors.primaryHover})`,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 700,
+    border: 'none',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    boxShadow: '0 4px 12px rgba(135, 116, 225, 0.25)',
+    transition: 'transform 0.1s, box-shadow 0.1s',
+  }
 };
 
 export default PostCard;

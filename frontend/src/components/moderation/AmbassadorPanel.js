@@ -1,7 +1,7 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/moderation/AmbassadorPanel.js =====
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, BarChart3, Layers, List, Clock } from 'lucide-react';
+import { ArrowLeft, BarChart3, Layers, Megaphone, Clock } from 'lucide-react';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { getReports, getAdminStats } from '../../api';
@@ -11,17 +11,18 @@ import AmbassadorDashboard from './AmbassadorDashboard';
 import ReportQueue from './ReportQueue';
 import ReportList from './ReportList';
 import ModerationHistory from './ModerationHistory';
+import AdManager from './AdManager';
 
 const TABS = [
   { id: 'dashboard', label: 'Обзор', icon: BarChart3 },
-  { id: 'queue', label: 'Очередь', icon: Layers },
-  { id: 'list', label: 'Список', icon: List },
+  { id: 'reports', label: 'Жалобы', icon: Layers },
+  { id: 'ads', label: 'Реклама', icon: Megaphone },
   { id: 'history', label: 'История', icon: Clock },
 ];
 
 function AmbassadorPanel() {
   const { setActiveTab: setNavigationTab, moderationRole } = useStore();
-  const [tab, setTab] = useState('queue');
+  const [tab, setTab] = useState('reports');
   const [reports, setReports] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -126,32 +127,37 @@ function AmbassadorPanel() {
       {/* Content */}
       <div style={styles.content}>
         {tab === 'dashboard' && (
-          <AmbassadorDashboard
-            stats={stats}
-            pendingCount={pendingCount}
-            loading={loading}
-          />
+          <AmbassadorDashboard stats={stats} pendingCount={pendingCount} loading={loading} />
         )}
-        {tab === 'queue' && (
-          <ReportQueue
-            reports={reports}
-            loading={loading}
-            onProcessed={handleReportProcessed}
-            onRefresh={loadData}
-          />
+        {tab === 'reports' && (
+          <ReportsTab reports={reports} loading={loading} onProcessed={handleReportProcessed} onRefresh={loadData} />
         )}
-        {tab === 'list' && (
-          <ReportList
-            reports={reports}
-            loading={loading}
-            onProcessed={handleReportProcessed}
-            onRefresh={loadData}
-          />
-        )}
-        {tab === 'history' && (
-          <ModerationHistory />
-        )}
+        {tab === 'ads' && <AdManager isAdmin={false} />}
+        {tab === 'history' && <ModerationHistory />}
       </div>
+    </div>
+  );
+}
+
+// Объединённый таб жалоб (очередь + список)
+function ReportsTab({ reports, loading, onProcessed, onRefresh }) {
+  const [view, setView] = useState('queue');
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, padding: '0 16px 10px' }}>
+        {[{ id: 'queue', l: 'Очередь' }, { id: 'list', l: 'Все жалобы' }].map(v => (
+          <button key={v.id} onClick={() => { hapticFeedback('selection'); setView(v.id); }} style={{
+            flex: 1, padding: 7, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            background: view === v.id ? theme.colors.primary : theme.colors.bgSecondary,
+            color: view === v.id ? '#fff' : theme.colors.textSecondary,
+            border: `1px solid ${view === v.id ? theme.colors.primary : theme.colors.border}`,
+          }}>{v.l}</button>
+        ))}
+      </div>
+      {view === 'queue'
+        ? <ReportQueue reports={reports} loading={loading} onProcessed={onProcessed} onRefresh={onRefresh} />
+        : <ReportList reports={reports} loading={loading} onProcessed={onProcessed} onRefresh={onRefresh} />
+      }
     </div>
   );
 }

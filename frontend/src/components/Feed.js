@@ -5,7 +5,7 @@ import PostCard from './posts/PostCard';
 import RequestsFeed from './requests/RequestsFeed';
 import CreateContentModal from './shared/CreateContentModal';
 import FiltersModal from './shared/FiltersModal';
-import { getPosts } from '../api';
+import { getPosts, getAdsForFeed } from '../api';
 import { useStore } from '../store';
 import PostCardSkeleton from './posts/PostCardSkeleton';
 import theme from '../theme';
@@ -14,6 +14,7 @@ import AppHeader from './shared/AppHeader';
 function Feed() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [feedAds, setFeedAds] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [requestsCategory, setRequestsCategory] = useState('all');
@@ -158,6 +159,9 @@ function Feed() {
       });
       
       setPosts(postsWithImages);
+
+      // Подгрузка рекламы
+      try { const ads = await getAdsForFeed(3); setFeedAds(ads || []); } catch { setFeedAds([]); }
     } catch (error) {
       console.error('Error loading posts:', error);
       setPosts([]);
@@ -254,6 +258,39 @@ function Feed() {
   const currentCategories = feedSubTab === 'posts' ? postCategories : requestCategories;
   const selectedCategory = feedSubTab === 'posts' ? activeCategory : requestsCategory;
 
+  // Подмешивание рекламы: После 1-го поста, а потом каждые 5
+  const postsWithAds = useMemo(() => {
+    if (!feedAds.length) return posts;
+    const result = [];
+    let ai = 0;
+    
+    posts.forEach((p, i) => {
+      result.push(p);
+      
+      // Логика: Вставляем рекламу после самого первого поста (индекс 0)
+      // ИЛИ после каждого 5-го поста (индексы 4, 9, 14...)
+      const shouldInsertAd = (i === 0 || (i + 1) % 5 === 0);
+
+      if (shouldInsertAd && ai < feedAds.length) {
+        // Подготавливаем объект рекламы так, чтобы PostCard его понял
+        const ad = feedAds[ai];
+        result.push({ 
+          ...ad, 
+          // Важно: маппинг полей для PostCard, если API возвращает их с префиксом post_
+          title: ad.post_title || ad.title,
+          body: ad.post_body || ad.body,
+          images: ad.post_images || ad.images || [],
+          
+          _isAd: true, 
+          id: `ad-${ad.id || ad.ad_id}`, // Уникальный ID для React key
+          category: 'ad' 
+        });
+        ai++;
+      }
+    });
+    return result;
+  }, [posts, feedAds]); 
+
   // ✅ МЕМОИЗАЦИЯ ВЫНЕСЕННОГО СТИЛЯ
   const postCardWrapperStyle = useMemo(() => ({ marginBottom: 16 }), []);
 
@@ -323,13 +360,13 @@ function Feed() {
               </div>
             )}
 
-            {!loading && posts.length > 0 && posts.map((post) => (
+            {!loading && posts.length > 0 && postsWithAds.map((post) => (
               <div key={post.id} style={postCardWrapperStyle}>
                  <PostCard 
                    post={post} 
-                   onClick={handlePostClick}
-                   onLikeUpdate={handleLikeUpdate}
-                   onPostDeleted={handlePostDeleted}
+                   onClick={post._isAd ? undefined : handlePostClick}
+                   onLikeUpdate={post._isAd ? undefined : handleLikeUpdate}
+                   onPostDeleted={post._isAd ? undefined : handlePostDeleted}
                  />
               </div>
             ))}

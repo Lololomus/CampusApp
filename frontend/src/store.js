@@ -474,6 +474,29 @@ export const useStore = create(
       // TOASTS STATE
       toasts: [],
 
+      // ADS STATE
+      adPosts: [],          // список рекламных постов (для админки)
+      feedAds: [],           // рекламные посты для подмешивания в ленту
+      adOverviewStats: null, // сводная статистика
+      
+      setAdPosts: (ads) => set({ adPosts: ads }),
+      setFeedAds: (ads) => set({ feedAds: ads }),
+      setAdOverviewStats: (stats) => set({ adOverviewStats: stats }),
+      
+      updateAdPost: (adId, updates) => set((state) => ({
+        adPosts: state.adPosts.map(ad =>
+          ad.id === adId ? { ...ad, ...updates } : ad
+        )
+      })),
+      
+      removeAdPost: (adId) => set((state) => ({
+        adPosts: state.adPosts.filter(ad => ad.id !== adId)
+      })),
+      
+      addAdPost: (newAd) => set((state) => ({
+        adPosts: [newAd, ...state.adPosts]
+      })),
+
       addToast: (toast) => set((state) => {
         const id = Date.now() + Math.random().toString(36).substr(2, 9);
         const newToast = {

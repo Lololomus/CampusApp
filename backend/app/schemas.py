@@ -306,7 +306,18 @@ class PostResponse(BaseModel):
     # Опрос
     poll: Optional[PollResponse] = None
     
-    # Модерация (видно только модераторам, но поля безопасны)
+    # === 📢 ДАННЫЕ РЕКЛАМЫ (НОВОЕ) ===
+    ad_id: Optional[int] = None
+    advertiser_name: Optional[str] = None
+    advertiser_logo: Optional[str] = None
+    cta_text: Optional[str] = None
+    cta_url: Optional[str] = None
+    scope: Optional[str] = None
+    target_university: Optional[str] = None
+    target_city: Optional[str] = None
+    # ================================
+
+    # Модерация
     is_deleted: bool = False
     deleted_reason: Optional[str] = None
     
@@ -931,3 +942,116 @@ class DatingProfileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ===== AD SCHEMAS =====
+
+AD_SCOPES = ['university', 'city', 'all']
+AD_STATUSES = ['draft', 'pending_review', 'approved', 'active', 'paused', 'completed', 'rejected']
+
+class AdPostCreate(BaseModel):
+    """Создание рекламного поста"""
+    title: str = Field(..., min_length=3, max_length=200)
+    body: str = Field(..., min_length=10, max_length=2000)
+    images: List[str] = Field(default=[], max_length=3)
+    
+    advertiser_name: str = Field(..., min_length=2, max_length=200)
+    advertiser_logo: Optional[str] = None
+    scope: str = Field(default='university', pattern='^(university|city|all)$')
+    target_university: Optional[str] = None
+    target_city: Optional[str] = None
+    
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    impression_limit: Optional[int] = Field(None, ge=100, le=1000000)
+    daily_impression_cap: Optional[int] = Field(None, ge=10, le=100000)
+    
+    cta_text: Optional[str] = Field(None, max_length=100)
+    cta_url: Optional[str] = Field(None, max_length=500)
+    priority: int = Field(default=5, ge=1, le=10)
+
+class AdPostUpdate(BaseModel):
+    """Обновление рекламного поста"""
+    title: Optional[str] = Field(None, min_length=3, max_length=200)
+    body: Optional[str] = Field(None, min_length=10, max_length=2000)
+    
+    advertiser_name: Optional[str] = None
+    advertiser_logo: Optional[str] = None
+    scope: Optional[str] = Field(None, pattern='^(university|city|all)$')
+    target_university: Optional[str] = None
+    target_city: Optional[str] = None
+    
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    impression_limit: Optional[int] = None
+    daily_impression_cap: Optional[int] = None
+    
+    cta_text: Optional[str] = None
+    cta_url: Optional[str] = None
+    priority: Optional[int] = Field(None, ge=1, le=10)
+
+class AdPostResponse(BaseModel):
+    """Рекламный пост"""
+    id: int
+    post_id: int
+    created_by: int
+    creator: Optional[UserShort] = None
+    
+    advertiser_name: str
+    advertiser_logo: Optional[str] = None
+    scope: str
+    target_university: Optional[str] = None
+    target_city: Optional[str] = None
+    
+    starts_at: datetime
+    ends_at: Optional[datetime] = None
+    impression_limit: Optional[int] = None
+    daily_impression_cap: Optional[int] = None
+    
+    status: str
+    reviewed_by: Optional[int] = None
+    reviewed_at: Optional[datetime] = None
+    reject_reason: Optional[str] = None
+    
+    priority: int = 5
+    cta_text: Optional[str] = None
+    cta_url: Optional[str] = None
+    
+    impressions_count: int = 0
+    unique_views_count: int = 0
+    clicks_count: int = 0
+    
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    # Данные самого поста (для отображения)
+    post_title: Optional[str] = None
+    post_body: Optional[str] = None
+    post_images: List[ImageMeta] = []
+    
+    class Config:
+        from_attributes = True
+
+class AdPostFeedResponse(BaseModel):
+    items: List[AdPostResponse]
+    total: int
+    has_more: bool
+
+class AdReviewAction(BaseModel):
+    reject_reason: Optional[str] = Field(None, max_length=500)
+
+class AdStatsResponse(BaseModel):
+    ad_post_id: int
+    impressions_count: int = 0
+    unique_views_count: int = 0
+    clicks_count: int = 0
+    ctr: float = 0.0
+    impressions_by_day: List[Dict[str, Any]] = []
+    clicks_by_day: List[Dict[str, Any]] = []
+
+class AdOverviewStats(BaseModel):
+    total_active: int = 0
+    total_pending: int = 0
+    total_impressions: int = 0
+    total_clicks: int = 0
+    avg_ctr: float = 0.0
