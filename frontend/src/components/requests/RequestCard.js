@@ -9,6 +9,8 @@ import { REWARD_TYPE_LABELS, REWARD_TYPE_ICONS } from '../../types';
 import DropdownMenu from '../DropdownMenu';
 import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
+import Avatar from '../shared/Avatar';
+import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
 
 const API_URL = 'http://localhost:8000';
@@ -19,6 +21,8 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const avatarRef = useRef(null);
   
   const menuButtonRef = useRef(null);
 
@@ -141,7 +145,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
   };
 
   // ===== АВТОР =====
-  const authorName = request.author?.name || 'Аноним';
+  const authorName = request.author?.username || request.author?.name || 'Аноним';
   const authorInitial = authorName[0]?.toUpperCase() || 'A';
   const authorInfo = [
     request.author?.course && `${request.author.course} курс`,
@@ -331,10 +335,34 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
 
         {/* БЛОК АВТОРА */}
         <div style={styles.authorBlock}>
-          <div style={styles.authorAvatar}>
-            {authorInitial}
+          <div 
+            onClick={(e) => {
+              if (request.author?.show_profile) {
+                e.stopPropagation();
+                setProfileOpen(true);
+              }
+            }}
+            style={{ cursor: request.author?.show_profile ? 'pointer' : 'default' }}
+          >
+            {/* Передаем объект user целиком, как в PostCard */}
+            <Avatar 
+              ref={avatarRef}
+              user={request.author} 
+              size={40}
+              isAnonymous={false} // Запросы обычно не анонимны, или добавь проверку
+            />
           </div>
-          <div style={styles.authorInfo}>
+
+          {/* Информация об авторе (тоже кликабельная) */}
+          <div 
+            style={{...styles.authorInfo, cursor: request.author?.show_profile ? 'pointer' : 'default'}}
+            onClick={(e) => {
+              if (request.author?.show_profile) {
+                e.stopPropagation();
+                setProfileOpen(true);
+              }
+            }}
+          >
             <div style={styles.authorName}>{authorName}</div>
             {authorInfo && (
               <div style={styles.authorDetails}>{authorInfo}</div>
@@ -367,7 +395,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
         )}
       </div>
 
-      {/* ✅ Модалка жалобы */}
+      {/* Модалка жалобы */}
       <ReportModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
@@ -375,8 +403,19 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
         targetId={request.id}
       />
 
-      {/* ✅ Модалки модерации */}
+      {/* Модалки модерации */}
       {moderationModals}
+      
+      {/* Мини-карточка профиля */}
+      {request.author && (
+        <ProfileMiniCard
+          isOpen={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          user={request.author}
+          anchorRef={avatarRef}
+          onReport={() => setShowReportModal(true)}
+        />
+      )}
     </>  
   );
 }

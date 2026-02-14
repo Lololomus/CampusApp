@@ -1,16 +1,19 @@
+// ===== 📄 ФАЙЛ: frontend/src/components/DropdownMenu.js =====
+
 import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import theme from '../theme';
+import { hapticFeedback } from '../utils/telegram';
 
 const SAFE_MARGIN = 8;
 
-const ACTION_COLORS = {
+export const ACTION_COLORS = {
   edit: '#10b981',
   copy: '#8b5cf6',
   delete: '#ef4444',
   report: '#f59e0b',
   share: '#3b82f6',
-  default: theme.colors.primary,
+  default: theme.colors.text,
 };
 
 function DropdownMenu({ 
@@ -18,6 +21,7 @@ function DropdownMenu({
   onClose, 
   items, 
   anchorRef,
+  header, 
   closeOnScroll = true
 }) {
   const menuRef = useRef(null);
@@ -26,7 +30,13 @@ function DropdownMenu({
     position: null,
     transformOrigin: 'top right' 
   });
+  
+  // Состояние активного элемента при свайпе/драге
+  const [activeIndex, setActiveIndex] = useState(null);
+  // Флаг для мыши (чтобы отличать просто движение от зажатого драга)
+  const isMouseDownRef = useRef(false);
 
+  // ===== ПОЗИЦИОНИРОВАНИЕ =====
   const calculatePosition = useCallback(() => {
     if (!menuRef.current || !anchorRef?.current) return null;
 
@@ -38,8 +48,8 @@ function DropdownMenu({
     const menuWidth = menuRef.current.offsetWidth;
 
     let finalTop = 0;
-    let finalRight = 'auto';
     let finalLeft = 'auto';
+    let finalRight = 'auto';
     let originY = 'top';
     let originX = 'right';
 
@@ -74,41 +84,98 @@ function DropdownMenu({
     };
   }, [anchorRef]);
 
+  // ===== ОБЩАЯ ЛОГИКА ПОИСКА ЭЛЕМЕНТА =====
+  const updateSelection = (clientX, clientY) => {
+    // Ищем элемент под курсором/пальцем
+    // Используем visibility: hidden для самого меню на мгновение, если нужно пробить слои, 
+    // но здесь мы ищем элементы ВНУТРИ меню, так что ок.
+    const target = document.elementFromPoint(clientX, clientY);
+    
+    if (target) {
+      const btn = target.closest('button[role="menuitem"]');
+      if (btn) {
+        const idx = Number(btn.dataset.index);
+        if (!isNaN(idx) && idx !== activeIndex) {
+          const item = items[idx];
+          if (item && !item.divider && !item.disabled) {
+            // Вибрация только при смене элемента
+            if (hapticFeedback) hapticFeedback('selection');
+            setActiveIndex(idx);
+            return;
+          }
+        }
+        if (!isNaN(idx) && idx === activeIndex) return; // Тот же элемент
+      }
+    }
+    // Если ушли с элементов
+    setActiveIndex(null);
+  };
+
+  const commitSelection = () => {
+    if (activeIndex !== null && items[activeIndex]) {
+      hapticFeedback('light'); // Подтверждение выбора
+      items[activeIndex].onClick();
+      setActiveIndex(null);
+      onClose();
+    }
+    isMouseDownRef.current = false;
+  };
+
+  // ===== TOUCH EVENTS (MOBILE) =====
+  const handleTouchMove = (e) => {
+    const touch = e.touches[0];
+    updateSelection(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchEnd = (e) => {
+    commitSelection();
+  };
+
+  // ===== MOUSE EVENTS (PC DRAG) =====
+  const handleMouseDown = () => {
+    isMouseDownRef.current = true;
+  };
+
+  const handleMouseMove = (e) => {
+    // Работаем только если зажата левая кнопка (buttons === 1) или наш флаг
+    if (e.buttons === 1 || isMouseDownRef.current) {
+      updateSelection(e.clientX, e.clientY);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (isMouseDownRef.current || activeIndex !== null) {
+      commitSelection();
+    }
+    isMouseDownRef.current = false;
+  };
+
+  // ===== LIFECYCLE =====
   useLayoutEffect(() => {
     if (isOpen && anchorRef?.current) {
       setState(prev => ({ ...prev, mounted: false, position: null }));
-
       requestAnimationFrame(() => {
         const result = calculatePosition();
-        if (result) {
-          setState({
-            mounted: true,
-            ...result
-          });
-        }
+        if (result) setState({ mounted: true, ...result });
       });
     } else {
       setState(prev => ({ ...prev, mounted: false }));
+      setActiveIndex(null);
+      isMouseDownRef.current = false;
     }
   }, [isOpen, anchorRef, calculatePosition]);
 
   useEffect(() => {
     if (!isOpen) return;
-
     const handleScrollOrResize = () => {
-      if (closeOnScroll) {
-        onClose();
-      } else {
+      if (closeOnScroll) onClose();
+      else {
         const result = calculatePosition();
-        if (result) {
-          setState(prev => ({ ...prev, ...result }));
-        }
+        if (result) setState(prev => ({ ...prev, ...result }));
       }
     };
-
     window.addEventListener('scroll', handleScrollOrResize, true);
     window.addEventListener('resize', handleScrollOrResize);
-
     return () => {
       window.removeEventListener('scroll', handleScrollOrResize, true);
       window.removeEventListener('resize', handleScrollOrResize);
@@ -117,13 +184,9 @@ function DropdownMenu({
 
   useEffect(() => {
     if (!isOpen) return;
-
     const handleEscape = (e) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
+      if (e.key === 'Escape') onClose();
     };
-
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen, onClose]);
@@ -131,11 +194,14 @@ function DropdownMenu({
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      // Добавляем глобальный слушатель mouseup, чтобы ловить отпускание вне меню
+      window.addEventListener('mouseup', handleMouseUp);
       return () => {
         document.body.style.overflow = '';
+        window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isOpen]);
+  }, [isOpen]); // Зависимость от isOpen важна для activeIndex
 
   if (!isOpen) return null;
 
@@ -153,6 +219,8 @@ function DropdownMenu({
           e.stopPropagation();
           onClose();
         }}
+        // Ловим начало драга даже на фоне (если юзер промахнулся и повел)
+        onMouseDown={() => { isMouseDownRef.current = true; }}
         role="presentation"
       />
       
@@ -160,6 +228,13 @@ function DropdownMenu({
         ref={menuRef}
         role="menu"
         aria-label="Dropdown menu"
+        // Touch handlers
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        // Mouse handlers
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        // onMouseUp ловится глобально, но можно и тут продублировать
         style={{
           ...styles.dropdown,
           visibility: state.position ? 'visible' : 'hidden', 
@@ -176,6 +251,13 @@ function DropdownMenu({
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {header && (
+          <div style={{ marginBottom: 4 }}>
+            {header}
+            <div style={styles.divider} />
+          </div>
+        )}
+
         {items.map((item, index) => {
           if (item.divider) {
             return <div key={`divider-${index}`} style={styles.divider} role="separator" />;
@@ -184,6 +266,7 @@ function DropdownMenu({
           return (
             <MenuItem 
               key={index}
+              dataIndex={index}
               icon={item.icon}
               label={item.label}
               onClick={() => {
@@ -192,6 +275,7 @@ function DropdownMenu({
               }}
               actionType={item.actionType}
               disabled={item.disabled}
+              isActive={activeIndex === index}
             />
           );
         })}
@@ -202,35 +286,30 @@ function DropdownMenu({
   return createPortal(dropdownContent, document.body);
 }
 
-
-function MenuItem({ icon, label, onClick, actionType = 'default', disabled }) {
+function MenuItem({ 
+  icon, 
+  label, 
+  onClick, 
+  actionType = 'default', 
+  disabled, 
+  dataIndex,
+  isActive 
+}) {
   const [isPressed, setIsPressed] = useState(false);
-  const [ripple, setRipple] = useState(null);
-
   const accentColor = ACTION_COLORS[actionType] || ACTION_COLORS.default;
+
+  const isHighlighted = isPressed || isActive;
 
   const handleClick = (e) => {
     if (disabled) return;
-    
     e.stopPropagation();
-    
-    const button = e.currentTarget;
-    const rect = button.getBoundingClientRect();
-    const size = Math.max(rect.width, rect.height);
-    const x = e.clientX - rect.left - size / 2;
-    const y = e.clientY - rect.top - size / 2;
-    
-    setRipple({ x, y, size });
-    
-    setTimeout(() => {
-      onClick();
-      setRipple(null);
-    }, 200);
+    onClick();
   };
 
   return (
     <button
       role="menuitem"
+      data-index={dataIndex}
       disabled={disabled}
       style={{
         ...styles.menuItem,
@@ -244,42 +323,28 @@ function MenuItem({ icon, label, onClick, actionType = 'default', disabled }) {
           : theme.colors.text,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
-        boxShadow: isPressed 
-          ? `0 0 0 3px ${accentColor}40, 0 0 24px ${accentColor}50`
-          : 'none',
-        background: isPressed 
+        // Фон меняется и от ховера (мышь), и от активного состояния (драг/тач)
+        background: isHighlighted 
           ? `linear-gradient(90deg, ${accentColor}18 0%, transparent 100%)`
           : 'transparent',
+        boxShadow: isHighlighted 
+          ? `0 0 0 3px ${accentColor}40, 0 0 24px ${accentColor}50`
+          : 'none',
+        transform: isHighlighted ? 'scale(0.98)' : 'scale(1)',
       }}
       onClick={handleClick}
-      onTouchStart={() => setIsPressed(true)}
-      onTouchEnd={() => setTimeout(() => setIsPressed(false), 150)}
-      onMouseDown={() => setIsPressed(true)}
-      onMouseUp={() => setIsPressed(false)}
+      // Обычные события мыши для клика без драга
+      onMouseEnter={() => !disabled && setIsPressed(true)}
       onMouseLeave={() => setIsPressed(false)}
+      // Touch events для локального нажатия
+      onTouchStart={() => !disabled && setIsPressed(true)}
+      onTouchEnd={() => setIsPressed(false)}
     >
-      {ripple && (
-        <span
-          style={{
-            position: 'absolute',
-            left: ripple.x,
-            top: ripple.y,
-            width: ripple.size,
-            height: ripple.size,
-            borderRadius: '50%',
-            backgroundColor: `${accentColor}40`,
-            transform: 'scale(0)',
-            animation: 'ripple 0.6s ease-out',
-            pointerEvents: 'none',
-          }}
-        />
-      )}
-      
       <span 
         style={{
           ...styles.menuIcon,
           color: accentColor,
-          transform: isPressed ? 'scale(1.15)' : 'scale(1)',
+          transform: isHighlighted ? 'scale(1.15)' : 'scale(1)',
           transition: 'all 0.2s ease',
         }}
       >
@@ -290,14 +355,10 @@ function MenuItem({ icon, label, onClick, actionType = 'default', disabled }) {
   );
 }
 
-
 const styles = {
   backdrop: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     backdropFilter: 'blur(2px)',
     WebkitBackdropFilter: 'blur(2px)',
@@ -320,6 +381,8 @@ const styles = {
     maxWidth: 300,
     willChange: 'transform, opacity',
     transition: 'opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
   },
   
   menuItem: {
@@ -381,15 +444,6 @@ styleSheet.textContent = `
       transform: scale(2.5);
       opacity: 0;
     }
-  }
-
-  button[role="menuitem"]:not(:disabled):hover {
-    background: ${theme.colors.surface} !important;
-    transform: translateX(2px);
-  }
-
-  button[role="menuitem"]:not(:disabled):active {
-    transform: scale(0.98);
   }
 `;
 document.head.appendChild(styleSheet);

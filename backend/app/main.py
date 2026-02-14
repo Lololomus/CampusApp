@@ -879,13 +879,14 @@ async def create_request_endpoint(
     
     images_urls = get_image_urls(request.images) if request.images else []
     
-    author_data = schemas.RequestAuthor(
+    author_data = schemas.UserShort(
         id=user.id,
         name=user.name,
         course=user.course,
         university=user.university,
         institute=user.institute,
-        username=user.username
+        username=user.username,
+        avatar=user.avatar
     )
     
     return schemas.RequestResponse(
@@ -948,13 +949,14 @@ def get_requests_feed_endpoint(
 
     items = []
     for req_dict in feed_data['items']:
-        author_data = schemas.RequestAuthor(
+        author_data = schemas.UserShort(
             id=req_dict['author'].id,
             name=req_dict['author'].name,
             course=req_dict['author'].course,
             university=req_dict['author'].university,
             institute=req_dict['author'].institute,
-            username=req_dict['author'].username
+            username=req_dict['author'].username,
+            avatar=req_dict['author'].avatar
         )
 
         items.append(schemas.RequestResponse(
@@ -1001,13 +1003,14 @@ def get_my_requests_endpoint(
         tags = json.loads(req.tags) if req.tags else []
         images = get_image_urls(req.images) if req.images else []
         
-        author_data = schemas.RequestAuthor(
+        author_data = schemas.UserShort(
             id=user.id,
             name=user.name,
             course=user.course,
             university=user.university,
             institute=user.institute,
-            username=user.username
+            username=user.username,
+            avatar=user.avatar
         )
         
         req_dict = {
@@ -1048,13 +1051,14 @@ def get_request_endpoint(
     if not request_dict:
         raise HTTPException(status_code=404, detail="Request not found")
     
-    author_data = schemas.RequestAuthor(
+    author_data = schemas.UserShort(
         id=request_dict['author'].id,
         name=request_dict['author'].name,
         course=request_dict['author'].course,
         university=request_dict['author'].university,
         institute=request_dict['author'].institute,
-        username=request_dict['author'].username
+        username=request_dict['author'].username,
+        avatar=request_dict['author'].avatar
     )
     
     return schemas.RequestResponse(
@@ -1094,13 +1098,14 @@ def update_request_endpoint(
     
     images_urls = get_image_urls(request.images) if request.images else []
     
-    author_data = schemas.RequestAuthor(
+    author_data = schemas.UserShort(
         id=user.id,
         name=user.name,
         course=user.course,
         university=user.university,
         institute=user.institute,
-        username=user.username
+        username=user.username,
+        avatar=user.avatar
     )
     
     return schemas.RequestResponse(
@@ -1266,9 +1271,12 @@ def get_market_feed_endpoint(
             username=item.seller.username,
             university=item.seller.university,
             institute=item.seller.institute,
-            course=item.seller.course
+            course=item.seller.course,
+            avatar=item.seller.avatar, 
+            show_profile=item.seller.show_profile, 
+            show_telegram_id=item.seller.show_telegram_id
         )
-        
+
         is_seller = item.seller_id == user.id
         is_favorited = crud.is_item_favorited(db, item.id, user.id)
         
@@ -1324,7 +1332,10 @@ def get_market_favorites_endpoint(
             username=item.seller.username,
             university=item.seller.university,
             institute=item.seller.institute,
-            course=item.seller.course
+            course=item.seller.course,
+            avatar=item.seller.avatar,
+            show_profile=item.seller.show_profile,
+            show_telegram_id=item.seller.show_telegram_id
         )
         
         is_seller = item.seller_id == user.id
@@ -1378,7 +1389,10 @@ def get_my_market_items_endpoint(
             username=user.username,
             university=user.university,
             institute=user.institute,
-            course=user.course
+            course=user.course,
+            avatar=user.avatar, 
+            show_profile=user.show_profile,
+            show_telegram_id=user.show_telegram_id
         )
         
         item_dict = {
@@ -1430,7 +1444,10 @@ def get_market_item_endpoint(
         username=item.seller.username,
         university=item.seller.university,
         institute=item.seller.institute,
-        course=item.seller.course
+        course=item.seller.course,
+        avatar=item.seller.avatar,
+        show_profile=item.seller.show_profile,
+        show_telegram_id=item.seller.show_telegram_id
     )
     
     is_favorited = crud.is_item_favorited(db, item.id, user.id)
@@ -1503,7 +1520,10 @@ async def create_market_item_endpoint(
         username=user.username,
         university=user.university,
         institute=user.institute,
-        course=user.course
+        course=user.course,
+        avatar=user.avatar,
+        show_profile=user.show_profile,
+        show_telegram_id=user.show_telegram_id
     )
     
     return {
@@ -1585,7 +1605,10 @@ async def update_market_item_endpoint(
         username=user.username,
         university=user.university,
         institute=user.institute,
-        course=user.course
+        course=user.course,
+        avatar=user.avatar,
+        show_profile=user.show_profile,
+        show_telegram_id=user.show_telegram_id
     )
     
     is_favorited = crud.is_item_favorited(db, updated_item.id, user.id)

@@ -1,4 +1,4 @@
-// ===== RequestDetailModal.js =====
+// ===== 📄 ФАЙЛ: frontend/src/components/requests/RequestDetailModal.js =====
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Clock, Calendar, User, MoreVertical, Edit2, Trash2, Flag, Gift } from 'lucide-react';
@@ -10,6 +10,9 @@ import { Z_MODAL_FORMS } from '../../constants/zIndex';
 import { REWARD_TYPE_LABELS, REWARD_TYPE_ICONS } from '../../types';
 import DropdownMenu from '../DropdownMenu';
 import PhotoViewer from '../shared/PhotoViewer';
+import ReportModal from '../shared/ReportModal';
+import Avatar from '../shared/Avatar';
+import ProfileMiniCard from '../shared/ProfileMiniCard';
 
 const API_URL = 'http://localhost:8000';
 
@@ -24,13 +27,15 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   
   const modalRef = useRef(null);
   const menuButtonRef = useRef(null);
+  const authorAvatarRef = useRef(null);
   const startYRef = useRef(0);
   const currentYRef = useRef(0);
 
-  // ===== КАТЕГОРИИ =====
   const CATEGORIES = {
     study: {
       label: 'Учёба',
@@ -54,7 +59,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
   const categoryConfig = CATEGORIES[request?.category] || CATEGORIES.study;
 
-  // ===== ПАРСИНГ ИЗОБРАЖЕНИЙ =====
   const images = useMemo(() => {
     if (!request?.images) return [];
     if (Array.isArray(request.images)) return request.images;
@@ -74,7 +78,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
 
-  // ===== ЗАГРУЗКА ДАННЫХ =====
   useEffect(() => {
     if (!currentRequest) {
       onClose();
@@ -91,7 +94,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
       const data = await getRequestById(currentRequest.id);
       setRequest(data);
 
-      // Если я автор - загружаем отклики
       if (data.is_author) {
         const responsesData = await getRequestResponses(currentRequest.id);
         setResponses(responsesData || []);
@@ -104,7 +106,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     }
   };
 
-  // ===== ТАЙМЕР =====
   const getTimeRemaining = () => {
     if (!request?.expires_at) return null;
 
@@ -144,7 +145,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
   const timeRemaining = getTimeRemaining();
 
-  // ===== ДАТЫ (СОЗДАНИЕ И ДЕДЛАЙН) =====
   const getDatesInfo = () => {
     if (!request) return null;
 
@@ -189,7 +189,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
   const datesInfo = getDatesInfo();
 
-  // ===== СВАЙП ДЛЯ ЗАКРЫТИЯ =====
   const handleTouchStart = (e) => {
     startYRef.current = e.touches[0].clientY;
   };
@@ -213,7 +212,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     }
   };
 
-  // ===== ЗАКРЫТИЕ =====
   const handleClose = () => {
     if (isPhotoViewerJustClosed) return;
     
@@ -222,13 +220,11 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     onClose();
   };
 
-  // ===== КЛИК НА BACKDROP =====
   const handleBackdropClick = (e) => {
     if (isPhotoViewerJustClosed) return;
     handleClose();
   };
 
-  // ===== КЛИК НА ФОТО =====
   const handleImageClick = (e, index) => {
     e.stopPropagation();
     hapticFeedback('light');
@@ -236,7 +232,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     setIsPhotoViewerOpen(true);
   };
 
-  // ===== ОТКЛИКНУТЬСЯ =====
   const handleRespond = async () => {
     if (!request || request.is_author || request.has_responded || datesInfo?.isExpired) {
       return;
@@ -272,7 +267,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     }
   };
 
-  // ===== ЗАКРЫТЬ ЗАПРОС (для автора) =====
   const handleCloseRequest = async () => {
     if (!request || !request.is_author) return;
 
@@ -292,7 +286,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     }
   };
 
-  // ===== ОТКРЫТЬ TELEGRAM ЧАТ =====
   const openTelegramChat = (username) => {
     if (!username) return;
     
@@ -301,12 +294,12 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     window.open(`https://t.me/${cleanUsername}`, '_blank');
   };
 
-  // ===== МЕНЮ ДЕЙСТВИЙ =====
   const menuItems = [
     ...(request?.is_author ? [
       {
         label: 'Редактировать',
-        icon: <Edit2 size={18} />,
+        icon: '✏️',
+        actionType: 'edit',
         onClick: () => {
           hapticFeedback('light');
           setMenuOpen(false);
@@ -315,8 +308,8 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
       },
       {
         label: 'Удалить',
-        icon: <Trash2 size={18} />,
-        danger: true,
+        icon: '🗑️',
+        actionType: 'delete',
         onClick: () => {
           hapticFeedback('medium');
           setMenuOpen(false);
@@ -326,12 +319,12 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     ] : []),
     {
       label: 'Пожаловаться',
-      icon: <Flag size={18} />,
-      danger: !request?.is_author,
+      icon: '🚩',
+      actionType: 'report',
       onClick: () => {
         hapticFeedback('light');
         setMenuOpen(false);
-        if (onReport) onReport(request);
+        setShowReportModal(true);
       }
     }
   ];
@@ -340,17 +333,14 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     return null;
   }
 
-  // Определяем количество колонок для фото: 1-3 фото = 3 колонки, 4+ = 2 колонки
   const photoGridColumns = images.length <= 3 ? 3 : 2;
 
   return (
     <>
       <style>{keyframesStyles}</style>
 
-      {/* BACKDROP */}
       <div style={styles.backdrop} onClick={handleBackdropClick} />
 
-      {/* МОДАЛКА */}
       <div
         ref={modalRef}
         style={styles.modal}
@@ -359,15 +349,12 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* HANDLE для свайпа */}
         <div style={styles.handle} />
 
-        {/* КНОПКА ЗАКРЫТЬ */}
         <button onClick={handleClose} style={styles.closeButton}>
           <X size={24} color={theme.colors.text} />
         </button>
 
-        {/* ХЕДЕР КАТЕГОРИИ */}
         <div style={{ ...styles.header, background: categoryConfig.gradient }}>
           <div style={styles.categoryLabel}>
             <span style={styles.categoryIcon}>{categoryConfig.icon}</span>
@@ -375,7 +362,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
           </div>
           
           <div style={styles.headerRight}>
-            {/* ТАЙМЕР */}
             {timeRemaining && (
               <div style={{
                 ...styles.timer,
@@ -387,41 +373,40 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
               </div>
             )}
 
-            {/* ТРОЕТОЧИЕ МЕНЮ */}
-            <div style={{position: 'relative', display: 'flex', alignItems: 'center'}}>
-              <button
-                ref={menuButtonRef}
-                style={styles.menuButton}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(!menuOpen);
-                  hapticFeedback('light');
-                }}
-              >
-                <MoreVertical size={18} />
-              </button>
-              <DropdownMenu
-                isOpen={menuOpen}
-                onClose={() => setMenuOpen(false)}
-                anchorRef={menuButtonRef}
-                items={menuItems}
-              />
-            </div>
+            <button
+              ref={menuButtonRef}
+              style={styles.menuButton}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(!menuOpen);
+                hapticFeedback('light');
+              }}
+            >
+              <MoreVertical size={18} />
+            </button>
           </div>
         </div>
+        
+        <DropdownMenu
+          isOpen={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          anchorRef={menuButtonRef}
+          items={menuItems}
+        />
 
-        {/* КОНТЕНТ */}
         <div style={styles.content}>
-          {/* ЗАГОЛОВОК */}
           <h1 style={styles.title}>{request.title}</h1>
 
-          {/* БЛОК АВТОРА */}
           <div style={styles.authorBlock}>
-            <div style={styles.authorAvatar}>
-              {request.author?.name?.[0]?.toUpperCase() || 'A'}
-            </div>
+            <Avatar 
+              ref={authorAvatarRef}
+              user={request.author}
+              size={48}
+              onClick={() => request.author?.show_profile && setProfileOpen(true)}
+              showProfile={request.author?.show_profile}
+            />
             <div style={styles.authorInfo}>
-              <div style={styles.authorName}>{request.author?.name || 'Аноним'}</div>
+              <div style={styles.authorName}>{request.author?.username || request.author?.name || 'Аноним'}</div>
               <div style={styles.authorDetails}>
                 {[
                   request.author?.course && `${request.author.course} курс`,
@@ -435,7 +420,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
             )}
           </div>
 
-          {/* НАГРАДА */}
           {request.reward_type && request.reward_type !== 'none' && (
             <div style={styles.rewardBlock}>
               <Gift size={20} style={{ flexShrink: 0, color: '#FFD700' }} />
@@ -450,13 +434,11 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
             </div>
           )}
 
-          {/* ОПИСАНИЕ */}
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>Описание</h3>
             <p style={styles.body}>{request.body}</p>
           </div>
 
-          {/* ФОТО */}
           {images.length > 0 && (
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>Фотографии ({images.length})</h3>
@@ -482,7 +464,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
             </div>
           )}
 
-          {/* ТЕГИ */}
           {request.tags && request.tags.length > 0 && (
             <div style={styles.tags}>
               {request.tags.map((tag, idx) => (
@@ -493,7 +474,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
             </div>
           )}
 
-          {/* ИНФО БЛОК: ДАТЫ */}
           {datesInfo && (
             <div style={styles.infoBlock}>
               <div style={styles.infoItem}>
@@ -509,7 +489,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
             </div>
           )}
 
-          {/* ОТКЛИКИ (только для автора) */}
           {request.is_author && responses.length > 0 && (
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>
@@ -560,7 +539,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
           )}
         </div>
 
-        {/* STICKY КНОПКА ВНИЗУ */}
         <div style={styles.bottomBar}>
           {request.is_author ? (
             <button
@@ -589,7 +567,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
           )}
         </div>
 
-        {/* PHOTOVIEWER */}
         {isPhotoViewerOpen && (
           <PhotoViewer
             photos={viewerPhotos}
@@ -601,12 +578,29 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
             }}
           />
         )}
+        
+        {request?.author && (
+          <ProfileMiniCard
+            isOpen={profileOpen}
+            onClose={() => setProfileOpen(false)}
+            user={request.author}
+            anchorRef={authorAvatarRef}
+            onReport={() => setShowReportModal(true)}
+          />
+        )}
       </div>
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        targetType="request"
+        targetId={request.id}
+      />
     </>
   );
 }
 
-// ===== СТИЛИ =====
+// Styles остаются без изменений
 const styles = {
   backdrop: {
     position: 'fixed',
@@ -738,20 +732,6 @@ const styles = {
     background: '#252525',
     borderRadius: theme.radius.lg,
     marginBottom: theme.spacing.xl
-  },
-
-  authorAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: theme.radius.full,
-    background: theme.colors.primary,
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.semibold,
-    flexShrink: 0
   },
 
   authorInfo: {

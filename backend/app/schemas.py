@@ -33,6 +33,8 @@ class UserUpdate(BaseModel):
     course: Optional[int] = None
     group: Optional[str] = None
     interests: Optional[List[str]] = None
+    show_profile: Optional[bool] = None
+    show_telegram_id: Optional[bool] = None
 
 class UserResponse(BaseModel):
     """Ответ с данными пользователя"""
@@ -50,6 +52,8 @@ class UserResponse(BaseModel):
     interests: List[str] = []
     show_in_dating: bool = True
     hide_course_group: bool = False
+    show_profile: bool = True
+    show_telegram_id: bool = False
     role: str = 'user'
     is_shadow_banned_posts: bool = False
     is_shadow_banned_comments: bool = False
@@ -81,6 +85,8 @@ class UserShort(BaseModel):
     institute: Optional[str] = None
     course: Optional[int] = None
     role: str = 'user'
+    show_profile: bool = True
+    show_telegram_id: bool = False
     
     class Config:
         from_attributes = True
@@ -432,17 +438,20 @@ class RequestUpdate(BaseModel):
     reward_type: Optional[str] = None
     reward_value: Optional[str] = None
 
-class RequestAuthor(BaseModel):
-    """Автор запроса"""
-    id: int
-    name: str
-    course: Optional[int] = None
-    university: str
-    institute: str
-    username: Optional[str] = None
+# class RequestAuthor(BaseModel):
+#     """Автор запроса"""
+#     id: int
+#     name: str
+#     course: Optional[int] = None
+#     university: str
+#     institute: str
+#     username: Optional[str] = None
+#     avatar: Optional[str] = None
+#     show_profile: bool = True
+#     show_telegram_id: bool = False
     
-    class Config:
-        from_attributes = True
+#     class Config:
+#         from_attributes = True
 
 class RequestResponse(BaseModel):
     """Ответ с данными запроса"""
@@ -456,7 +465,8 @@ class RequestResponse(BaseModel):
     views_count: int = 0
     responses_count: int = 0
     created_at: datetime
-    author: RequestAuthor
+    # author: RequestAuthor
+    author: UserShort
     is_author: bool = False
     has_responded: bool = False
     reward_type: Optional[str] = None
@@ -789,6 +799,9 @@ class MarketSeller(BaseModel):
     university: str
     institute: str
     course: Optional[int] = None
+    avatar: Optional[str] = None
+    show_profile: bool = True
+    show_telegram_id: bool = False
     
     class Config:
         from_attributes = True

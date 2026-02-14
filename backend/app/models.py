@@ -32,6 +32,10 @@ class User(Base):
     shadow_ban_expires_at = Column(DateTime, nullable=True)  # null = перманентный
     shadow_ban_reason = Column(String(500), nullable=True)
     
+    # Privacy настройки
+    show_profile = Column(Boolean, default=True)  # Показывать профиль при клике на аватар/имя
+    show_telegram_id = Column(Boolean, default=False)  # Показывать @username в профиле
+    
     # Dating поля
     show_in_dating = Column(Boolean, default=True)
     hide_course_group = Column(Boolean, default=False)

@@ -1,14 +1,19 @@
+// ===== 📄 ФАЙЛ: frontend/src/components/market/MarketDetail.js =====
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
 import PhotoViewer from '../shared/PhotoViewer';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
+import ReportModal from '../shared/ReportModal';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import { Z_MARKET_DETAIL } from '../../constants/zIndex';
 import { hapticFeedback } from '../../utils/telegram';
 import DropdownMenu from '../DropdownMenu';
+import Avatar from '../shared/Avatar';
+import ProfileMiniCard from '../shared/ProfileMiniCard';
 
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 
@@ -19,10 +24,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     updateMarketItem: updateInStore
   } = useStore();
   
-  // Локальный state для актуальных данных
   const [localItem, setLocalItem] = useState(item);
-  
-  // Используем актуальные данные из store или локальные
   const currentItem = marketItems.find(i => i.id === item.id) || localItem;
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -35,13 +37,15 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   const [likeAnimating, setLikeAnimating] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   
   const menuRef = useRef(null);
+  const sellerAvatarRef = useRef(null);
 
   const isOwner = currentItem.seller_id === user?.id;
   const images = currentItem.images || [];
 
-  // Показать кнопку "Назад" в Telegram
   useEffect(() => {
     if (window.Telegram?.WebApp?.BackButton) {
       window.Telegram.WebApp.BackButton.show();
@@ -54,7 +58,6 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     }
   }, [onClose]);
 
-  // Закрытие меню при клике вне его
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -191,23 +194,19 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const handleReport = () => {
     hapticFeedback('medium');
     setShowMenu(false);
-    toast.info('Функция "Пожаловаться" в разработке');
+    setShowReportModal(true);
   };
 
-  // Обработчик успешного редактирования
   const handleEditSuccess = (updatedItem) => {
     hapticFeedback('success');
     setShowEditModal(false);
     
-    // Обновить локальный state
     setLocalItem(updatedItem);
     
-    // Обновить store
     if (updateInStore) {
       updateInStore(updatedItem);
     }
     
-    // Уведомить родителя
     if (onUpdate) {
       onUpdate(updatedItem);
     }
@@ -444,22 +443,16 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>👤 Продавец</h2>
               <div style={styles.sellerCard}>
-                <div style={styles.sellerAvatar}>
-                  {currentItem.seller.avatar ? (
-                    <img 
-                      src={currentItem.seller.avatar} 
-                      alt={currentItem.seller.name} 
-                      style={styles.sellerAvatarImg} 
-                    />
-                  ) : (
-                    <div style={styles.sellerAvatarPlaceholder}>
-                      {currentItem.seller.name[0]?.toUpperCase() || '?'}
-                    </div>
-                  )}
-                </div>
+                <Avatar 
+                  ref={sellerAvatarRef}
+                  user={currentItem.seller}
+                  size={56}
+                  onClick={() => currentItem.seller?.show_profile && setProfileOpen(true)}
+                  showProfile={currentItem.seller?.show_profile}
+                />
 
                 <div style={styles.sellerInfo}>
-                  <div style={styles.sellerName}>{currentItem.seller.name}</div>
+                  <div style={styles.sellerName}>{currentItem.seller.username || currentItem.seller.name}</div>
                   <div style={styles.sellerMeta}>
                     {university}
                     {institute && ` • ${institute}`}
@@ -540,11 +533,28 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setShowDeleteDialog(false)}
       />
+      
+      {currentItem.seller && (
+        <ProfileMiniCard
+          isOpen={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          user={currentItem.seller}
+          anchorRef={sellerAvatarRef}
+          onReport={() => setShowReportModal(true)}
+        />
+      )}
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        targetType="market_item"
+        targetId={currentItem.id}
+      />
     </>
   );
 };
 
-// Стили (без изменений)
+// Стили остаются без изменений
 const styles = {
   container: {
     position: 'fixed',
@@ -794,33 +804,6 @@ const styles = {
     padding: theme.spacing.md,
     borderRadius: theme.radius.md,
     border: `1px solid ${theme.colors.border}`,
-  },
-
-  sellerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: theme.radius.full,
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
-
-  sellerAvatarImg: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  },
-
-  sellerAvatarPlaceholder: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontFamily: 'Arial, sans-serif',
-    fontSize: 20,
-    fontWeight: 700,
-    color: '#ffffff',
-    background: `linear-gradient(135deg, ${theme.colors.market} 0%, ${theme.colors.marketGradientEnd} 100%)`,
   },
 
   sellerInfo: {

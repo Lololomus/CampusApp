@@ -9,6 +9,8 @@ import DropdownMenu from '../DropdownMenu';
 import PollWidget from './PollWidget';
 import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
+import Avatar from '../shared/Avatar';
+import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
 
 const API_URL = 'http://localhost:8000';
@@ -20,6 +22,8 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const avatarRef = useRef(null);
 
   // ✅ Local state для likes_count
   const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
@@ -78,14 +82,18 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         isAd: true
       };
     } else {
-      // Логика для ОБЫЧНОГО ПОСТА
+      // Логика для ОБЫЧНОГО ПОСТА - используем USERNAME
+      const displayName = post.is_anonymous 
+        ? 'Аноним' 
+        : (post.author?.username || post.author?.name || 'Пользователь');
+      
       const subtitle = !post.is_anonymous && post.author
         ? [post.author.university, post.author.course ? `${post.author.course}к` : null].filter(Boolean).join(' · ')
         : null;
         
       return {
-        name: post.is_anonymous ? 'Аноним' : (post.author?.name || 'Пользователь'),
-        avatarUrl: post.is_anonymous ? null : post.author?.avatar,
+        name: displayName,
+        author: post.author, // Добавляем для Avatar компонента
         subtitle: subtitle,
         isAd: false
       };
@@ -283,23 +291,30 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         {/* === HEADER === */}
         <div style={styles.header}>
           <div style={styles.authorRow}>
-            {/* Аватар: Если реклама и есть лого - лого. Иначе заглушка */}
-            <div style={{
-              ...styles.avatar,
-              background: isAd 
-                ? '#EEF2FF' // Светло-синий фон для рекламы
-                : (post.is_anonymous ? theme.colors.primary : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`)
-            }}>
-              {isAd ? (
-                 headerInfo.avatarUrl ? (
-                   <img src={headerInfo.avatarUrl} alt="" style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}} />
-                 ) : (
-                   <Megaphone size={18} color={theme.colors.primary} />
-                 )
-              ) : (
-                 post.is_anonymous ? 'A' : (headerInfo.name?.[0] || 'A')
-              )}
-            </div>
+            {/* Аватар */}
+            {isAd ? (
+              // Реклама - старая логика
+              <div style={{
+                ...styles.avatar,
+                background: '#EEF2FF'
+              }}>
+                {headerInfo.avatarUrl ? (
+                  <img src={headerInfo.avatarUrl} alt="" style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}} />
+                ) : (
+                  <Megaphone size={18} color={theme.colors.primary} />
+                )}
+              </div>
+            ) : (
+              // Обычный пост - новый Avatar компонент
+              <Avatar 
+                ref={avatarRef}
+                user={headerInfo.author}
+                size={40}
+                onClick={() => !post.is_anonymous && post.author?.show_profile && setProfileOpen(true)}
+                showProfile={post.author?.show_profile}
+                isAnonymous={post.is_anonymous}
+              />
+            )}
 
             <div style={styles.authorInfo}>
               <div style={styles.nameRow}>
@@ -492,6 +507,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       />
 
       {moderationModals}
+      
+      {/* Мини-карточка профиля */}
+      {!post.is_anonymous && post.author && (
+        <ProfileMiniCard
+          isOpen={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          user={post.author}
+          anchorRef={avatarRef}
+          onReport={() => setShowReportModal(true)}
+        />
+      )}
     </>
   );
 }

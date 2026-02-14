@@ -27,14 +27,6 @@ const TARGET_LABELS = {
   dating_profile: 'профиль',
 };
 
-/**
- * Универсальная модалка жалобы на контент (bottom-sheet).
- *
- * @param {boolean} isOpen
- * @param {function} onClose
- * @param {string} targetType - 'post' | 'comment' | 'request' | 'market_item' | 'dating_profile'
- * @param {number} targetId
- */
 function ReportModal({ isOpen, onClose, targetType, targetId }) {
   const [selectedReason, setSelectedReason] = useState(null);
   const [description, setDescription] = useState('');
@@ -85,20 +77,17 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
 
   return (
     <>
-      {/* Overlay */}
       <div
         style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}
         onClick={handleClose}
       />
 
-      {/* Bottom Sheet */}
       <div style={{
         ...styles.sheet,
         transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
       }}>
         <div style={styles.handle} />
 
-        {/* Header */}
         <div style={styles.header}>
           <div style={styles.headerLeft}>
             <div style={styles.headerIcon}>⚠️</div>
@@ -112,7 +101,6 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
           </button>
         </div>
 
-        {/* Reasons */}
         <div style={styles.reasonsGrid}>
           {REPORT_REASONS.map((reason) => {
             const isSelected = selectedReason === reason.value;
@@ -123,24 +111,32 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
                   ...styles.reasonChip,
                   borderColor: isSelected ? theme.colors.warning : theme.colors.border,
                   background: isSelected ? `${theme.colors.warning}18` : theme.colors.bgSecondary,
+                  transform: isSelected ? 'scale(0.98)' : 'scale(1)',
                 }}
                 onClick={() => { hapticFeedback('light'); setSelectedReason(reason.value); }}
               >
-                <span style={styles.reasonEmoji}>{reason.icon}</span>
-                <span style={{
-                  fontSize: theme.fontSize.sm,
-                  color: isSelected ? theme.colors.warning : theme.colors.textSecondary,
-                  fontWeight: isSelected ? theme.fontWeight.semibold : theme.fontWeight.normal,
-                }}>
-                  {reason.label}
-                </span>
-                {isSelected && <Check size={14} color={theme.colors.warning} style={{ flexShrink: 0 }} />}
+                <div style={styles.reasonContent}>
+                  <span style={styles.reasonEmoji}>{reason.icon}</span>
+                  <span style={{
+                    fontSize: theme.fontSize.sm,
+                    color: isSelected ? theme.colors.warning : theme.colors.text,
+                    fontWeight: isSelected ? theme.fontWeight.semibold : theme.fontWeight.medium,
+                  }}>
+                    {reason.label}
+                  </span>
+                </div>
+                {isSelected && (
+                  <Check 
+                    size={16} 
+                    color={theme.colors.warning} 
+                    style={{ flexShrink: 0 }} 
+                  />
+                )}
               </button>
             );
           })}
         </div>
 
-        {/* Description */}
         <div style={styles.descBlock}>
           <textarea
             style={styles.textarea}
@@ -154,7 +150,6 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
           )}
         </div>
 
-        {/* Submit */}
         <button
           style={{
             ...styles.submitBtn,
@@ -198,60 +193,124 @@ const styles = {
     boxShadow: '0 -8px 40px rgba(0, 0, 0, 0.4)',
   },
   handle: {
-    width: 36, height: 4, borderRadius: 2,
-    background: theme.colors.border, margin: '0 auto 16px',
+    width: 36, 
+    height: 4, 
+    borderRadius: 2,
+    background: theme.colors.border, 
+    margin: '0 auto 16px',
   },
   header: {
-    display: 'flex', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: theme.spacing.lg,
+    display: 'flex', 
+    alignItems: 'center',
+    justifyContent: 'space-between', 
+    marginBottom: theme.spacing.lg,
   },
-  headerLeft: { display: 'flex', alignItems: 'center', gap: theme.spacing.md },
+  headerLeft: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    gap: theme.spacing.md 
+  },
   headerIcon: {
-    fontSize: 24, width: 40, height: 40, borderRadius: theme.radius.md,
+    fontSize: 24, 
+    width: 40, 
+    height: 40, 
+    borderRadius: theme.radius.md,
     background: `${theme.colors.warning}15`,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    flexShrink: 0,
   },
   title: {
-    fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text, margin: 0, lineHeight: 1.2,
+    fontSize: theme.fontSize.lg, 
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text, 
+    margin: 0, 
+    lineHeight: 1.2,
   },
-  subtitle: { fontSize: theme.fontSize.xs, color: theme.colors.textTertiary },
+  subtitle: { 
+    fontSize: theme.fontSize.xs, 
+    color: theme.colors.textTertiary 
+  },
   closeBtn: {
-    width: 36, height: 36, borderRadius: theme.radius.full,
-    background: theme.colors.bgSecondary, border: 'none',
+    width: 36, 
+    height: 36, 
+    borderRadius: theme.radius.full,
+    background: theme.colors.bgSecondary, 
+    border: 'none',
     color: theme.colors.textSecondary,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer', flexShrink: 0,
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    cursor: 'pointer', 
+    flexShrink: 0,
   },
   reasonsGrid: {
-    display: 'flex', flexWrap: 'wrap',
-    gap: theme.spacing.sm, marginBottom: theme.spacing.lg,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.lg,
   },
   reasonChip: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    padding: '8px 12px', borderRadius: theme.radius.md,
-    border: '1px solid', cursor: 'pointer',
-    transition: 'all 0.15s ease', WebkitTapHighlightColor: 'transparent',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 14px',
+    borderRadius: theme.radius.md,
+    border: '1.5px solid',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    WebkitTapHighlightColor: 'transparent',
+    minHeight: 48,
   },
-  reasonEmoji: { fontSize: 14, flexShrink: 0 },
-  descBlock: { position: 'relative', marginBottom: theme.spacing.lg },
+  reasonContent: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  reasonEmoji: { 
+    fontSize: 16, 
+    flexShrink: 0 
+  },
+  descBlock: { 
+    position: 'relative', 
+    marginBottom: theme.spacing.lg 
+  },
   textarea: {
-    width: '100%', background: theme.colors.bgSecondary,
-    border: `1px solid ${theme.colors.border}`, borderRadius: theme.radius.md,
-    padding: theme.spacing.md, color: theme.colors.text,
-    fontSize: theme.fontSize.base, fontFamily: 'inherit',
-    resize: 'none', outline: 'none', boxSizing: 'border-box',
+    width: '100%', 
+    background: theme.colors.bgSecondary,
+    border: `1px solid ${theme.colors.border}`, 
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.md, 
+    color: theme.colors.text,
+    fontSize: theme.fontSize.base, 
+    fontFamily: 'inherit',
+    resize: 'none', 
+    outline: 'none', 
+    boxSizing: 'border-box',
   },
   charCount: {
-    position: 'absolute', bottom: 8, right: 12,
-    fontSize: theme.fontSize.xs, color: theme.colors.textDisabled,
+    position: 'absolute', 
+    bottom: 8, 
+    right: 12,
+    fontSize: theme.fontSize.xs, 
+    color: theme.colors.textDisabled,
   },
   submitBtn: {
-    width: '100%', padding: '14px', borderRadius: theme.radius.md,
-    border: 'none', background: theme.colors.warning, color: '#000',
-    fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', gap: theme.spacing.sm,
+    width: '100%', 
+    padding: '14px', 
+    borderRadius: theme.radius.md,
+    border: 'none', 
+    background: theme.colors.warning, 
+    color: '#000',
+    fontSize: theme.fontSize.base, 
+    fontWeight: theme.fontWeight.semibold,
+    cursor: 'pointer', 
+    display: 'flex', 
+    alignItems: 'center',
+    justifyContent: 'center', 
+    gap: theme.spacing.sm,
     transition: 'opacity 0.2s ease',
   },
 };

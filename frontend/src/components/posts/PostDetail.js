@@ -13,6 +13,8 @@ import { Z_MODAL_FORMS } from '../../constants/zIndex';
 import theme from '../../theme';
 import PollView from './PollView';
 import PhotoViewer from '../shared/PhotoViewer';
+import Avatar from '../shared/Avatar';
+import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { toast } from '../shared/Toast'; 
 
 const API_URL = 'http://localhost:8000';
@@ -29,6 +31,9 @@ function PostDetail() {
   const [menuOpen, setMenuOpen] = useState(null);
   const [postMenuOpen, setPostMenuOpen] = useState(false);
   const postMenuRef = useRef(null);
+  
+  const [profileOpen, setProfileOpen] = useState(false);
+  const avatarRef = useRef(null);
 
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
@@ -334,15 +339,35 @@ function PostDetail() {
   }, [comments]);
 
   const postMenuItems = [
-    { label: 'Скопировать ссылку', icon: <LinkIcon size={18} />, onClick: handleCopyLink },
+    { 
+      label: 'Скопировать ссылку', 
+      icon: '🔗',
+      actionType: 'copy',
+      onClick: handleCopyLink 
+    },
     ...(isOwner ? [
-      { label: 'Редактировать', icon: <Edit2 size={18} />, onClick: handleEditPost },
-      { label: 'Удалить', icon: <Trash2 size={18} />, danger: true, onClick: handleDeletePost }
+      { 
+        label: 'Редактировать', 
+        icon: '✏️',
+        actionType: 'edit',
+        onClick: handleEditPost 
+      },
+      { 
+        label: 'Удалить', 
+        icon: '🗑️',
+        actionType: 'delete',
+        onClick: handleDeletePost 
+      }
     ] : [
-      { label: 'Пожаловаться', icon: <Flag size={18} />, danger: true, onClick: () => { 
-        toast.success('Жалоба отправлена'); 
-        setPostMenuOpen(false); 
-      }}
+      { 
+        label: 'Пожаловаться', 
+        icon: '🚩',
+        actionType: 'report',
+        onClick: () => { 
+          toast.success('Жалоба отправлена'); 
+          setPostMenuOpen(false); 
+        }
+      }
     ])
   ];
 
@@ -396,17 +421,19 @@ function PostDetail() {
               <div style={styles.cardContent}>
                 <div style={styles.authorSection}>
                   <div style={styles.authorRow}>
-                    <div style={{
-                      ...styles.avatar,
-                      background: post.is_anonymous ? theme.colors.primary : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
-                    }}>
-                      {post.is_anonymous ? 'A' : (post.author?.name?.[0] || 'A')}
-                    </div>
+                    <Avatar 
+                      ref={avatarRef}
+                      user={post.author}
+                      size={40}
+                      onClick={() => !post.is_anonymous && post.author?.show_profile && setProfileOpen(true)}
+                      showProfile={post.author?.show_profile}
+                      isAnonymous={post.is_anonymous}
+                    />
 
                     <div style={styles.authorInfo}>
                       <div style={styles.nameRow}>
                         <span style={styles.authorName}>
-                          {post.is_anonymous ? 'Аноним' : (post.author?.name || 'Пользователь')}
+                          {post.is_anonymous ? 'Аноним' : (post.author?.username || post.author?.name || 'Пользователь')}
                         </span>
                         {post.is_important && <span style={styles.pinned}>📌</span>}
                       </div>
@@ -418,23 +445,23 @@ function PostDetail() {
                     <span style={{...styles.categoryText, color: catInfo.color}}>
                       {catInfo.label}
                     </span>
-                    <div style={{position: 'relative', display: 'flex', alignItems: 'center'}}>
-                      <button
-                        ref={postMenuRef}
-                        style={styles.menuButton}
-                        onClick={(e) => { e.stopPropagation(); setPostMenuOpen(!postMenuOpen); hapticFeedback('light'); }}
-                      >
-                        <MoreVertical size={20} />
-                      </button>
-                      <DropdownMenu
-                        isOpen={postMenuOpen}
-                        onClose={() => setPostMenuOpen(false)}
-                        anchorRef={postMenuRef}
-                        items={postMenuItems}
-                      />
-                    </div>
+                    <button
+                      ref={postMenuRef}
+                      style={styles.menuButton}
+                      onClick={(e) => { e.stopPropagation(); setPostMenuOpen(!postMenuOpen); hapticFeedback('light'); }}
+                    >
+                      <MoreVertical size={20} />
+                    </button>
                   </div>
                 </div>
+                
+                {/* DropdownMenu вне relative контейнера */}
+                <DropdownMenu
+                  isOpen={postMenuOpen}
+                  onClose={() => setPostMenuOpen(false)}
+                  anchorRef={postMenuRef}
+                  items={postMenuItems}
+                />
 
                 <div style={styles.textContent}>
                   {post.title && post.category !== 'polls' && (
@@ -629,6 +656,20 @@ function PostDetail() {
             onClose={() => setIsPhotoViewerOpen(false)}
           />
         )}
+        
+        {/* ProfileMiniCard для автора поста */}
+        {!loading && post && !post.is_anonymous && post.author && (
+          <ProfileMiniCard
+            isOpen={profileOpen}
+            onClose={() => setProfileOpen(false)}
+            user={post.author}
+            anchorRef={avatarRef}
+            onReport={() => {
+              // TODO: открыть модалку жалобы на автора поста
+              console.log('Report post author');
+            }}
+          />
+        )}
       </div>
     </>
   );
@@ -636,6 +677,10 @@ function PostDetail() {
 
 const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit }) => {
   const menuButtonRef = useRef(null);
+  const avatarRef = useRef(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  
   const likes = commentLikes[comment.id] || { isLiked: false, count: comment.likes || 0 };
   const maxDepth = 3;
   const isMyComment = currentUser && comment.author_id === currentUser.id;
@@ -644,15 +689,38 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
   const isAnonymousComment = comment.is_anonymous || false;
   const commentAuthorName = isAnonymousComment
     ? (comment.anonymous_index === 0 || !comment.anonymous_index ? "Аноним" : `Аноним ${comment.anonymous_index}`)
-    : (typeof comment.author === 'object' ? comment.author.name : comment.author);
-  const commentAuthorInitial = isAnonymousComment ? '?' : (typeof comment.author === 'object' ? comment.author.name?.[0] : comment.author?.[0] || '?');
+    : (typeof comment.author === 'object' ? (comment.author.username || comment.author.name) : comment.author);
 
   const menuItems = isMyComment ? [
-    { icon: <Edit2 size={16}/>, label: 'Редактировать', onClick: () => onEdit(comment) },
-    { icon: <Trash2 size={16}/>, label: 'Удалить', onClick: () => onDelete(comment.id), danger: true },
+    { 
+      icon: '✏️', 
+      label: 'Редактировать',
+      actionType: 'edit',
+      onClick: () => onEdit(comment) 
+    },
+    { 
+      icon: '🗑️', 
+      label: 'Удалить',
+      actionType: 'delete',
+      onClick: () => onDelete(comment.id)
+    },
   ] : [
-    { icon: <Flag size={16}/>, label: 'Пожаловаться', onClick: () => onReport(comment.id), danger: true },
+    { 
+      icon: '🚩', 
+      label: 'Пожаловаться',
+      actionType: 'report',
+      onClick: () => onReport(comment.id)
+    },
   ];
+    
+  // Генерация разных цветов для анонимов
+  const getAnonymousColor = (index) => {
+    const colors = [
+      '#8774e1', '#3b82f6', '#10b981', '#f59e0b', 
+      '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16'
+    ];
+    return colors[(index || 0) % colors.length];
+  };
 
   return (
     <div style={{ position: 'relative' }}>
@@ -664,12 +732,24 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
       )}
 
       <div style={styles.comment}>
-        <div style={{
-          ...styles.commentAvatar,
-          background: isAnonymousComment ? theme.colors.textDisabled : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
-        }}>
-          {commentAuthorInitial}
-        </div>
+        {isAnonymousComment ? (
+          // Заглушка для анонимных комментариев (разные цвета)
+          <div style={{
+            ...styles.commentAvatar,
+            background: getAnonymousColor(comment.anonymous_index)
+          }}>
+            ?
+          </div>
+        ) : (
+          // Avatar компонент для обычных комментариев
+          <Avatar 
+            ref={avatarRef}
+            user={comment.author}
+            size={36}
+            onClick={() => comment.author?.show_profile && setProfileOpen(true)}
+            showProfile={comment.author?.show_profile}
+          />
+        )}
 
         <div style={styles.commentContent}>
           <div style={styles.commentHeader}>
@@ -751,6 +831,17 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
             />
           ))}
         </div>
+      )}
+      
+      {/* ProfileMiniCard для комментариев */}
+      {!isAnonymousComment && comment.author && (
+        <ProfileMiniCard
+          isOpen={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          user={comment.author}
+          anchorRef={avatarRef}
+          onReport={() => setShowReportModal(true)}
+        />
       )}
     </div>
   );

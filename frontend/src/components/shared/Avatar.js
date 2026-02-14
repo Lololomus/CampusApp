@@ -1,0 +1,151 @@
+// ===== 📄 ФАЙЛ: frontend/src/components/shared/Avatar.js =====
+
+import React, { forwardRef } from 'react';
+import theme from '../../theme';
+
+const API_URL = 'http://localhost:8000';
+
+const Avatar = forwardRef(({ 
+  user, 
+  size = 40, 
+  onClick, 
+  showProfile = true,
+  isAnonymous = false,
+  style = {}
+}, ref) => {
+  
+  // Генерация цвета из строки (для инициалов)
+  const generateColor = (str) => {
+    if (!str) return theme.colors.primary;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const colors = [
+      '#8774e1', '#3b82f6', '#10b981', '#f59e0b', 
+      '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16'
+    ];
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  // Получение данных для отображения
+  const getAvatarData = () => {
+    if (isAnonymous) {
+      return { 
+        type: 'initial', 
+        value: '?', 
+        bg: theme.colors.textDisabled 
+      };
+    }
+
+    // ИСПРАВЛЕНИЕ: правильный путь uploads/avatars
+    if (user?.avatar && user.avatar.trim() !== '') {
+      const avatarUrl = user.avatar.startsWith('http') 
+        ? user.avatar 
+        : `${API_URL}/uploads/avatars/${user.avatar}`;
+      return { type: 'image', value: avatarUrl };
+    }
+
+    // Fallback на инициал если фото нет
+    const displayName = user?.username || user?.name || 'A';
+    const initial = displayName[0]?.toUpperCase() || 'A';
+    const bg = generateColor(displayName);
+    
+    return { type: 'initial', value: initial, bg };
+  };
+
+  const avatarData = getAvatarData();
+  const clickable = showProfile && !isAnonymous && onClick;
+
+  const handleClick = (e) => {
+    if (clickable) {
+      e.stopPropagation();
+      onClick(user);
+    }
+  };
+
+  return (
+    <div
+      ref={ref}
+      onClick={handleClick}
+      style={{
+        ...styles.avatar,
+        width: size,
+        height: size,
+        cursor: clickable ? 'pointer' : 'default',
+        background: avatarData.type === 'initial' 
+          ? avatarData.bg 
+          : theme.colors.bgSecondary,
+        ...style
+      }}
+      className="avatar-component"
+    >
+      {avatarData.type === 'image' ? (
+        <img 
+          src={avatarData.value} 
+          alt="" 
+          style={styles.avatarImage}
+          onError={(e) => {
+            // Fallback к инициалу если фото не загрузилось
+            const parent = e.target.parentElement;
+            if (parent) {
+              e.target.style.display = 'none';
+              const displayName = user?.username || user?.name || 'A';
+              const initial = displayName[0]?.toUpperCase() || 'A';
+              const bg = generateColor(displayName);
+              parent.style.background = bg;
+              parent.innerHTML = `<span style="user-select: none; font-size: ${size * 0.45}px; font-weight: 700; color: #fff;">${initial}</span>`;
+            }
+          }}
+        />
+      ) : (
+        <span style={{...styles.initial, fontSize: size * 0.45}}>{avatarData.value}</span>
+      )}
+    </div>
+  );
+});
+
+Avatar.displayName = 'Avatar';
+
+const styles = {
+  avatar: {
+    borderRadius: theme.radius.full,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 18,
+    color: theme.colors.text,
+    fontWeight: theme.fontWeight.bold,
+    flexShrink: 0,
+    overflow: 'hidden',
+    position: 'relative',
+    transition: 'transform 0.2s ease',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  initial: {
+    userSelect: 'none',
+  }
+};
+
+// CSS для hover эффекта (если кликабельно)
+const styleSheet = document.createElement('style');
+styleSheet.textContent = `
+  .avatar-component:hover {
+    transform: scale(1.05);
+  }
+  
+  .avatar-component:active {
+    transform: scale(0.95);
+  }
+`;
+
+if (!document.head.querySelector('[data-avatar-styles]')) {
+  styleSheet.setAttribute('data-avatar-styles', '');
+  document.head.appendChild(styleSheet);
+}
+
+export default Avatar;

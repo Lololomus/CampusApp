@@ -10,6 +10,8 @@ import { toast } from '../shared/Toast';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import ReportModal from '../shared/ReportModal';
+import Avatar from '../shared/Avatar';
+import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
 
 const MarketCard = ({ item, onClick, index = 0 }) => {
