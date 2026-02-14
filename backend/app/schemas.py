@@ -1068,3 +1068,55 @@ class AdOverviewStats(BaseModel):
     total_impressions: int = 0
     total_clicks: int = 0
     avg_ctr: float = 0.0
+
+
+# ===== NOTIFICATION SCHEMAS =====
+
+class NotificationSettingsUpdate(BaseModel):
+    matches_enabled: Optional[bool] = None
+    dating_likes_enabled: Optional[bool] = None
+    comments_enabled: Optional[bool] = None
+    market_enabled: Optional[bool] = None
+    requests_enabled: Optional[bool] = None
+    milestones_enabled: Optional[bool] = None
+    digest_enabled: Optional[bool] = None
+    digest_frequency: Optional[str] = Field(None, pattern="^(daily|weekly)$")
+    mute_all: Optional[bool] = None
+
+
+class NotificationSettingsResponse(BaseModel):
+    matches_enabled: bool = True
+    dating_likes_enabled: bool = True
+    comments_enabled: bool = True
+    market_enabled: bool = True
+    requests_enabled: bool = True
+    milestones_enabled: bool = True
+    digest_enabled: bool = False
+    digest_frequency: str = 'weekly'
+    mute_all: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    type: str
+    payload: dict
+    status: str
+    created_at: datetime
+
+    @field_validator('payload', mode='before')
+    @classmethod
+    def parse_payload(cls, v):
+        if isinstance(v, str):
+            import json
+            return json.loads(v)
+        return v
+
+    class Config:
+        from_attributes = True
+
+
+class FollowupAnswer(BaseModel):
+    answer: str = Field(..., pattern="^(yes|no|in_progress)$")

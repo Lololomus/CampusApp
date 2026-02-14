@@ -482,6 +482,10 @@ export const useStore = create(
       setAdPosts: (ads) => set({ adPosts: ads }),
       setFeedAds: (ads) => set({ feedAds: ads }),
       setAdOverviewStats: (stats) => set({ adOverviewStats: stats }),
+
+      // NOTIFICATION SETTINGS STATE
+      showSettingsModal: false,
+      setShowSettingsModal: (show) => set({ showSettingsModal: show }),
       
       updateAdPost: (adId, updates) => set((state) => ({
         adPosts: state.adPosts.map(ad =>

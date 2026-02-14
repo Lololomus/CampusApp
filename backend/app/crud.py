@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Union, Any
 from datetime import datetime, timedelta, timezone
 import json
 from app.utils import process_base64_images, delete_images, get_image_urls, BASE_URL
+from app.services import notification_service as notif
 
 # ===== HELPERS =====
 
@@ -472,6 +473,7 @@ def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
         new_like = models.PostLike(user_id=user_id, post_id=post_id)
         db.add(new_like)
         post.likes_count += 1
+        notif.check_milestone(db, post)
         db.commit()
         return {"is_liked": True, "likes": post.likes_count}
 
@@ -548,6 +550,18 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
     
     post.comments_count += 1
     db.add(db_comment)
+    db.flush()  # получаем id комментария
+
+    # --- Уведомления ---
+    commenter = db.query(models.User).get(author_id)
+    if commenter:
+        if comment.parent_id:
+            parent = db.query(models.Comment).get(comment.parent_id)
+            if parent:
+                notif.notify_comment_reply(db, parent, db_comment, commenter)
+        else:
+            notif.notify_new_comment(db, post, db_comment, commenter)
+
     db.commit()
     db.refresh(db_comment)
     return db_comment
@@ -978,6 +992,10 @@ def create_response(db: Session, request_id: int, user_id: int, data: schemas.Re
     db.add(response)
     
     request.responses_count += 1
+
+    # --- Уведомление автору запроса ---
+    notif.notify_request_response(db, request, user)
+
     db.commit()
     db.refresh(response)
     return response
@@ -1129,6 +1147,7 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
     
     new_like = models.DatingLike(who_liked_id=liker_id, whom_liked_id=liked_id, is_like=True)
     db.add(new_like)
+    notif.notify_dating_like(db, liked_id)
     db.commit()
     
     reverse_like = db.query(models.DatingLike).filter(
@@ -1154,6 +1173,13 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
         if not existing_match:
             match_obj = models.Match(user_a_id=user_a, user_b_id=user_b)
             db.add(match_obj)
+
+            # --- Уведомление о матче ---
+            liker_user = db.query(models.User).get(liker_id)
+            liked_user = db.query(models.User).get(liked_id)
+            if liker_user and liked_user:
+                notif.notify_match(db, liker_user, liked_user)
+
             db.commit()
             db.refresh(match_obj)
         

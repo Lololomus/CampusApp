@@ -43,6 +43,9 @@ def init_db():
         Request, RequestResponse, Comment, CommentLike,
         Like, Match, MarketItem, MarketFavorite,
         DatingProfile, DatingLike,
-        ModerationLog, Report, Appeal
+        ModerationLog, Report, Appeal,
+        PostView, MarketItemView,
+        AdPost, AdImpression, AdClick,
+        NotificationSettings, Notification, Followup,
     )
     Base.metadata.create_all(bind=engine)

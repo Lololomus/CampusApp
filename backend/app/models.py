@@ -745,3 +745,84 @@ class AdClick(Base):
     __table_args__ = (
         Index('ix_ad_click_ad_user', 'ad_post_id', 'user_id'),
     )
+
+
+# ========================================
+# УВЕДОМЛЕНИЯ (NOTIFICATIONS)
+# ========================================
+
+
+class NotificationSettings(Base):
+    """Настройки уведомлений пользователя"""
+    __tablename__ = 'notification_settings'
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
+
+    matches_enabled = Column(Boolean, default=True)
+    dating_likes_enabled = Column(Boolean, default=True)
+    comments_enabled = Column(Boolean, default=True)
+    market_enabled = Column(Boolean, default=True)
+    requests_enabled = Column(Boolean, default=True)
+    milestones_enabled = Column(Boolean, default=True)
+    digest_enabled = Column(Boolean, default=False)
+    digest_frequency = Column(String(20), default='weekly')
+    mute_all = Column(Boolean, default=False)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    user = relationship('User', backref='notification_settings')
+
+
+class Notification(Base):
+    """Очередь уведомлений для Telegram бота"""
+    __tablename__ = 'notifications'
+
+    id = Column(Integer, primary_key=True, index=True)
+    recipient_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+
+    type = Column(String(50), nullable=False, index=True)
+    payload = Column(Text, nullable=False)
+
+    status = Column(String(20), default='pending', nullable=False, index=True)
+    sent_at = Column(DateTime, nullable=True)
+    error = Column(String(500), nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+    recipient = relationship('User', foreign_keys=[recipient_id])
+
+    __table_args__ = (
+        Index('ix_notif_status_created', 'status', 'created_at'),
+    )
+
+
+class Followup(Base):
+    """Отложенные follow-up сообщения (макс 2 попытки)"""
+    __tablename__ = 'followups'
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+
+    type = Column(String(30), nullable=False)
+    target_type = Column(String(30), nullable=False)
+    target_id = Column(Integer, nullable=False)
+    payload = Column(Text, nullable=False)
+
+    scheduled_at = Column(DateTime, nullable=False, index=True)
+    attempt = Column(Integer, default=1)
+
+    status = Column(String(20), default='pending', nullable=False, index=True)
+    answer = Column(String(30), nullable=True)
+    answered_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship('User', foreign_keys=[user_id])
+
+    __table_args__ = (
+        Index('ix_followup_scheduled', 'status', 'scheduled_at'),
+        Index('ix_followup_target', 'target_type', 'target_id', 'user_id'),
+    )

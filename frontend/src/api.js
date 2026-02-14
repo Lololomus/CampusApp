@@ -1175,4 +1175,47 @@ export async function getAdOverviewStats() {
 }
 
 
+// ========================================
+// УВЕДОМЛЕНИЯ (NOTIFICATIONS)
+// ========================================
+
+/** Получить настройки уведомлений */
+export async function getNotificationSettings() {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.get('/notifications/settings', {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения настроек уведомлений:', error);
+    return {
+      matches_enabled: true,
+      dating_likes_enabled: true,
+      comments_enabled: true,
+      market_enabled: true,
+      requests_enabled: true,
+      milestones_enabled: true,
+      digest_enabled: false,
+      digest_frequency: 'weekly',
+      mute_all: false,
+    };
+  }
+}
+
+/** Обновить настройки уведомлений */
+export async function updateNotificationSettings(settings) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.patch('/notifications/settings', settings, {
+      params: { telegram_id }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка обновления настроек уведомлений:', error);
+    throw error;
+  }
+}
+
+
 export { api };

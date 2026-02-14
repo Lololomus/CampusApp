@@ -9,7 +9,7 @@ from app import models, schemas, crud
 from app.database import get_db, init_db
 from app.utils import get_image_urls, BASE_URL
 import json
-from app.routers import dating, moderation, ads
+from app.routers import dating, moderation, ads, notifications
 import shutil
 import uuid
 import os
@@ -25,6 +25,7 @@ app = FastAPI(
 app.include_router(dating.router)
 app.include_router(moderation.router)
 app.include_router(ads.router)
+app.include_router(notifications.router)
 
 # ===== CORS =====
 app.add_middleware(

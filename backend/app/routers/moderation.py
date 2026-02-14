@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.database import get_db
 from app import models, schemas
+from app.services import notification_service as notif
 
 router = APIRouter(tags=["moderation"])
 
@@ -463,6 +464,7 @@ def create_report(
     )
 
     db.add(report)
+    notif.notify_admin_report(db, report)
     db.commit()
     db.refresh(report)
 

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { 
   Edit2, Grid, ShoppingBag, FileText, Share2, Heart, 
   MessageCircle, Calendar, Building2, Users, Award, ChevronRight,
-  Shield, Zap, TrendingUp
+  Shield, Zap, TrendingUp, Settings
 } from 'lucide-react';
 
 import { useStore } from '../../store';
@@ -20,6 +20,7 @@ import PostCard from '../posts/PostCard';
 import RequestCard from '../requests/RequestCard';
 import MyMarketCard from './MyMarketCard';
 import PhotoViewer from '../shared/PhotoViewer';
+import SettingsModal from './SettingsModal';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
@@ -43,7 +44,8 @@ function Profile() {
     user, datingProfile, setDatingProfile, setShowEditModal, 
     setShowUserPosts, setShowUserRequests, setShowUserMarketItems,
     setEditingMarketItem, setShowCreateMarketItem,
-    moderationRole, setActiveTab: setNavigationTab
+    moderationRole, setActiveTab: setNavigationTab,
+    setShowSettingsModal
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('posts');
@@ -225,6 +227,13 @@ function Profile() {
               <Share2 size={18} />
               <span>Поделиться</span>
             </button>
+            <button style={styles.secondaryButton} onClick={() => {
+              hapticFeedback('light');
+              setShowSettingsModal(true);
+            }}>
+              <Settings size={18} />
+              <span>Настройки</span>
+            </button>
           </div>
         </div>
 
@@ -344,6 +353,8 @@ function Profile() {
           onClose={() => setShowPhotoViewer(false)}
         />
       )}
+
+      <SettingsModal />
 
       <style>{`
         .fade-in-up { 
