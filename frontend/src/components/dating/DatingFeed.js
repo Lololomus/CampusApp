@@ -14,6 +14,7 @@ import PhotoViewer from '../shared/PhotoViewer';
 import LikesTab from './LikesTab';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
+import ProfileInfoBar from './ProfileInfoBar';
 
 const GOAL_ICONS = {
   relationship: '💘 Отношения',
@@ -1120,146 +1121,19 @@ function DatingFeed() {
                 </AnimatePresence>
               )}
             </div>
+            {/* InfoBar */}
+            {!loading && currentProfile && (
+              <ProfileInfoBar
+                profile={currentProfile}
+                isExpanded={infoExpanded}
+                onToggle={setInfoExpanded}
+              />
+            )}
 
             {loading && (
               <div style={styles.infoBarSkeleton}>
                 <FeedInfoBarSkeleton />
               </div>
-            )}
-
-            {currentProfile && !loading && (
-              <motion.div 
-                key={currentProfile.id}
-                style={styles.infoBar}
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                transition={{ y: { type: 'spring', stiffness: 300, damping: 30, duration: 0.4 } }}
-              >
-                <button 
-                  style={styles.expandButton} 
-                  onClick={() => { 
-                    setInfoExpanded(!infoExpanded); 
-                    hapticFeedback('light'); 
-                  }}
-                >
-                  <ChevronUp 
-                    size={20} 
-                    strokeWidth={3}
-                    style={{
-                      transform: infoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.3s',
-                      color: theme.colors.textSecondary,
-                    }}
-                  />
-                </button>
-
-                <div style={styles.infoContent}>
-                  <div style={styles.nameSection}>
-                    <h2 style={styles.name}>
-                      {currentProfile.name}, <span style={styles.age}>{currentProfile.age}</span>
-                    </h2>
-                    <div style={styles.universityRow}>
-                      🎓 {currentProfile.university}
-                      {currentProfile.institute && ` • ${currentProfile.institute}`}
-                      {currentProfile.course && ` • ${currentProfile.course} курс`}
-                    </div>
-                  </div>
-
-                  <motion.div 
-                    style={styles.collapsedView}
-                    animate={{
-                      opacity: infoExpanded ? 0 : 1,
-                      maxHeight: infoExpanded ? 0 : '100px',
-                    }}
-                    transition={{
-                      duration: infoExpanded ? 0 : 0.25,
-                      ease: [0.4, 0, 0.6, 1]
-                    }}
-                  >
-                    {currentProfile.goals?.length > 0 && (
-                      <div style={styles.goalsRowCollapsed}>
-                        {currentProfile.goals.slice(0, 2).map((goal, i) => (
-                          <span key={i} style={styles.goalChip}>
-                            {GOAL_ICONS[goal] || goal}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {currentProfile.interests?.length > 0 && (
-                      <div style={styles.interestsEmojiRow}>
-                        {currentProfile.interests.slice(0, 5).map((interest, i) => (
-                          <span key={i} style={styles.emojiOnly}>
-                            {INTEREST_EMOJIS[interest] || '❓'}
-                          </span>
-                        ))}
-                        {currentProfile.interests.length > 5 && (
-                          <span style={styles.moreText}>+{currentProfile.interests.length - 5}</span>
-                        )}
-                      </div>
-                    )}
-                  </motion.div>
-
-                  <motion.div 
-                    style={{
-                      ...styles.expandedView,
-                      overflow: infoExpanded ? 'visible' : 'hidden',
-                    }}
-                    animate={{
-                      opacity: infoExpanded ? 1 : 0,
-                      maxHeight: infoExpanded ? '600px' : '0px',
-                    }}
-                    transition={{
-                      opacity: { duration: infoExpanded ? 0.25 : 0.2, delay: infoExpanded ? 0.05 : 0 },
-                      maxHeight: { duration: infoExpanded ? 0 : 0.3, ease: [0.4, 0, 0.6, 1] }
-                    }}
-                  >
-                    {currentProfile.prompts?.question && currentProfile.prompts?.answer && (
-                      <div style={styles.promptCard}>
-                        <div style={styles.promptHeader}>
-                          {currentProfile.prompts.question}
-                        </div>
-                        <div style={styles.promptAnswer}>
-                          {currentProfile.prompts.answer}
-                        </div>
-                      </div>
-                    )}
-
-                    {currentProfile.goals?.length > 0 && (
-                      <div style={styles.section}>
-                        <div style={styles.sectionTitle}>ИЩЕТ</div>
-                        <div style={styles.goalsRow}>
-                          {currentProfile.goals.map((goal, i) => (
-                            <span key={i} style={styles.goalTag}>
-                              {GOAL_ICONS[goal] || goal}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {currentProfile.bio && (
-                      <div style={styles.section}>
-                        <div style={styles.sectionTitle}>О СЕБЕ</div>
-                        <p style={styles.bioText}>{currentProfile.bio}</p>
-                      </div>
-                    )}
-
-                    {currentProfile.interests?.length > 0 && (
-                      <div style={styles.section}>
-                        <div style={styles.sectionTitle}>ИНТЕРЕСЫ</div>
-                        <div style={styles.interestsGrid}>
-                          {currentProfile.interests.map((interest, i) => (
-                            <span key={i} style={styles.interestChip}>
-                              {INTEREST_LABELS[interest] || interest}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                </div>
-              </motion.div>
             )}
           </>
         )}
@@ -1492,21 +1366,6 @@ const styles = {
     letterSpacing: 4,
     textShadow: '0 2px 8px rgba(0,0,0,0.5)',
   },
-  infoBar: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    background: 'linear-gradient(180deg, rgba(15, 15, 15, 0.97) 0%, rgba(10, 10, 10, 0.99) 100%)',
-    backdropFilter: 'blur(24px) saturate(180%)',
-    borderRadius: '28px 28px 0 0',
-    boxShadow: '0 -8px 40px rgba(0, 0, 0, 0.8), 0 -2px 16px rgba(245, 87, 108, 0.1)',
-    zIndex: 100,
-    overflow: 'hidden',
-    paddingBottom: `max(env(safe-area-inset-bottom, 0px), 60px)`,
-    border: '1px solid rgba(255, 255, 255, 0.05)',
-    borderBottom: 'none',
-  },
   infoBarSkeleton: {
     position: 'absolute',
     bottom: 65,
@@ -1523,157 +1382,21 @@ const styles = {
     maxHeight: '70vh',
     overflowY: 'auto',
   },
-  expandButton: {
-    width: '100%',
-    height: 32,
-    background: 'transparent',
-    border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-  },
-  infoContent: {
-    padding: '0 20px 20px 20px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 0,
-    overflowY: 'auto',
-    maxHeight: 'calc(70vh - 32px)',
-  },
-  nameSection: {
-    marginBottom: 14,
-  },
-  name: {
-    fontSize: 27,
-    fontWeight: 800,
-    color: '#ffffff',
-    margin: 0,
-    marginBottom: '6px',
-    letterSpacing: '-0.6px',
-    lineHeight: 1.1,
-  },
-  age: {
-    fontWeight: 500,
-    color: 'rgba(255, 255, 255, 0.65)',
-  },
-  universityRow: {
-    fontSize: 14,
-    fontWeight: 500,
-    color: 'rgba(255, 255, 255, 0.5)',
-    lineHeight: 1.4,
-  },
   collapsedView: {
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
     overflow: 'hidden',
   },
-  goalsRowCollapsed: {
-    display: 'flex',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  goalChip: {
-    padding: '6px 13px',
-    borderRadius: 14,
-    background: 'linear-gradient(135deg, rgba(255, 59, 92, 0.18) 0%, rgba(255, 107, 157, 0.18) 100%)',
-    border: '1px solid rgba(255, 59, 92, 0.35)',
-    color: '#ff6b9d',
-    fontSize: 13,
-    fontWeight: 600,
-  },
-  interestsEmojiRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-  },
-  emojiOnly: {
-    fontSize: 24,
-  },
-  moreText: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.4)',
-    fontWeight: 600,
-  },
-  expandedView: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 18,
-    paddingTop: 2,
-  },
   section: {
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
   },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: 800,
-    color: 'rgba(255, 255, 255, 0.45)',
-    textTransform: 'uppercase',
-    letterSpacing: '1.2px',
-    marginBottom: '2px',
-  },
-  promptCard: {
-    background: 'rgba(255, 59, 92, 0.05)',
-    border: '2px solid rgba(255, 59, 92, 0.2)',
-    borderRadius: 16,
-    padding: '15px 16px',
-    boxShadow: '0 2px 12px rgba(255, 59, 92, 0.08)',
-  },
-  promptHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-    color: '#ff6b9d',
-    fontSize: 14,
-    fontWeight: 700,
-    lineHeight: 1.3,
-  },
-  promptAnswer: {
-    fontSize: 15,
-    fontWeight: 500,
-    color: '#ffffff',
-    lineHeight: 1.55,
-    whiteSpace: 'pre-line',
-  },
   goalsRow: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 8,
-  },
-  goalTag: {
-    padding: '7px 14px',
-    borderRadius: 14,
-    background: 'linear-gradient(135deg, rgba(255, 59, 92, 0.18) 0%, rgba(255, 107, 157, 0.18) 100%)',
-    border: '1px solid rgba(255, 59, 92, 0.35)',
-    color: '#ff6b9d',
-    fontSize: 13,
-    fontWeight: 600,
-  },
-  bioText: {
-    fontSize: 15,
-    lineHeight: 1.6,
-    color: 'rgba(255, 255, 255, 0.85)',
-    margin: 0,
-    whiteSpace: 'pre-line',
-  },
-  interestsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: 7,
-  },
-  interestChip: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.75)',
-    padding: '7px 8px',
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    fontWeight: 500,
-    textAlign: 'center',
   },
   viewingOverlay: {
     position: 'fixed',

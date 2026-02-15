@@ -1,20 +1,21 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/requests/RequestDetailModal.js =====
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Clock, Calendar, User, MoreVertical, Edit2, Trash2, Flag, Gift } from 'lucide-react';
+import { Clock, Calendar, User, MoreVertical, Gift } from 'lucide-react';
 import { useStore } from '../../store';
 import { getRequestById, respondToRequest, updateRequest, getRequestResponses } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import { Z_MODAL_FORMS } from '../../constants/zIndex';
 import { REWARD_TYPE_LABELS, REWARD_TYPE_ICONS } from '../../types';
+import SwipeableModal from '../shared/SwipeableModal';
 import DropdownMenu from '../DropdownMenu';
 import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 
+
 const API_URL = 'http://localhost:8000';
+
 
 function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
   const { currentRequest, setCurrentRequest, user, updateRequest: updateStoreRequest } = useStore();
@@ -27,14 +28,13 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
+  const [isDropdownJustClosed, setIsDropdownJustClosed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   
-  const modalRef = useRef(null);
   const menuButtonRef = useRef(null);
   const authorAvatarRef = useRef(null);
-  const startYRef = useRef(0);
-  const currentYRef = useRef(0);
+
 
   const CATEGORIES = {
     study: {
@@ -57,7 +57,9 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     }
   };
 
+
   const categoryConfig = CATEGORIES[request?.category] || CATEGORIES.study;
+
 
   const images = useMemo(() => {
     if (!request?.images) return [];
@@ -69,6 +71,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     }
   }, [request?.images]);
 
+
   const getImageUrl = (img) => {
     if (!img) return '';
     const filename = (typeof img === 'object') ? img.url : img;
@@ -76,7 +79,9 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     return `${API_URL}/uploads/images/${filename}`;
   };
 
+
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
+
 
   useEffect(() => {
     if (!currentRequest) {
@@ -86,6 +91,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
     loadRequestData();
   }, [currentRequest]);
+
 
   const loadRequestData = async () => {
     try {
@@ -105,6 +111,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
       setLoading(false);
     }
   };
+
 
   const getTimeRemaining = () => {
     if (!request?.expires_at) return null;
@@ -143,7 +150,9 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     return { text, color, pulse, expired: false };
   };
 
+
   const timeRemaining = getTimeRemaining();
+
 
   const getDatesInfo = () => {
     if (!request) return null;
@@ -187,43 +196,18 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     };
   };
 
+
   const datesInfo = getDatesInfo();
 
-  const handleTouchStart = (e) => {
-    startYRef.current = e.touches[0].clientY;
-  };
-
-  const handleTouchMove = (e) => {
-    currentYRef.current = e.touches[0].clientY;
-    const diff = currentYRef.current - startYRef.current;
-
-    if (diff > 0 && modalRef.current) {
-      modalRef.current.style.transform = `translateY(${diff}px)`;
-    }
-  };
-
-  const handleTouchEnd = () => {
-    const diff = currentYRef.current - startYRef.current;
-
-    if (diff > 150) {
-      handleClose();
-    } else if (modalRef.current) {
-      modalRef.current.style.transform = 'translateY(0)';
-    }
-  };
 
   const handleClose = () => {
-    if (isPhotoViewerJustClosed) return;
+    if (isPhotoViewerJustClosed || isDropdownJustClosed) return;
     
     hapticFeedback('light');
     setCurrentRequest(null);
     onClose();
   };
 
-  const handleBackdropClick = (e) => {
-    if (isPhotoViewerJustClosed) return;
-    handleClose();
-  };
 
   const handleImageClick = (e, index) => {
     e.stopPropagation();
@@ -231,6 +215,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     setCurrentImageIndex(index);
     setIsPhotoViewerOpen(true);
   };
+
 
   const handleRespond = async () => {
     if (!request || request.is_author || request.has_responded || datesInfo?.isExpired) {
@@ -267,6 +252,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     }
   };
 
+
   const handleCloseRequest = async () => {
     if (!request || !request.is_author) return;
 
@@ -286,6 +272,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     }
   };
 
+
   const openTelegramChat = (username) => {
     if (!username) return;
     
@@ -293,6 +280,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     const cleanUsername = username.replace('@', '');
     window.open(`https://t.me/${cleanUsername}`, '_blank');
   };
+
 
   const menuItems = [
     ...(request?.is_author ? [
@@ -303,6 +291,8 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
         onClick: () => {
           hapticFeedback('light');
           setMenuOpen(false);
+          setIsDropdownJustClosed(true);
+          setTimeout(() => setIsDropdownJustClosed(false), 300);
           if (onEdit) onEdit(request);
         }
       },
@@ -313,6 +303,8 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
         onClick: () => {
           hapticFeedback('medium');
           setMenuOpen(false);
+          setIsDropdownJustClosed(true);
+          setTimeout(() => setIsDropdownJustClosed(false), 300);
           if (onDelete) onDelete(request);
         }
       }
@@ -324,76 +316,67 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
       onClick: () => {
         hapticFeedback('light');
         setMenuOpen(false);
+        setIsDropdownJustClosed(true);
+        setTimeout(() => setIsDropdownJustClosed(false), 300);
         setShowReportModal(true);
       }
     }
   ];
 
+
   if (!request) {
     return null;
   }
 
+
   const photoGridColumns = images.length <= 3 ? 3 : 2;
+
+
+  // Custom Header Component
+  const customHeader = (
+    <div style={{ ...styles.header, background: categoryConfig.gradient }}>
+      <div style={styles.categoryLabel}>
+        <span style={styles.categoryIcon}>{categoryConfig.icon}</span>
+        <span style={styles.categoryText}>{categoryConfig.label}</span>
+      </div>
+      
+      <div style={styles.headerRight}>
+        {timeRemaining && (
+          <div style={{
+            ...styles.timer,
+            color: timeRemaining.color,
+            animation: timeRemaining.pulse ? 'pulse 2s ease-in-out infinite' : 'none'
+          }}>
+            <Clock size={14} style={{ marginRight: 4 }} />
+            {timeRemaining.text}
+          </div>
+        )}
+
+        <button
+          ref={menuButtonRef}
+          style={styles.menuButton}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen(!menuOpen);
+            hapticFeedback('light');
+          }}
+        >
+          <MoreVertical size={18} />
+        </button>
+      </div>
+    </div>
+  );
+
 
   return (
     <>
       <style>{keyframesStyles}</style>
 
-      <div style={styles.backdrop} onClick={handleBackdropClick} />
-
-      <div
-        ref={modalRef}
-        style={styles.modal}
-        onClick={(e) => e.stopPropagation()}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+      <SwipeableModal
+        isOpen={true}
+        onClose={handleClose}
+        title={customHeader}
       >
-        <div style={styles.handle} />
-
-        <button onClick={handleClose} style={styles.closeButton}>
-          <X size={24} color={theme.colors.text} />
-        </button>
-
-        <div style={{ ...styles.header, background: categoryConfig.gradient }}>
-          <div style={styles.categoryLabel}>
-            <span style={styles.categoryIcon}>{categoryConfig.icon}</span>
-            <span style={styles.categoryText}>{categoryConfig.label}</span>
-          </div>
-          
-          <div style={styles.headerRight}>
-            {timeRemaining && (
-              <div style={{
-                ...styles.timer,
-                color: timeRemaining.color,
-                animation: timeRemaining.pulse ? 'pulse 2s ease-in-out infinite' : 'none'
-              }}>
-                <Clock size={14} style={{ marginRight: 4 }} />
-                {timeRemaining.text}
-              </div>
-            )}
-
-            <button
-              ref={menuButtonRef}
-              style={styles.menuButton}
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen(!menuOpen);
-                hapticFeedback('light');
-              }}
-            >
-              <MoreVertical size={18} />
-            </button>
-          </div>
-        </div>
-        
-        <DropdownMenu
-          isOpen={menuOpen}
-          onClose={() => setMenuOpen(false)}
-          anchorRef={menuButtonRef}
-          items={menuItems}
-        />
-
         <div style={styles.content}>
           <h1 style={styles.title}>{request.title}</h1>
 
@@ -537,58 +520,70 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
               </div>
             </div>
           )}
-        </div>
 
-        <div style={styles.bottomBar}>
-          {request.is_author ? (
-            <button
-              onClick={handleCloseRequest}
-              style={styles.closeRequestButton}
-              disabled={request.status === 'closed'}
-            >
-              {request.status === 'closed' ? '✓ Запрос закрыт' : 'Закрыть запрос'}
-            </button>
-          ) : request.has_responded ? (
-            <button style={styles.respondedButton} disabled>
-              ✓ Вы откликнулись
-            </button>
-          ) : datesInfo?.isExpired ? (
-            <button style={styles.expiredButton} disabled>
-              Запрос истёк
-            </button>
-          ) : (
-            <button
-              onClick={handleRespond}
-              style={styles.respondButton}
-              disabled={responding}
-            >
-              {responding ? 'Отправка...' : 'Откликнуться →'}
-            </button>
-          )}
+          {/* Bottom Bar */}
+          <div style={styles.bottomBar}>
+            {request.is_author ? (
+              <button
+                onClick={handleCloseRequest}
+                style={styles.closeRequestButton}
+                disabled={request.status === 'closed'}
+              >
+                {request.status === 'closed' ? '✓ Запрос закрыт' : 'Закрыть запрос'}
+              </button>
+            ) : request.has_responded ? (
+              <button style={styles.respondedButton} disabled>
+                ✓ Вы откликнулись
+              </button>
+            ) : datesInfo?.isExpired ? (
+              <button style={styles.expiredButton} disabled>
+                Запрос истёк
+              </button>
+            ) : (
+              <button
+                onClick={handleRespond}
+                style={styles.respondButton}
+                disabled={responding}
+              >
+                {responding ? 'Отправка...' : 'Откликнуться →'}
+              </button>
+            )}
+          </div>
         </div>
+      </SwipeableModal>
 
-        {isPhotoViewerOpen && (
-          <PhotoViewer
-            photos={viewerPhotos}
-            initialIndex={currentImageIndex}
-            onClose={() => {
-              setIsPhotoViewerOpen(false);
-              setIsPhotoViewerJustClosed(true);
-              setTimeout(() => setIsPhotoViewerJustClosed(false), 100);
-            }}
-          />
-        )}
-        
-        {request?.author && (
-          <ProfileMiniCard
-            isOpen={profileOpen}
-            onClose={() => setProfileOpen(false)}
-            user={request.author}
-            anchorRef={authorAvatarRef}
-            onReport={() => setShowReportModal(true)}
-          />
-        )}
-      </div>
+      <DropdownMenu
+        isOpen={menuOpen}
+        onClose={() => {
+          setMenuOpen(false);
+          setIsDropdownJustClosed(true);
+          setTimeout(() => setIsDropdownJustClosed(false), 300);
+        }}
+        anchorRef={menuButtonRef}
+        items={menuItems}
+      />
+
+      {isPhotoViewerOpen && (
+        <PhotoViewer
+          photos={viewerPhotos}
+          initialIndex={currentImageIndex}
+          onClose={() => {
+            setIsPhotoViewerOpen(false);
+            setIsPhotoViewerJustClosed(true);
+            setTimeout(() => setIsPhotoViewerJustClosed(false), 100);
+          }}
+        />
+      )}
+      
+      {request?.author && (
+        <ProfileMiniCard
+          isOpen={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          user={request.author}
+          anchorRef={authorAvatarRef}
+          onReport={() => setShowReportModal(true)}
+        />
+      )}
 
       <ReportModal
         isOpen={showReportModal}
@@ -600,70 +595,19 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
   );
 }
 
-// Styles остаются без изменений
+
+// ===== СТИЛИ =====
 const styles = {
-  backdrop: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0, 0, 0, 0.7)',
-    backdropFilter: 'blur(4px)',
-    zIndex: Z_MODAL_FORMS,
-    animation: 'fadeIn 0.25s ease-out'
-  },
-
-  modal: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    minHeight: '50vh',
-    maxHeight: '90vh',
-    background: theme.colors.bg,
-    borderTopLeftRadius: theme.radius.xxl,
-    borderTopRightRadius: theme.radius.xxl,
-    zIndex: Z_MODAL_FORMS + 1,
-    animation: 'slideUp 0.3s ease-out',
-    WebkitFontSmoothing: 'antialiased',
-    MozOsxFontSmoothing: 'grayscale',
-    overflowY: 'auto',
-    boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.5)',
-    willChange: 'transform'
-  },
-
-  handle: {
-    width: 40,
-    height: 4,
-    background: theme.colors.textTertiary,
-    borderRadius: theme.radius.full,
-    margin: `${theme.spacing.md}px auto`,
-    opacity: 0.5
-  },
-
-  closeButton: {
-    position: 'absolute',
-    top: theme.spacing.lg,
-    right: theme.spacing.lg,
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.full,
-    background: 'rgba(0, 0, 0, 0.5)',
-    border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 10
-  },
-
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
-    color: '#fff'
+    color: '#fff',
+    marginLeft: `-${theme.spacing.xl}px`,
+    marginRight: `-${theme.spacing.xl}px`,
+    marginTop: 0,
+    marginBottom: theme.spacing.xl,
   },
 
   categoryLabel: {
@@ -712,8 +656,9 @@ const styles = {
   },
 
   content: {
-    padding: theme.spacing.xl,
-    paddingBottom: 10
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing.lg,
   },
 
   title: {
@@ -721,7 +666,7 @@ const styles = {
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
     lineHeight: 1.3,
-    marginBottom: theme.spacing.xl
+    margin: 0,
   },
 
   authorBlock: {
@@ -729,9 +674,8 @@ const styles = {
     alignItems: 'center',
     gap: theme.spacing.md,
     padding: theme.spacing.lg,
-    background: '#252525',
+    background: theme.colors.card,
     borderRadius: theme.radius.lg,
-    marginBottom: theme.spacing.xl
   },
 
   authorInfo: {
@@ -767,7 +711,6 @@ const styles = {
     background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%)',
     border: '2px solid rgba(255, 215, 0, 0.3)',
     borderRadius: theme.radius.lg,
-    marginBottom: theme.spacing.xl
   },
 
   rewardInfo: {
@@ -788,21 +731,24 @@ const styles = {
   },
 
   section: {
-    marginBottom: theme.spacing.xl
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing.md,
   },
 
   sectionTitle: {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.text,
-    marginBottom: theme.spacing.md
+    margin: 0,
   },
 
   body: {
     fontSize: theme.fontSize.lg,
     color: theme.colors.text,
     lineHeight: 1.6,
-    whiteSpace: 'pre-wrap'
+    whiteSpace: 'pre-wrap',
+    margin: 0,
   },
 
   imagesGrid: {
@@ -832,7 +778,6 @@ const styles = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
-    marginBottom: theme.spacing.xl
   },
 
   tag: {
@@ -845,9 +790,8 @@ const styles = {
 
   infoBlock: {
     padding: theme.spacing.lg,
-    background: '#252525',
+    background: theme.colors.card,
     borderRadius: theme.radius.lg,
-    marginBottom: theme.spacing.xl
   },
 
   infoItem: {
@@ -867,9 +811,11 @@ const styles = {
 
   responseCard: {
     padding: theme.spacing.lg,
-    background: '#252525',
+    background: theme.colors.card,
     borderRadius: theme.radius.lg,
-    border: `1px solid ${theme.colors.border}`
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: theme.colors.border,
   },
 
   responseHeader: {
@@ -933,14 +879,9 @@ const styles = {
   },
 
   bottomBar: {
-    position: 'sticky',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: theme.spacing.lg,
-    background: theme.colors.bg,
+    marginTop: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
     borderTop: `1px solid ${theme.colors.border}`,
-    zIndex: 10
   },
 
   respondButton: {
@@ -996,20 +937,6 @@ const styles = {
 };
 
 const keyframesStyles = `
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  
-  @keyframes slideUp {
-    from { 
-      transform: translateY(100%);
-    }
-    to { 
-      transform: translateY(0);
-    }
-  }
-
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }

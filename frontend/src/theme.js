@@ -1,4 +1,4 @@
-// ===== 📄 ФАЙЛ: frontend/src/theme.js (ПОЛНОСТЬЮ ОБНОВЛЁННЫЙ) =====
+// ===== 📄 ФАЙЛ: frontend/src/theme.js =====
 
 export const theme = {
   // ========== COLORS ==========
@@ -12,7 +12,7 @@ export const theme = {
     accent: '#ff3b5c',
     accentHover: '#ff527a',
     
-    // Dating палитра (специальная для знакомств)
+    // Dating палитра
     dating: {
       primary: '#ff3b5c',
       primaryHover: '#ff527a',
@@ -23,11 +23,11 @@ export const theme = {
     },
     
     // Фоны
-    bg: '#121212',           // Основной фон
-    bgSecondary: '#1a1a1a',  // Вторичный фон
-    card: '#1e1e1e',         // Карточки
-    cardHover: '#2a2a2a',    // Карточки при hover
-    elevated: '#252525',     // Модалки, elevated элементы
+    bg: '#121212',
+    bgSecondary: '#1a1a1a',
+    card: '#1e1e1e',
+    cardHover: '#2a2a2a',
+    elevated: '#252525',
     
     // Текст
     text: '#ffffff',
@@ -61,10 +61,10 @@ export const theme = {
     
     // Overlay
     overlay: 'rgba(0, 0, 0, 0.5)',
-    overlayDark: 'rgba(0, 0, 0, 0.7)',
+    overlayDark: 'rgba(0, 0, 0, 0.75)', // ✅ Увеличена непрозрачность
     overlayLight: 'rgba(0, 0, 0, 0.3)',
     
-    // Градиенты (для основного приложения)
+    // Градиенты
     gradientStart: '#667eea',
     gradientEnd: '#764ba2',
   },
@@ -138,7 +138,7 @@ export const theme = {
     full: 9999,
   },
 
-  // ========== FONT SIZE (legacy, используй typography) ==========
+  // ========== FONT SIZE ==========
   fontSize: {
     xs: 12,
     sm: 13,
@@ -176,11 +176,11 @@ export const theme = {
   // ========== ANIMATIONS ==========
   animations: {
     duration: {
-      instant: 100,    // 0.1s
-      fast: 200,       // 0.2s
-      normal: 300,     // 0.3s
-      slow: 500,       // 0.5s
-      slower: 700,     // 0.7s
+      instant: 100,
+      fast: 200,
+      normal: 300,
+      slow: 500,
+      slower: 700,
     },
     easing: {
       default: 'ease',
@@ -201,22 +201,52 @@ export const theme = {
     xl: 48,
   },
 
-  // ========== TOUCH TARGETS (Mobile-first) ==========
+  // ========== TOUCH TARGETS ==========
   touchTargets: {
-    min: 44,         // Минимальный размер по Apple HIG
-    comfortable: 48, // Комфортный размер
-    large: 56,       // Большой размер (primary actions)
+    min: 44,
+    comfortable: 48,
+    large: 56,
   },
 
   // ========== LAYOUT ==========
   layout: {
     headerHeight: 56,
     tabBarHeight: 60,
-    safeAreaBottom: 20, // Для iPhone с notch
-    maxContentWidth: 600, // Максимальная ширина контента
+    safeAreaBottom: 20,
+    maxContentWidth: 600,
   },
 
-  // ========== Z-INDEX (базовые слои) ==========
+  // ========== MODALS ==========
+  modals: {
+    backdrop: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)', // ✅ БЕЗ backdrop-filter!
+      display: 'flex',
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+    },
+    content: {
+      width: '100%',
+      maxWidth: '600px',
+      backgroundColor: '#121212',
+      borderTopLeftRadius: '20px',
+      borderTopRightRadius: '20px',
+      boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
+    },
+    dragHandle: {
+      width: '40px',
+      height: '4px',
+      backgroundColor: '#333333',
+      borderRadius: '2px',
+      margin: '0 auto 16px auto',
+    },
+  },
+
+  // ========== Z-INDEX ==========
   zIndex: {
     base: 0,
     dropdown: 10,

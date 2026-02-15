@@ -19,8 +19,10 @@ import {
   MAX_AGE,
   LOOKING_FOR_OPTIONS
 } from '../../constants/datingConstants';
+import PromptSelectorModal from './PromptSelectorModal';
+import PromptAnswerModal from './PromptAnswerModal';
 
-const Z_MODAL = 3000;
+const Z_MODAL = 1500;
 
 function EditDatingProfileModal({ onClose, onSuccess }) {
   const { datingProfile, setDatingProfile } = useStore();
@@ -470,110 +472,18 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
           </button>
         </div>
       </div>
+      <PromptSelectorModal
+        isOpen={showPromptSelector}
+        onClose={() => setShowPromptSelector(false)}
+        onSelect={handlePromptSelect}
+      />
 
-      {showPromptSelector && (
-        <>
-          <div style={styles.promptSelectorOverlay} onClick={() => setShowPromptSelector(false)} />
-          <div style={styles.promptSelectorModal}>
-            <div style={styles.promptSelectorHandle} />
-            
-            <div style={styles.promptSelectorHeader}>
-              <h2 style={styles.promptSelectorTitle}>Выбери вопрос</h2>
-              <button onClick={() => setShowPromptSelector(false)} style={styles.promptSelectorCloseBtn}>
-                <X size={24} color={theme.colors.text} />
-              </button>
-            </div>
-            
-            <div style={styles.promptSelectorContent}>
-              {Object.entries(PROMPTS_BY_CATEGORY).map(([category, categoryPrompts]) => (
-                <div key={category} style={styles.promptCategoryBlock}>
-                  <div style={styles.promptCategoryTitle}>{category}</div>
-                  
-                  {categoryPrompts.map(promptOption => (
-                    <button
-                      key={promptOption.id}
-                      onClick={() => handlePromptSelect(promptOption)}
-                      style={styles.promptOptionButton}
-                    >
-                      <span>{promptOption.question}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {editingPrompt && (
-        <>
-          <div style={styles.promptAnswerOverlay} onClick={() => setEditingPrompt(null)} />
-          <div style={styles.promptAnswerModal}>
-            <div style={styles.promptAnswerHandle} />
-            
-            <div style={styles.promptAnswerHeader}>
-              <h3 style={styles.promptAnswerTitle}>Ледокол для знакомства</h3>
-              <button onClick={() => setEditingPrompt(null)} style={styles.promptAnswerCloseBtn}>
-                <X size={22} color={theme.colors.text} />
-              </button>
-            </div>
-
-            <div style={styles.promptAnswerContent}>
-              <div style={styles.promptAnswerQuestion}>
-                💬 {editingPrompt.question}
-              </div>
-              
-              <div style={styles.promptAnswerHintBox}>
-                <div style={styles.promptAnswerHintIcon}>💡</div>
-                <div style={styles.promptAnswerHintText}>
-                  Будь искренним и покажи свою личность — это поможет найти того, с кем тебе будет интересно
-                </div>
-              </div>
-              
-              <textarea
-                value={editingPrompt.tempAnswer !== undefined ? editingPrompt.tempAnswer : editingPrompt.answer || ''}
-                onChange={(e) => setEditingPrompt(prev => ({ ...prev, tempAnswer: e.target.value }))}
-                placeholder={editingPrompt.placeholder}
-                maxLength={PROMPT_MAX_LENGTH}
-                style={styles.promptAnswerTextarea}
-                autoFocus
-              />
-              
-              <div style={styles.promptAnswerCounter}>
-                {(editingPrompt.tempAnswer !== undefined ? editingPrompt.tempAnswer : editingPrompt.answer || '').length} / {PROMPT_MAX_LENGTH}
-              </div>
-            </div>
-
-            <div style={styles.promptAnswerButtons}>
-              <button 
-                onClick={() => setEditingPrompt(null)}
-                style={styles.promptCancelButton}
-              >
-                Отмена
-              </button>
-              <button 
-                onClick={() => {
-                  const answer = editingPrompt.tempAnswer !== undefined 
-                    ? editingPrompt.tempAnswer 
-                    : (editingPrompt.answer || '');
-                  if (answer.trim().length < 10) {
-                    alert('Минимум 10 символов');
-                    return;
-                  }
-                  handlePromptSave(answer);
-                }}
-                disabled={((editingPrompt.tempAnswer !== undefined ? editingPrompt.tempAnswer : (editingPrompt.answer || '')).trim().length < 10)}
-                style={{
-                  ...styles.promptSaveButton,
-                  opacity: ((editingPrompt.tempAnswer !== undefined ? editingPrompt.tempAnswer : (editingPrompt.answer || '')).trim().length >= 10) ? 1 : 0.5,
-                }}
-              >
-                Сохранить
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+      <PromptAnswerModal
+        isOpen={!!editingPrompt}
+        onClose={() => setEditingPrompt(null)}
+        prompt={editingPrompt}
+        onSave={handlePromptSave}
+      />
     </>
   );
 }
@@ -927,227 +837,6 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    transition: 'all 0.2s',
-  },
-  promptSelectorOverlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0, 0, 0, 0.7)',
-    zIndex: Z_MODAL + 10,
-    animation: 'fadeIn 0.2s',
-  },
-  promptSelectorModal: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    maxHeight: '80vh',
-    background: theme.colors.bg,
-    borderRadius: '20px 20px 0 0',
-    zIndex: Z_MODAL + 11,
-    display: 'flex',
-    flexDirection: 'column',
-    animation: 'slideUp 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)',
-  },
-  promptSelectorHandle: {
-    width: 40,
-    height: 4,
-    background: theme.colors.border,
-    borderRadius: 2,
-    margin: '12px auto 0',
-  },
-  promptSelectorHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 20px',
-    borderBottom: `1px solid ${theme.colors.border}`,
-  },
-  promptSelectorTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: theme.colors.text,
-    margin: 0,
-  },
-  promptSelectorCloseBtn: {
-    background: 'none',
-    border: 'none',
-    padding: 4,
-    cursor: 'pointer',
-    display: 'flex',
-  },
-  promptSelectorContent: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '16px 16px 32px',
-  },
-  promptCategoryBlock: {
-    marginBottom: 20,
-  },
-  promptCategoryTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-    marginBottom: 10,
-  },
-  promptOptionButton: {
-    width: '100%',
-    padding: '14px',
-    marginBottom: 8,
-    background: theme.colors.card,
-    border: `2px solid ${theme.colors.border}`,
-    borderRadius: 12,
-    color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: '500',
-    textAlign: 'left',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  promptAnswerOverlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0, 0, 0, 0.7)',
-    zIndex: Z_MODAL + 20,
-    animation: 'fadeIn 0.2s',
-  },
-  promptAnswerModal: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    maxHeight: '85vh',
-    background: theme.colors.bg,
-    borderRadius: '20px 20px 0 0',
-    zIndex: Z_MODAL + 21,
-    display: 'flex',
-    flexDirection: 'column',
-    animation: 'slideUp 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)',
-    boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.3)',
-  },
-  promptAnswerHandle: {
-    width: 40,
-    height: 4,
-    background: theme.colors.border,
-    borderRadius: 2,
-    margin: '12px auto 0',
-    flexShrink: 0,
-  },
-  promptAnswerHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '14px 20px',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    flexShrink: 0,
-  },
-  promptAnswerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: theme.colors.text,
-    margin: 0,
-  },
-  promptAnswerCloseBtn: {
-    background: 'none',
-    border: 'none',
-    padding: 4,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  promptAnswerContent: {
-    flex: 1,
-    padding: '20px 16px',
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  promptAnswerQuestion: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: theme.colors.text,
-    lineHeight: 1.3,
-    textAlign: 'center',
-    padding: '0 8px',
-  },
-  promptAnswerHintBox: {
-    display: 'flex',
-    gap: 12,
-    padding: '16px',
-    background: 'linear-gradient(135deg, rgba(255, 59, 92, 0.08) 0%, rgba(255, 107, 157, 0.08) 100%)',
-    border: `2px solid rgba(255, 59, 92, 0.25)`,
-    borderRadius: 14,
-    alignItems: 'flex-start',
-  },
-  promptAnswerHintIcon: {
-    fontSize: 24,
-    flexShrink: 0,
-    lineHeight: 1,
-  },
-  promptAnswerHintText: {
-    flex: 1,
-    fontSize: 14,
-    color: theme.colors.text,
-    lineHeight: 1.5,
-    fontWeight: '500',
-  },
-  promptAnswerTextarea: {
-    width: '100%',
-    minHeight: 140,
-    padding: '16px',
-    background: theme.colors.card,
-    border: `2px solid ${theme.colors.border}`,
-    borderRadius: 14,
-    color: theme.colors.text,
-    fontSize: 15,
-    lineHeight: 1.5,
-    fontFamily: 'inherit',
-    resize: 'none',
-    outline: 'none',
-    boxSizing: 'border-box',
-    transition: 'border-color 0.2s',
-  },
-  promptAnswerCounter: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    textAlign: 'right',
-    fontWeight: '500',
-  },
-  promptAnswerButtons: {
-    padding: '12px 16px',
-    paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-    background: theme.colors.bg,
-    borderTop: `1px solid ${theme.colors.border}`,
-    display: 'grid',
-    gridTemplateColumns: '1fr 2fr',
-    gap: 10,
-    flexShrink: 0,
-  },
-  promptCancelButton: {
-    padding: '14px',
-    borderRadius: 12,
-    border: `2px solid ${theme.colors.border}`,
-    background: theme.colors.card,
-    color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  promptSaveButton: {
-    padding: '14px',
-    borderRadius: 12,
-    border: 'none',
-    background: 'linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 100%)',
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-    cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(255, 59, 92, 0.4)',
     transition: 'all 0.2s',
   },
 };

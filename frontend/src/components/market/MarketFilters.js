@@ -1,26 +1,25 @@
-// ===== 📄 ФАЙЛ: src/components/Market/MarketFilters.js =====
-
+// ===== 📄 ФАЙЛ: frontend/src/components/market/MarketFilters.js =====
 import React, { useState } from 'react';
 import { useStore } from '../../store';
 import theme from '../../theme';
-import { Z_MARKET_FILTERS } from '../../constants/zIndex';
+import SwipeableModal from '../shared/SwipeableModal';
+import { hapticFeedback } from '../../utils/telegram';
+
 
 const MarketFilters = ({ onClose, onApply }) => {
   const { user, marketFilters, setMarketFilters, clearMarketFilters } = useStore();
 
-  // Локальное состояние (до применения)
   const [localFilters, setLocalFilters] = useState({ ...marketFilters });
+
 
   // ===== ОПЦИИ =====
   
-  // Локация
   const locationOptions = [
     { value: 'all', label: 'Все университеты' },
     { value: 'my_university', label: `Мой университет (${user?.university || 'ВШЭ'})` },
     { value: 'my_institute', label: `Мой институт (${user?.institute || 'ФКН'})` },
   ];
 
-  // БЫСТРЫЕ ФИЛЬТРЫ ЦЕНЫ
   const priceQuickFilters = [
     { label: 'До 500₽', min: null, max: 500 },
     { label: '500-2000₽', min: 500, max: 2000 },
@@ -29,7 +28,6 @@ const MarketFilters = ({ onClose, onApply }) => {
     { label: '10000+₽', min: 10000, max: null },
   ];
 
-  // Состояние товара
   const conditionOptions = [
     { value: 'new', label: 'Новое', icon: '✨' },
     { value: 'like_new', label: 'Как новое', icon: '⭐' },
@@ -37,17 +35,17 @@ const MarketFilters = ({ onClose, onApply }) => {
     { value: 'fair', label: 'Удовл.', icon: '👌' },
   ];
 
-  // Сортировка
   const sortOptions = [
     { value: 'newest', label: 'Новые', icon: '🆕' },
     { value: 'price_asc', label: 'Дешевле', icon: '📉' },
     { value: 'price_desc', label: 'Дороже', icon: '📈' },
   ];
 
+
   // ===== HANDLERS =====
 
   const handleLocationChange = (value) => {
-    haptic('light');
+    hapticFeedback('light');
     if (value === 'all') {
       setLocalFilters({
         ...localFilters,
@@ -73,7 +71,7 @@ const MarketFilters = ({ onClose, onApply }) => {
   };
 
   const handleQuickPrice = (min, max) => {
-    haptic('light');
+    hapticFeedback('light');
     setLocalFilters({
       ...localFilters,
       price_min: min,
@@ -90,7 +88,7 @@ const MarketFilters = ({ onClose, onApply }) => {
   };
 
   const handleConditionToggle = (value) => {
-    haptic('light');
+    hapticFeedback('light');
     const currentConditions = localFilters.condition ? localFilters.condition.split(',') : [];
     const newConditions = currentConditions.includes(value)
       ? currentConditions.filter(c => c !== value)
@@ -103,7 +101,7 @@ const MarketFilters = ({ onClose, onApply }) => {
   };
 
   const handleSortChange = (value) => {
-    haptic('light');
+    hapticFeedback('light');
     setLocalFilters({
       ...localFilters,
       sort: value,
@@ -111,14 +109,14 @@ const MarketFilters = ({ onClose, onApply }) => {
   };
 
   const handleApply = () => {
-    haptic('medium');
+    hapticFeedback('medium');
     setMarketFilters(localFilters);
     onApply();
     onClose();
   };
 
   const handleReset = () => {
-    haptic('light');
+    hapticFeedback('light');
     const defaultFilters = {
       category: 'all',
       price_min: null,
@@ -133,12 +131,6 @@ const MarketFilters = ({ onClose, onApply }) => {
     clearMarketFilters();
     onApply();
     onClose();
-  };
-
-  const haptic = (type) => {
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
-    }
   };
 
   const isConditionSelected = (value) => {
@@ -157,133 +149,128 @@ const MarketFilters = ({ onClose, onApply }) => {
     return count;
   };
 
+  const activeCount = activeFiltersCount();
+
+
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div style={styles.header}>
-          <div style={styles.headerTitle}>Фильтры</div>
-          {activeFiltersCount() > 0 && (
-            <div style={styles.badge}>{activeFiltersCount()}</div>
+    <SwipeableModal
+      isOpen={true}
+      onClose={onClose}
+      title={
+        <div style={styles.titleWrapper}>
+          <span>Фильтры</span>
+          {activeCount > 0 && (
+            <div style={styles.badge}>{activeCount}</div>
           )}
-          <button style={styles.closeButton} onClick={onClose}>
-            <span style={styles.closeIcon}>✕</span>
-          </button>
         </div>
+      }
+    >
+      <div style={styles.container}>
+        {/* ===== ЛОКАЦИЯ ===== */}
+        <Section title="📍 ЛОКАЦИЯ">
+          <div style={styles.radioGroup}>
+            {locationOptions.map((option) => (
+              <button
+                key={option.value}
+                style={{
+                  ...styles.radioButton,
+                  ...(localFilters.location === option.value ? styles.radioButtonActive : {}),
+                }}
+                onClick={() => handleLocationChange(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </Section>
 
-        {/* Content */}
-        <div style={styles.content}>
-          {/* ===== ЛОКАЦИЯ ===== */}
-          <div style={styles.section}>
-            <div style={styles.sectionTitle}>📍 Локация</div>
-            <div style={styles.radioGroup}>
-              {locationOptions.map((option) => (
-                <button
-                  key={option.value}
-                  style={{
-                    ...styles.radioButton,
-                    ...(localFilters.location === option.value ? styles.radioButtonActive : {}),
-                  }}
-                  onClick={() => handleLocationChange(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+        {/* ===== ЦЕНА ===== */}
+        <Section title="💰 ЦЕНА">
+          <div style={styles.chipGroup}>
+            {priceQuickFilters.map((filter, index) => (
+              <button
+                key={index}
+                style={{
+                  ...styles.chip,
+                  ...(localFilters.price_min === filter.min && localFilters.price_max === filter.max
+                    ? styles.chipActive
+                    : {}),
+                }}
+                onClick={() => handleQuickPrice(filter.min, filter.max)}
+              >
+                {filter.label}
+              </button>
+            ))}
           </div>
 
-          {/* ===== ЦЕНА ===== */}
-          <div style={styles.section}>
-            <div style={styles.sectionTitle}>💰 Цена</div>
-            
-            <div style={styles.chipGroup}>
-              {priceQuickFilters.map((filter, index) => (
-                <button
-                  key={index}
-                  style={{
-                    ...styles.chip,
-                    ...(localFilters.price_min === filter.min && localFilters.price_max === filter.max
-                      ? styles.chipActive
-                      : {}),
-                  }}
-                  onClick={() => handleQuickPrice(filter.min, filter.max)}
-                >
-                  {filter.label}
-                </button>
-              ))}
+          <div style={styles.priceInputs}>
+            <div style={styles.inputGroup}>
+              <label style={styles.inputLabel}>От</label>
+              <input
+                type="number"
+                placeholder="0"
+                value={localFilters.price_min || ''}
+                onChange={(e) => handlePriceInputChange('price_min', e.target.value)}
+                style={styles.input}
+              />
             </div>
 
-            <div style={styles.priceInputs}>
-              <div style={styles.inputGroup}>
-                <label style={styles.inputLabel}>От</label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={localFilters.price_min || ''}
-                  onChange={(e) => handlePriceInputChange('price_min', e.target.value)}
-                  style={styles.input}
-                />
-              </div>
+            <div style={styles.inputDivider}>—</div>
 
-              <div style={styles.inputDivider}>—</div>
-
-              <div style={styles.inputGroup}>
-                <label style={styles.inputLabel}>До</label>
-                <input
-                  type="number"
-                  placeholder="1 000 000"
-                  value={localFilters.price_max || ''}
-                  onChange={(e) => handlePriceInputChange('price_max', e.target.value)}
-                  style={styles.input}
-                />
-              </div>
+            <div style={styles.inputGroup}>
+              <label style={styles.inputLabel}>До</label>
+              <input
+                type="number"
+                placeholder="1 000 000"
+                value={localFilters.price_max || ''}
+                onChange={(e) => handlePriceInputChange('price_max', e.target.value)}
+                style={styles.input}
+              />
             </div>
           </div>
+        </Section>
 
-          {/* ===== СОСТОЯНИЕ (Грид 2x2) ===== */}
-          <div style={styles.section}>
-            <div style={styles.sectionTitle}>📦 Состояние</div>
-            <div style={styles.conditionGrid}>
-              {conditionOptions.map((option) => (
-                <button
-                  key={option.value}
-                  style={{
-                    ...styles.checkboxButton,
-                    ...(isConditionSelected(option.value) ? styles.checkboxButtonActive : {}),
-                  }}
-                  onClick={() => handleConditionToggle(option.value)}
-                >
-                  <span style={styles.checkboxIcon}>
-                    {isConditionSelected(option.value) ? '☑️' : '⬜'}
-                  </span>
-                  <span>{option.icon} {option.label}</span>
-                </button>
-              ))}
-            </div>
+        {/* ===== СОСТОЯНИЕ ===== */}
+        <Section title="📦 СОСТОЯНИЕ">
+          <div style={styles.conditionGrid}>
+            {conditionOptions.map((option) => (
+              <button
+                key={option.value}
+                style={{
+                  ...styles.checkboxButton,
+                  ...(isConditionSelected(option.value) ? styles.checkboxButtonActive : {}),
+                }}
+                onClick={() => handleConditionToggle(option.value)}
+              >
+                <span style={styles.checkboxIcon}>
+                  {isConditionSelected(option.value) ? '☑️' : '⬜'}
+                </span>
+                <span>{option.icon} {option.label}</span>
+              </button>
+            ))}
           </div>
+        </Section>
 
-          {/* ===== СОРТИРОВКА (Грид 1x3) ===== */}
-          <div style={styles.section}>
-            <div style={styles.sectionTitle}>🔄 Сортировка</div>
-            <div style={styles.sortingGrid}>
-              {sortOptions.map((option) => (
-                <button
-                  key={option.value}
-                  style={{
-                    ...styles.sortButton,
-                    ...(localFilters.sort === option.value ? styles.sortButtonActive : {}),
-                  }}
-                  onClick={() => handleSortChange(option.value)}
-                >
-                  <span style={styles.sortIcon}>{option.icon}</span>
-                  <span style={styles.sortLabel}>{option.label}</span>
-                </button>
-              ))}
-            </div>
+        {/* ===== СОРТИРОВКА ===== */}
+        <Section title="🔄 СОРТИРОВКА">
+          <div style={styles.sortingGrid}>
+            {sortOptions.map((option) => (
+              <button
+                key={option.value}
+                style={{
+                  ...styles.sortButton,
+                  ...(localFilters.sort === option.value ? styles.sortButtonActive : {}),
+                }}
+                onClick={() => handleSortChange(option.value)}
+              >
+                <span style={styles.sortIcon}>{option.icon}</span>
+                <span style={styles.sortLabel}>{option.label}</span>
+              </button>
+            ))}
           </div>
-        </div>
+        </Section>
 
-        {/* Footer */}
+        {/* ===== FOOTER BUTTONS ===== */}
         <div style={styles.footer}>
           <button style={styles.resetButton} onClick={handleReset}>
             Сбросить
@@ -293,84 +280,52 @@ const MarketFilters = ({ onClose, onApply }) => {
           </button>
         </div>
       </div>
-    </div>
+    </SwipeableModal>
   );
 };
 
-const styles = {
-  overlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0,0,0,0.75)',
-    zIndex: Z_MARKET_FILTERS,
-    display: 'flex',
-    alignItems: 'flex-end',
-    animation: 'fadeIn 0.3s ease',
-  },
 
-  modal: {
-    width: '100%',
-    maxHeight: '85vh',
-    background: theme.colors.bg,
-    borderTopLeftRadius: theme.radius.xl,
-    borderTopRightRadius: theme.radius.xl,
+// ===== ВСПОМОГАТЕЛЬНЫЙ КОМПОНЕНТ =====
+const Section = ({ title, children }) => (
+  <div style={styles.section}>
+    <div style={styles.sectionTitle}>{title}</div>
+    {children}
+  </div>
+);
+
+
+// ===== СТИЛИ =====
+const styles = {
+  container: {
     display: 'flex',
     flexDirection: 'column',
-    animation: 'slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    gap: theme.spacing.xl,
   },
 
-  header: {
-    position: 'relative',
+  // Title с badge
+  titleWrapper: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: theme.spacing.lg,
-    borderBottom: `1px solid ${theme.colors.border}`,
-  },
-
-  headerTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
+    gap: theme.spacing.sm,
+    position: 'relative',
   },
 
   badge: {
-    position: 'absolute',
-    left: theme.spacing.lg,
     background: theme.colors.market,
     color: theme.colors.text,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.bold,
     padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
     borderRadius: theme.radius.full,
-  },
-
-  closeButton: {
-    position: 'absolute',
-    right: theme.spacing.lg,
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    padding: theme.spacing.sm,
-  },
-
-  closeIcon: {
-    fontSize: theme.fontSize.xl,
-    color: theme.colors.textSecondary,
-  },
-
-  content: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: theme.spacing.lg,
+    minWidth: 20,
+    height: 20,
     display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
+  // Section
   section: {
     display: 'flex',
     flexDirection: 'column',
@@ -392,7 +347,9 @@ const styles = {
 
   radioButton: {
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.border}`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     padding: theme.spacing.md,
     color: theme.colors.text,
@@ -405,7 +362,7 @@ const styles = {
 
   radioButtonActive: {
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.market}`,
+    borderColor: theme.colors.market,
     color: theme.colors.market,
   },
 
@@ -418,7 +375,9 @@ const styles = {
 
   chip: {
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.border}`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.full,
     padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
     color: theme.colors.text,
@@ -430,11 +389,11 @@ const styles = {
 
   chipActive: {
     background: theme.colors.market,
-    border: `1px solid ${theme.colors.market}`,
+    borderColor: theme.colors.market,
     color: theme.colors.text,
   },
 
-  // === ЦЕНА (Inputs - КОМПАКТНЫЕ) ===
+  // === ЦЕНА (Inputs) ===
   priceInputs: {
     display: 'flex',
     alignItems: 'flex-end',
@@ -460,7 +419,9 @@ const styles = {
     width: '100%',
     boxSizing: 'border-box',
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.border}`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     padding: '6px 10px',
     height: 34,
@@ -485,7 +446,9 @@ const styles = {
 
   checkboxButton: {
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.border}`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     padding: '10px',
     color: theme.colors.text,
@@ -501,7 +464,7 @@ const styles = {
 
   checkboxButtonActive: {
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.market}`,
+    borderColor: theme.colors.market,
   },
 
   checkboxIcon: {
@@ -517,7 +480,9 @@ const styles = {
 
   sortButton: {
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.border}`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     padding: '10px 4px',
     color: theme.colors.text,
@@ -533,7 +498,7 @@ const styles = {
 
   sortButtonActive: {
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.market}`,
+    borderColor: theme.colors.market,
     color: theme.colors.market,
   },
 
@@ -547,18 +512,21 @@ const styles = {
     textAlign: 'center',
   },
 
-  // Footer
+  // === FOOTER ===
   footer: {
     display: 'flex',
     gap: theme.spacing.md,
-    padding: theme.spacing.lg,
+    marginTop: theme.spacing.md,
+    paddingTop: theme.spacing.lg,
     borderTop: `1px solid ${theme.colors.border}`,
   },
 
   resetButton: {
     flex: 1,
     background: theme.colors.card,
-    border: `1px solid ${theme.colors.border}`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     padding: theme.spacing.lg,
     color: theme.colors.text,
@@ -571,7 +539,8 @@ const styles = {
   applyButton: {
     flex: 2,
     background: theme.colors.market,
-    border: 'none',
+    borderWidth: 0,
+    borderStyle: 'none',
     borderRadius: theme.radius.md,
     padding: theme.spacing.lg,
     color: theme.colors.text,
@@ -582,23 +551,10 @@ const styles = {
   },
 };
 
-// CSS Animations & Global Styles
+
+// CSS для убирания стрелок у input[type=number]
 const styleSheet = document.createElement('style');
 styleSheet.textContent = `
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  @keyframes slideUp {
-    from {
-      transform: translateY(100%);
-    }
-    to {
-      transform: translateY(0);
-    }
-  }
-
   input[type=number]::-webkit-inner-spin-button, 
   input[type=number]::-webkit-outer-spin-button { 
     -webkit-appearance: none; 
@@ -608,6 +564,10 @@ styleSheet.textContent = `
     -moz-appearance: textfield;
   }
 `;
-document.head.appendChild(styleSheet);
+if (!document.getElementById('market-filters-styles')) {
+  styleSheet.id = 'market-filters-styles';
+  document.head.appendChild(styleSheet);
+}
+
 
 export default MarketFilters;

@@ -1,11 +1,12 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/DropdownMenu.js =====
-
 import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import theme from '../theme';
 import { hapticFeedback } from '../utils/telegram';
 
+
 const SAFE_MARGIN = 8;
+
 
 export const ACTION_COLORS = {
   edit: '#10b981',
@@ -15,6 +16,7 @@ export const ACTION_COLORS = {
   share: '#3b82f6',
   default: theme.colors.text,
 };
+
 
 function DropdownMenu({ 
   isOpen, 
@@ -31,10 +33,9 @@ function DropdownMenu({
     transformOrigin: 'top right' 
   });
   
-  // Состояние активного элемента при свайпе/драге
   const [activeIndex, setActiveIndex] = useState(null);
-  // Флаг для мыши (чтобы отличать просто движение от зажатого драга)
   const isMouseDownRef = useRef(false);
+
 
   // ===== ПОЗИЦИОНИРОВАНИЕ =====
   const calculatePosition = useCallback(() => {
@@ -84,11 +85,9 @@ function DropdownMenu({
     };
   }, [anchorRef]);
 
+
   // ===== ОБЩАЯ ЛОГИКА ПОИСКА ЭЛЕМЕНТА =====
   const updateSelection = (clientX, clientY) => {
-    // Ищем элемент под курсором/пальцем
-    // Используем visibility: hidden для самого меню на мгновение, если нужно пробить слои, 
-    // но здесь мы ищем элементы ВНУТРИ меню, так что ок.
     const target = document.elementFromPoint(clientX, clientY);
     
     if (target) {
@@ -98,22 +97,21 @@ function DropdownMenu({
         if (!isNaN(idx) && idx !== activeIndex) {
           const item = items[idx];
           if (item && !item.divider && !item.disabled) {
-            // Вибрация только при смене элемента
             if (hapticFeedback) hapticFeedback('selection');
             setActiveIndex(idx);
             return;
           }
         }
-        if (!isNaN(idx) && idx === activeIndex) return; // Тот же элемент
+        if (!isNaN(idx) && idx === activeIndex) return;
       }
     }
-    // Если ушли с элементов
     setActiveIndex(null);
   };
 
+
   const commitSelection = () => {
     if (activeIndex !== null && items[activeIndex]) {
-      hapticFeedback('light'); // Подтверждение выбора
+      hapticFeedback('light');
       items[activeIndex].onClick();
       setActiveIndex(null);
       onClose();
@@ -121,27 +119,31 @@ function DropdownMenu({
     isMouseDownRef.current = false;
   };
 
+
   // ===== TOUCH EVENTS (MOBILE) =====
   const handleTouchMove = (e) => {
     const touch = e.touches[0];
     updateSelection(touch.clientX, touch.clientY);
   };
 
+
   const handleTouchEnd = (e) => {
     commitSelection();
   };
+
 
   // ===== MOUSE EVENTS (PC DRAG) =====
   const handleMouseDown = () => {
     isMouseDownRef.current = true;
   };
 
+
   const handleMouseMove = (e) => {
-    // Работаем только если зажата левая кнопка (buttons === 1) или наш флаг
     if (e.buttons === 1 || isMouseDownRef.current) {
       updateSelection(e.clientX, e.clientY);
     }
   };
+
 
   const handleMouseUp = () => {
     if (isMouseDownRef.current || activeIndex !== null) {
@@ -149,6 +151,7 @@ function DropdownMenu({
     }
     isMouseDownRef.current = false;
   };
+
 
   // ===== LIFECYCLE =====
   useLayoutEffect(() => {
@@ -164,6 +167,7 @@ function DropdownMenu({
       isMouseDownRef.current = false;
     }
   }, [isOpen, anchorRef, calculatePosition]);
+
 
   useEffect(() => {
     if (!isOpen) return;
@@ -182,6 +186,7 @@ function DropdownMenu({
     };
   }, [isOpen, onClose, closeOnScroll, calculatePosition]);
 
+
   useEffect(() => {
     if (!isOpen) return;
     const handleEscape = (e) => {
@@ -191,21 +196,25 @@ function DropdownMenu({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen, onClose]);
 
+
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      // Добавляем глобальный слушатель mouseup, чтобы ловить отпускание вне меню
+      // ❌ НЕ блокируем скролл (конфликт с SwipeableModal)
+      // document.body.style.overflow = 'hidden';
       window.addEventListener('mouseup', handleMouseUp);
       return () => {
-        document.body.style.overflow = '';
+        // document.body.style.overflow = '';
         window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isOpen]); // Зависимость от isOpen важна для activeIndex
+  }, [isOpen]);
+
 
   if (!isOpen) return null;
 
+
   const pos = state.position || { top: 0, left: 'auto', right: 'auto' };
+
 
   const dropdownContent = (
     <>
@@ -216,11 +225,13 @@ function DropdownMenu({
           pointerEvents: state.mounted ? 'auto' : 'none',
         }}
         onClick={(e) => {
-          e.stopPropagation();
+          e.stopPropagation(); // ✅ Останавливаем всплытие
           onClose();
         }}
-        // Ловим начало драга даже на фоне (если юзер промахнулся и повел)
-        onMouseDown={() => { isMouseDownRef.current = true; }}
+        onMouseDown={(e) => { 
+          e.stopPropagation(); // ✅ Останавливаем всплытие
+          isMouseDownRef.current = true; 
+        }}
         role="presentation"
       />
       
@@ -228,13 +239,10 @@ function DropdownMenu({
         ref={menuRef}
         role="menu"
         aria-label="Dropdown menu"
-        // Touch handlers
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        // Mouse handlers
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
-        // onMouseUp ловится глобально, но можно и тут продублировать
         style={{
           ...styles.dropdown,
           visibility: state.position ? 'visible' : 'hidden', 
@@ -249,7 +257,7 @@ function DropdownMenu({
             ? 'scale(1) translateY(0)' 
             : 'scale(0.92) translateY(-10px)',
         }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()} // ✅ Останавливаем всплытие
       >
         {header && (
           <div style={{ marginBottom: 4 }}>
@@ -283,8 +291,10 @@ function DropdownMenu({
     </>
   );
 
+
   return createPortal(dropdownContent, document.body);
 }
+
 
 function MenuItem({ 
   icon, 
@@ -323,7 +333,6 @@ function MenuItem({
           : theme.colors.text,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
-        // Фон меняется и от ховера (мышь), и от активного состояния (драг/тач)
         background: isHighlighted 
           ? `linear-gradient(90deg, ${accentColor}18 0%, transparent 100%)`
           : 'transparent',
@@ -333,10 +342,8 @@ function MenuItem({
         transform: isHighlighted ? 'scale(0.98)' : 'scale(1)',
       }}
       onClick={handleClick}
-      // Обычные события мыши для клика без драга
       onMouseEnter={() => !disabled && setIsPressed(true)}
       onMouseLeave={() => setIsPressed(false)}
-      // Touch events для локального нажатия
       onTouchStart={() => !disabled && setIsPressed(true)}
       onTouchEnd={() => setIsPressed(false)}
     >
@@ -355,6 +362,7 @@ function MenuItem({
   );
 }
 
+
 const styles = {
   backdrop: {
     position: 'fixed',
@@ -362,7 +370,7 @@ const styles = {
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     backdropFilter: 'blur(2px)',
     WebkitBackdropFilter: 'blur(2px)',
-    zIndex: 9998,
+    zIndex: 10000, // ✅ УВЕЛИЧЕНО: было 9998, теперь выше SwipeableModal (9999)
     transition: 'opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
   },
   
@@ -376,7 +384,7 @@ const styles = {
       0 20px 60px rgba(0, 0, 0, 0.4),
       0 0 1px rgba(255, 255, 255, 0.1) inset
     `,
-    zIndex: 9999,
+    zIndex: 10001, // ✅ УВЕЛИЧЕНО: было 9999, теперь выше backdrop (10000)
     minWidth: 220,
     maxWidth: 300,
     willChange: 'transform, opacity',
@@ -437,6 +445,7 @@ const styles = {
   },
 };
 
+
 const styleSheet = document.createElement('style');
 styleSheet.textContent = `
   @keyframes ripple {
@@ -447,5 +456,6 @@ styleSheet.textContent = `
   }
 `;
 document.head.appendChild(styleSheet);
+
 
 export default DropdownMenu;

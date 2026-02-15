@@ -1,12 +1,11 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/shared/ReportModal.js =====
-
 import React, { useState, useEffect } from 'react';
-import { X, Send, Check } from 'lucide-react';
+import { Send, Check } from 'lucide-react';
 import { createReport } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from './Toast';
 import theme from '../../theme';
-import { Z_CONFIRMATION_DIALOG, getOverlayZIndex } from '../../constants/zIndex';
+import SwipeableModal from './SwipeableModal';
 
 const REPORT_REASONS = [
   { value: 'spam', label: 'Спам', icon: '📨' },
@@ -31,29 +30,18 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
   const [selectedReason, setSelectedReason] = useState(null);
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
 
+  // Сброс формы при открытии
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      requestAnimationFrame(() => setIsVisible(true));
-    } else {
-      setIsVisible(false);
       setSelectedReason(null);
       setDescription('');
     }
-    return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const handleClose = () => {
     hapticFeedback('light');
-    setIsVisible(false);
-    setTimeout(() => {
-      document.body.style.overflow = '';
-      onClose();
-    }, 250);
+    onClose(); // Анимацию закрытия теперь делает SwipeableModal
   };
 
   const handleSubmit = async () => {
@@ -65,8 +53,7 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
       await createReport(targetType, targetId, selectedReason, description.trim() || null);
       toast.success('Жалоба отправлена');
       hapticFeedback('success');
-      setIsVisible(false);
-      setTimeout(() => { document.body.style.overflow = ''; onClose(); }, 250);
+      onClose(); // Закрываемся
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Не удалось отправить жалобу');
       hapticFeedback('error');
@@ -75,19 +62,16 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
     }
   };
 
+  // Guard clause внутри компонента больше не нужен,
+  // так как SwipeableModal сам решает, когда рендерить DOM (через Animate Presence логику)
+  
   return (
-    <>
-      <div
-        style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}
-        onClick={handleClose}
-      />
-
-      <div style={{
-        ...styles.sheet,
-        transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
-      }}>
-        <div style={styles.handle} />
-
+    <SwipeableModal 
+      isOpen={isOpen} 
+      onClose={handleClose}
+      // title не передаем, так как у нас кастомный хедер с иконкой
+    >
+        {/* === HEADER === */}
         <div style={styles.header}>
           <div style={styles.headerLeft}>
             <div style={styles.headerIcon}>⚠️</div>
@@ -96,11 +80,9 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
               <span style={styles.subtitle}>на {TARGET_LABELS[targetType] || 'контент'}</span>
             </div>
           </div>
-          <button style={styles.closeBtn} onClick={handleClose}>
-            <X size={20} />
-          </button>
         </div>
 
+        {/* === GRID ПРИЧИН === */}
         <div style={styles.reasonsGrid}>
           {REPORT_REASONS.map((reason) => {
             const isSelected = selectedReason === reason.value;
@@ -111,6 +93,7 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
                   ...styles.reasonChip,
                   borderColor: isSelected ? theme.colors.warning : theme.colors.border,
                   background: isSelected ? `${theme.colors.warning}18` : theme.colors.bgSecondary,
+                  // Scale анимация теперь на CSS transition, а не inline styles
                   transform: isSelected ? 'scale(0.98)' : 'scale(1)',
                 }}
                 onClick={() => { hapticFeedback('light'); setSelectedReason(reason.value); }}
@@ -137,6 +120,7 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
           })}
         </div>
 
+        {/* === TEXTAREA === */}
         <div style={styles.descBlock}>
           <textarea
             style={styles.textarea}
@@ -144,12 +128,16 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
             onChange={(e) => setDescription(e.target.value.slice(0, 500))}
             placeholder="Опишите подробнее (необязательно)..."
             rows={3}
+            // ВАЖНО: Останавливаем всплытие событий, чтобы скролл текста не закрывал модалку
+            onTouchStart={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           />
           {description.length > 0 && (
             <span style={styles.charCount}>{description.length}/500</span>
           )}
         </div>
 
+        {/* === SUBMIT BUTTON === */}
         <button
           style={{
             ...styles.submitBtn,
@@ -162,43 +150,12 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
           <Send size={16} />
           <span>{isSubmitting ? 'Отправка...' : 'Отправить жалобу'}</span>
         </button>
-      </div>
-    </>
+    </SwipeableModal>
   );
 }
 
+// Стили значительно упростились - убрали всё, что касается оверлея и шторки
 const styles = {
-  overlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0, 0, 0, 0.85)',
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
-    zIndex: getOverlayZIndex(Z_CONFIRMATION_DIALOG),
-    transition: 'opacity 0.25s ease',
-  },
-  sheet: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    background: theme.colors.bg,
-    borderRadius: `${theme.radius.xl}px ${theme.radius.xl}px 0 0`,
-    padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
-    paddingBottom: `calc(${theme.spacing.xl}px + env(safe-area-inset-bottom))`,
-    zIndex: Z_CONFIRMATION_DIALOG,
-    maxHeight: '80vh',
-    overflowY: 'auto',
-    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-    boxShadow: '0 -8px 40px rgba(0, 0, 0, 0.4)',
-  },
-  handle: {
-    width: 36, 
-    height: 4, 
-    borderRadius: 2,
-    background: theme.colors.border, 
-    margin: '0 auto 16px',
-  },
   header: {
     display: 'flex', 
     alignItems: 'center',
@@ -231,19 +188,6 @@ const styles = {
   subtitle: { 
     fontSize: theme.fontSize.xs, 
     color: theme.colors.textTertiary 
-  },
-  closeBtn: {
-    width: 36, 
-    height: 36, 
-    borderRadius: theme.radius.full,
-    background: theme.colors.bgSecondary, 
-    border: 'none',
-    color: theme.colors.textSecondary,
-    display: 'flex', 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    cursor: 'pointer', 
-    flexShrink: 0,
   },
   reasonsGrid: {
     display: 'grid',
