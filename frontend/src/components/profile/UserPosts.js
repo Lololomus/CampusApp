@@ -1,56 +1,111 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import EditPost from '../shared/EditContentModal';
-import { getUserPosts, deletePost } from '../../api';
+import { getUserPosts } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import PostCard from '../posts/PostCard';
 import { Z_USER_POSTS } from '../../constants/zIndex';
 import PostCardSkeleton from '../posts/PostCardSkeleton';
+import theme from '../../theme';
 
 function UserPosts() {
-  const { user, setViewPostId, setShowUserPosts, viewPostId, showUserPosts } = useStore();
+  const { user, setViewPostId, setShowUserPosts, updatedPostId, updatedPostData, clearUpdatedPost } = useStore();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
-  const [editingPost, setEditingPost] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const loadLockRef = useRef(false);
   const LIMIT = 10;
 
   useEffect(() => {
     loadPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!viewPostId && showUserPosts) {
-      setPosts([]);
-      setOffset(0);
-      setHasMore(true);
-      loadPosts();
-    }
-  }, [viewPostId]);
+    if (!updatedPostId) return;
 
-  const loadPosts = async () => {
-    if (loading || !hasMore) return;
-    
+    let hasUpdated = false;
+    setPosts((prev) => prev.map((post) => {
+      if (String(post.id) !== String(updatedPostId)) return post;
+      hasUpdated = true;
+      return { ...post, ...updatedPostData };
+    }));
+
+    if (hasUpdated) {
+      clearUpdatedPost();
+    }
+  }, [updatedPostId, updatedPostData, clearUpdatedPost]);
+
+  const loadPosts = async (reset = false) => {
+    if (loadLockRef.current || (!hasMore && !reset)) return;
+
+    loadLockRef.current = true;
     setLoading(true);
     try {
-      const newPosts = await getUserPosts(user.id, LIMIT, offset);
-      
+      const nextOffset = reset ? 0 : offset;
+      const newPosts = await getUserPosts(user.id, LIMIT, nextOffset);
+
       if (newPosts.length < LIMIT) {
         setHasMore(false);
       }
-      
-      setPosts([...posts, ...newPosts]);
-      setOffset(offset + LIMIT);
+
+      if (reset) {
+        const byId = new Map();
+        newPosts.forEach((post) => byId.set(post.id, post));
+        setPosts(Array.from(byId.values()));
+        setOffset(LIMIT);
+      } else {
+        setPosts((prev) => {
+          const merged = [...prev, ...newPosts];
+          const byId = new Map();
+          merged.forEach((post) => byId.set(post.id, post));
+          return Array.from(byId.values());
+        });
+        setOffset((prev) => prev + newPosts.length);
+      }
     } catch (error) {
       console.error('Ошибка загрузки постов:', error);
       toast.error('Не удалось загрузить посты');
     } finally {
       setLoading(false);
+      loadLockRef.current = false;
     }
   };
+
+  const getPostDate = (post) => {
+    const rawDate = post.event_date || post.expires_at || post.deadline_at || post.date;
+    if (!rawDate) return null;
+    const parsed = new Date(rawDate);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const isArchived = (post) => {
+    const postDate = getPostDate(post);
+    if (!postDate) return false;
+    return postDate < new Date();
+  };
+
+  const filteredPosts = useMemo(() => {
+    return posts.filter((post) => {
+      if (filter === 'all') return true;
+      if (filter === 'active') return !isArchived(post);
+      if (filter === 'archive') return isArchived(post);
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts, filter]);
+
+  const counts = useMemo(() => {
+    return {
+      all: posts.length,
+      active: posts.filter((post) => !isArchived(post)).length,
+      archive: posts.filter((post) => isArchived(post)).length,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts]);
 
   const handleBack = () => {
     hapticFeedback('light');
@@ -63,16 +118,14 @@ function UserPosts() {
   };
 
   const handlePostDeleted = (postId) => {
-    setPosts(posts.filter(p => p.id !== postId));
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
     hapticFeedback('success');
   };
 
   const handleLikeUpdate = (postId, updates) => {
-    setPosts(posts.map(p => 
-      p.id === postId 
-        ? { ...p, ...updates } 
-        : p
-    ));
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, ...updates } : p))
+    );
   };
 
   const handleScroll = (e) => {
@@ -84,34 +137,65 @@ function UserPosts() {
 
   return (
     <div style={styles.container} onScroll={handleScroll}>
-      {/* Header */}
       <div style={styles.header}>
         <button onClick={handleBack} style={styles.backButton}>
           <ArrowLeft size={24} />
         </button>
-        <span style={styles.headerTitle}>Мои посты ({posts.length})</span>
+        <span style={styles.headerTitle}>Мои посты ({counts.all})</span>
+        <div style={{ width: 44 }} />
       </div>
 
-      {/* Posts List */}
+      <div style={styles.filterTabs}>
+        <button
+          onClick={() => {
+            hapticFeedback('selection');
+            setFilter('all');
+          }}
+          style={{ ...styles.filterTab, ...(filter === 'all' && styles.filterTabActive) }}
+        >
+          Все {counts.all > 0 && `(${counts.all})`}
+        </button>
+        <button
+          onClick={() => {
+            hapticFeedback('selection');
+            setFilter('active');
+          }}
+          style={{ ...styles.filterTab, ...(filter === 'active' && styles.filterTabActive) }}
+        >
+          Актуальные {counts.active > 0 && `(${counts.active})`}
+        </button>
+        <button
+          onClick={() => {
+            hapticFeedback('selection');
+            setFilter('archive');
+          }}
+          style={{ ...styles.filterTab, ...(filter === 'archive' && styles.filterTabActive) }}
+        >
+          Архив {counts.archive > 0 && `(${counts.archive})`}
+        </button>
+      </div>
+
       <div style={styles.content}>
-        {posts.length === 0 && !loading ? (
+        {filteredPosts.length === 0 && !loading ? (
           <div style={styles.empty}>
             <div style={styles.emptyEmoji}>📝</div>
-            <p style={styles.emptyText}>У вас пока нет постов</p>
+            <p style={styles.emptyText}>Посты не найдены</p>
             <p style={styles.emptySubtext}>
-              Нажмите кнопку "+" внизу экрана, чтобы создать первый пост
+              {filter === 'all' && 'Создайте первый пост через кнопку +'}
+              {filter === 'active' && 'Нет постов с актуальной датой'}
+              {filter === 'archive' && 'Нет просроченных постов'}
             </p>
           </div>
         ) : (
-          posts.map((post, idx) => (
-            <div 
-              key={post.id} 
+          filteredPosts.map((post, idx) => (
+            <div
+              key={post.id}
               style={{
-                animation: `fadeInUp 0.4s ease ${idx * 0.05}s both`
+                animation: `fadeInUp 0.4s ease ${idx * 0.05}s both`,
               }}
             >
-              <PostCard 
-                post={post} 
+              <PostCard
+                post={post}
                 onClick={handlePostClick}
                 onPostDeleted={handlePostDeleted}
                 onLikeUpdate={handleLikeUpdate}
@@ -135,17 +219,6 @@ function UserPosts() {
           </div>
         )}
       </div>
-
-      {editingPost && (
-        <EditPost
-          post={editingPost}
-          onClose={() => setEditingPost(null)}
-          onUpdate={(updatedPost) => {
-            setPosts(posts.map(p => p.id === updatedPost.id ? updatedPost : p));
-            setEditingPost(null);
-          }}
-        />
-      )}
 
       <style>{`
         @keyframes fadeInUp {
@@ -171,7 +244,7 @@ const styles = {
     right: 0,
     bottom: 0,
     zIndex: Z_USER_POSTS,
-    backgroundColor: '#121212',
+    backgroundColor: theme.colors.bg,
     overflowY: 'auto',
     paddingBottom: '20px',
   },
@@ -180,17 +253,18 @@ const styles = {
     top: 0,
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: '12px',
     padding: '12px 16px',
     backgroundColor: '#1a1a1a',
-    borderBottom: '1px solid #333',
+    borderBottom: `1px solid ${theme.colors.border}`,
     zIndex: 10,
     backdropFilter: 'blur(10px)',
   },
   backButton: {
     background: 'none',
     border: 'none',
-    color: '#fff',
+    color: theme.colors.text,
     cursor: 'pointer',
     padding: '8px',
     display: 'flex',
@@ -203,6 +277,34 @@ const styles = {
   headerTitle: {
     fontSize: '18px',
     fontWeight: '600',
+    color: theme.colors.text,
+    flex: 1,
+    textAlign: 'center',
+  },
+  filterTabs: {
+    display: 'flex',
+    gap: 8,
+    padding: '12px 16px',
+    borderBottom: `1px solid ${theme.colors.border}`,
+    backgroundColor: theme.colors.bg,
+    position: 'sticky',
+    top: 57,
+    zIndex: 9,
+  },
+  filterTab: {
+    flex: 1,
+    padding: '8px 12px',
+    border: 'none',
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    color: theme.colors.textSecondary,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  filterTabActive: {
+    backgroundColor: theme.colors.primary,
     color: '#fff',
   },
   content: {
@@ -219,18 +321,18 @@ const styles = {
   },
   emptyText: {
     fontSize: '18px',
-    color: '#fff',
+    color: theme.colors.text,
     fontWeight: '600',
     marginBottom: '8px',
   },
   emptySubtext: {
     fontSize: '14px',
-    color: '#999',
+    color: theme.colors.textSecondary,
     lineHeight: '1.5',
   },
   endMessage: {
     textAlign: 'center',
-    color: '#666',
+    color: theme.colors.textTertiary,
     padding: '32px 20px',
     fontSize: '14px',
     display: 'flex',

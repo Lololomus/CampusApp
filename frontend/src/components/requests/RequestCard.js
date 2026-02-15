@@ -12,6 +12,7 @@ import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
+import { toast } from '../shared/Toast';
 
 const API_URL = 'http://localhost:8000';
 
@@ -220,11 +221,18 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
       label: 'Скопировать ссылку',
       icon: '🔗',
       actionType: MENU_ACTIONS.COPY,
-      onClick: () => {
-        hapticFeedback('success');
+      onClick: async () => {
         setMenuOpen(false);
         const link = `campusapp://request/${request.id}`;
-        navigator.clipboard.writeText(link);
+        try {
+          await navigator.clipboard.writeText(link);
+          toast.success('Ссылка скопирована');
+          hapticFeedback('success');
+        } catch (error) {
+          console.error('Copy request link error:', error);
+          toast.error('Не удалось скопировать ссылку');
+          hapticFeedback('error');
+        }
       }
     },
     

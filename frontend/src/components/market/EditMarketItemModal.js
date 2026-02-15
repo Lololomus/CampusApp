@@ -296,22 +296,22 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
 
     return (
     <>
-        {/* BACKDROP */}
-        <div 
-        style={{
-            ...styles.backdrop,
+        <div
+          style={{
+            ...styles.overlay,
             opacity: isVisible ? 1 : 0,
-            pointerEvents: isVisible ? 'auto' : 'none',
-        }}
-        onClick={handleClose}
-        />
-
-        {/* MODAL */}
-        <div style={{
-        ...styles.modal,
-        transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
-        opacity: isVisible ? 1 : 0,
-        }}>
+            pointerEvents: showConfirmation ? 'none' : 'auto',
+          }}
+          onClick={handleClose}
+        >
+        <div
+          style={{
+            ...styles.modal,
+            transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
+            opacity: isVisible ? 1 : 0,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
         
         {/* TOP PROGRESS BAR */}
         {isSubmitting && (
@@ -675,6 +675,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
           </button>
         </div>
       </div>
+      </div>
 
         {/* CONFIRMATION DIALOG */}
         <ConfirmationDialog
@@ -706,19 +707,18 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
 // ===== STYLES =====
 // ===== STYLES =====
 const styles = {
-    backdrop: {
+  overlay: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0, 0, 0, 0.8)',
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.75)',
+    backdropFilter: 'blur(4px)',
     zIndex: Z_MODAL_MARKET_DETAIL + 9,
-    transition: 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    },
-    modal: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    transition: 'opacity 0.3s ease',
+  },
+  modal: {
     position: 'fixed',
     top: 0,
     left: 0,
@@ -728,9 +728,9 @@ const styles = {
     zIndex: Z_MODAL_MARKET_DETAIL + 10,
     display: 'flex',
     flexDirection: 'column',
-    transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     overflowY: 'auto',
-    },
+  },
   topProgressBar: {
     position: 'absolute',
     top: 0,

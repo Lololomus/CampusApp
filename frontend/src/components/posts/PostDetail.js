@@ -9,7 +9,7 @@ import { useStore } from '../../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/telegram';
 import BottomActionBar from '../BottomActionBar';
 import DropdownMenu from '../DropdownMenu';
-import { Z_MODAL_FORMS } from '../../constants/zIndex';
+import { Z_MODAL_POST_DETAIL } from '../../constants/zIndex';
 import theme from '../../theme';
 import PollView from './PollView';
 import PhotoViewer from '../shared/PhotoViewer';
@@ -851,7 +851,7 @@ const styles = {
   container: {
     position: 'fixed',
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: Z_MODAL_FORMS,
+    zIndex: Z_MODAL_POST_DETAIL,
     backgroundColor: theme.colors.bg,
     display: 'flex',
     flexDirection: 'column',

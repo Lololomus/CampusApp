@@ -12,6 +12,8 @@ import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
+import { toast } from '../shared/Toast';
 
 const API_URL = 'http://localhost:8000';
 
@@ -23,6 +25,8 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const avatarRef = useRef(null);
 
   // ✅ Local state для likes_count
@@ -199,24 +203,43 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     setEditingContent(post, 'post');
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     setMenuOpen(false);
-    if (window.confirm('Удалить этот пост?')) {
-      hapticFeedback('heavy');
-      try {
-        await deletePost(post.id);
-        if (onPostDeleted) onPostDeleted(post.id);
-      } catch (error) {
-        alert('Ошибка удаления');
-      }
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    if (deleting) return;
+
+    setDeleting(true);
+    hapticFeedback('heavy');
+    try {
+      await deletePost(post.id);
+      if (onPostDeleted) onPostDeleted(post.id);
+      toast.success('Пост удален');
+      hapticFeedback('success');
+      setShowDeleteDialog(false);
+    } catch (error) {
+      console.error('Delete post error:', error);
+      toast.error('Ошибка удаления поста');
+      hapticFeedback('error');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     setMenuOpen(false);
-    hapticFeedback('success');
     const link = `campusapp://post/${post.id}`;
-    navigator.clipboard.writeText(link);
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success('Ссылка скопирована');
+      hapticFeedback('success');
+    } catch (error) {
+      console.error('Copy link error:', error);
+      toast.error('Не удалось скопировать ссылку');
+      hapticFeedback('error');
+    }
   };
 
   const handleImageClick = (e) => {
@@ -504,6 +527,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         onClose={() => setShowReportModal(false)}
         targetType="post"
         targetId={post.id}
+      />
+      <ConfirmationDialog
+        isOpen={showDeleteDialog}
+        title="Удалить пост?"
+        message="Это действие нельзя отменить."
+        confirmText={deleting ? 'Удаление...' : 'Удалить'}
+        confirmType="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => {
+          if (!deleting) setShowDeleteDialog(false);
+        }}
       />
 
       {moderationModals}

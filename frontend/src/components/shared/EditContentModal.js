@@ -10,7 +10,7 @@ import { toast } from './Toast';
 import { updatePost, updateRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import { Z_CREATE_POST, Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
+import { Z_EDIT_POST, Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
 import imageCompression from 'browser-image-compression';
 import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from '../../types';
 
@@ -896,7 +896,7 @@ const styles = {
   overlay: {
     position: 'fixed', inset: 0,
     background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)',
-    zIndex: Z_CREATE_POST, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    zIndex: Z_EDIT_POST, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     transition: 'opacity 0.3s ease',
   },
   modal: {

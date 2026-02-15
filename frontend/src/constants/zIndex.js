@@ -39,8 +39,8 @@ export const Z_OVERLAY = 1500;
 // ========== MODALS - Main App (2000-2499) ==========
 export const Z_MODAL_BASE = 2000;
 export const Z_MODAL_CREATE_POST = 2100;
-export const Z_MODAL_EDIT_POST = 2200;
-export const Z_MODAL_POST_DETAIL = 2300;
+export const Z_MODAL_EDIT_POST = 2620;
+export const Z_MODAL_POST_DETAIL = 2590;
 export const Z_MODAL_CREATE_REQUEST = 2400;
 export const Z_MODAL_REQUEST_DETAIL = 2450;
 

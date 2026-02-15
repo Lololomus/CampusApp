@@ -1,13 +1,11 @@
 // ===== 📄 ФАЙЛ: src/components/profile/MyMarketCard.js =====
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Edit2, Trash2, Eye, Heart } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
-import ConfirmationDialog from '../shared/ConfirmationDialog';
 import theme from '../../theme';
 
-function MyMarketCard({ item, onEdit, onDelete }) {
-  const [showConfirm, setShowConfirm] = useState(false);
+function MyMarketCard({ item, onEdit, onDelete, onOpen }) {
 
   const parseImages = (imagesData) => {
     if (!imagesData) return [];
@@ -74,17 +72,15 @@ function MyMarketCard({ item, onEdit, onDelete }) {
   const handleDeleteClick = (e) => {
     e.stopPropagation();
     hapticFeedback('medium');
-    setShowConfirm(true);
+    onDelete(item.id);
   };
 
-  const handleConfirmDelete = () => {
-    onDelete(item.id);
-    setShowConfirm(false);
+  const handleOpen = () => {
+    if (onOpen) onOpen(item);
   };
 
   return (
-    <>
-      <div style={styles.card}>
+      <div style={styles.card} onClick={handleOpen}>
         {/* ЛЕВАЯ ЧАСТЬ: Фото */}
         <div style={styles.imageContainer}>
           {primaryImage ? (
@@ -133,18 +129,6 @@ function MyMarketCard({ item, onEdit, onDelete }) {
           </div>
         </div>
       </div>
-
-      <ConfirmationDialog
-        isOpen={showConfirm}
-        title="Удалить товар?"
-        message={`Вы уверены, что хотите удалить "${item.title}"?`}
-        confirmText="Удалить"
-        cancelText="Отмена"
-        confirmType="danger"
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setShowConfirm(false)}
-      />
-    </>
   );
 }
 
@@ -157,6 +141,7 @@ const styles = {
     gap: 12,
     padding: 12,
     transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+    cursor: 'pointer',
   },
   
   imageContainer: {

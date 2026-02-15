@@ -1,4 +1,4 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/profile/Profile.js =====
+// ===== FILE: frontend/src/components/profile/Profile.js =====
 
 import React, { useEffect, useState } from 'react';
 import { 
@@ -11,7 +11,7 @@ import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { 
   getUserPosts, getMyRequests, getMyMarketItems, 
-  getMyDatingProfile, getUserStats, deleteMarketItem
+  getMyDatingProfile, getUserStats, deleteMarketItem, deleteRequest
 } from '../../api';
 import theme from '../../theme';
 import { toast } from '../shared/Toast';
@@ -21,6 +21,11 @@ import RequestCard from '../requests/RequestCard';
 import MyMarketCard from './MyMarketCard';
 import PhotoViewer from '../shared/PhotoViewer';
 import SettingsModal from './SettingsModal';
+import EditContentModal from '../shared/EditContentModal';
+import EditMarketItemModal from '../market/EditMarketItemModal';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
+import RequestDetailModal from '../requests/RequestDetailModal';
+import MarketDetail from '../market/MarketDetail';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
@@ -43,9 +48,9 @@ function Profile() {
   const { 
     user, datingProfile, setDatingProfile, setShowEditModal, 
     setShowUserPosts, setShowUserRequests, setShowUserMarketItems,
-    setEditingMarketItem, setShowCreateMarketItem,
     moderationRole, setActiveTab: setNavigationTab,
-    setShowSettingsModal
+    setShowSettingsModal, setViewPostId, setCurrentRequest,
+    updatedPostId, updatedPostData, clearUpdatedPost
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('posts');
@@ -55,6 +60,12 @@ function Profile() {
   const [posts, setPosts] = useState([]);
   const [marketItems, setMarketItems] = useState([]);
   const [requests, setRequests] = useState([]);
+  const [editingRequest, setEditingRequest] = useState(null);
+  const [requestToDelete, setRequestToDelete] = useState(null);
+  const [showRequestDetail, setShowRequestDetail] = useState(false);
+  const [editingMarketItem, setEditingMarketItem] = useState(null);
+  const [marketItemToDelete, setMarketItemToDelete] = useState(null);
+  const [selectedMarketItem, setSelectedMarketItem] = useState(null);
   const [stats, setStats] = useState({ 
     posts_count: 0, 
     comments_count: 0, 
@@ -79,7 +90,7 @@ function Profile() {
         if (datingData) setDatingProfile(datingData);
         
       } catch (error) {
-        console.error('❌ Profile load error:', error);
+        console.error('Profile load error:', error);
         if (error.response?.status === 404) {
           toast.error('Пользователь не найден. Перелогиньтесь.');
         }
@@ -92,6 +103,21 @@ function Profile() {
       loadData();
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!updatedPostId) return;
+
+    let hasUpdated = false;
+    setPosts((prev) => prev.map((post) => {
+      if (String(post.id) !== String(updatedPostId)) return post;
+      hasUpdated = true;
+      return { ...post, ...updatedPostData };
+    }));
+
+    if (hasUpdated) {
+      clearUpdatedPost();
+    }
+  }, [updatedPostId, updatedPostData, clearUpdatedPost]);
 
   const heroImage = user?.avatar;
 
@@ -122,18 +148,52 @@ function Profile() {
   const handleEditMarketItem = (item) => {
     hapticFeedback('light');
     setEditingMarketItem(item);
-    setShowCreateMarketItem(true);
   };
 
-  const handleDeleteMarketItem = async (itemId) => {
+  const handleDeleteMarketItem = (itemId) => {
+    hapticFeedback('medium');
+    setMarketItemToDelete(itemId);
+  };
+
+  const confirmDeleteMarketItem = async () => {
+    if (!marketItemToDelete) return;
+
     try {
-      await deleteMarketItem(itemId);
-      setMarketItems(prev => prev.filter(i => i.id !== itemId));
+      await deleteMarketItem(marketItemToDelete);
+      setMarketItems(prev => prev.filter(i => i.id !== marketItemToDelete));
       toast.success('Товар удалён');
       hapticFeedback('success');
     } catch (error) {
       console.error('Delete error:', error);
       toast.error('Ошибка при удалении');
+    } finally {
+      setMarketItemToDelete(null);
+    }
+  };
+
+  const handleEditRequest = (request) => {
+    hapticFeedback('light');
+    setEditingRequest(request);
+  };
+
+  const handleDeleteRequest = (request) => {
+    hapticFeedback('medium');
+    setRequestToDelete(request);
+  };
+
+  const confirmDeleteRequest = async () => {
+    if (!requestToDelete?.id) return;
+
+    try {
+      await deleteRequest(requestToDelete.id);
+      setRequests(prev => prev.filter(r => r.id !== requestToDelete.id));
+      toast.success('Запрос удалён');
+      hapticFeedback('success');
+    } catch (error) {
+      console.error('Delete request error:', error);
+      toast.error('Ошибка при удалении запроса');
+    } finally {
+      setRequestToDelete(null);
     }
   };
 
@@ -143,6 +203,10 @@ function Profile() {
     navigator.clipboard.writeText(link).then(() => {
       toast.success('Ссылка скопирована');
       hapticFeedback('success');
+    }).catch((error) => {
+      console.error('Profile link copy error:', error);
+      toast.error('Не удалось скопировать ссылку');
+      hapticFeedback('error');
     });
   };
 
@@ -151,6 +215,22 @@ function Profile() {
       hapticFeedback('light');
       setShowPhotoViewer(true);
     }
+  };
+
+  const handlePostClick = (postId) => {
+    hapticFeedback('light');
+    setViewPostId(postId);
+  };
+
+  const handleRequestClick = (request) => {
+    hapticFeedback('light');
+    setCurrentRequest(request);
+    setShowRequestDetail(true);
+  };
+
+  const handleMarketItemOpen = (item) => {
+    hapticFeedback('light');
+    setSelectedMarketItem(item);
   };
 
   return (
@@ -283,7 +363,16 @@ function Profile() {
               
               {posts.length > 0 ? (
                 <div style={styles.listGap}>
-                  {posts.map(post => <PostCard key={post.id} post={post} />)}
+                  {posts.map(post => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      onClick={handlePostClick}
+                      onPostDeleted={(postId) => {
+                        setPosts(prev => prev.filter(p => p.id !== postId));
+                      }}
+                    />
+                  ))}
                 </div>
               ) : (
                 <EmptyState text="Пока нет постов" icon="📝" />
@@ -305,7 +394,16 @@ function Profile() {
               
               {requests.length > 0 ? (
                 <div style={styles.listGap}>
-                  {requests.slice(0, 3).map(req => <RequestCard key={req.id} request={req} />)}
+                  {requests.slice(0, 3).map(req => (
+                    <RequestCard
+                      key={req.id}
+                      request={req}
+                      currentUserId={user?.id}
+                      onClick={handleRequestClick}
+                      onEdit={handleEditRequest}
+                      onDelete={handleDeleteRequest}
+                    />
+                  ))}
                 </div>
               ) : (
                 <EmptyState text="Нет активных запросов" icon="⚡️" />
@@ -331,6 +429,7 @@ function Profile() {
                     <MyMarketCard 
                       key={item.id} 
                       item={item}
+                      onOpen={handleMarketItemOpen}
                       onEdit={handleEditMarketItem}
                       onDelete={handleDeleteMarketItem}
                     />
@@ -355,6 +454,86 @@ function Profile() {
       )}
 
       <SettingsModal />
+
+      {editingRequest && (
+        <EditContentModal
+          contentType="request"
+          initialData={editingRequest}
+          onClose={() => setEditingRequest(null)}
+          onSuccess={(updatedRequest) => {
+            setRequests(prev => prev.map(r => (r.id === updatedRequest.id ? updatedRequest : r)));
+            setEditingRequest(null);
+          }}
+        />
+      )}
+
+      {editingMarketItem && (
+        <EditMarketItemModal
+          item={editingMarketItem}
+          onClose={() => setEditingMarketItem(null)}
+          onSuccess={(updatedItem) => {
+            setMarketItems(prev => prev.map(i => (i.id === updatedItem.id ? updatedItem : i)));
+            setEditingMarketItem(null);
+          }}
+        />
+      )}
+
+      {showRequestDetail && (
+        <RequestDetailModal
+          onClose={() => {
+            setShowRequestDetail(false);
+            setCurrentRequest(null);
+          }}
+          onEdit={(request) => {
+            setShowRequestDetail(false);
+            setCurrentRequest(null);
+            handleEditRequest(request);
+          }}
+          onDelete={(request) => {
+            setShowRequestDetail(false);
+            setCurrentRequest(null);
+            handleDeleteRequest(request);
+          }}
+        />
+      )}
+
+      {selectedMarketItem && (
+        <MarketDetail
+          item={selectedMarketItem}
+          onClose={() => setSelectedMarketItem(null)}
+          onUpdate={(updatedItem) => {
+            if (updatedItem?.id) {
+              setMarketItems(prev => prev.map(i => (
+                String(i.id) === String(updatedItem.id) ? { ...i, ...updatedItem } : i
+              )));
+              setSelectedMarketItem(updatedItem);
+            } else {
+              setMarketItems(prev => prev.filter(i => String(i.id) !== String(selectedMarketItem.id)));
+              setSelectedMarketItem(null);
+            }
+          }}
+        />
+      )}
+
+      <ConfirmationDialog
+        isOpen={!!requestToDelete}
+        title="Удалить запрос?"
+        message="Это действие нельзя отменить."
+        confirmText="Удалить"
+        confirmType="danger"
+        onConfirm={confirmDeleteRequest}
+        onCancel={() => setRequestToDelete(null)}
+      />
+
+      <ConfirmationDialog
+        isOpen={!!marketItemToDelete}
+        title="Удалить товар?"
+        message="Это действие нельзя отменить."
+        confirmText="Удалить"
+        confirmType="danger"
+        onConfirm={confirmDeleteMarketItem}
+        onCancel={() => setMarketItemToDelete(null)}
+      />
 
       <style>{`
         .fade-in-up { 
@@ -947,3 +1126,4 @@ const styles = {
 };
 
 export default Profile;
+

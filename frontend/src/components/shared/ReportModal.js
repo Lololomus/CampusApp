@@ -10,11 +10,11 @@ import SwipeableModal from './SwipeableModal';
 const REPORT_REASONS = [
   { value: 'spam', label: 'Спам', icon: '📨' },
   { value: 'abuse', label: 'Оскорбления', icon: '🤬' },
-  { value: 'inappropriate', label: 'Неприемлемый контент', icon: '⚠️' },
+  { value: 'inappropriate', label: 'Неприемл. контент', icon: '⚠️' },
   { value: 'scam', label: 'Мошенничество', icon: '🎣' },
   { value: 'nsfw', label: 'NSFW', icon: '🔞' },
   { value: 'harassment', label: 'Травля', icon: '😡' },
-  { value: 'misinformation', label: 'Ложная информация', icon: '🤥' },
+  { value: 'misinformation', label: 'Ложная инф-а', icon: '🤥' },
   { value: 'other', label: 'Другое', icon: '📝' },
 ];
 

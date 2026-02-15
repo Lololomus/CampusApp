@@ -5,16 +5,22 @@ import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import RequestCard from '../requests/RequestCard';
+import RequestDetailModal from '../requests/RequestDetailModal';
+import EditContentModal from '../shared/EditContentModal';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import theme from '../../theme';
 
 function UserRequests() {
-  const { user, setShowUserRequests } = useStore();
+  const { user, setShowUserRequests, setCurrentRequest } = useStore();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState('all');
+  const [editingRequest, setEditingRequest] = useState(null);
+  const [requestToDelete, setRequestToDelete] = useState(null);
+  const [showRequestDetail, setShowRequestDetail] = useState(false);
   
   const LIMIT = 20;
 
@@ -46,12 +52,36 @@ function UserRequests() {
   const handleBack = () => {
     hapticFeedback('light');
     setShowUserRequests(false);
+  };  const handleEditRequest = (request) => {
+    hapticFeedback('light');
+    setEditingRequest(request);
   };
 
-  const handleRequestDeleted = (requestId) => {
-    setRequests(requests.filter(r => r.id !== requestId));
-    toast.success('Запрос удалён');
-    hapticFeedback('success');
+  const handleDeleteRequest = (request) => {
+    hapticFeedback('medium');
+    setRequestToDelete(request);
+  };
+
+  const handleOpenRequest = (request) => {
+    hapticFeedback('light');
+    setCurrentRequest(request);
+    setShowRequestDetail(true);
+  };
+
+  const confirmDeleteRequest = async () => {
+    if (!requestToDelete?.id) return;
+
+    try {
+      await deleteRequest(requestToDelete.id);
+      setRequests(prev => prev.filter(r => r.id !== requestToDelete.id));
+      toast.success('Запрос удалён');
+      hapticFeedback('success');
+    } catch (error) {
+      console.error('Delete request error:', error);
+      toast.error('Ошибка при удалении запроса');
+    } finally {
+      setRequestToDelete(null);
+    }
   };
 
   const handleScroll = (e) => {
@@ -124,7 +154,10 @@ function UserRequests() {
             >
               <RequestCard 
                 request={request} 
-                onRequestDeleted={handleRequestDeleted}
+                currentUserId={user?.id}
+                onClick={handleOpenRequest}
+                onEdit={handleEditRequest}
+                onDelete={handleDeleteRequest}
               />
             </div>
           ))
@@ -151,6 +184,47 @@ function UserRequests() {
           </div>
         )}
       </div>
+
+      {editingRequest && (
+        <EditContentModal
+          contentType="request"
+          initialData={editingRequest}
+          onClose={() => setEditingRequest(null)}
+          onSuccess={(updatedRequest) => {
+            setRequests(prev => prev.map(r => (r.id === updatedRequest.id ? updatedRequest : r)));
+            setEditingRequest(null);
+          }}
+        />
+      )}
+
+      {showRequestDetail && (
+        <RequestDetailModal
+          onClose={() => {
+            setShowRequestDetail(false);
+            setCurrentRequest(null);
+          }}
+          onEdit={(request) => {
+            setShowRequestDetail(false);
+            setCurrentRequest(null);
+            handleEditRequest(request);
+          }}
+          onDelete={(request) => {
+            setShowRequestDetail(false);
+            setCurrentRequest(null);
+            handleDeleteRequest(request);
+          }}
+        />
+      )}
+
+      <ConfirmationDialog
+        isOpen={!!requestToDelete}
+        title="Удалить запрос?"
+        message="Это действие нельзя отменить."
+        confirmText="Удалить"
+        confirmType="danger"
+        onConfirm={confirmDeleteRequest}
+        onCancel={() => setRequestToDelete(null)}
+      />
 
       <style>{`
         @keyframes fadeInUp {
@@ -284,3 +358,6 @@ const styles = {
 };
 
 export default UserRequests;
+
+
+

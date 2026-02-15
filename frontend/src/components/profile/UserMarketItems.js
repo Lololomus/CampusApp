@@ -1,27 +1,37 @@
 // ===== 📄 ФАЙЛ: src/components/profile/UserMarketItems.js =====
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Filter } from 'lucide-react';
+import { createPortal } from 'react-dom'; // ✅ Добавлено для рендера модалок поверх всего
+import { ArrowLeft } from 'lucide-react';
 import { getMyMarketItems, deleteMarketItem } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import MyMarketCard from './MyMarketCard';
+import EditMarketItemModal from '../market/EditMarketItemModal';
+import MarketDetail from '../market/MarketDetail';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_USER_MARKET_ITEMS } from '../../constants/zIndex';
 import theme from '../../theme';
 
 function UserMarketItems() {
-  const { user, setShowUserMarketItems, setEditingMarketItem, setShowCreateMarketItem } = useStore();
+  const { setShowUserMarketItems } = useStore();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState('all');
   
+  // Локальные модалки
+  const [editingItem, setEditingItem] = useState(null);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  
   const LIMIT = 20;
 
   useEffect(() => {
     loadItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadItems = async () => {
@@ -29,9 +39,19 @@ function UserMarketItems() {
     setLoading(true);
     try {
       const newItems = await getMyMarketItems(LIMIT, offset);
-      if (newItems.length < LIMIT) setHasMore(false);
-      setItems([...items, ...newItems]);
-      setOffset(offset + LIMIT);
+      
+      if (newItems.length < LIMIT) {
+        setHasMore(false);
+      }
+      
+      // ✅ FIX: Фильтруем дубликаты перед добавлением в стейт
+      setItems(prev => {
+        const existingIds = new Set(prev.map(i => i.id));
+        const uniqueNewItems = newItems.filter(i => !existingIds.has(i.id));
+        return [...prev, ...uniqueNewItems];
+      });
+      
+      setOffset(prev => prev + LIMIT);
     } catch (error) {
       console.error('Error loading items:', error);
       toast.error('Не удалось загрузить товары');
@@ -47,19 +67,37 @@ function UserMarketItems() {
 
   const handleEdit = (item) => {
     hapticFeedback('light');
-    setEditingMarketItem(item);
-    setShowCreateMarketItem(true);
+    setEditingItem(item);
   };
 
-  const handleDelete = async (itemId) => {
+  const handleEditSuccess = (updatedItem) => {
+    setItems(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
+    setEditingItem(null);
+  };
+
+  const handleDeleteClick = (itemId) => {
+    hapticFeedback('medium');
+    setItemToDelete(itemId);
+  };
+
+  const handleOpenItem = (item) => {
+    hapticFeedback('light');
+    setSelectedItem(item);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+    
     try {
-      await deleteMarketItem(itemId);
-      setItems(items.filter(i => i.id !== itemId));
+      await deleteMarketItem(itemToDelete);
+      setItems(prev => prev.filter(i => i.id !== itemToDelete));
       toast.success('Товар удалён');
       hapticFeedback('success');
     } catch (error) {
       console.error('Delete error:', error);
       toast.error('Ошибка при удалении');
+    } finally {
+      setItemToDelete(null);
     }
   };
 
@@ -81,6 +119,50 @@ function UserMarketItems() {
     all: items.length,
     active: items.filter(i => i.status === 'active').length,
     sold: items.filter(i => i.status === 'sold').length,
+  };
+
+  // ✅ FIX: Рендерим модалки через Portal, чтобы они были поверх родительских трансформаций
+  const renderModals = () => {
+    return createPortal(
+      <>
+        {editingItem && (
+          <EditMarketItemModal
+            item={editingItem}
+            onClose={() => setEditingItem(null)}
+            onSuccess={handleEditSuccess}
+          />
+        )}
+
+        {selectedItem && (
+          <MarketDetail
+            item={selectedItem}
+            onClose={() => setSelectedItem(null)}
+            onUpdate={(updatedItem) => {
+              if (updatedItem?.id) {
+                setItems(prev => prev.map(i => (
+                  String(i.id) === String(updatedItem.id) ? { ...i, ...updatedItem } : i
+                )));
+                setSelectedItem(updatedItem);
+              } else {
+                setItems(prev => prev.filter(i => String(i.id) !== String(selectedItem.id)));
+                setSelectedItem(null);
+              }
+            }}
+          />
+        )}
+
+        <ConfirmationDialog
+          isOpen={!!itemToDelete}
+          title="Удалить товар?"
+          message="Это действие нельзя отменить."
+          confirmText="Удалить"
+          confirmType="danger"
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setItemToDelete(null)}
+        />
+      </>,
+      document.body
+    );
   };
 
   return (
@@ -123,8 +205,9 @@ function UserMarketItems() {
             <div key={item.id} style={{ animation: `fadeInUp 0.4s ease ${idx * 0.05}s both` }}>
               <MyMarketCard 
                 item={item} 
+                onOpen={handleOpenItem}
                 onEdit={handleEdit}
-                onDelete={handleDelete}
+                onDelete={() => handleDeleteClick(item.id)}
               />
             </div>
           ))
@@ -151,6 +234,8 @@ function UserMarketItems() {
           </div>
         )}
       </div>
+
+      {renderModals()}
 
       <style>{`
         @keyframes fadeInUp {

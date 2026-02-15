@@ -48,7 +48,8 @@ function App() {
     editingContent,
     editingType,
     closeEditing,
-    viewPostId 
+    viewPostId,
+    setUpdatedPost
   } = useStore();
 
   // Инициализация Telegram при монтировании
@@ -122,6 +123,9 @@ function App() {
           initialData={editingContent}
           onClose={closeEditing}
           onSuccess={(updatedData) => {
+            if (editingType === 'post' && updatedData?.id) {
+              setUpdatedPost(updatedData.id, updatedData);
+            }
             closeEditing();
           }}
         />
