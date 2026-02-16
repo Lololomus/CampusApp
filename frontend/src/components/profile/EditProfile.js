@@ -1,297 +1,510 @@
 // ===== 📄 ФАЙЛ: src/components/profile/EditProfile.js =====
 
-import React, { useState, useEffect } from 'react';
-import { 
-  X, Camera, User, AtSign, 
-  BookOpen, Layers, Hash, ChevronRight 
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  X, Camera, User, AtSign, Search,
+  Building2, Hash, GraduationCap, MapPin, ChevronLeft,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { updateUserProfile, uploadUserAvatar } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
+import theme from '../../theme';
 import { Z_EDIT_PROFILE } from '../../constants/zIndex';
+import {
+  CAMPUSES, COURSES, searchCampuses, getFacultiesForCampus,
+  getCampusById, ONBOARDING_LIMITS,
+} from '../../constants/universityData';
 
-const UNIVERSITIES = ["РУК", "МГУ", "ВШЭ", "МГТУ", "РАНХиГС", "Другой"];
-const INSTITUTES = ["ИСА", "Юридический", "Экономический", "Менеджмент", "Гостиничный сервис", "Другой"];
-const COURSES = [1, 2, 3, 4, 5, 6];
 
 function EditProfile() {
   const { user, setUser, setShowEditModal } = useStore();
-  
-  const [formData, setFormData] = useState({
-    name: '',
-    username: '',
-    university: '',
-    institute: '',
-    course: '',
-    group: ''
-  });
 
+  // === Основные поля ===
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+
+  // === Кампус ===
+  const [campusId, setCampusId] = useState(null);
+  const [isCustom, setIsCustom] = useState(false);
+  const [customUni, setCustomUni] = useState('');
+  const [customCity, setCustomCity] = useState('');
+  const [faculty, setFaculty] = useState('');
+  const [customFaculty, setCustomFaculty] = useState('');
+  const [course, setCourse] = useState(null);
+  const [group, setGroup] = useState('');
+
+  // === UI ===
+  const [showCampusPicker, setShowCampusPicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Инициализация из user
   useEffect(() => {
-    if (user) {
-      setFormData({
-        name: user.name || '',
-        username: user.username || '',
-        university: user.university || '',
-        institute: user.institute || '',
-        course: user.course || '',
-        group: user.group || ''
-      });
-      setAvatarPreview(user.avatar);
+    if (!user) return;
+
+    setName(user.name || '');
+    setUsername(user.username || '');
+    setAvatarPreview(user.avatar);
+    setCourse(user.course || null);
+    setGroup(user.group || '');
+
+    if (user.campus_id) {
+      setCampusId(user.campus_id);
+      setIsCustom(false);
+      setFaculty(user.institute || '');
+      // Проверяем: если institute не из списка факультетов кампуса — это "Другой"
+      const campus = getCampusById(user.campus_id);
+      if (campus && user.institute && !campus.faculties.includes(user.institute)) {
+        setFaculty('Другой');
+        setCustomFaculty(user.institute);
+      }
+    } else if (user.custom_university) {
+      setIsCustom(true);
+      setCampusId(null);
+      setCustomUni(user.custom_university || '');
+      setCustomCity(user.custom_city || '');
+      setCustomFaculty(user.custom_faculty || user.institute || '');
+    } else {
+      // Legacy: user.university/institute есть, но campus_id нет
+      setIsCustom(true);
+      setCustomUni(user.university || '');
+      setCustomCity(user.city || '');
+      setCustomFaculty(user.institute || '');
     }
   }, [user]);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
+  const selectedCampus = useMemo(
+    () => (campusId ? getCampusById(campusId) : null),
+    [campusId]
+  );
 
-  const handleClose = () => {
+  const faculties = useMemo(
+    () => (selectedCampus ? getFacultiesForCampus(selectedCampus.id) : []),
+    [selectedCampus]
+  );
+
+  const filteredCampuses = useMemo(
+    () => searchCampuses(searchQuery),
+    [searchQuery]
+  );
+
+  // Текущий display кампуса
+  const campusDisplay = selectedCampus
+    ? selectedCampus.short
+    : isCustom
+      ? (customUni || 'Свой ВУЗ')
+      : 'Не выбран';
+
+  const handleClose = useCallback(() => {
     hapticFeedback('light');
     setShowEditModal(false);
-  };
+  }, [setShowEditModal]);
 
   const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      hapticFeedback('selection');
-      const reader = new FileReader();
-      reader.onloadend = () => setAvatarPreview(reader.result);
-      reader.readAsDataURL(file);
+    if (!file) return;
 
-      try {
-        setLoading(true);
-        const newAvatarData = await uploadUserAvatar(file);
-        if (newAvatarData && newAvatarData.avatar) {
-           setUser({ ...user, avatar: newAvatarData.avatar });
-           toast.success('Фото обновлено');
-        }
-      } catch (error) {
-        console.error("Ошибка загрузки фото", error);
-        toast.error("Не удалось загрузить фото");
-        setAvatarPreview(user.avatar);
-      } finally {
-        setLoading(false);
+    hapticFeedback('selection');
+    const reader = new FileReader();
+    reader.onloadend = () => setAvatarPreview(reader.result);
+    reader.readAsDataURL(file);
+
+    try {
+      setLoading(true);
+      const data = await uploadUserAvatar(file);
+      if (data?.avatar) {
+        setUser({ ...user, avatar: data.avatar });
+        toast.success('Фото обновлено');
       }
+    } catch (error) {
+      console.error('Ошибка загрузки фото', error);
+      toast.error('Не удалось загрузить фото');
+      setAvatarPreview(user.avatar);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const handleSelectCampus = useCallback((campus) => {
+    hapticFeedback('medium');
+    setCampusId(campus.id);
+    setIsCustom(false);
+    setFaculty('');
+    setCustomFaculty('');
+    setShowCampusPicker(false);
+    setSearchQuery('');
+  }, []);
+
+  const handleCustomMode = useCallback(() => {
+    hapticFeedback('light');
+    setIsCustom(true);
+    setCampusId(null);
+    setFaculty('');
+    setShowCampusPicker(false);
+    setSearchQuery('');
+  }, []);
+
   const handleSave = async () => {
+    if (!name.trim()) {
+      toast.error('Введите имя');
+      return;
+    }
+
     hapticFeedback('success');
     setLoading(true);
-    
+
     try {
-      const cleanUsername = formData.username.replace('@', '').trim();
+      const cleanUsername = username.replace(/^@/, '').trim();
+
+      const finalFaculty = isCustom
+        ? customFaculty.trim() || null
+        : (faculty === 'Другой' ? customFaculty.trim() || null : faculty || null);
 
       const updateData = {
-        name: formData.name,
+        name: name.trim(),
         username: cleanUsername,
-        university: formData.university,
-        institute: formData.institute,
-        course: parseInt(formData.course),
-        group: formData.group
+        course: course,
+        group: group.trim() || null,
+        institute: finalFaculty,
       };
+
+      if (selectedCampus) {
+        updateData.campus_id = selectedCampus.id;
+        updateData.university = selectedCampus.university;
+        updateData.city = selectedCampus.city;
+        updateData.custom_university = null;
+        updateData.custom_city = null;
+        updateData.custom_faculty = null;
+      } else if (isCustom && customUni.trim()) {
+        updateData.campus_id = null;
+        updateData.university = customUni.trim();
+        updateData.custom_university = customUni.trim();
+        updateData.custom_city = customCity.trim() || null;
+        updateData.city = customCity.trim() || null;
+        updateData.custom_faculty = finalFaculty;
+      }
 
       const updatedUser = await updateUserProfile(updateData);
       setUser(updatedUser);
       toast.success('Профиль обновлён');
       handleClose();
     } catch (error) {
-      console.error("Ошибка сохранения", error);
-      if (error.response && error.response.status === 403) {
-          toast.error(error.response.data.detail || "Нельзя часто менять учебные данные");
+      console.error('Ошибка сохранения', error);
+      if (error.response?.status === 403) {
+        toast.error(error.response.data.detail || 'Нельзя часто менять учебные данные');
       } else {
-          toast.error("Ошибка сохранения изменений");
+        toast.error('Ошибка сохранения изменений');
       }
     } finally {
       setLoading(false);
     }
   };
 
+
+  // ============ РЕНДЕР: выбор кампуса (отдельный экран) ============
+  if (showCampusPicker) {
+    return (
+      <div style={styles.overlay}>
+        <div style={styles.container}>
+          <div style={styles.header}>
+            <button onClick={() => setShowCampusPicker(false)} style={styles.iconButton}>
+              <ChevronLeft size={24} color={theme.colors.text} />
+            </button>
+            <span style={styles.headerTitle}>Выбор ВУЗа</span>
+            <div style={{ width: 44 }} />
+          </div>
+
+          <div style={styles.scrollContent}>
+            {/* Поиск */}
+            <div style={styles.searchWrapper}>
+              <Search size={18} color={theme.colors.textTertiary} />
+              <input
+                type="text"
+                placeholder="Найти ВУЗ..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={styles.searchInput}
+                autoFocus
+              />
+              {searchQuery && (
+                <button style={styles.clearBtn} onClick={() => setSearchQuery('')}>
+                  <X size={16} color={theme.colors.textTertiary} />
+                </button>
+              )}
+            </div>
+
+            {/* Список */}
+            {filteredCampuses.map((campus) => (
+              <button
+                key={campus.id}
+                style={{
+                  ...styles.campusRow,
+                  ...(campusId === campus.id ? { borderColor: theme.colors.primary } : {}),
+                }}
+                onClick={() => handleSelectCampus(campus)}
+              >
+                <div style={styles.campusIconWrap}>
+                  <Building2 size={18} color={theme.colors.primary} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={styles.campusRowName}>{campus.university}</div>
+                  <div style={styles.campusRowCity}>
+                    {campus.city}{campus.address ? `, ${campus.address}` : ''}
+                  </div>
+                </div>
+              </button>
+            ))}
+
+            {filteredCampuses.length === 0 && searchQuery && (
+              <div style={styles.emptySearch}>Ничего не найдено</div>
+            )}
+
+            {/* Ручной ввод */}
+            <button style={styles.customBtn} onClick={handleCustomMode}>
+              Нет моего ВУЗа — ввести вручную
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+  // ============ РЕНДЕР: основная форма ============
   return (
     <div style={styles.overlay}>
       <div style={styles.container} className="slide-in-right">
-        
+
         {/* HEADER */}
         <div style={styles.header}>
           <button onClick={handleClose} style={styles.iconButton}>
-            <X size={24} color="#fff" />
+            <X size={24} color={theme.colors.text} />
           </button>
           <span style={styles.headerTitle}>Редактирование</span>
-          <div style={{width: 44}}></div>
+          <div style={{ width: 44 }} />
         </div>
 
         <div style={styles.scrollContent}>
-          
+
           {/* AVATAR */}
           <div style={styles.avatarSection}>
             <div style={styles.avatarWrapper}>
               {avatarPreview ? (
                 <img src={avatarPreview} style={styles.avatarImg} alt="avatar" />
               ) : (
-                <div style={styles.avatarPlaceholder}>{formData.name?.[0]}</div>
+                <div style={styles.avatarPlaceholder}>{name?.[0] || '?'}</div>
               )}
               <label style={styles.cameraButton}>
-                <input type="file" accept="image/*" onChange={handleAvatarChange} style={{display: 'none'}} />
+                <input type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
                 <Camera size={20} color="#fff" />
               </label>
             </div>
-            <div style={styles.avatarHint}>Нажмите на фото, чтобы изменить</div>
+            <div style={styles.avatarHint}>Нажмите для изменения</div>
           </div>
 
           {/* ОСНОВНОЕ */}
           <div style={styles.sectionTitle}>ОСНОВНОЕ</div>
           <div style={styles.card}>
             <div style={styles.inputGroup}>
-              <div style={styles.inputIcon}><User size={18} color="#666" /></div>
-              <input 
-                style={styles.input} 
-                name="name" 
-                value={formData.name} 
-                onChange={handleChange} 
-                placeholder="Ваше имя" 
+              <div style={styles.inputIcon}><User size={18} color={theme.colors.textDisabled} /></div>
+              <input
+                style={styles.input}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ваше имя"
+                maxLength={ONBOARDING_LIMITS.NAME_MAX}
               />
             </div>
-            
+
             <div style={styles.divider} />
 
             <div style={styles.inputGroup}>
-              <div style={styles.inputIcon}><AtSign size={18} color="#8b5cf6" /></div>
-              <input 
-                style={{...styles.input, color: '#8b5cf6', fontWeight: '500'}} 
-                name="username" 
-                value={formData.username} 
-                onChange={handleChange} 
-                placeholder="username" 
-                autoCapitalize="none" 
+              <div style={styles.inputIcon}><AtSign size={18} color={theme.colors.primary} /></div>
+              <input
+                style={{ ...styles.input, color: theme.colors.primary, fontWeight: theme.fontWeight.medium }}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="username"
+                autoCapitalize="none"
+                maxLength={ONBOARDING_LIMITS.USERNAME_MAX}
               />
             </div>
           </div>
 
-          {/* СТУДЕНТ */}
-          <div style={styles.sectionTitle}>СТУДЕНТ</div>
+          {/* УЧЁБА */}
+          <div style={styles.sectionTitle}>УЧЁБА</div>
           <div style={styles.card}>
-             
-             {/* ВУЗ */}
-             <div style={styles.inputGroup}>
-               <div style={styles.inputIcon}><BookOpen size={18} color="#666" /></div>
-               <div style={styles.selectWrapper}>
-                 <select 
-                    style={styles.select} 
-                    name="university" 
-                    value={formData.university} 
-                    onChange={handleChange}
-                 >
-                    <option value="" disabled>Выберите ВУЗ</option>
-                    {UNIVERSITIES.map(u => <option key={u} value={u}>{u}</option>)}
-                 </select>
-                 <ChevronRight size={16} color="#444" style={styles.selectArrow}/>
-               </div>
-             </div>
-             
-             <div style={styles.divider} />
-             
-             {/* Институт */}
-             <div style={styles.inputGroup}>
-               <div style={styles.inputIcon}><Layers size={18} color="#666" /></div>
-               <div style={styles.selectWrapper}>
-                 <select 
-                    style={styles.select} 
-                    name="institute" 
-                    value={formData.institute} 
-                    onChange={handleChange}
-                 >
-                    <option value="" disabled>Выберите институт</option>
-                    {INSTITUTES.map(i => <option key={i} value={i}>{i}</option>)}
-                 </select>
-                 <ChevronRight size={16} color="#444" style={styles.selectArrow}/>
-               </div>
-             </div>
 
-             <div style={styles.divider} />
-
-             {/* Курс и Группа */}
-             <div style={{display: 'flex'}}>
-                <div style={{...styles.inputGroup, flex: 1}}>
-                  <div style={styles.inputIcon}><Hash size={18} color="#666" /></div>
-                  <div style={styles.selectWrapper}>
-                    <select 
-                        style={styles.select} 
-                        name="course" 
-                        value={formData.course} 
-                        onChange={handleChange}
-                    >
-                        <option value="" disabled>Курс</option>
-                        {COURSES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <ChevronRight size={16} color="#444" style={styles.selectArrow}/>
-                  </div>
+            {/* Кампус — кликабельная строка */}
+            <button
+              style={styles.inputGroup}
+              onClick={() => { hapticFeedback('light'); setShowCampusPicker(true); }}
+            >
+              <div style={styles.inputIcon}><GraduationCap size={18} color={theme.colors.textDisabled} /></div>
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <div style={{ fontSize: theme.fontSize.lg, color: theme.colors.text }}>
+                  {campusDisplay}
                 </div>
-                
-                <div style={{width: 1, background: '#333'}}></div>
-                
-                <div style={{...styles.inputGroup, flex: 1}}>
-                  <div style={styles.inputIcon}><User size={18} color="#666" /></div>
-                  <input 
-                    style={styles.input} 
-                    name="group" 
-                    value={formData.group} 
-                    onChange={handleChange} 
-                    placeholder="Группа" 
+              </div>
+              <ChevronLeft size={16} color={theme.colors.textTertiary} style={{ transform: 'rotate(180deg)' }} />
+            </button>
+
+            {/* Custom: название ВУЗа + город */}
+            {isCustom && (
+              <>
+                <div style={styles.divider} />
+                <div style={styles.inputGroup}>
+                  <div style={styles.inputIcon}><Building2 size={18} color={theme.colors.textDisabled} /></div>
+                  <input
+                    style={styles.input}
+                    value={customUni}
+                    onChange={(e) => setCustomUni(e.target.value)}
+                    placeholder="Название ВУЗа"
+                    maxLength={ONBOARDING_LIMITS.CUSTOM_UNIVERSITY_MAX}
                   />
                 </div>
-             </div>
+                <div style={styles.divider} />
+                <div style={styles.inputGroup}>
+                  <div style={styles.inputIcon}><MapPin size={18} color={theme.colors.textDisabled} /></div>
+                  <input
+                    style={styles.input}
+                    value={customCity}
+                    onChange={(e) => setCustomCity(e.target.value)}
+                    placeholder="Город"
+                    maxLength={ONBOARDING_LIMITS.CUSTOM_CITY_MAX}
+                  />
+                </div>
+              </>
+            )}
+
+            <div style={styles.divider} />
+
+            {/* Факультет: чипсы или текст */}
+            {selectedCampus && faculties.length > 0 ? (
+              <div style={{ padding: `${theme.spacing.md}px ${theme.spacing.lg}px` }}>
+                <div style={{ fontSize: theme.fontSize.xs, color: theme.colors.textTertiary, marginBottom: 8 }}>
+                  Факультет / Институт
+                </div>
+                <div style={styles.chipsWrap}>
+                  {faculties.map((f) => (
+                    <button
+                      key={f}
+                      style={{
+                        ...styles.chip,
+                        ...(faculty === f ? styles.chipActive : {}),
+                      }}
+                      onClick={() => {
+                        hapticFeedback('selection');
+                        setFaculty(f);
+                        if (f !== 'Другой') setCustomFaculty('');
+                      }}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                {faculty === 'Другой' && (
+                  <input
+                    style={{ ...styles.input, marginTop: 8, padding: `${theme.spacing.sm}px 0` }}
+                    value={customFaculty}
+                    onChange={(e) => setCustomFaculty(e.target.value)}
+                    placeholder="Введите название..."
+                    maxLength={ONBOARDING_LIMITS.CUSTOM_FACULTY_MAX}
+                  />
+                )}
+              </div>
+            ) : isCustom ? (
+              <div style={styles.inputGroup}>
+                <div style={styles.inputIcon}><Building2 size={18} color={theme.colors.textDisabled} /></div>
+                <input
+                  style={styles.input}
+                  value={customFaculty}
+                  onChange={(e) => setCustomFaculty(e.target.value)}
+                  placeholder="Факультет / Институт"
+                  maxLength={ONBOARDING_LIMITS.CUSTOM_FACULTY_MAX}
+                />
+              </div>
+            ) : null}
+
+            <div style={styles.divider} />
+
+            {/* Курс + Группа */}
+            <div style={{ padding: `${theme.spacing.md}px ${theme.spacing.lg}px` }}>
+              <div style={{ fontSize: theme.fontSize.xs, color: theme.colors.textTertiary, marginBottom: 8 }}>
+                Курс
+              </div>
+              <div style={styles.courseRow}>
+                {COURSES.map((c) => (
+                  <button
+                    key={c}
+                    style={{
+                      ...styles.courseChip,
+                      ...(course === c ? styles.courseChipActive : {}),
+                    }}
+                    onClick={() => { hapticFeedback('selection'); setCourse(c); }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.divider} />
+
+            <div style={styles.inputGroup}>
+              <div style={styles.inputIcon}><Hash size={18} color={theme.colors.textDisabled} /></div>
+              <input
+                style={styles.input}
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
+                placeholder="Группа"
+                maxLength={ONBOARDING_LIMITS.GROUP_MAX}
+              />
+            </div>
           </div>
-          
-          <div style={{height: 100}} />
-        </div>
-        
-        {/* FOOTER */}
-        <div style={styles.footer}>
-             <button style={styles.bigSaveButton} onClick={handleSave} disabled={loading}>
-                 {loading ? 'Сохранение...' : 'Сохранить изменения'}
-             </button>
+
+          <div style={{ height: 100 }} />
         </div>
 
+        {/* FOOTER */}
+        <div style={styles.footer}>
+          <button style={styles.bigSaveButton} onClick={handleSave} disabled={loading}>
+            {loading ? 'Сохранение...' : 'Сохранить изменения'}
+          </button>
+        </div>
       </div>
-      
+
       <style>{`
         .slide-in-right { animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        
         select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
-        
-        select option {
-            background-color: #1e1e1e;
-            color: #fff;
-            padding: 10px;
-        }
+        select option { background-color: ${theme.colors.card}; color: ${theme.colors.text}; padding: 10px; }
       `}</style>
     </div>
   );
 }
 
+
 const styles = {
   overlay: {
     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: '#000', 
+    backgroundColor: theme.colors.bg,
     zIndex: Z_EDIT_PROFILE,
     display: 'flex', flexDirection: 'column',
   },
   container: {
     flex: 1, display: 'flex', flexDirection: 'column',
-    backgroundColor: '#121212', height: '100%',
+    backgroundColor: theme.colors.bg, height: '100%',
   },
   header: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '16px', borderBottom: '1px solid #222',
-    backgroundColor: '#121212', zIndex: 10,
+    padding: theme.spacing.lg, borderBottom: `1px solid ${theme.colors.borderLight}`,
+    backgroundColor: theme.colors.bg, zIndex: 10,
   },
   headerTitle: {
-    fontSize: '17px', fontWeight: '600', color: '#fff',
+    fontSize: 17, fontWeight: theme.fontWeight.semibold, color: theme.colors.text,
   },
   iconButton: {
     background: 'none', border: 'none', padding: 8, cursor: 'pointer',
@@ -299,44 +512,123 @@ const styles = {
     minWidth: 44, minHeight: 44,
   },
   scrollContent: {
-    flex: 1, overflowY: 'auto', padding: '20px',
+    flex: 1, overflowY: 'auto', padding: theme.spacing.xl,
   },
-  
-  avatarSection: { display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 32 },
+
+  // Avatar
+  avatarSection: { display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: theme.spacing.xxxl },
   avatarWrapper: { position: 'relative', width: 100, height: 100 },
-  avatarImg: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: '2px solid #333' },
-  avatarPlaceholder: { width: '100%', height: '100%', borderRadius: '50%', backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', color: '#666', fontWeight: 'bold' },
-  cameraButton: { position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: '50%', backgroundColor: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid #121212', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.3)' },
-  avatarHint: { marginTop: 12, fontSize: '13px', color: '#666' },
-
-  sectionTitle: { fontSize: '12px', fontWeight: '700', color: '#666', marginBottom: 8, paddingLeft: 12, letterSpacing: '0.5px' },
-  card: { backgroundColor: '#1e1e1e', borderRadius: 16, overflow: 'hidden', marginBottom: 24 },
-  
-  inputGroup: { display: 'flex', alignItems: 'center', minHeight: 48, padding: '0 16px' },
-  inputIcon: { marginRight: 12, display: 'flex', alignItems: 'center' },
-  input: { flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '16px', height: '100%', outline: 'none', padding: '12px 0' },
-  
-  selectWrapper: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
-  select: { 
-    width: '100%', 
-    background: 'transparent',
-    border: 'none', 
-    color: '#fff', 
-    fontSize: '16px', height: '48px', 
-    outline: 'none', cursor: 'pointer', zIndex: 2 
+  avatarImg: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${theme.colors.border}` },
+  avatarPlaceholder: {
+    width: '100%', height: '100%', borderRadius: '50%',
+    backgroundColor: theme.colors.border, display: 'flex', alignItems: 'center',
+    justifyContent: 'center', fontSize: 40, color: theme.colors.textDisabled, fontWeight: theme.fontWeight.bold,
   },
-  selectArrow: { position: 'absolute', right: 0, pointerEvents: 'none' },
+  cameraButton: {
+    position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: '50%',
+    backgroundColor: theme.colors.primary, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: `3px solid ${theme.colors.bg}`, cursor: 'pointer', boxShadow: theme.shadows.md,
+  },
+  avatarHint: { marginTop: theme.spacing.md, fontSize: theme.fontSize.sm, color: theme.colors.textDisabled },
 
-  divider: { height: 1, backgroundColor: '#333', marginLeft: 46 },
-  
-  footer: { padding: '16px 20px 30px 20px', borderTop: '1px solid #222', backgroundColor: '#121212' },
-  bigSaveButton: { 
-    width: '100%', padding: '14px', borderRadius: 16, border: 'none', cursor: 'pointer', 
-    background: '#8b5cf6', 
-    color: '#fff', fontSize: '16px', fontWeight: '700', 
-    boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)', 
-    transition: 'transform 0.1s' 
-  }
+  // Sections
+  sectionTitle: {
+    fontSize: theme.fontSize.xs, fontWeight: theme.fontWeight.bold,
+    color: theme.colors.textDisabled, marginBottom: 8, paddingLeft: 12, letterSpacing: 0.5,
+  },
+  card: {
+    backgroundColor: theme.colors.card, borderRadius: theme.radius.lg,
+    overflow: 'hidden', marginBottom: theme.spacing.xxl,
+  },
+
+  // Inputs
+  inputGroup: {
+    display: 'flex', alignItems: 'center', minHeight: 48,
+    padding: `0 ${theme.spacing.lg}px`, background: 'none', border: 'none',
+    width: '100%', cursor: 'pointer',
+  },
+  inputIcon: { marginRight: 12, display: 'flex', alignItems: 'center' },
+  input: {
+    flex: 1, background: 'transparent', border: 'none', color: theme.colors.text,
+    fontSize: theme.fontSize.lg, height: '100%', outline: 'none', padding: '12px 0',
+  },
+  divider: { height: 1, backgroundColor: theme.colors.border, marginLeft: 46 },
+
+  // Campus picker
+  searchWrapper: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
+    borderRadius: theme.radius.md, border: `1.5px solid ${theme.colors.border}`,
+    backgroundColor: theme.colors.card, marginBottom: theme.spacing.lg,
+  },
+  searchInput: {
+    flex: 1, background: 'none', border: 'none',
+    color: theme.colors.text, fontSize: theme.fontSize.lg, outline: 'none',
+  },
+  clearBtn: { background: 'none', border: 'none', padding: 4, cursor: 'pointer', display: 'flex' },
+  campusRow: {
+    display: 'flex', alignItems: 'center', gap: theme.spacing.md,
+    padding: theme.spacing.lg, borderRadius: theme.radius.md,
+    border: `1.5px solid ${theme.colors.border}`, backgroundColor: theme.colors.card,
+    marginBottom: theme.spacing.sm, cursor: 'pointer', width: '100%',
+    textAlign: 'left', transition: `all ${theme.transitions.normal}`,
+  },
+  campusIconWrap: {
+    width: 40, height: 40, borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.primaryLight,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  campusRowName: { fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.semibold, color: theme.colors.text, marginBottom: 2 },
+  campusRowCity: { fontSize: theme.fontSize.sm, color: theme.colors.textTertiary },
+  emptySearch: { textAlign: 'center', padding: '32px 16px', color: theme.colors.textTertiary, fontSize: theme.fontSize.md },
+  customBtn: {
+    width: '100%', padding: theme.spacing.lg, borderRadius: theme.radius.md,
+    border: `2px dashed ${theme.colors.border}`, backgroundColor: 'transparent',
+    color: theme.colors.textSecondary, fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.medium, cursor: 'pointer',
+    marginTop: theme.spacing.md,
+  },
+
+  // Chips
+  chipsWrap: { display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm },
+  chip: {
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`, borderRadius: theme.radius.full,
+    border: `1.5px solid ${theme.colors.border}`, backgroundColor: theme.colors.bg,
+    color: theme.colors.textSecondary, fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium, cursor: 'pointer',
+    transition: `all ${theme.transitions.normal}`,
+  },
+  chipActive: {
+    borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryLight,
+    color: theme.colors.primary,
+  },
+
+  // Course
+  courseRow: { display: 'flex', gap: theme.spacing.sm },
+  courseChip: {
+    flex: 1, padding: `${theme.spacing.sm}px 0`, borderRadius: theme.radius.sm,
+    border: `1.5px solid ${theme.colors.border}`, backgroundColor: theme.colors.bg,
+    color: theme.colors.textSecondary, fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.bold, cursor: 'pointer', textAlign: 'center',
+    transition: `all ${theme.transitions.normal}`,
+  },
+  courseChipActive: {
+    borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryLight,
+    color: theme.colors.primary,
+  },
+
+  // Footer
+  footer: {
+    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px 30px`,
+    borderTop: `1px solid ${theme.colors.borderLight}`, backgroundColor: theme.colors.bg,
+  },
+  bigSaveButton: {
+    width: '100%', padding: 14, borderRadius: theme.radius.lg, border: 'none', cursor: 'pointer',
+    background: theme.colors.primary, color: '#fff',
+    fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold,
+    boxShadow: `0 4px 20px ${theme.colors.primaryGlow}`,
+    transition: `transform ${theme.transitions.fast}`,
+  },
 };
 
 export default EditProfile;

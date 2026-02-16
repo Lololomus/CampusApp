@@ -15,6 +15,7 @@ import {
 } from '../../api';
 import theme from '../../theme';
 import { toast } from '../shared/Toast';
+import { getCampusDisplayName } from '../../constants/universityData';
 
 import PostCard from '../posts/PostCard';
 import RequestCard from '../requests/RequestCard';
@@ -563,69 +564,80 @@ function Profile() {
   );
 }
 
-const StudentIDCard = ({ user, onAvatarClick }) => (
-  <div style={styles.studentCard}>
-    <div style={styles.cardHeader}>
-      <div style={styles.universityLogo}>
-        <Award size={20} color={theme.colors.primary} />
-        <span style={styles.universityName}>{user.university}</span>
-      </div>
-      <div style={styles.studentBadge}>STUDENT ID</div>
-    </div>
+const StudentIDCard = ({ user, onAvatarClick }) => {
+  const campusLabel = getCampusDisplayName(user);
 
-    <div style={styles.cardBody}>
-      <div style={styles.photoSection}>
-        <div 
-          style={styles.photoWrapper}
-          onClick={onAvatarClick}
-        >
-          {user.avatar ? (
-            <img src={user.avatar} style={styles.photoImg} alt="Avatar" />
+  // Собираем строку "2 курс · ИСА" с null-guard
+  const courseInstituteParts = [];
+  if (user.course) courseInstituteParts.push(`${user.course} курс`);
+  if (user.institute) courseInstituteParts.push(user.institute);
+  const courseInstituteText = courseInstituteParts.join(' · ') || null;
+
+  return (
+    <div style={styles.studentCard}>
+      <div style={styles.cardHeader}>
+        <div style={styles.universityLogo}>
+          <Award size={20} color={theme.colors.primary} />
+          <span style={styles.universityName}>{campusLabel}</span>
+        </div>
+        <div style={styles.studentBadge}>STUDENT ID</div>
+      </div>
+
+      <div style={styles.cardBody}>
+        <div style={styles.photoSection}>
+          <div 
+            style={styles.photoWrapper}
+            onClick={onAvatarClick}
+          >
+            {user.avatar ? (
+              <img src={user.avatar} style={styles.photoImg} alt="Avatar" />
+            ) : (
+              <div style={styles.photoPlaceholder}>
+                {getInitials(user.name)}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={styles.infoSection}>
+          <div style={styles.studentName}>{user.name}</div>
+          
+          {user.username ? (
+            <div style={styles.username}>@{user.username}</div>
           ) : (
-            <div style={styles.photoPlaceholder}>
-              {getInitials(user.name)}
+            <div style={styles.usernameHint}>Добавьте никнейм в профиле</div>
+          )}
+          
+          {courseInstituteText && (
+            <div style={styles.infoRow}>
+              <Building2 size={14} color={theme.colors.textSecondary} />
+              <span style={styles.infoText}>{courseInstituteText}</span>
+            </div>
+          )}
+          
+          {user.group && (
+            <div style={styles.infoRow}>
+              <Users size={14} color={theme.colors.textSecondary} />
+              <span style={styles.infoText}>Группа: {user.group}</span>
             </div>
           )}
         </div>
       </div>
 
-      <div style={styles.infoSection}>
-        <div style={styles.studentName}>{user.name}</div>
-        
-        {/* Всегда показываем строку с никнеймом или подсказкой */}
-        {user.username ? (
-          <div style={styles.username}>@{user.username}</div>
-        ) : (
-          <div style={styles.usernameHint}>Добавьте никнейм в профиле</div>
-        )}
-        
-        <div style={styles.infoRow}>
-          <Building2 size={14} color={theme.colors.textSecondary} />
-          <span style={styles.infoText}>{user.course} курс · {user.institute}</span>
+      <div style={styles.cardFooter}>
+        <div style={styles.idNumber}>
+          ID: #{user.telegram_id}
         </div>
-        
-        {user.group && (
-          <div style={styles.infoRow}>
-            <Users size={14} color={theme.colors.textSecondary} />
-            <span style={styles.infoText}>Группа: {user.group}</span>
-          </div>
-        )}
+        <div style={styles.joinDate}>
+          <Calendar size={12} color={theme.colors.textTertiary} />
+          <span>С {formatDate(user.created_at)}</span>
+        </div>
       </div>
-    </div>
 
-    <div style={styles.cardFooter}>
-      <div style={styles.idNumber}>
-        ID: #{user.telegram_id}
-      </div>
-      <div style={styles.joinDate}>
-        <Calendar size={12} color={theme.colors.textTertiary} />
-        <span>С {formatDate(user.created_at)}</span>
-      </div>
+      <div style={styles.magneticStripe} />
     </div>
-
-    <div style={styles.magneticStripe} />
-  </div>
-);
+  );
+};
 
 const StatsGrid = ({ stats }) => {
   const statCards = [
@@ -657,11 +669,11 @@ const StatsGrid = ({ stats }) => {
 
   return (
     <div style={styles.statsGrid}>
-      {statCards.map((card, i) => {
+      {statCards.map((card) => {
         const Icon = card.icon;
         return (
           <div
-            key={i}
+            key={card.label}
             style={{
               ...styles.statCard,
               background: card.gradient,
@@ -1126,4 +1138,3 @@ const styles = {
 };
 
 export default Profile;
-

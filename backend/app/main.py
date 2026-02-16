@@ -122,7 +122,7 @@ def update_current_user(
     
     update_data = user_update.model_dump(exclude_unset=True)
     
-    critical_fields = ["university", "institute", "course"]
+    critical_fields = ["campus_id", "university", "institute", "course"]
     changing_critical = any(
         field in update_data and update_data[field] != getattr(user, field)
         for field in critical_fields
@@ -246,6 +246,8 @@ def get_posts_feed(
     # ПАРАМЕТРЫ ФИЛЬТРАЦИИ
     university: Optional[str] = Query(None),      # Фильтр по университету
     institute: Optional[str] = Query(None),       # Фильтр по институту
+    campus_id: Optional[str] = Query(None),       # Фильтр по кампусу
+    city: Optional[str] = Query(None),            # Фильтр по городу
     tags: Optional[str] = Query(None),            # Comma-separated: "помощь,срочно"
     date_range: Optional[str] = Query(None),      # 'today' | 'week' | 'month'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'popular' | 'discussed'
@@ -265,6 +267,8 @@ def get_posts_feed(
         category=category,
         university=university,
         institute=institute,
+        campus_id=campus_id,
+        city=city,
         tags=tags,
         date_range=date_range,
         sort=sort,
@@ -919,6 +923,8 @@ def get_requests_feed_endpoint(
     # ПАРАМЕТРЫ ФИЛЬТРАЦИИ
     university: Optional[str] = Query(None),      # Фильтр по университету
     institute: Optional[str] = Query(None),       # Фильтр по институту
+    campus_id: Optional[str] = Query(None),       # Фильтр по кампусу
+    city: Optional[str] = Query(None),            # Фильтр по городу
     status: Optional[str] = Query('active'),      # 'active' | 'all'
     has_reward: Optional[str] = Query(None),      # 'with' | 'without'
     urgency: Optional[str] = Query(None),         # 'soon' (<24h) | 'later'
@@ -942,6 +948,8 @@ def get_requests_feed_endpoint(
         current_user_id,
         university=university,
         institute=institute,
+        campus_id=campus_id,
+        city=city,
         status=status,
         has_reward=has_reward,
         urgency=urgency,
@@ -1222,6 +1230,83 @@ def delete_response_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
 
+# ===== CAMPUS MANAGEMENT ENDPOINTS =====
+
+@app.get("/admin/campuses/unbound-users")
+def get_unbound_users_endpoint(
+    telegram_id: int = Query(...),
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """Список юзеров без привязки к кампусу (для амбассадоров и админов)."""
+    # Проверяем права
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user or user.role not in ('ambassador', 'admin', 'superadmin'):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    data = crud.get_unbound_users(db, search=search, limit=limit, offset=offset)
+
+    items = []
+    for u in data["items"]:
+        items.append({
+            "id": u.id,
+            "telegram_id": u.telegram_id,
+            "name": u.name,
+            "username": u.username,
+            "university": u.university,
+            "custom_university": u.custom_university,
+            "custom_city": u.custom_city,
+            "custom_faculty": u.custom_faculty,
+            "institute": u.institute,
+            "course": u.course,
+            "avatar": u.avatar,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        })
+
+    return {"items": items, "total": data["total"], "has_more": data["has_more"]}
+
+
+@app.post("/admin/campuses/bind-user")
+def bind_user_to_campus_endpoint(
+    telegram_id: int = Query(...),
+    user_id: int = Body(...),
+    campus_id: str = Body(...),
+    university: str = Body(...),
+    city: Optional[str] = Body(None),
+    db: Session = Depends(get_db)
+):
+    """Привязать юзера к кампусу."""
+    admin = crud.get_user_by_telegram_id(db, telegram_id)
+    if not admin or admin.role not in ('ambassador', 'admin', 'superadmin'):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
+    user = crud.bind_user_to_campus(db, user_id, campus_id, university, city)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    return {"ok": True, "user_id": user.id, "campus_id": user.campus_id}
+
+
+@app.post("/admin/campuses/unbind-user")
+def unbind_user_from_campus_endpoint(
+    telegram_id: int = Query(...),
+    user_id: int = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Отвязать юзера от кампуса."""
+    admin = crud.get_user_by_telegram_id(db, telegram_id)
+    if not admin or admin.role not in ('admin', 'superadmin'):
+        raise HTTPException(status_code=403, detail="Только для админов")
+
+    user = crud.unbind_user_from_campus(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    return {"ok": True, "user_id": user.id}
+
+
 # ===== MARKET ENDPOINTS =====
 
 @app.get("/market/categories", response_model=schemas.MarketCategoriesResponse)
@@ -1241,6 +1326,8 @@ def get_market_feed_endpoint(
     condition: Optional[str] = Query(None),
     university: Optional[str] = Query(None),
     institute: Optional[str] = Query(None),
+    campus_id: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -1259,6 +1346,8 @@ def get_market_feed_endpoint(
         condition=condition,
         university=university,
         institute=institute,
+        campus_id=campus_id,
+        city=city,
         current_user_id=user.id
     )
     

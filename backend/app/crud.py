@@ -32,6 +32,76 @@ def get_user_by_id(db: Session, user_id: int) -> Optional[models.User]:
     """Найти пользователя по ID"""
     return db.query(models.User).filter(models.User.id == user_id).first()
 
+
+# ========== CAMPUS MANAGEMENT ==========
+
+def get_unbound_users(
+    db: Session,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict:
+    """Юзеры без привязки к кампусу (campus_id == null)."""
+    query = db.query(models.User).filter(
+        models.User.campus_id.is_(None),
+        models.User.university.isnot(None),
+    )
+
+    if search:
+        term = f"%{search}%"
+        query = query.filter(
+            or_(
+                models.User.custom_university.ilike(term),
+                models.User.university.ilike(term),
+                models.User.name.ilike(term),
+                models.User.custom_city.ilike(term),
+            )
+        )
+
+    total = query.count()
+    users = query.order_by(models.User.created_at.desc()).offset(offset).limit(limit).all()
+
+    return {"items": users, "total": total, "has_more": offset + limit < total}
+
+
+def bind_user_to_campus(
+    db: Session,
+    user_id: int,
+    campus_id: str,
+    university: str,
+    city: Optional[str] = None,
+) -> Optional[models.User]:
+    """Привязать юзера к кампусу (амбассадор/админ)."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+
+    user.campus_id = campus_id
+    user.university = university
+    user.city = city
+    user.custom_university = None
+    user.custom_city = None
+    user.custom_faculty = None
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def unbind_user_from_campus(db: Session, user_id: int) -> Optional[models.User]:
+    """Отвязать юзера от кампуса (вернуть в custom)."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+
+    user.custom_university = user.university
+    user.custom_city = user.city
+    user.campus_id = None
+
+    db.commit()
+    db.refresh(user)
+    return user
+
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     """Создать нового пользователя"""
     # Подготовка данных с дефолтными значениями
@@ -77,6 +147,8 @@ def get_posts(
     category: Optional[str] = None,
     university: Optional[str] = None,
     institute: Optional[str] = None,
+    campus_id: Optional[str] = None,
+    city: Optional[str] = None,
     tags: Optional[str] = None,
     date_range: Optional[str] = None,
     sort: str = 'newest',
@@ -112,9 +184,23 @@ def get_posts(
     if category and category != 'all':
         query = query.filter(models.Post.category == category)
 
-    # Фильтр по университету (join уже выполнен выше)
-    if university and university != 'all':
+    # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ (4 уровня) ===
+    # Приоритет: campus_id > university > city
+    if campus_id:
+        # Уровень 1: Мой кампус (точнейший)
+        query = query.filter(models.User.campus_id == campus_id)
+    elif university and university != 'all':
+        # Уровень 2: Мой ВУЗ (все филиалы)
         query = query.filter(models.User.university == university)
+    elif city:
+        # Уровень 3: Мой город (все ВУЗы города)
+        query = query.filter(
+            or_(
+                models.User.city == city,
+                models.User.custom_city.ilike(f'%{city}%')
+            )
+        )
+    # Уровень 4: Все — без фильтра
 
     # Фильтр по институту
     if institute and institute != 'all':
@@ -748,6 +834,8 @@ def get_requests_feed(
     current_user_id: Optional[int] = None,
     university: Optional[str] = None,
     institute: Optional[str] = None,
+    campus_id: Optional[str] = None,
+    city: Optional[str] = None,
     status: str = 'active',                # 'active' | 'all'
     has_reward: Optional[str] = None,      # 'with' | 'without'
     urgency: Optional[str] = None,         # 'soon' (<24h) | 'later'
@@ -776,24 +864,34 @@ def get_requests_feed(
     if category and category != 'all':
         query = query.filter(models.Request.category == category)
 
-    # Фильтр по университету
-    if university and university != 'all':
+    # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ (4 уровня) ===
+    _joined_user = False
+    if campus_id:
+        query = query.join(models.User).filter(models.User.campus_id == campus_id)
+        _joined_user = True
+    elif university and university != 'all':
         if hasattr(models.Request, 'university'):
             query = query.filter(models.Request.university == university)
         else:
-            # Фильтрация через автора
             query = query.join(models.User).filter(models.User.university == university)
+            _joined_user = True
+    elif city:
+        query = query.join(models.User).filter(
+            or_(
+                models.User.city == city,
+                models.User.custom_city.ilike(f'%{city}%')
+            )
+        )
+        _joined_user = True
 
     # Фильтр по институту
     if institute and institute != 'all':
         if hasattr(models.Request, 'institute'):
             query = query.filter(models.Request.institute == institute)
         else:
-            # Фильтрация через автора
-            if university:  # Уже есть join
-                query = query.filter(models.User.institute == institute)
-            else:
-                query = query.join(models.User).filter(models.User.institute == institute)
+            if not _joined_user:
+                query = query.join(models.User)
+            query = query.filter(models.User.institute == institute)
 
     # Фильтр по наличию вознаграждения
     if has_reward == 'with':
@@ -1350,6 +1448,8 @@ def get_market_items(
     condition: Optional[str] = None,
     university: Optional[str] = None,
     institute: Optional[str] = None,
+    campus_id: Optional[str] = None,
+    city: Optional[str] = None,
     sort: str = 'newest',
     search: Optional[str] = None,
     current_user_id: Optional[int] = None
@@ -1383,8 +1483,25 @@ def get_market_items(
         conditions = condition.split(',')
         query = query.filter(models.MarketItem.condition.in_(conditions))
     
-    if university and university != 'all':
+    # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ (4 уровня) ===
+    # MarketItem хранит university/institute денормализованно,
+    # но campus_id/city — через seller (User)
+    _joined_seller = False
+    if campus_id:
+        query = query.join(models.User, models.MarketItem.seller_id == models.User.id).filter(
+            models.User.campus_id == campus_id
+        )
+        _joined_seller = True
+    elif university and university != 'all':
         query = query.filter(models.MarketItem.university == university)
+    elif city:
+        query = query.join(models.User, models.MarketItem.seller_id == models.User.id).filter(
+            or_(
+                models.User.city == city,
+                models.User.custom_city.ilike(f'%{city}%')
+            )
+        )
+        _joined_seller = True
     
     if institute and institute != 'all':
         query = query.filter(models.MarketItem.institute == institute)

@@ -4,6 +4,7 @@ import { useStore } from '../../store';
 import theme from '../../theme';
 import SwipeableModal from '../shared/SwipeableModal';
 import { hapticFeedback } from '../../utils/telegram';
+import { getCampusDisplayName, getUserCity } from '../../constants/universityData';
 
 
 const MarketFilters = ({ onClose, onApply }) => {
@@ -13,11 +14,15 @@ const MarketFilters = ({ onClose, onApply }) => {
 
 
   // ===== ОПЦИИ =====
+
+  const campusLabel = getCampusDisplayName(user);
+  const cityLabel = getUserCity(user);
   
   const locationOptions = [
     { value: 'all', label: 'Все университеты' },
-    { value: 'my_university', label: `Мой университет (${user?.university || 'ВШЭ'})` },
-    { value: 'my_institute', label: `Мой институт (${user?.institute || 'ФКН'})` },
+    ...(user?.campus_id ? [{ value: 'my_campus', label: `Мой кампус (${campusLabel})` }] : []),
+    { value: 'my_university', label: `Мой ВУЗ (${user?.university || '—'})` },
+    ...(cityLabel ? [{ value: 'my_city', label: `Мой город (${cityLabel})` }] : []),
   ];
 
   const priceQuickFilters = [
@@ -52,6 +57,17 @@ const MarketFilters = ({ onClose, onApply }) => {
         location: 'all',
         university: 'all',
         institute: 'all',
+        campus_id: null,
+        city: null,
+      });
+    } else if (value === 'my_campus') {
+      setLocalFilters({
+        ...localFilters,
+        location: 'my_campus',
+        campus_id: user?.campus_id,
+        university: user?.university,
+        institute: 'all',
+        city: null,
       });
     } else if (value === 'my_university') {
       setLocalFilters({
@@ -59,13 +75,17 @@ const MarketFilters = ({ onClose, onApply }) => {
         location: 'my_university',
         university: user?.university,
         institute: 'all',
+        campus_id: null,
+        city: null,
       });
-    } else if (value === 'my_institute') {
+    } else if (value === 'my_city') {
       setLocalFilters({
         ...localFilters,
-        location: 'my_institute',
-        university: user?.university,
-        institute: user?.institute,
+        location: 'my_city',
+        city: cityLabel,
+        university: 'all',
+        institute: 'all',
+        campus_id: null,
       });
     }
   };
@@ -125,6 +145,8 @@ const MarketFilters = ({ onClose, onApply }) => {
       location: 'all',
       university: 'all',
       institute: 'all',
+      campus_id: null,
+      city: null,
       sort: 'newest',
     };
     setLocalFilters(defaultFilters);

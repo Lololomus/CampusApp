@@ -117,6 +117,12 @@ export async function getPosts(filters = {}) {
     if (filters.institute && filters.institute !== 'all') {
       params.institute = filters.institute;
     }
+    if (filters.campus_id) {
+      params.campus_id = filters.campus_id;
+    }
+    if (filters.city) {
+      params.city = filters.city;
+    }
     if (filters.tags && Array.isArray(filters.tags) && filters.tags.length > 0) {
       params.tags = filters.tags.join(',');
     }
@@ -381,6 +387,12 @@ export async function getRequestsFeed(filters = {}) {
     if (filters.institute && filters.institute !== 'all') {
       params.institute = filters.institute;
     }
+    if (filters.campus_id) {
+      params.campus_id = filters.campus_id;
+    }
+    if (filters.city) {
+      params.city = filters.city;
+    }
     if (filters.status && filters.status !== 'active') {
       params.status = filters.status;
     }
@@ -534,6 +546,8 @@ export async function getMarketItems(filters = {}) {
     if (filters.condition) params.condition = filters.condition;
     if (filters.university && filters.university !== 'all') params.university = filters.university;
     if (filters.institute && filters.institute !== 'all') params.institute = filters.institute;
+    if (filters.campus_id) params.campus_id = filters.campus_id;
+    if (filters.city) params.city = filters.city;
     if (filters.sort) params.sort = filters.sort;
     if (filters.search) params.search = filters.search;
     
@@ -1213,6 +1227,51 @@ export async function updateNotificationSettings(settings) {
     return response.data;
   } catch (error) {
     console.error('Ошибка обновления настроек уведомлений:', error);
+    throw error;
+  }
+}
+
+
+// ===== CAMPUS MANAGEMENT =====
+
+export async function getUnboundUsers(search = '', limit = 100, offset = 0) {
+  try {
+    const telegram_id = getTelegramId();
+    const params = { telegram_id, limit, offset };
+    if (search) params.search = search;
+    const response = await api.get('/admin/campuses/unbound-users', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения непривязанных:', error);
+    return { items: [], total: 0, has_more: false };
+  }
+}
+
+export async function bindUserToCampus(userId, campusId, university, city = null) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.post('/admin/campuses/bind-user', {
+      user_id: userId,
+      campus_id: campusId,
+      university: university,
+      city: city,
+    }, { params: { telegram_id } });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка привязки к кампусу:', error);
+    throw error;
+  }
+}
+
+export async function unbindUserFromCampus(userId) {
+  try {
+    const telegram_id = getTelegramId();
+    const response = await api.post('/admin/campuses/unbind-user', {
+      user_id: userId,
+    }, { params: { telegram_id } });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка отвязки от кампуса:', error);
     throw error;
   }
 }

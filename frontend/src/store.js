@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { registerUser } from './api';
+import { toast } from './components/shared/Toast';
 
 const API_URL = 'http://localhost:8000';
 
@@ -182,6 +183,8 @@ export const useStore = create(
         location: 'all',
         university: 'all',
         institute: 'all',
+        campus_id: null,
+        city: null,
         tags: [],
         dateRange: 'all',
         sort: 'newest',
@@ -191,6 +194,8 @@ export const useStore = create(
         location: 'all',
         university: 'all',
         institute: 'all',
+        campus_id: null,
+        city: null,
         status: 'active',
         hasReward: 'all',
         urgency: 'all',
@@ -206,6 +211,8 @@ export const useStore = create(
           location: 'all',
           university: 'all',
           institute: 'all',
+          campus_id: null,
+          city: null,
           tags: [],
           dateRange: 'all',
           sort: 'newest',
@@ -221,6 +228,8 @@ export const useStore = create(
           location: 'all',
           university: 'all',
           institute: 'all',
+          campus_id: null,
+          city: null,
           status: 'active',
           hasReward: 'all',
           urgency: 'all',
@@ -382,6 +391,8 @@ export const useStore = create(
         condition: null,
         university: 'all',
         institute: 'all',
+        campus_id: null,
+        city: null,
         sort: 'newest'
       },
       
@@ -439,6 +450,8 @@ export const useStore = create(
           condition: null,
           university: 'all',
           institute: 'all',
+          campus_id: null,
+          city: null,
           sort: 'newest'
         }
       }),
@@ -549,9 +562,12 @@ export const useStore = create(
             onboardingStep: 0,
             onboardingData: {}
           });
+          
+          toast.success('Добро пожаловать! 🎉');
         } catch (error) {
           console.error('❌ Ошибка регистрации:', error);
-          alert('Не удалось зарегистрироваться. Попробуйте снова.');
+          const message = error.response?.data?.detail || 'Не удалось зарегистрироваться. Попробуйте снова.';
+          toast.error(message);
         }
       },
     }),

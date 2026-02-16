@@ -1,7 +1,7 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/moderation/AmbassadorPanel.js =====
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, BarChart3, Layers, Megaphone, Clock } from 'lucide-react';
+import { ArrowLeft, BarChart3, Layers, Megaphone, Clock, Building2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { getReports, getAdminStats } from '../../api';
@@ -12,10 +12,12 @@ import ReportQueue from './ReportQueue';
 import ReportList from './ReportList';
 import ModerationHistory from './ModerationHistory';
 import AdManager from './AdManager';
+import CampusManager from './CampusManager';
 
 const TABS = [
   { id: 'dashboard', label: 'Обзор', icon: BarChart3 },
   { id: 'reports', label: 'Жалобы', icon: Layers },
+  { id: 'campuses', label: 'Кампусы', icon: Building2 },
   { id: 'ads', label: 'Реклама', icon: Megaphone },
   { id: 'history', label: 'История', icon: Clock },
 ];
@@ -132,6 +134,7 @@ function AmbassadorPanel() {
         {tab === 'reports' && (
           <ReportsTab reports={reports} loading={loading} onProcessed={handleReportProcessed} onRefresh={loadData} />
         )}
+        {tab === 'campuses' && <CampusManager isAdmin={false} />}
         {tab === 'ads' && <AdManager isAdmin={false} />}
         {tab === 'history' && <ModerationHistory />}
       </div>

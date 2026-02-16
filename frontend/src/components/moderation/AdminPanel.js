@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Activity, Users, MessageSquare, BarChart3,
   Shield, Plus, Trash2, Pause, Play, Search, RefreshCw,
-  CheckCircle, XCircle, ChevronDown, ChevronUp, Megaphone
+  CheckCircle, XCircle, ChevronDown, ChevronUp, Megaphone, Building2
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
@@ -16,10 +16,12 @@ import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import ActionFeed from './ActionFeed';
 import AdManager from './AdManager';
+import CampusManager from './CampusManager';
 
 const TABS = [
   { id: 'feed', label: 'Лента', icon: Activity },
   { id: 'ambassadors', label: 'Люди', icon: Users },
+  { id: 'campuses', label: 'Кампусы', icon: Building2 },
   { id: 'appeals', label: 'Апелл.', icon: MessageSquare },
   { id: 'ads', label: 'Рекл.', icon: Megaphone },
   { id: 'stats', label: 'Статы', icon: BarChart3 },
@@ -96,6 +98,7 @@ function AdminPanel() {
       <div style={styles.content}>
         {tab === 'feed' && <ActionFeed onReverse={(log) => console.log('Reverse:', log)} />}
         {tab === 'ambassadors' && <AmbassadorManager />}
+        {tab === 'campuses' && <CampusManager isAdmin={true} />}
         {tab === 'appeals' && <AppealsSection />}
         {tab === 'ads' && <AdManager isAdmin={true} />}
         {tab === 'stats' && <StatsSection />}
@@ -425,7 +428,7 @@ const styles = {
     top: 3, 
     bottom: 3, 
     left: 3,
-    width: 'calc((100% - 6px) / 5)', // 5 табов
+    width: 'calc((100% - 6px) / 6)', // 6 табов
     borderRadius: 10,
     background: 'linear-gradient(135deg, #ef4444, #dc2626)',
     boxShadow: theme.shadows.md,

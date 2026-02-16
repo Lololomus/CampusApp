@@ -10,8 +10,8 @@ class UserBase(BaseModel):
     """Базовые поля пользователя"""
     name: str
     university: str
-    institute: str
-    course: int
+    institute: Optional[str] = None
+    course: Optional[int] = None
 
 class UserCreate(UserBase):
     """Создание нового пользователя"""
@@ -20,6 +20,11 @@ class UserCreate(UserBase):
     age: Optional[int] = None
     group: Optional[str] = None
     bio: Optional[str] = None
+    campus_id: Optional[str] = None
+    city: Optional[str] = None
+    custom_university: Optional[str] = None
+    custom_city: Optional[str] = None
+    custom_faculty: Optional[str] = None
 
 class UserUpdate(BaseModel):
     """Обновление профиля"""
@@ -32,6 +37,11 @@ class UserUpdate(BaseModel):
     institute: Optional[str] = None
     course: Optional[int] = None
     group: Optional[str] = None
+    campus_id: Optional[str] = None
+    city: Optional[str] = None
+    custom_university: Optional[str] = None
+    custom_city: Optional[str] = None
+    custom_faculty: Optional[str] = None
     interests: Optional[List[str]] = None
     show_profile: Optional[bool] = None
     show_telegram_id: Optional[bool] = None
@@ -45,10 +55,15 @@ class UserResponse(BaseModel):
     age: Optional[int] = None
     bio: Optional[str] = None
     avatar: Optional[str] = None
+    campus_id: Optional[str] = None
     university: str
-    institute: str
-    course: int
+    institute: Optional[str] = None
+    course: Optional[int] = None
     group: Optional[str] = None
+    city: Optional[str] = None
+    custom_university: Optional[str] = None
+    custom_city: Optional[str] = None
+    custom_faculty: Optional[str] = None
     interests: List[str] = []
     show_in_dating: bool = True
     hide_course_group: bool = False
@@ -81,9 +96,11 @@ class UserShort(BaseModel):
     username: Optional[str] = None
     name: str
     avatar: Optional[str] = None
+    campus_id: Optional[str] = None
     university: Optional[str] = None
     institute: Optional[str] = None
     course: Optional[int] = None
+    city: Optional[str] = None
     role: str = 'user'
     show_profile: bool = True
     show_telegram_id: bool = False
@@ -99,10 +116,12 @@ class UserPublic(BaseModel):
     age: Optional[int] = None
     bio: Optional[str] = None
     avatar: Optional[str] = None
+    campus_id: Optional[str] = None
     university: str
-    institute: str
+    institute: Optional[str] = None
     course: Optional[int] = None
     group: Optional[str] = None
+    city: Optional[str] = None
     interests: List[str] = []
 
     @field_validator('interests', mode='before')
@@ -939,7 +958,7 @@ class DatingProfileResponse(BaseModel):
     name: str
     age: Optional[int] = None
     university: str
-    institute: str
+    institute: Optional[str] = None
     course: Optional[int] = None
 
     @field_validator('photos', 'goals', 'lifestyle', 'prompts', mode='before')

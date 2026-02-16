@@ -17,11 +17,21 @@ class User(Base):
     bio = Column(Text, nullable=True)
     avatar = Column(String(500), nullable=True)
     
-    # Академическая инфа
+    # Академическая инфа — кампус (хардкод из справочника)
+    campus_id = Column(String(50), nullable=True, index=True)  # 'ruk_moscow', 'mgu_moscow', null если custom
+    
+    # Для привязанных (campus_id != null) — денормализованные поля из справочника
+    # Для непривязанных (campus_id == null) — пользовательский ввод
     university = Column(String(255), nullable=False)
-    institute = Column(String(255), nullable=False)
+    institute = Column(String(255), nullable=True)  # nullable=True: факультет не обязателен
     course = Column(Integer, nullable=True)
     group = Column(String(100), nullable=True)
+    city = Column(String(100), nullable=True, index=True)
+    
+    # Custom-поля для непривязанных пользователей (campus_id == null)
+    custom_university = Column(String(255), nullable=True)
+    custom_city = Column(String(100), nullable=True)
+    custom_faculty = Column(String(255), nullable=True)
     
     # Роль (user / ambassador / superadmin)
     role = Column(String(20), default='user', nullable=False, index=True)
