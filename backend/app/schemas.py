@@ -26,6 +26,19 @@ class UserCreate(UserBase):
     custom_city: Optional[str] = None
     custom_faculty: Optional[str] = None
 
+
+class UserRegister(UserBase):
+    """Регистрация пользователя в auth-потоке (telegram_id берется из токена)"""
+    username: Optional[str] = None
+    age: Optional[int] = None
+    group: Optional[str] = None
+    bio: Optional[str] = None
+    campus_id: Optional[str] = None
+    city: Optional[str] = None
+    custom_university: Optional[str] = None
+    custom_city: Optional[str] = None
+    custom_faculty: Optional[str] = None
+
 class UserUpdate(BaseModel):
     """Обновление профиля"""
     username: Optional[str] = None
@@ -731,15 +744,26 @@ class AdminStatsResponse(BaseModel):
 
 class TelegramAuth(BaseModel):
     """Данные для авторизации через Telegram"""
-    telegram_id: int
-    username: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    init_data: str
 
 class Token(BaseModel):
     """JWT токен для авторизации"""
     access_token: str
     token_type: str = "bearer"
+
+
+class AuthLoginResponse(Token):
+    user: Optional[UserResponse] = None
+    is_registered: bool = False
+
+
+class DevLoginRequest(BaseModel):
+    telegram_id: int
+
+
+class DevResetRequest(BaseModel):
+    telegram_id: int
+    hard: bool = False
 
 # ===== DATING SCHEMAS =====
 

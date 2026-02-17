@@ -71,7 +71,7 @@ function Navigation() {
   const handleTabClick = (tabId) => {
     hapticFeedback('light');
 
-    if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people' || tabId === 'market')) {
+    if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people')) {
       setShowAuthModal(true);
       return;
     }

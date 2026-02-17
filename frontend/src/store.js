@@ -1,9 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { registerUser } from './api';
+import {
+  registerUser,
+  loginWithTelegram,
+  refreshToken,
+  getCurrentUser,
+  logoutUser,
+  setAccessToken,
+} from './api';
 import { toast } from './components/shared/Toast';
-
-const API_URL = 'http://localhost:8000';
 
 export const useStore = create(
   persist(
@@ -11,6 +16,7 @@ export const useStore = create(
       // AUTH STATE
       isRegistered: false,
       user: {},
+      authStatus: 'loading', // loading | ready | error
       
       setUser: (user) => {
         const state = get();
@@ -24,9 +30,10 @@ export const useStore = create(
             profilesQueue: [],
             isRegistered: false,
             moderationRole: null,
+            authStatus: 'ready',
           });
         } else {
-          set({ user, isRegistered: true });
+          set({ user, isRegistered: true, authStatus: 'ready' });
           
           // Автозагрузка dating профиля при входе
           if (user.show_in_dating) {
@@ -63,14 +70,18 @@ export const useStore = create(
         }
       },
       
-      logout: () => set({ 
-        user: {}, 
-        datingProfile: null,
-        currentProfile: null,
-        profilesQueue: [],
-        isRegistered: false,
-        moderationRole: null,
-      }),
+      logout: async () => {
+        await logoutUser();
+        set({
+          user: {},
+          datingProfile: null,
+          currentProfile: null,
+          profilesQueue: [],
+          isRegistered: false,
+          moderationRole: null,
+          authStatus: 'ready',
+        });
+      },
 
       // MODERATION STATE
       moderationRole: null, // { role, university, can_moderate, can_admin, scope, pending_reports }
@@ -538,6 +549,53 @@ export const useStore = create(
       clearToasts: () => set({ toasts: [] }),
 
       // ACTIONS
+      bootstrapAuth: async () => {
+        set({ authStatus: 'loading' });
+        try {
+          const loginData = await loginWithTelegram();
+          setAccessToken(loginData.access_token);
+
+          if (loginData.user) {
+            set({
+              user: loginData.user,
+              isRegistered: true,
+              authStatus: 'ready',
+              showAuthModal: false,
+            });
+          } else {
+            set({
+              user: {},
+              isRegistered: false,
+              authStatus: 'ready',
+              showAuthModal: true,
+              activeTab: 'feed',
+            });
+          }
+        } catch (loginError) {
+          try {
+            const refreshed = await refreshToken();
+            setAccessToken(refreshed.access_token);
+            const me = await getCurrentUser();
+            set({
+              user: me || {},
+              isRegistered: !!me,
+              authStatus: 'ready',
+              showAuthModal: !me,
+              activeTab: me ? useStore.getState().activeTab : 'feed',
+            });
+          } catch (refreshError) {
+            setAccessToken(null);
+            set({
+              user: {},
+              isRegistered: false,
+              authStatus: 'error',
+              showAuthModal: true,
+              activeTab: 'feed',
+            });
+          }
+        }
+      },
+
       startRegistration: () => set({
         showAuthModal: false,
         onboardingStep: 1,
@@ -558,6 +616,7 @@ export const useStore = create(
           set({
             user: user,
             isRegistered: true,
+            authStatus: 'ready',
             showAuthModal: false,
             onboardingStep: 0,
             onboardingData: {}

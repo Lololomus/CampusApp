@@ -111,6 +111,29 @@ class User(Base):
         back_populates='user', 
         cascade='all, delete-orphan'
     )
+    auth_sessions = relationship(
+        'AuthSession',
+        foreign_keys='[AuthSession.user_id]',
+        back_populates='user',
+        cascade='all, delete-orphan'
+    )
+
+
+class AuthSession(Base):
+    __tablename__ = 'auth_sessions'
+
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
+    refresh_hash = Column(String(128), nullable=False, unique=True, index=True)
+    user_agent = Column(String(500), nullable=True)
+    ip = Column(String(64), nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    revoked_at = Column(DateTime, nullable=True, index=True)
+
+    user = relationship('User', back_populates='auth_sessions')
 
 
 class Post(Base):

@@ -1,15 +1,18 @@
 # ===== 📄 ФАЙЛ: backend/app/main.py =====
 
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict
 from app import models, schemas, crud
 from app.database import get_db, init_db
 from app.utils import get_image_urls, BASE_URL
+from app.auth import decode_authorization_header
+from app.config import get_settings
 import json
-from app.routers import dating, moderation, ads, notifications
+from app.routers import dating, moderation, ads, notifications, auth, dev_auth
 import shutil
 import uuid
 import os
@@ -26,16 +29,56 @@ app.include_router(dating.router)
 app.include_router(moderation.router)
 app.include_router(ads.router)
 app.include_router(notifications.router)
+app.include_router(auth.router)
+app.include_router(dev_auth.router)
+
+settings = get_settings()
 
 # ===== CORS =====
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"]
 )
+
+
+PUBLIC_PATHS = ("/", "/health", "/openapi.json")
+PUBLIC_PREFIXES = ("/docs", "/redoc", "/uploads", "/auth/telegram/login", "/auth/refresh", "/auth/logout", "/dev/auth")
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if request.method.upper() == "OPTIONS":
+        return await call_next(request)
+
+    path = request.url.path
+    if path in PUBLIC_PATHS or any(path == prefix or path.startswith(prefix + "/") for prefix in PUBLIC_PREFIXES):
+        return await call_next(request)
+
+    auth_header = request.headers.get("authorization")
+    try:
+        payload = decode_authorization_header(auth_header)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    if payload is None:
+        return JSONResponse(status_code=401, content={"detail": "Missing bearer token"})
+
+    request.state.auth_payload = payload
+
+    query_telegram_id = request.query_params.get("telegram_id")
+    if query_telegram_id is not None:
+        try:
+            token_tgid = int(payload.get("tgid"))
+            query_tgid = int(query_telegram_id)
+        except (TypeError, ValueError):
+            return JSONResponse(status_code=401, content={"detail": "Invalid telegram_id"})
+        if token_tgid != query_tgid:
+            return JSONResponse(status_code=403, content={"detail": "telegram_id mismatch"})
+
+    return await call_next(request)
 
 # ===== STATIC FILES =====
 os.makedirs("uploads/avatars", exist_ok=True)
@@ -56,24 +99,6 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
-
-# ===== AUTH ENDPOINTS =====
-
-@app.post("/auth/telegram", response_model=schemas.UserResponse)
-def auth_telegram(telegram_id: int = Query(...), db: Session = Depends(get_db)):
-    """Авторизация через Telegram"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-@app.post("/auth/register", response_model=schemas.UserResponse)
-def register_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
-    """Регистрация нового пользователя"""
-    existing_user = crud.get_user_by_telegram_id(db, user_data.telegram_id)
-    if existing_user:
-        raise HTTPException(status_code=400, detail="User already exists")
-    return crud.create_user(db, user_data)
 
 # ===== USER ENDPOINTS =====
 
@@ -256,8 +281,7 @@ def get_posts_feed(
 ):
     """Лента постов с фильтрацией"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    current_user_id = user.id if user else None
 
     # Передаем все параметры фильтрации в CRUD
     posts = crud.get_posts(
@@ -272,13 +296,13 @@ def get_posts_feed(
         tags=tags,
         date_range=date_range,
         sort=sort,
-        current_user_id=user.id
+        current_user_id=current_user_id
     )
 
     result = []
     for post in posts:
         tags = json.loads(post.tags) if post.tags else []
-        is_liked = crud.is_post_liked_by_user(db, post.id, user.id)
+        is_liked = crud.is_post_liked_by_user(db, post.id, user.id) if user else False
         images = get_image_urls(post.images) if post.images else []
 
         author_id_data = post.author_id if post.is_anonymous else post.author_id
@@ -290,10 +314,12 @@ def get_posts_feed(
 
         poll_response = None
         if post.poll:
-            user_vote = db.query(models.PollVote).filter(
-                models.PollVote.poll_id == post.poll.id,
-                models.PollVote.user_id == user.id
-            ).first()
+            user_vote = None
+            if user:
+                user_vote = db.query(models.PollVote).filter(
+                    models.PollVote.poll_id == post.poll.id,
+                    models.PollVote.user_id == user.id
+                ).first()
             user_votes_indices = json.loads(user_vote.option_indices) if user_vote else []
 
             options_data = json.loads(post.poll.options)
@@ -464,16 +490,15 @@ async def create_post_endpoint(
 @app.get("/posts/{post_id}", response_model=schemas.PostResponse)
 def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session = Depends(get_db)):
     user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
     
     post = crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    crud.increment_post_views(db, post_id, user.id)
+    if user:
+        crud.increment_post_views(db, post_id, user.id)
     
-    is_liked = crud.is_post_liked_by_user(db, post_id, user.id)
+    is_liked = crud.is_post_liked_by_user(db, post_id, user.id) if user else False
     tags = json.loads(post.tags) if post.tags else []
     images = get_image_urls(post.images) if post.images else []
     
@@ -487,10 +512,12 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
     
     poll_response = None
     if post.poll:
-        user_vote = db.query(models.PollVote).filter(
-            models.PollVote.poll_id == post.poll.id,
-            models.PollVote.user_id == user.id
-        ).first()
+        user_vote = None
+        if user:
+            user_vote = db.query(models.PollVote).filter(
+                models.PollVote.poll_id == post.poll.id,
+                models.PollVote.user_id == user.id
+            ).first()
         
         user_votes_indices = json.loads(user_vote.option_indices) if user_vote else []
         
@@ -678,10 +705,7 @@ def get_post_comments_endpoint(
     db: Session = Depends(get_db)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    comments = crud.get_post_comments(db, post_id, user.id)
+    comments = crud.get_post_comments(db, post_id, user.id if user else None)
     
     result = []
     for comment in comments:
@@ -1331,8 +1355,7 @@ def get_market_feed_endpoint(
     db: Session = Depends(get_db)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    current_user_id = user.id if user else None
     
     feed_data = crud.get_market_items(
         db,
@@ -1348,7 +1371,7 @@ def get_market_feed_endpoint(
         institute=institute,
         campus_id=campus_id,
         city=city,
-        current_user_id=user.id
+        current_user_id=current_user_id
     )
     
     items = []
@@ -1367,8 +1390,8 @@ def get_market_feed_endpoint(
             show_telegram_id=item.seller.show_telegram_id
         )
 
-        is_seller = item.seller_id == user.id
-        is_favorited = crud.is_item_favorited(db, item.id, user.id)
+        is_seller = bool(user and item.seller_id == user.id)
+        is_favorited = crud.is_item_favorited(db, item.id, user.id) if user else False
         
         item_dict = {
             "id": item.id,
@@ -1517,11 +1540,6 @@ def get_market_item_endpoint(
     db: Session = Depends(get_db)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    item = crud.get_market_item(db, item_id, user_id=user.id)
-
     item = crud.get_market_item(db, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -1540,8 +1558,8 @@ def get_market_item_endpoint(
         show_telegram_id=item.seller.show_telegram_id
     )
     
-    is_favorited = crud.is_item_favorited(db, item.id, user.id)
-    is_seller = item.seller_id == user.id
+    is_favorited = crud.is_item_favorited(db, item.id, user.id) if user else False
+    is_seller = bool(user and item.seller_id == user.id)
     
     return {
         "id": item.id,

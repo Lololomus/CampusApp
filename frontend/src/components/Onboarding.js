@@ -1,9 +1,9 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/Onboarding.js =====
+// Onboarding component
 
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Camera, User, AtSign, Search, GraduationCap, Building2, ChevronLeft, X } from 'lucide-react';
 import { useStore } from '../store';
-import { hapticFeedback } from '../utils/telegram';
+import { hapticFeedback, getTelegramUser } from '../utils/telegram';
 import { uploadUserAvatar } from '../api';
 import { toast } from './shared/Toast';
 import theme from '../theme';
@@ -23,10 +23,11 @@ function Onboarding() {
   } = useStore();
 
   const [direction, setDirection] = useState('forward');
+  const [educationDraft, setEducationDraft] = useState({});
 
   const goToStep = useCallback((step, forward = true) => {
     setDirection(forward ? 'forward' : 'backward');
-    setTimeout(() => setOnboardingStep(step), 50);
+    setOnboardingStep(step);
   }, [setOnboardingStep]);
 
   const renderStep = () => {
@@ -35,7 +36,7 @@ function Onboarding() {
     switch (onboardingStep) {
       case 1:
         return (
-          <div className={animClass} key="step1">
+          <div className={`${animClass} onb-step-frame`} key="step1">
             <StepAboutYou
               onboardingData={onboardingData}
               setOnboardingData={setOnboardingData}
@@ -45,10 +46,11 @@ function Onboarding() {
         );
       case 2:
         return (
-          <div className={animClass} key="step2">
+          <div className={`${animClass} onb-step-frame`} key="step2">
             <StepEducation
               onboardingData={onboardingData}
-              setOnboardingData={setOnboardingData}
+              educationDraft={educationDraft}
+              setEducationDraft={setEducationDraft}
               onBack={() => goToStep(1, false)}
               onFinish={finishRegistration}
             />
@@ -73,33 +75,77 @@ function Onboarding() {
 
 
 // ========================================
-// ШАГ 1: Фото + Имя + Username
+// Step 1: photo + name + username
 // ========================================
 
 function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
-  const [name, setName] = useState(onboardingData.name || '');
+  const telegramUser = useMemo(() => getTelegramUser(), []);
+  const telegramPhotoUrl = telegramUser?.photoUrl || null;
+  const persistedAvatar = onboardingData.avatar || null;
+  const initialAvatar = persistedAvatar || telegramPhotoUrl;
+
+  const [name, setName] = useState(onboardingData.name || telegramUser?.firstName || '');
   const [username, setUsername] = useState(onboardingData.username || '');
-  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(initialAvatar);
+  const [avatarSource, setAvatarSource] = useState(
+    persistedAvatar ? 'uploaded' : (telegramPhotoUrl ? 'telegram' : 'empty')
+  );
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   const isValid = name.trim().length >= ONBOARDING_LIMITS.NAME_MIN;
+  const isTelegramAvatar = avatarSource === 'telegram' && Boolean(avatarPreview);
+
+  const fallbackAvatarPreview = useCallback(() => {
+    if (persistedAvatar) {
+      setAvatarPreview(persistedAvatar);
+      setAvatarSource('uploaded');
+      return;
+    }
+    if (telegramPhotoUrl) {
+      setAvatarPreview(telegramPhotoUrl);
+      setAvatarSource('telegram');
+      return;
+    }
+    setAvatarPreview(null);
+    setAvatarSource('empty');
+  }, [persistedAvatar, telegramPhotoUrl]);
 
   const handleAvatarPick = () => {
     hapticFeedback('light');
     fileInputRef.current?.click();
   };
 
+  const handleAvatarError = () => {
+    // Quiet fallback for broken Telegram image links.
+    if (avatarSource === 'telegram') {
+      if (persistedAvatar) {
+        setAvatarPreview(persistedAvatar);
+        setAvatarSource('uploaded');
+      } else {
+        setAvatarPreview(null);
+        setAvatarSource('empty');
+      }
+      return;
+    }
+
+    setAvatarPreview(null);
+    setAvatarSource('empty');
+  };
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Превью сразу
+    // Show local preview immediately
     const reader = new FileReader();
-    reader.onloadend = () => setAvatarPreview(reader.result);
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result);
+      setAvatarSource('uploaded');
+    };
     reader.readAsDataURL(file);
 
-    // Загрузка на сервер
+    // Upload to server
     setUploading(true);
     uploadUserAvatar(file)
       .then((data) => {
@@ -110,7 +156,7 @@ function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
       })
       .catch(() => {
         toast.error('Не удалось загрузить фото');
-        setAvatarPreview(null);
+        fallbackAvatarPreview();
       })
       .finally(() => setUploading(false));
   };
@@ -130,17 +176,23 @@ function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
     onNext();
   };
 
+  const handleEnterSubmit = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    handleNext();
+  };
+
   return (
     <div style={styles.stepContent}>
       <div style={styles.stepIndicator}>Шаг 1 из 2</div>
       <div style={styles.stepTitle}>Представьтесь</div>
       <div style={styles.stepSubtitle}>Как вас будут видеть другие студенты</div>
 
-      {/* Аватар */}
+      {/* Avatar */}
       <div style={styles.avatarCenter}>
-        <div style={styles.avatarOuter} onClick={handleAvatarPick}>
+        <div style={styles.avatarOuter} className="onb-pressable" onClick={handleAvatarPick}>
           {avatarPreview ? (
-            <img src={avatarPreview} alt="" style={styles.avatarImg} />
+            <img src={avatarPreview} alt="" style={styles.avatarImg} onError={handleAvatarError} />
           ) : (
             <div style={styles.avatarPlaceholder}>
               <Camera size={28} color={theme.colors.textTertiary} />
@@ -158,10 +210,12 @@ function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />
-        <div style={styles.avatarHint}>Добавить фото</div>
+        <div style={styles.avatarHint}>
+          {isTelegramAvatar ? 'Фото из Telegram, можно сменить' : 'Добавить фото'}
+        </div>
       </div>
 
-      {/* Имя */}
+      {/* Name */}
       <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.05s' }}>
         <label style={styles.label}>
           <User size={14} color={theme.colors.textTertiary} style={{ marginRight: 6 }} />
@@ -172,6 +226,7 @@ function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
           placeholder="Иван Иванов"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          onKeyDown={handleEnterSubmit}
           style={styles.input}
           maxLength={ONBOARDING_LIMITS.NAME_MAX}
         />
@@ -189,6 +244,7 @@ function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
           placeholder="@username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          onKeyDown={handleEnterSubmit}
           style={{ ...styles.input, color: theme.colors.primary }}
           maxLength={ONBOARDING_LIMITS.USERNAME_MAX}
           autoCapitalize="none"
@@ -199,11 +255,11 @@ function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
       <button
         style={{
           ...styles.primaryButton,
-          opacity: isValid ? 1 : 0.5,
+          ...(isValid ? {} : styles.primaryButtonDisabled),
         }}
         onClick={handleNext}
         disabled={!isValid}
-        className="onb-fade-up"
+        className={`onb-fade-up ${isValid ? 'onb-pressable' : ''}`}
       >
         Далее
       </button>
@@ -213,20 +269,65 @@ function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
 
 
 // ========================================
-// ШАГ 2: Кампус + Факультет + Курс + Группа
+// Step 2: campus + faculty + course + group
 // ========================================
 
-function StepEducation({ onboardingData, setOnboardingData, onBack, onFinish }) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCampus, setSelectedCampus] = useState(null);
-  const [isCustom, setIsCustom] = useState(false);
-  const [customUni, setCustomUni] = useState('');
-  const [customCity, setCustomCity] = useState('');
-  const [faculty, setFaculty] = useState('');
-  const [customFaculty, setCustomFaculty] = useState('');
-  const [course, setCourse] = useState(null);
-  const [group, setGroup] = useState('');
+function StepEducation({ onboardingData, educationDraft, setEducationDraft, onBack, onFinish }) {
+  const resolveCampusById = useCallback((campusId) => {
+    if (!campusId) return null;
+    return CAMPUSES.find((campus) => campus.id === campusId) || null;
+  }, []);
+
+  const [searchQuery, setSearchQuery] = useState(educationDraft.searchQuery ?? '');
+  const [selectedCampus, setSelectedCampus] = useState(() => {
+    const draftCampus = resolveCampusById(educationDraft.selectedCampusId);
+    if (draftCampus) return draftCampus;
+    return resolveCampusById(onboardingData.campus_id);
+  });
+  const [isCustom, setIsCustom] = useState(() => {
+    if (typeof educationDraft.isCustom === 'boolean') return educationDraft.isCustom;
+    if (onboardingData.campus_id) return false;
+    return Boolean(onboardingData.custom_university);
+  });
+  const [customUni, setCustomUni] = useState(
+    educationDraft.customUni ?? onboardingData.custom_university ?? (!onboardingData.campus_id ? onboardingData.university || '' : '')
+  );
+  const [customCity, setCustomCity] = useState(
+    educationDraft.customCity ?? onboardingData.custom_city ?? onboardingData.city ?? ''
+  );
+  const [faculty, setFaculty] = useState(educationDraft.faculty ?? '');
+  const [customFaculty, setCustomFaculty] = useState(
+    educationDraft.customFaculty ?? onboardingData.custom_faculty ?? ''
+  );
+  const [course, setCourse] = useState(educationDraft.course ?? onboardingData.course ?? null);
+  const [group, setGroup] = useState(educationDraft.group ?? onboardingData.group ?? '');
   const [submitting, setSubmitting] = useState(false);
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    setEducationDraft({
+      searchQuery,
+      selectedCampusId: selectedCampus?.id || null,
+      isCustom,
+      customUni,
+      customCity,
+      faculty,
+      customFaculty,
+      course,
+      group,
+    });
+  }, [
+    searchQuery,
+    selectedCampus,
+    isCustom,
+    customUni,
+    customCity,
+    faculty,
+    customFaculty,
+    course,
+    group,
+    setEducationDraft,
+  ]);
 
   const filteredCampuses = useMemo(
     () => searchCampuses(searchQuery),
@@ -240,17 +341,18 @@ function StepEducation({ onboardingData, setOnboardingData, onBack, onFinish }) 
 
   const handleSelectCampus = useCallback((campus) => {
     hapticFeedback('medium');
+    if (!selectedCampus || selectedCampus.id !== campus.id) {
+      setFaculty('');
+      setCustomFaculty('');
+    }
     setSelectedCampus(campus);
     setIsCustom(false);
-    setFaculty('');
-    setCustomFaculty('');
-  }, []);
+  }, [selectedCampus]);
 
   const handleCustomMode = useCallback(() => {
     hapticFeedback('light');
     setIsCustom(true);
     setSelectedCampus(null);
-    setFaculty('');
   }, []);
 
   const handleBack = () => {
@@ -262,22 +364,35 @@ function StepEducation({ onboardingData, setOnboardingData, onBack, onFinish }) 
     hapticFeedback('light');
     setSelectedCampus(null);
     setIsCustom(false);
-    setSearchQuery('');
-    setFaculty('');
-    setCustomFaculty('');
-    setCourse(null);
-    setGroup('');
   };
 
-  // Валидация: кампус или custom uni обязательны
-  const hasValidCampus = selectedCampus || (isCustom && customUni.trim().length >= ONBOARDING_LIMITS.CUSTOM_UNIVERSITY_MIN);
+  const hasValidCampus = Boolean(selectedCampus) || (isCustom && customUni.trim().length >= ONBOARDING_LIMITS.CUSTOM_UNIVERSITY_MIN);
+  const isFinishBlocked = !hasValidCampus || !course;
+  const canFinish = !isFinishBlocked && !submitting;
+
+  useEffect(() => {
+    if (selectedCampus || isCustom) return undefined;
+
+    const shouldAutoFocus = window.innerWidth >= 768;
+    if (!shouldAutoFocus) return undefined;
+
+    const timer = setTimeout(() => {
+      try {
+        searchInputRef.current?.focus({ preventScroll: true });
+      } catch {
+        searchInputRef.current?.focus();
+      }
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [selectedCampus, isCustom, searchQuery]);
 
   const handleFinish = async () => {
     if (!hasValidCampus) {
       toast.error('Выберите ВУЗ');
       return;
     }
-    
+
     hapticFeedback('success');
     setSubmitting(true);
 
@@ -305,252 +420,260 @@ function StepEducation({ onboardingData, setOnboardingData, onBack, onFinish }) 
     data.course = course;
     data.group = group.trim() || null;
 
-    await onFinish(data);
-    setSubmitting(false);
+    try {
+      await onFinish(data);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // ========== РЕНДЕР: выбор кампуса ==========
   if (!selectedCampus && !isCustom) {
     return (
       <div style={styles.stepContent}>
-        <div style={styles.stepHeader}>
-          <button style={styles.backButton} onClick={handleBack}>
-            <ChevronLeft size={22} color={theme.colors.text} />
-          </button>
-          <div style={styles.stepIndicator}>Шаг 2 из 2</div>
-          <div style={{ width: 40 }} />
-        </div>
-
-        <div style={styles.stepTitle}>
-          <GraduationCap size={28} color={theme.colors.primary} style={{ marginRight: 10 }} />
-          Где учитесь?
-        </div>
-
-        {/* Поиск */}
-        <div style={styles.searchWrapper} className="onb-fade-up">
-          <Search size={18} color={theme.colors.textTertiary} />
-          <input
-            type="text"
-            placeholder="Найти ВУЗ..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={styles.searchInput}
-            autoCapitalize="none"
-          />
-          {searchQuery && (
-            <button style={styles.clearSearch} onClick={() => setSearchQuery('')}>
-              <X size={16} color={theme.colors.textTertiary} />
-            </button>
-          )}
-        </div>
-
-        {/* Список кампусов */}
-        <div style={styles.campusList}>
-          {filteredCampuses.map((campus, index) => (
-            <button
-              key={campus.id}
-              style={{ ...styles.campusCard, animationDelay: `${index * 0.05}s` }}
-              className="onb-fade-up"
-              onClick={() => handleSelectCampus(campus)}
-            >
-              <div style={styles.campusIcon}>
-                <Building2 size={20} color={theme.colors.primary} />
-              </div>
-              <div style={styles.campusInfo}>
-                <div style={styles.campusName}>{campus.university}</div>
-                <div style={styles.campusCity}>{campus.city}{campus.address ? `, ${campus.address}` : ''}</div>
-              </div>
-              <ChevronLeft size={18} color={theme.colors.textTertiary} style={{ transform: 'rotate(180deg)' }} />
-            </button>
-          ))}
-
-          {filteredCampuses.length === 0 && searchQuery && (
-            <div style={styles.emptySearch} className="onb-fade-up">
-              Ничего не найдено
+        <div style={styles.stepShell}>
+          <div style={styles.stepTopZone}>
+            <div style={styles.stepHeader}>
+              <button style={styles.backButton} className="onb-pressable" onClick={handleBack}>
+                <ChevronLeft size={22} color={theme.colors.text} />
+              </button>
+              <div style={styles.stepIndicator}>Шаг 2 из 2</div>
+              <div style={{ width: 40 }} />
             </div>
-          )}
-        </div>
 
-        {/* Кнопка "Нет моего" */}
-        <button
-          style={styles.customButton}
-          className="onb-fade-up"
-          onClick={handleCustomMode}
-        >
-          Нет моего ВУЗа — ввести вручную
-        </button>
+            <div style={styles.stepTitle}>
+              <GraduationCap size={28} color={theme.colors.primary} style={{ marginRight: 10 }} />
+              Где учитесь?
+            </div>
+
+            <div style={styles.searchWrapper} className="onb-fade-up">
+              <Search size={18} color={theme.colors.textTertiary} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Найти ВУЗ..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={styles.searchInput}
+                autoCapitalize="none"
+                autoComplete="off"
+              />
+              {searchQuery && (
+                <button style={styles.clearSearch} className="onb-pressable" onClick={() => setSearchQuery('')}>
+                  <X size={16} color={theme.colors.textTertiary} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.stepMiddleZone}>
+            <div style={styles.campusList}>
+              {filteredCampuses.map((campus, index) => (
+                <button
+                  key={campus.id}
+                  style={{ ...styles.campusCard, animationDelay: index < 8 ? `${index * 0.04}s` : '0s' }}
+                  className="onb-fade-in onb-pressable"
+                  onClick={() => handleSelectCampus(campus)}
+                >
+                  <div style={styles.campusIcon}>
+                    <Building2 size={20} color={theme.colors.primary} />
+                  </div>
+                  <div style={styles.campusInfo}>
+                    <div style={styles.campusName}>{campus.university}</div>
+                    <div style={styles.campusCity}>{campus.city}{campus.address ? `, ${campus.address}` : ''}</div>
+                  </div>
+                  <ChevronLeft size={18} color={theme.colors.textTertiary} style={{ transform: 'rotate(180deg)' }} />
+                </button>
+              ))}
+
+              {filteredCampuses.length === 0 && searchQuery && (
+                <div style={styles.emptySearch} className="onb-fade-in">
+                  Ничего не найдено
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.stepBottomZone}>
+            <button
+              style={styles.customButton}
+              className="onb-fade-up onb-pressable"
+              onClick={handleCustomMode}
+            >
+              Нет моего ВУЗа — ввести вручную
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
-  // ========== РЕНДЕР: детали (факультет, курс, группа) ==========
   return (
     <div style={styles.stepContent}>
-      <div style={styles.stepHeader}>
-        <button style={styles.backButton} onClick={handleBack}>
-          <ChevronLeft size={22} color={theme.colors.text} />
-        </button>
-        <div style={styles.stepIndicator}>Шаг 2 из 2</div>
-        <div style={{ width: 40 }} />
-      </div>
-
-      {/* Выбранный кампус */}
-      <div style={styles.selectedCampus} className="onb-fade-up">
-        <div style={styles.selectedCampusInfo}>
-          <Building2 size={18} color={theme.colors.primary} />
-          <span style={styles.selectedCampusText}>
-            {selectedCampus ? selectedCampus.short : customUni || 'Свой ВУЗ'}
-          </span>
-        </div>
-        <button style={styles.changeCampusBtn} onClick={handleResetCampus}>
-          Изменить
-        </button>
-      </div>
-
-      {/* Custom ВУЗ (если ввод вручную) */}
-      {isCustom && (
-        <>
-          <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.05s' }}>
-            <label style={styles.label}>Название ВУЗа *</label>
-            <input
-              type="text"
-              placeholder="КубГУ, МИРЭА, ИТМО..."
-              value={customUni}
-              onChange={(e) => setCustomUni(e.target.value)}
-              style={styles.input}
-              maxLength={ONBOARDING_LIMITS.CUSTOM_UNIVERSITY_MAX}
-            />
+      <div style={styles.stepShell}>
+        <div style={styles.stepTopZone}>
+          <div style={styles.stepHeader}>
+            <button style={styles.backButton} className="onb-pressable" onClick={handleBack}>
+              <ChevronLeft size={22} color={theme.colors.text} />
+            </button>
+            <div style={styles.stepIndicator}>Шаг 2 из 2</div>
+            <div style={{ width: 40 }} />
           </div>
-          <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.1s' }}>
+
+          <div style={styles.selectedCampus} className="onb-fade-up">
+            <div style={styles.selectedCampusInfo}>
+              <Building2 size={18} color={theme.colors.primary} />
+              <span style={styles.selectedCampusText}>
+                {selectedCampus ? selectedCampus.short : customUni || 'Свой ВУЗ'}
+              </span>
+            </div>
+            <button style={styles.changeCampusBtn} className="onb-pressable" onClick={handleResetCampus}>
+              Изменить
+            </button>
+          </div>
+        </div>
+
+        <div style={styles.stepMiddleZone}>
+          {isCustom && (
+            <>
+              <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.05s' }}>
+                <label style={styles.label}>Название ВУЗа *</label>
+                <input
+                  type="text"
+                  placeholder="КубГУ, МИРЭА, ИТМО..."
+                  value={customUni}
+                  onChange={(e) => setCustomUni(e.target.value)}
+                  style={styles.input}
+                  maxLength={ONBOARDING_LIMITS.CUSTOM_UNIVERSITY_MAX}
+                />
+              </div>
+              <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.1s' }}>
+                <label style={styles.label}>
+                  Город
+                  <span style={styles.labelOptional}>необязательно</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Краснодар, Москва..."
+                  value={customCity}
+                  onChange={(e) => setCustomCity(e.target.value)}
+                  style={styles.input}
+                  maxLength={ONBOARDING_LIMITS.CUSTOM_CITY_MAX}
+                />
+              </div>
+            </>
+          )}
+
+          {selectedCampus && faculties.length > 0 && (
+            <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.1s' }}>
+              <label style={styles.label}>Факультет / Институт</label>
+              <div style={styles.chipsWrap}>
+                {faculties.map((f) => (
+                  <button
+                    key={f}
+                    style={{
+                      ...styles.chip,
+                      ...(faculty === f ? styles.chipActive : {}),
+                    }}
+                    className="onb-pressable"
+                    onClick={() => {
+                      hapticFeedback('selection');
+                      setFaculty(f);
+                      if (f !== 'Другой') setCustomFaculty('');
+                    }}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              {faculty === 'Другой' && (
+                <input
+                  type="text"
+                  placeholder="Введите название..."
+                  value={customFaculty}
+                  onChange={(e) => setCustomFaculty(e.target.value)}
+                  style={{ ...styles.input, marginTop: 8 }}
+                  maxLength={ONBOARDING_LIMITS.CUSTOM_FACULTY_MAX}
+                />
+              )}
+            </div>
+          )}
+
+          {isCustom && (
+            <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.15s' }}>
+              <label style={styles.label}>
+                Факультет / Институт
+                <span style={styles.labelOptional}>необязательно</span>
+              </label>
+              <input
+                type="text"
+                placeholder="ИСА, Юридический..."
+                value={customFaculty}
+                onChange={(e) => setCustomFaculty(e.target.value)}
+                style={styles.input}
+                maxLength={ONBOARDING_LIMITS.CUSTOM_FACULTY_MAX}
+              />
+            </div>
+          )}
+
+          <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.15s' }}>
+            <label style={styles.label}>Курс</label>
+            <div style={styles.courseRow}>
+              {COURSES.map((c) => (
+                <button
+                  key={c}
+                  style={{
+                    ...styles.courseChip,
+                    ...(course === c ? styles.courseChipActive : {}),
+                  }}
+                  className="onb-pressable"
+                  onClick={() => {
+                    hapticFeedback('selection');
+                    setCourse(c);
+                  }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.2s' }}>
             <label style={styles.label}>
-              Город
+              Группа
               <span style={styles.labelOptional}>необязательно</span>
             </label>
             <input
               type="text"
-              placeholder="Краснодар, Москва..."
-              value={customCity}
-              onChange={(e) => setCustomCity(e.target.value)}
+              placeholder="БИ-21, ИСП-6..."
+              value={group}
+              onChange={(e) => setGroup(e.target.value)}
               style={styles.input}
-              maxLength={ONBOARDING_LIMITS.CUSTOM_CITY_MAX}
+              maxLength={ONBOARDING_LIMITS.GROUP_MAX}
             />
           </div>
-        </>
-      )}
-
-      {/* Факультет */}
-      {selectedCampus && faculties.length > 0 && (
-        <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.1s' }}>
-          <label style={styles.label}>Факультет / Институт</label>
-          <div style={styles.chipsWrap}>
-            {faculties.map((f) => (
-              <button
-                key={f}
-                style={{
-                  ...styles.chip,
-                  ...(faculty === f ? styles.chipActive : {}),
-                }}
-                onClick={() => {
-                  hapticFeedback('selection');
-                  setFaculty(f);
-                  if (f !== 'Другой') setCustomFaculty('');
-                }}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-          {faculty === 'Другой' && (
-            <input
-              type="text"
-              placeholder="Введите название..."
-              value={customFaculty}
-              onChange={(e) => setCustomFaculty(e.target.value)}
-              style={{ ...styles.input, marginTop: 8 }}
-              maxLength={ONBOARDING_LIMITS.CUSTOM_FACULTY_MAX}
-            />
-          )}
         </div>
-      )}
 
-      {/* Custom — факультет свободный текст */}
-      {isCustom && (
-        <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.15s' }}>
-          <label style={styles.label}>
-            Факультет / Институт
-            <span style={styles.labelOptional}>необязательно</span>
-          </label>
-          <input
-            type="text"
-            placeholder="ИСА, Юридический..."
-            value={customFaculty}
-            onChange={(e) => setCustomFaculty(e.target.value)}
-            style={styles.input}
-            maxLength={ONBOARDING_LIMITS.CUSTOM_FACULTY_MAX}
-          />
-        </div>
-      )}
-
-      {/* Курс */}
-      <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.15s' }}>
-        <label style={styles.label}>Курс</label>
-        <div style={styles.courseRow}>
-          {COURSES.map((c) => (
-            <button
-              key={c}
-              style={{
-                ...styles.courseChip,
-                ...(course === c ? styles.courseChipActive : {}),
-              }}
-              onClick={() => {
-                hapticFeedback('selection');
-                setCourse(c);
-              }}
-            >
-              {c}
-            </button>
-          ))}
+        <div style={styles.stepBottomZone}>
+          <button
+            style={{
+              ...styles.primaryButton,
+              ...styles.primaryButtonPinned,
+              ...(isFinishBlocked ? styles.primaryButtonDisabled : {}),
+            }}
+            onClick={handleFinish}
+            disabled={!canFinish}
+            className={`onb-fade-up ${canFinish ? 'onb-pressable' : ''}`}
+          >
+            {submitting ? 'Регистрация...' : 'Завершить регистрацию'}
+          </button>
         </div>
       </div>
-
-      {/* Группа */}
-      <div className="onb-fade-up" style={{ ...styles.field, animationDelay: '0.2s' }}>
-        <label style={styles.label}>
-          Группа
-          <span style={styles.labelOptional}>необязательно</span>
-        </label>
-        <input
-          type="text"
-          placeholder="БИ-21, ИСП-6..."
-          value={group}
-          onChange={(e) => setGroup(e.target.value)}
-          style={styles.input}
-          maxLength={ONBOARDING_LIMITS.GROUP_MAX}
-        />
-      </div>
-
-      {/* Кнопка завершения */}
-      <button
-        style={{
-          ...styles.primaryButton,
-          opacity: hasValidCampus && !submitting ? 1 : 0.5,
-          marginTop: 8,
-        }}
-        onClick={handleFinish}
-        disabled={!hasValidCampus || submitting}
-        className="onb-fade-up"
-      >
-        {submitting ? 'Регистрация...' : 'Завершить регистрацию 🎉'}
-      </button>
-
-      <div style={{ height: 40 }} />
     </div>
   );
 }
 
-
 // ========================================
-// СТИЛИ
+// Styles
 // ========================================
 
 const styles = {
@@ -560,18 +683,57 @@ const styles = {
     backgroundColor: theme.colors.bg,
     zIndex: Z_ONBOARDING_MAIN,
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'center',
     overflowY: 'auto',
+    overflowX: 'hidden',
     padding: `${theme.spacing.xl}px`,
   },
   container: {
     width: '100%',
     maxWidth: 500,
     paddingBottom: 40,
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
+    WebkitFontSmoothing: 'antialiased',
+    MozOsxFontSmoothing: 'grayscale',
+    textRendering: 'optimizeLegibility',
+    WebkitTextSizeAdjust: '100%',
   },
   stepContent: {
     position: 'relative',
+    width: '100%',
+    minWidth: 0,
+    WebkitFontSmoothing: 'antialiased',
+    MozOsxFontSmoothing: 'grayscale',
+  },
+  stepShell: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: `min(760px, calc(100dvh - ${theme.spacing.xl * 2}px))`,
+    minHeight: `min(640px, calc(100dvh - ${theme.spacing.xl * 2}px))`,
+    width: '100%',
+    minWidth: 0,
+  },
+  stepTopZone: {
+    flexShrink: 0,
+    width: '100%',
+    minWidth: 0,
+  },
+  stepMiddleZone: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    width: '100%',
+    boxSizing: 'border-box',
+    paddingRight: 0,
+    paddingBottom: theme.spacing.sm,
+    scrollbarGutter: 'stable',
+    overflowAnchor: 'none',
+  },
+  stepBottomZone: {
+    flexShrink: 0,
+    paddingTop: theme.spacing.md,
   },
 
   // Header
@@ -592,6 +754,7 @@ const styles = {
     minWidth: 40,
     minHeight: 40,
     borderRadius: theme.radius.sm,
+    transition: `transform ${theme.transitions.fast}, opacity ${theme.transitions.fast}`,
   },
   stepIndicator: {
     fontSize: theme.fontSize.sm,
@@ -625,6 +788,7 @@ const styles = {
     height: 100,
     borderRadius: '50%',
     cursor: 'pointer',
+    transition: `transform ${theme.transitions.fast}, opacity ${theme.transitions.fast}`,
   },
   avatarImg: {
     width: '100%',
@@ -660,7 +824,7 @@ const styles = {
     position: 'absolute',
     inset: 0,
     borderRadius: '50%',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: theme.colors.bg,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -699,7 +863,6 @@ const styles = {
     fontSize: theme.fontSize.lg,
     outline: 'none',
     boxSizing: 'border-box',
-    transition: `border-color ${theme.transitions.normal}`,
   },
   hint: {
     fontSize: theme.fontSize.xs,
@@ -713,6 +876,10 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
     padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     borderRadius: theme.radius.md,
     border: `2px solid ${theme.colors.border}`,
@@ -721,6 +888,8 @@ const styles = {
   },
   searchInput: {
     flex: 1,
+    width: '100%',
+    minWidth: 0,
     background: 'none',
     border: 'none',
     color: theme.colors.text,
@@ -733,27 +902,29 @@ const styles = {
     padding: 4,
     cursor: 'pointer',
     display: 'flex',
+    transition: `transform ${theme.transitions.fast}, opacity ${theme.transitions.fast}`,
   },
 
   // Campus list
   campusList: {
     display: 'flex',
     flexDirection: 'column',
+    width: '100%',
     gap: theme.spacing.sm,
     marginBottom: theme.spacing.lg,
-    maxHeight: '55vh',
-    overflowY: 'auto',
   },
   campusCard: {
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing.md,
+    width: '100%',
+    boxSizing: 'border-box',
     padding: `${theme.spacing.lg}px`,
     borderRadius: theme.radius.lg,
     border: `1.5px solid ${theme.colors.border}`,
     backgroundColor: theme.colors.card,
     cursor: 'pointer',
-    transition: `all ${theme.transitions.normal}`,
+    transition: `transform ${theme.transitions.normal}, opacity ${theme.transitions.normal}`,
     textAlign: 'left',
   },
   campusIcon: {
@@ -784,10 +955,13 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   emptySearch: {
+    width: '100%',
     textAlign: 'center',
     padding: '32px 16px',
     color: theme.colors.textTertiary,
     fontSize: theme.fontSize.md,
+    border: `1.5px dashed ${theme.colors.border}`,
+    borderRadius: theme.radius.md,
   },
   customButton: {
     width: '100%',
@@ -799,8 +973,8 @@ const styles = {
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.medium,
     cursor: 'pointer',
-    transition: `all ${theme.transitions.normal}`,
-    marginBottom: theme.spacing.lg,
+    transition: `transform ${theme.transitions.normal}, opacity ${theme.transitions.normal}`,
+    marginBottom: 0,
   },
 
   // Selected campus badge
@@ -808,6 +982,8 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    minWidth: 0,
+    gap: theme.spacing.sm,
     padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.primaryLight,
@@ -817,12 +993,17 @@ const styles = {
   selectedCampusInfo: {
     display: 'flex',
     alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
     gap: 8,
   },
   selectedCampusText: {
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.text,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   changeCampusBtn: {
     background: 'none',
@@ -832,9 +1013,10 @@ const styles = {
     fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
     padding: '4px 8px',
+    transition: `transform ${theme.transitions.fast}, opacity ${theme.transitions.fast}`,
   },
 
-  // Chips (факультеты)
+  // Chips (faculties)
   chipsWrap: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -849,7 +1031,7 @@ const styles = {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     cursor: 'pointer',
-    transition: `all ${theme.transitions.normal}`,
+    transition: `transform ${theme.transitions.normal}, opacity ${theme.transitions.normal}`,
   },
   chipActive: {
     borderColor: theme.colors.primary,
@@ -873,7 +1055,7 @@ const styles = {
     fontWeight: theme.fontWeight.bold,
     cursor: 'pointer',
     textAlign: 'center',
-    transition: `all ${theme.transitions.normal}`,
+    transition: `transform ${theme.transitions.normal}, opacity ${theme.transitions.normal}`,
   },
   courseChipActive: {
     borderColor: theme.colors.primary,
@@ -892,34 +1074,60 @@ const styles = {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',
-    transition: `all ${theme.transitions.normal}`,
-    boxShadow: `0 8px 24px ${theme.colors.primaryGlow}`,
+    transition: `transform ${theme.transitions.normal}, opacity ${theme.transitions.normal}`,
+    boxShadow: `0 6px 16px ${theme.colors.primaryGlow}`,
     marginTop: theme.spacing.lg,
+  },
+  primaryButtonDisabled: {
+    backgroundColor: theme.colors.card,
+    color: theme.colors.textDisabled,
+    border: `1.5px solid ${theme.colors.border}`,
+    boxShadow: 'none',
+    cursor: 'not-allowed',
+    opacity: 1,
+  },
+  primaryButtonPinned: {
+    marginTop: 0,
   },
 };
 
 
 // ========================================
-// CSS-АНИМАЦИИ
+// CSS animations
 // ========================================
 
 const onboardingStyles = `
   @keyframes onb-slide-right {
-    from { opacity: 0; transform: translateX(30px); }
-    to   { opacity: 1; transform: translateX(0); }
+    from { opacity: 0; transform: translate3d(12px, 0, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
   }
   @keyframes onb-slide-left {
-    from { opacity: 0; transform: translateX(-30px); }
-    to   { opacity: 1; transform: translateX(0); }
+    from { opacity: 0; transform: translate3d(-12px, 0, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
   }
   @keyframes onb-fade-up {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translate3d(0, 6px, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
   }
-  .onb-slide-right { animation: onb-slide-right 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-  .onb-slide-left  { animation: onb-slide-left 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-  .onb-fade-up     { animation: onb-fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  @keyframes onb-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .onb-step-frame {
+    width: 100%;
+    min-width: 0;
+  }
+  .onb-slide-right { animation: onb-slide-right 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+  .onb-slide-left  { animation: onb-slide-left 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+  .onb-fade-up     { animation: onb-fade-up 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .onb-fade-in     { animation: onb-fade-in 0.24s ease-out both; }
+  .onb-pressable:active {
+    opacity: 0.9;
+  }
 `;
 
 
 export default Onboarding;
+
+
+

@@ -1,51 +1,188 @@
 // ===== 📄 ФАЙЛ: frontend/src/api.js =====
 
 import axios from 'axios';
+import { getInitData } from './utils/telegram';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// function getTelegramId() {
-//   if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
-//     return window.Telegram.WebApp.initDataUnsafe.user.id;
-//   }
-//   return 999999;
-// }
+let accessToken = null;
+let refreshPromise = null;
+let registrationPromptTs = 0;
 
-function getTelegramId() {
+export function setAccessToken(token) {
+  accessToken = token || null;
+}
+
+function parseJwtPayload(token) {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split('.');
+    return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+  } catch {
+    return null;
+  }
+}
+
+function getPersistedTelegramId() {
+  try {
+    const persistedRaw = localStorage.getItem('campus-storage');
+    if (!persistedRaw) return null;
+    const persisted = JSON.parse(persistedRaw);
+    return persisted?.state?.user?.telegram_id || persisted?.user?.telegram_id || null;
+  } catch {
+    return null;
+  }
+}
+
+function getTelegramId(optional = false) {
   if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
     return window.Telegram.WebApp.initDataUnsafe.user.id;
   }
-  // ДЛЯ ТЕСТОВ
-  return 333333;  // ← МЕНЯТЬ ЭТУ СТРОКУ
+
+  const payload = parseJwtPayload(accessToken);
+  if (payload?.tgid) {
+    return Number(payload.tgid);
+  }
+
+  const persistedId = getPersistedTelegramId();
+  if (persistedId) {
+    return Number(persistedId);
+  }
+
+  if (optional) return null;
+  throw new Error('Telegram user id is unavailable');
 }
 
-export async function authWithTelegram(initData) {
+function shouldPromptOnGet(url = '') {
+  return (
+    url.startsWith('/users/me') ||
+    url.startsWith('/dating/') ||
+    url.startsWith('/market/my-items') ||
+    url.startsWith('/market/favorites') ||
+    url.startsWith('/api/requests/my-items')
+  );
+}
+
+function isRegistrationRequiredError(error) {
+  const status = error.response?.status;
+  const detail = String(error.response?.data?.detail || '').toLowerCase();
+  if (status === 404 && detail.includes('user not found')) return true;
+  if (status === 403 && (detail.includes('register') || detail.includes('регистра'))) return true;
+  return false;
+}
+
+async function openRegistrationPrompt() {
+  const now = Date.now();
+  if (now - registrationPromptTs < 1200) return;
+  registrationPromptTs = now;
+
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.post('/auth/telegram', { telegram_id });
-    return response.data;
-  } catch (error) {
-    if (error.response?.status === 404) {
-      return null;
+    const { useStore } = await import('./store');
+    const state = useStore.getState();
+    if (!state.isRegistered && typeof state.setShowAuthModal === 'function') {
+      state.setShowAuthModal(true);
     }
-    throw error;
+  } catch (e) {
+    // no-op: fallback only
   }
+}
+
+api.interceptors.request.use((config) => {
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    const method = (originalRequest?.method || 'get').toLowerCase();
+    const isActionRequest = method !== 'get' || shouldPromptOnGet(originalRequest?.url || '');
+    const isUnauthorized = error.response?.status === 401;
+    const isAuthEndpoint = originalRequest?.url?.startsWith('/auth/');
+
+    if (isRegistrationRequiredError(error) && isActionRequest) {
+      await openRegistrationPrompt();
+      throw error;
+    }
+
+    if (!isUnauthorized || originalRequest?._retry || isAuthEndpoint) {
+      throw error;
+    }
+
+    originalRequest._retry = true;
+    try {
+      if (!refreshPromise) {
+        refreshPromise = refreshToken().finally(() => {
+          refreshPromise = null;
+        });
+      }
+      await refreshPromise;
+      originalRequest.headers = originalRequest.headers || {};
+      originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+      return api(originalRequest);
+    } catch (refreshError) {
+      setAccessToken(null);
+      if (isActionRequest) {
+        await openRegistrationPrompt();
+      }
+      throw refreshError;
+    }
+  }
+);
+
+export async function loginWithTelegram() {
+  const init_data = getInitData();
+  if (!init_data) {
+    throw new Error('Telegram initData is missing');
+  }
+  const response = await api.post('/auth/telegram/login', { init_data });
+  setAccessToken(response.data.access_token);
+  return response.data;
+}
+
+export async function refreshToken() {
+  const response = await api.post('/auth/refresh');
+  setAccessToken(response.data.access_token);
+  return response.data;
+}
+
+export async function logoutUser() {
+  try {
+    await api.post('/auth/logout');
+  } finally {
+    setAccessToken(null);
+  }
+}
+
+export async function authWithTelegram() {
+  return loginWithTelegram();
+}
+
+export async function devLoginAs(telegramId) {
+  const response = await api.post('/dev/auth/login-as', { telegram_id: telegramId });
+  setAccessToken(response.data.access_token);
+  return response.data;
+}
+
+export async function devResetUser(telegramId, hard = false) {
+  const response = await api.post('/dev/auth/reset-user', { telegram_id: telegramId, hard });
+  return response.data;
 }
 
 export async function registerUser(userData) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.post('/auth/register', {
-      telegram_id,
-      ...userData,
-    });
+    const response = await api.post('/auth/register', userData);
     return response.data;
   } catch (error) {
     console.error('Ошибка регистрации:', error);
@@ -56,10 +193,8 @@ export async function registerUser(userData) {
 
 export async function getCurrentUser() {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get('/users/me', {
-      params: { telegram_id },
-    });
+    const telegram_id = getTelegramId(true);
+    const response = await api.get('/users/me', { params: telegram_id ? { telegram_id } : {} });
     return response.data;
   } catch (error) {
     console.error('Ошибка получения пользователя:', error);

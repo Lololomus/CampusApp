@@ -16,6 +16,7 @@ import EditContentModal from './components/shared/EditContentModal';
 import CreateMarketItem from './components/market/CreateMarketItem';
 import AuthModal from './components/AuthModal';
 import EditProfile from './components/profile/EditProfile';
+import DevAuthPanel from './components/shared/DevAuthPanel';
 
 // Дополнительные компоненты
 import Onboarding from './components/Onboarding';
@@ -49,13 +50,16 @@ function App() {
     editingType,
     closeEditing,
     viewPostId,
-    setUpdatedPost
+    setUpdatedPost,
+    authStatus,
+    bootstrapAuth
   } = useStore();
 
-  // Инициализация Telegram при монтировании
+  // Инициализация Telegram + auth bootstrap
   useEffect(() => {
     initTelegramApp();
-  }, []);
+    bootstrapAuth();
+  }, [bootstrapAuth]);
 
   // Рендеринг основного контента
   const renderContent = () => {
@@ -94,6 +98,14 @@ function App() {
     return (
       <div style={styles.app}>
         <Onboarding />
+      </div>
+    );
+  }
+
+  if (authStatus === 'loading') {
+    return (
+      <div style={styles.app}>
+        <div style={styles.loading}>Загрузка...</div>
       </div>
     );
   }
@@ -148,6 +160,7 @@ function App() {
 
       {/* Модалка авторизации */}
       <AuthModal />
+      <DevAuthPanel />
       
       {/* Модалка редактирования профиля */}
       {showEditModal && <EditProfile />}
@@ -171,7 +184,13 @@ const styles = {
     backgroundColor: '#121212',
     color: '#fff',
     paddingBottom: '80px',
-  }
+  },
+  loading: {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 };
 
 export default App;

@@ -1,33 +1,57 @@
-# ===== 📄 ФАЙЛ: backend/app/database.py =====
+# ===== FILE: backend/app/database.py =====
 
-import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from dotenv import load_dotenv
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-# Загружаем .env из корня проекта
-load_dotenv(dotenv_path="../.env")
+from app.config import get_settings
 
-# Читаем переменные
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://campus:campus123@localhost:5432/campusapp")
+# NOTE:
+# Current backend is sync-oriented (routes use `def`, CRUD uses `db.query(...)`).
+# Keep DB layer sync for production stability until full async migration is done.
+#
+# TODO(async-migration, phase 1):
+# - Switch engine to `create_async_engine(...)` and AsyncSession.
+# - Change `get_db()` to `async def` and yield AsyncSession.
+#
+# TODO(async-migration, phase 2):
+# - Convert all DB routes/services/crud from `db.query(...)` to
+#   `await db.execute(select(...))` + `scalars()`.
+# - Replace `db.commit()/refresh()/delete()` with awaited async equivalents.
+#
+# TODO(async-migration, phase 3):
+# - Make startup/shutdown DB lifecycle async-safe.
+# - Run full regression tests for Posts/Dating/Market/Profile + auth.
 
-# Создаём engine
+settings = get_settings()
+
+
+def _normalize_database_url(url: str) -> str:
+    """
+    Accepts asyncpg URL from env and converts it to sync psycopg URL.
+    Example:
+    postgresql+asyncpg://... -> postgresql://...
+    """
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    return url
+
+
+DATABASE_URL = _normalize_database_url(settings.database_url)
+
 engine = create_engine(
     DATABASE_URL,
-    echo=True
+    echo=True,
 )
 
-# Создаём фабрику сессий
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
 )
 
-# Base class для моделей
 Base = declarative_base()
 
-# Dependency для FastAPI
+
 def get_db():
     db = SessionLocal()
     try:
@@ -35,9 +59,9 @@ def get_db():
     finally:
         db.close()
 
-# Функция создания таблиц
+
 def init_db():
-    """Создаёт все таблицы в БД"""
+    """Create all tables in DB (MVP mode)."""
     from app.models import (
         User, Post, Poll, PollVote, PostLike,
         Request, RequestResponse, Comment, CommentLike,
@@ -47,5 +71,6 @@ def init_db():
         PostView, MarketItemView,
         AdPost, AdImpression, AdClick,
         NotificationSettings, Notification, Followup,
+        AuthSession,
     )
     Base.metadata.create_all(bind=engine)

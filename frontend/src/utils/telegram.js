@@ -32,6 +32,7 @@ export function getTelegramUser() {
     id: user.id,
     firstName: user.first_name,
     username: user.username,
+    photoUrl: user.photo_url || null,
   };
 }
 
