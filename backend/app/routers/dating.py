@@ -202,9 +202,10 @@ def get_dating_feed(
     telegram_id: int,
     limit: int = 10,
     offset: int = 0,
+    debug: bool = Query(False, description="Показать breakdown скоринга"),
     db: Session = Depends(get_db)
 ):
-    """Get dating feed for current user"""
+    """Get dating feed with CampusMatch scoring"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -212,7 +213,7 @@ def get_dating_feed(
     my_profile = crud.get_dating_profile(db, user.id)
     looking_for = my_profile.looking_for if my_profile else None
     
-    return crud.get_dating_feed(db, user.id, limit, offset, looking_for)
+    return crud.get_dating_feed(db, user.id, limit, offset, looking_for, debug=debug)
 
 
 @router.post("/{target_user_id}/like", response_model=schemas.LikeResult)

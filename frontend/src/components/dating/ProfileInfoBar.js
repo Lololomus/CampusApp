@@ -1,49 +1,74 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/profile/ProfileInfoBar.js =====
+// ===== 📄 ФАЙЛ: frontend/src/components/dating/ProfileInfoBar.js =====
 import React, { useRef, useState, useEffect, memo } from 'react';
 import { hapticFeedback } from '../../utils/telegram';
+import {
+  GOAL_ICONS,
+  INTEREST_LABELS,
+  INTEREST_EMOJIS,
+  MATCH_REASON_CONFIG,
+} from '../../constants/datingConstants';
 import theme from '../../theme';
 
 // ===== CONSTANTS =====
-const EXPANDED_HEIGHT = '85vh'; // Используем % высоты
-const MAX_HEIGHT_PX = 580; // Ограничитель для планшетов
-const COLLAPSED_HEIGHT = 245; // Высота шторки в закрытом виде
+const EXPANDED_HEIGHT = '85vh';
+const MAX_HEIGHT_PX = 580;
+const COLLAPSED_HEIGHT = 245;
 
-const GOAL_ICONS = {
-  relationship: '💘 Отношения',
-  friends: '🤝 Дружба',
-  study: '📚 Учеба',
-  hangout: '🎉 Тусовки'
+// ===== HELPERS =====
+
+/** Проверить, является ли интерес общим */
+const isCommonInterest = (interest, commonInterests) => {
+  if (!commonInterests || commonInterests.length === 0) return false;
+  return commonInterests.includes(interest);
 };
 
-const INTEREST_LABELS = {
-  it: '💻 IT',
-  games: '🎮 Игры',
-  books: '📚 Книги',
-  music: '🎵 Музыка',
-  movies: '🎬 Кино',
-  sport: '⚽ Спорт',
-  art: '🎨 Творчество',
-  travel: '🌍 Путешествия',
-  coffee: '☕ Кофе',
-  party: '🎉 Вечеринки',
-  photo: '📸 Фото',
-  food: '🍕 Еда',
-  science: '🎓 Наука',
-  startup: '🚀 Стартапы',
-  fitness: '🏋️ Фитнес',
-};
+// ===== MATCH REASON BADGE =====
 
-const INTEREST_EMOJIS = {
-  it: '💻', games: '🎮', books: '📚', music: '🎵', movies: '🎬',
-  sport: '⚽', art: '🎨', travel: '🌍', coffee: '☕', party: '🎉',
-  photo: '📸', food: '🍕', science: '🎓', startup: '🚀', fitness: '🏋️',
+const MatchReasonBadge = memo(({ reason }) => {
+  if (!reason) return null;
+  
+  return (
+    <div style={badgeStyles.container}>
+      <span style={badgeStyles.icon}>{MATCH_REASON_CONFIG.icon}</span>
+      <span style={badgeStyles.text}>{reason}</span>
+    </div>
+  );
+});
+
+const badgeStyles = {
+  container: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '4px 10px',
+    borderRadius: 20,
+    background: MATCH_REASON_CONFIG.badgeBg,
+    border: `1px solid ${MATCH_REASON_CONFIG.badgeBorder}`,
+    marginTop: 8,
+  },
+  icon: {
+    fontSize: 12,
+  },
+  text: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: MATCH_REASON_CONFIG.badgeText,
+    letterSpacing: '0.2px',
+  },
 };
 
 // ===== MEMOIZED COMPONENTS =====
 
-const CollapsedContent = memo(({ profile }) => {
+const CollapsedContent = memo(({ profile, commonInterests }) => {
   return (
     <>
+      {/* Match reason badge */}
+      {profile.match_reason && (
+        <div style={{ marginBottom: 10 }}>
+          <MatchReasonBadge reason={profile.match_reason} />
+        </div>
+      )}
+
       {profile.goals?.length > 0 && (
         <div style={styles.goalsRowCollapsed}>
           {profile.goals.slice(0, 2).map((goal, i) => (
@@ -56,11 +81,21 @@ const CollapsedContent = memo(({ profile }) => {
 
       {profile.interests?.length > 0 && (
         <div style={styles.interestsEmojiRow}>
-          {profile.interests.slice(0, 5).map((interest, i) => (
-            <span key={i} style={styles.emojiOnly}>
-              {INTEREST_EMOJIS[interest] || '❓'}
-            </span>
-          ))}
+          {profile.interests.slice(0, 5).map((interest, i) => {
+            const isCommon = isCommonInterest(interest, commonInterests);
+            return (
+              <span
+                key={i}
+                style={{
+                  ...styles.emojiOnly,
+                  ...(isCommon ? styles.emojiCommon : {}),
+                }}
+                title={isCommon ? 'Общий интерес!' : INTEREST_LABELS[interest]}
+              >
+                {INTEREST_EMOJIS[interest] || '❓'}
+              </span>
+            );
+          })}
           {profile.interests.length > 5 && (
             <span style={styles.moreText}>+{profile.interests.length - 5}</span>
           )}
@@ -70,10 +105,17 @@ const CollapsedContent = memo(({ profile }) => {
   );
 });
 
-const ExpandedContent = memo(({ profile }) => {
+const ExpandedContent = memo(({ profile, commonInterests }) => {
   return (
     <div style={{ paddingBottom: 20 }}>
-      {/* Prompts / Icebreaker (Dating Accent) */}
+      {/* Match reason badge (expanded) */}
+      {profile.match_reason && (
+        <div style={{ marginBottom: 12, marginTop: 4 }}>
+          <MatchReasonBadge reason={profile.match_reason} />
+        </div>
+      )}
+
+      {/* Prompts / Icebreaker */}
       {(profile.icebreaker || (profile.prompts?.question && profile.prompts?.answer)) && (
         <div style={styles.promptCard}>
           <div style={styles.promptQuestion}>
@@ -85,7 +127,7 @@ const ExpandedContent = memo(({ profile }) => {
         </div>
       )}
 
-      {/* Goals (Dating Accent) */}
+      {/* Goals */}
       {profile.goals?.length > 0 && (
         <>
           <div style={styles.sectionTitle}>Цели</div>
@@ -107,16 +149,22 @@ const ExpandedContent = memo(({ profile }) => {
         </>
       )}
 
-      {/* Interests (Subtle Highlight) */}
+      {/* Interests — с подсветкой общих */}
       {profile.interests?.length > 0 && (
         <>
           <div style={styles.sectionTitle}>Интересы</div>
           <div style={styles.interestsGrid}>
-            {profile.interests.map((interest) => (
-              <span key={interest} style={styles.interestTag}>
-                {INTEREST_LABELS[interest] || interest}
-              </span>
-            ))}
+            {profile.interests.map((interest) => {
+              const isCommon = isCommonInterest(interest, commonInterests);
+              return (
+                <span
+                  key={interest}
+                  style={isCommon ? styles.interestTagCommon : styles.interestTag}
+                >
+                  {INTEREST_LABELS[interest] || interest}
+                </span>
+              );
+            })}
           </div>
         </>
       )}
@@ -131,23 +179,22 @@ function ProfileInfoBar({ profile, isExpanded: externalIsExpanded, onToggle }) {
   const collapsedRef = useRef(null);
   const expandedRef = useRef(null);
   
-  // Logic State
   const isDragging = useRef(false);
   const startY = useRef(0);
   const startTime = useRef(0);
-  const translateRange = useRef(300); // Default, пересчитывается
+  const translateRange = useRef(300);
   const currentTranslate = useRef(300);
 
-  // Recalculate range on mount/resize
+  // Достаём common_interests из профиля (приходит с бэка)
+  const commonInterests = profile?.common_interests || [];
+
   useEffect(() => {
     const updateDimensions = () => {
       const vh = window.innerHeight;
       const expandedH = Math.min(vh * 0.85, MAX_HEIGHT_PX);
-      // Округляем до целых пикселей, чтобы избежать субпиксельного мыла
       const range = Math.round(expandedH - COLLAPSED_HEIGHT);
       translateRange.current = range;
       
-      // Update position immediately
       const target = externalIsExpanded ? 0 : range;
       currentTranslate.current = target;
       if (containerRef.current) {
@@ -161,7 +208,6 @@ function ProfileInfoBar({ profile, isExpanded: externalIsExpanded, onToggle }) {
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
-  // Sync with external state
   useEffect(() => {
     const targetY = externalIsExpanded ? 0 : translateRange.current;
     animateTo(targetY);
@@ -175,29 +221,24 @@ function ProfileInfoBar({ profile, isExpanded: externalIsExpanded, onToggle }) {
   const applyStyles = (translateY) => {
     if (!containerRef.current) return;
 
-    // Округляем translateY для четкости
     const roundedY = Math.round(translateY);
     containerRef.current.style.transform = `translate3d(0, ${roundedY}px, 0)`;
 
     const range = translateRange.current || 1;
     const progress = translateY / range;
-    const safeProgress = Math.max(0, Math.min(1, progress)); // 0 = Open, 1 = Closed
+    const safeProgress = Math.max(0, Math.min(1, progress));
 
-    // Collapsed Content
     if (collapsedRef.current) {
         const opacity = (safeProgress - 0.5) * 2; 
         collapsedRef.current.style.opacity = Math.max(0, Math.min(1, opacity));
-        
         const yShift = Math.round((1 - safeProgress) * -10);
         collapsedRef.current.style.transform = `translate3d(0, ${yShift}px, 0)`;
         collapsedRef.current.style.pointerEvents = safeProgress > 0.9 ? 'auto' : 'none';
     }
 
-    // Expanded Content
     if (expandedRef.current) {
         const opacity = 1 - (safeProgress * 1.3);
         expandedRef.current.style.opacity = Math.max(0, opacity);
-        
         const yShift = Math.round(safeProgress * 30);
         expandedRef.current.style.transform = `translate3d(0, ${yShift}px, 0)`;
         expandedRef.current.style.pointerEvents = safeProgress < 0.1 ? 'auto' : 'none';
@@ -207,7 +248,6 @@ function ProfileInfoBar({ profile, isExpanded: externalIsExpanded, onToggle }) {
   const animateTo = (targetY) => {
     if (!containerRef.current) return;
     
-    // Используем cubic-bezier как в SwipeableModal
     const transition = 'transform 0.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s ease';
     
     containerRef.current.style.transition = transition;
@@ -240,13 +280,8 @@ function ProfileInfoBar({ profile, isExpanded: externalIsExpanded, onToggle }) {
     const delta = clientY - startY.current;
     const baseTranslate = externalIsExpanded ? 0 : translateRange.current;
     
-    if (externalIsExpanded && delta < 0 && expandedRef.current?.scrollTop >= 0) {
-        return; 
-    }
-
-    if (externalIsExpanded && delta > 0 && expandedRef.current?.scrollTop > 0) {
-        return;
-    }
+    if (externalIsExpanded && delta < 0 && expandedRef.current?.scrollTop >= 0) return;
+    if (externalIsExpanded && delta > 0 && expandedRef.current?.scrollTop > 0) return;
 
     let newTranslate = baseTranslate + delta;
 
@@ -325,14 +360,11 @@ function ProfileInfoBar({ profile, isExpanded: externalIsExpanded, onToggle }) {
       <div style={{ position: 'relative', flex: 1, width: '100%', overflow: 'hidden' }}>
           
         <div ref={collapsedRef} style={styles.collapsedLayer}>
-            <CollapsedContent profile={profile} />
+            <CollapsedContent profile={profile} commonInterests={commonInterests} />
         </div>
 
-        <div
-            ref={expandedRef}
-            style={styles.expandedLayer}
-        >
-            <ExpandedContent profile={profile} />
+        <div ref={expandedRef} style={styles.expandedLayer}>
+            <ExpandedContent profile={profile} commonInterests={commonInterests} />
         </div>
       </div>
     </div>
@@ -344,111 +376,68 @@ function ProfileInfoBar({ profile, isExpanded: externalIsExpanded, onToggle }) {
 const styles = {
   container: {
     position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: 0, left: 0, right: 0,
     maxWidth: '600px',
     margin: '0 auto',
-    
-    // ✅ ИСПРАВЛЕНИЕ МЫЛА:
-    // 1. Сплошной цвет фона (как в SwipeableModal)
-    backgroundColor: '#121212', // theme.colors.bg жестко задаем для теста
-    // 2. Убираем backdrop-filter (ГЛАВНАЯ ПРИЧИНА МЫЛА ПРИ ДВИЖЕНИИ)
+    backgroundColor: '#121212',
     backdropFilter: 'none',
     WebkitBackdropFilter: 'none',
-    
     borderRadius: '24px 24px 0 0',
-    // Тень берем пожестче, раз нет блюра
     boxShadow: '0 -4px 24px rgba(0,0,0,0.5)', 
-    
     zIndex: 100,
     paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
     display: 'flex',
     flexDirection: 'column',
-    // ❌ Убрали willChange, так как он вызывает мыло на статичном слое
     touchAction: 'none',
     cursor: 'grab',
-
-    // ✅ ANTI-ALIASING PROPS (Идентично SwipeableModal)
     backfaceVisibility: 'hidden',
     WebkitBackfaceVisibility: 'hidden',
     WebkitFontSmoothing: 'antialiased',
     MozOsxFontSmoothing: 'grayscale',
     perspective: 1000,
-    // ❌ Убрали transformStyle: 'preserve-3d', так как его нет в SwipeableModal
   },
-  
   handleContainer: {
-    width: '100%',
-    height: 24,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
-    cursor: 'grab',
-    marginBottom: 4,
+    width: '100%', height: 24,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    paddingTop: 8, cursor: 'grab', marginBottom: 4,
   },
   handleBar: {
-    width: 40, // Чуть шире, как в SwipeableModal
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.border, // Используем border color для ручки
-    margin: '0 auto',
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: theme.colors.border, margin: '0 auto',
   },
-
   nameSection: {
     padding: `0 ${theme.spacing.xl}px ${theme.spacing.sm}px`,
     flexShrink: 0,
   },
   name: {
-    margin: 0,
-    fontSize: '26px', 
-    fontWeight: 700, 
-    color: theme.colors.text,
-    lineHeight: 1.2,
-    letterSpacing: '-0.5px', 
+    margin: 0, fontSize: '26px', fontWeight: 700, 
+    color: theme.colors.text, lineHeight: 1.2, letterSpacing: '-0.5px', 
   },
   age: {
     fontWeight: theme.fontWeight.regular,
-    color: theme.colors.textSecondary,
-    fontSize: '24px', 
+    color: theme.colors.textSecondary, fontSize: '24px', 
   },
   universityRow: {
-    marginTop: 6, 
-    fontSize: theme.fontSize.md, 
-    color: theme.colors.textSecondary,
-    lineHeight: 1.4,
+    marginTop: 6, fontSize: theme.fontSize.md, 
+    color: theme.colors.textSecondary, lineHeight: 1.4,
     fontWeight: theme.fontWeight.medium, 
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
+
+  // --- Layers ---
   collapsedLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    position: 'absolute', top: 0, left: 0, right: 0,
     padding: `0 ${theme.spacing.xl}px`,
   },
   expandedLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     padding: `0 ${theme.spacing.xl}px 20px`,
-    overflowY: 'auto',
-    opacity: 0,
-    pointerEvents: 'none',
-    touchAction: 'pan-y',
-    WebkitOverflowScrolling: 'touch',
+    overflowY: 'auto', opacity: 0, pointerEvents: 'none',
+    touchAction: 'pan-y', WebkitOverflowScrolling: 'touch',
   },
-  
-  goalsRowCollapsed: {
-    display: 'flex',
-    gap: 8,
-    marginBottom: 12,
-  },
+
+  // --- Collapsed ---
+  goalsRowCollapsed: { display: 'flex', gap: 8, marginBottom: 12 },
   goalChip: {
     padding: '6px 12px',
     background: theme.colors.dating.light || 'rgba(255, 59, 92, 0.1)',
@@ -456,87 +445,70 @@ const styles = {
     borderRadius: theme.radius.full,
     fontSize: theme.fontSize.sm,
     color: theme.colors.dating.primary || '#ff3b5c',
-    whiteSpace: 'nowrap',
-    fontWeight: theme.fontWeight.medium,
+    whiteSpace: 'nowrap', fontWeight: theme.fontWeight.medium,
   },
-  interestsEmojiRow: {
-    display: 'flex',
-    gap: 12,
-    alignItems: 'center',
-  },
-  emojiOnly: {
-    fontSize: 24,
+  interestsEmojiRow: { display: 'flex', gap: 12, alignItems: 'center' },
+  emojiOnly: { fontSize: 24, transition: 'transform 0.3s ease' },
+  emojiCommon: {
+    // Золотое свечение для общих интересов
+    filter: 'drop-shadow(0 0 6px rgba(255, 215, 0, 0.6))',
+    transform: 'scale(1.15)',
   },
   moreText: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.textSecondary, fontWeight: theme.fontWeight.medium,
   },
-  
+
+  // --- Expanded ---
   promptCard: {
     background: theme.colors.dating.light || 'rgba(255, 59, 92, 0.1)',
     border: `1px solid ${(theme.colors.dating.primary || '#ff3b5c')}40`,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.lg,
-    marginTop: 8,
+    borderRadius: theme.radius.lg, padding: theme.spacing.lg,
+    marginBottom: theme.spacing.lg, marginTop: 8,
   },
   promptQuestion: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.dating.primary || '#ff3b5c',
-    marginBottom: 8,
-    fontWeight: theme.fontWeight.bold,
-    opacity: 0.9,
+    marginBottom: 8, fontWeight: theme.fontWeight.bold, opacity: 0.9,
   },
   promptAnswer: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
-    lineHeight: 1.5,
-    whiteSpace: 'pre-wrap',
+    fontSize: theme.fontSize.md, color: theme.colors.text,
+    lineHeight: 1.5, whiteSpace: 'pre-wrap',
   },
   sectionTitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    fontWeight: theme.fontWeight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-    marginBottom: 10,
-    marginTop: theme.spacing.lg,
+    fontSize: theme.fontSize.sm, color: theme.colors.textSecondary,
+    fontWeight: theme.fontWeight.semibold, textTransform: 'uppercase',
+    letterSpacing: '0.5px', marginBottom: 10, marginTop: theme.spacing.lg,
   },
-  goalsGrid: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  goalsGrid: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   goalTag: {
     padding: '8px 14px',
     background: theme.colors.dating.light || 'rgba(255, 59, 92, 0.1)',
     border: `1px solid ${(theme.colors.dating.primary || '#ff3b5c')}40`,
-    borderRadius: theme.radius.full,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.dating.primary || '#ff3b5c',
-    fontWeight: theme.fontWeight.medium,
+    borderRadius: theme.radius.full, fontSize: theme.fontSize.sm,
+    color: theme.colors.dating.primary || '#ff3b5c', fontWeight: theme.fontWeight.medium,
   },
   bio: {
-    margin: 0,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
-    lineHeight: 1.6,
-    whiteSpace: 'pre-wrap',
+    margin: 0, fontSize: theme.fontSize.md, color: theme.colors.text,
+    lineHeight: 1.6, whiteSpace: 'pre-wrap',
   },
-  interestsGrid: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  interestsGrid: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   interestTag: {
-    padding: '8px 14px',
-    background: theme.colors.card,
+    padding: '8px 14px', background: theme.colors.card,
     border: `1px solid ${theme.colors.borderLight}`,
-    borderRadius: theme.radius.full,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    fontWeight: theme.fontWeight.regular,
+    borderRadius: theme.radius.full, fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary, fontWeight: theme.fontWeight.regular,
+    transition: 'all 0.3s ease',
+  },
+  // Золотая подсветка для общих интересов
+  interestTagCommon: {
+    padding: '8px 14px',
+    background: MATCH_REASON_CONFIG.commonInterestBg,
+    border: `1px solid ${MATCH_REASON_CONFIG.commonInterestBorder}`,
+    borderRadius: theme.radius.full, fontSize: theme.fontSize.sm,
+    color: MATCH_REASON_CONFIG.commonInterestText,
+    fontWeight: theme.fontWeight.medium,
+    transition: 'all 0.3s ease',
   },
 };
 

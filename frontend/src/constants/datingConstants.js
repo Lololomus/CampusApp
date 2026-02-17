@@ -1,4 +1,6 @@
-// ===== 📄 ФАЙЛ: src/constants/datingConstants.js (БЕЗ LIFESTYLE) =====
+// ===== 📄 ФАЙЛ: src/constants/datingConstants.js =====
+// Единый источник всех констант для дейтинга.
+// Импортируй отсюда — НЕ дублируй в компонентах.
 
 // ===== LIMITS =====
 export const MAX_PROMPTS = 3;
@@ -25,6 +27,9 @@ export const GOAL_LABELS = {
   'study': '📚 Учеба',
   'hangout': '🎉 Тусовки'
 };
+
+// Алиас для обратной совместимости (DatingFeed, ProfileInfoBar использовали GOAL_ICONS)
+export const GOAL_ICONS = GOAL_LABELS;
 
 // ===== INTERESTS =====
 export const INTEREST_OPTIONS = [
@@ -61,6 +66,26 @@ export const INTEREST_LABELS = {
   science: '🎓 Наука',
   startup: '🚀 Стартапы',
   fitness: '🏋️ Фитнес',
+};
+
+export const INTEREST_EMOJIS = {
+  it: '💻', games: '🎮', books: '📚', music: '🎵', movies: '🎬',
+  sport: '⚽', art: '🎨', travel: '🌍', coffee: '☕', party: '🎉',
+  photo: '📸', food: '🍕', science: '🎓', startup: '🚀', fitness: '🏋️',
+};
+
+// ===== MATCH REASON (скоринг → UI) =====
+// Конфиг для отображения бейджей match_reason на карточке
+export const MATCH_REASON_CONFIG = {
+  icon: '✨',
+  // Цвета бейджа
+  badgeBg: 'rgba(255, 215, 0, 0.12)',
+  badgeBorder: 'rgba(255, 215, 0, 0.3)',
+  badgeText: '#ffd700',
+  // Цвет подсветки общих интересов
+  commonInterestBg: 'rgba(255, 215, 0, 0.12)',
+  commonInterestBorder: 'rgba(255, 215, 0, 0.3)',
+  commonInterestText: '#ffd700',
 };
 
 // ===== PROMPTS (ЛЕДОКОЛЫ) =====
@@ -127,7 +152,6 @@ export const PROMPT_OPTIONS = [
   }
 ];
 
-// Группировка промптов по категориям
 export const PROMPTS_BY_CATEGORY = PROMPT_OPTIONS.reduce((acc, prompt) => {
   if (!acc[prompt.category]) {
     acc[prompt.category] = [];

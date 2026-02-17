@@ -8,6 +8,7 @@ import theme from '../../theme';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
 import {
   PROMPT_OPTIONS,
   INTEREST_OPTIONS,
@@ -24,6 +25,35 @@ import PromptSelectorModal from './PromptSelectorModal';
 import PromptAnswerModal from './PromptAnswerModal';
 
 const Z_MODAL = 1500;
+const PHOTO_STORAGE_MARKER = '/uploads/images/';
+
+const normalizePhotoPath = (photo) => {
+  const url = typeof photo === 'object' && photo?.url
+    ? photo.url
+    : typeof photo === 'string'
+      ? photo
+      : '';
+
+  if (!url) return '';
+
+  if (url.includes(PHOTO_STORAGE_MARKER)) {
+    const markerIndex = url.lastIndexOf(PHOTO_STORAGE_MARKER);
+    return url.substring(markerIndex);
+  }
+
+  return url.trim();
+};
+
+const normalizeStringArray = (items = []) =>
+  [...items]
+    .map((item) => String(item))
+    .sort((a, b) => a.localeCompare(b))
+    .join('|');
+
+const normalizePromptValue = (prompt) => ({
+  question: (prompt?.question || '').trim(),
+  answer: (prompt?.answer || '').trim(),
+});
 
 function EditDatingProfileModal({ onClose, onSuccess }) {
   const { datingProfile, setDatingProfile } = useStore();
@@ -43,21 +73,25 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
       : null
   );
   
-  const [existingPhotos, setExistingPhotos] = useState([]);
+  const [existingPhotos, setExistingPhotos] = useState(datingProfile?.photos || []);
   const [newPhotos, setNewPhotos] = useState([]);
   const [newPreviews, setNewPreviews] = useState([]);
   const [loading, setLoading] = useState(false);
   
   const [showPromptSelector, setShowPromptSelector] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   
   const fileInputRef = useRef(null);
-
-  useEffect(() => {
-    if (datingProfile?.photos) {
-      setExistingPhotos(datingProfile.photos);
-    }
-  }, [datingProfile?.photos]);
+  const initialSnapshotRef = useRef({
+    age: Number(datingProfile?.age || 20),
+    lookingFor: datingProfile?.looking_for || 'female',
+    bio: (datingProfile?.bio || '').trim(),
+    goals: normalizeStringArray(datingProfile?.goals || []),
+    interests: normalizeStringArray(datingProfile?.interests || []),
+    prompt: normalizePromptValue(datingProfile?.prompts),
+    photos: (datingProfile?.photos || []).map(normalizePhotoPath).filter(Boolean),
+  });
 
   useEffect(() => {
     return () => {
@@ -161,8 +195,18 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
     setPrompt(null);
   };
 
+  const confirmClose = () => {
+    setShowConfirmation(false);
+    onClose();
+  };
+
   const handleBack = () => {
     if (loading) return;
+
+    if (showConfirmation) {
+      setShowConfirmation(false);
+      return;
+    }
 
     if (editingPrompt) {
       setEditingPrompt(null);
@@ -171,6 +215,12 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
 
     if (showPromptSelector) {
       setShowPromptSelector(false);
+      return;
+    }
+
+    if (hasUnsavedChanges) {
+      hapticFeedback('light');
+      setShowConfirmation(true);
       return;
     }
 
@@ -222,22 +272,9 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
         formData.append('photos', file, `photo_${index}.jpg`);
       });
       
-      const keepPhotos = existingPhotos.map(photo => {
-        let url = '';
-        
-        if (typeof photo === 'object' && photo.url) {
-          url = photo.url;
-        } else if (typeof photo === 'string') {
-          url = photo;
-        }
-        
-        if (url.includes('/uploads/images/')) {
-          const lastIndex = url.lastIndexOf('/uploads/images/');
-          return url.substring(lastIndex);
-        }
-        
-        return null;
-      }).filter(url => url);
+      const keepPhotos = existingPhotos
+        .map(normalizePhotoPath)
+        .filter(Boolean);
 
       formData.append('keep_photos', JSON.stringify(keepPhotos));
       
@@ -245,6 +282,7 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
       setDatingProfile(updated);
       
       hapticFeedback('success');
+      toast.success('Изменения профиля сохранены');
       if (onSuccess) onSuccess();
       onClose();
     } catch (error) {
@@ -255,7 +293,33 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
     }
   };
 
-  const canSave = !loading && totalPhotos > 0 && !showPromptSelector && !editingPrompt;
+  const hasUnsavedChanges = (() => {
+    const initialSnapshot = initialSnapshotRef.current;
+    const currentPrompt = normalizePromptValue(prompt);
+    const currentPhotos = existingPhotos.map(normalizePhotoPath).filter(Boolean);
+    const initialPhotos = initialSnapshot.photos;
+
+    if (Number(age) !== initialSnapshot.age) return true;
+    if (lookingFor !== initialSnapshot.lookingFor) return true;
+    if (bio.trim() !== initialSnapshot.bio) return true;
+    if (normalizeStringArray(goals) !== initialSnapshot.goals) return true;
+    if (normalizeStringArray(interests) !== initialSnapshot.interests) return true;
+    if (currentPrompt.question !== initialSnapshot.prompt.question) return true;
+    if (currentPrompt.answer !== initialSnapshot.prompt.answer) return true;
+    if (newPhotos.length > 0) return true;
+    if (currentPhotos.length !== initialPhotos.length) return true;
+
+    for (let index = 0; index < currentPhotos.length; index += 1) {
+      if (currentPhotos[index] !== initialPhotos[index]) {
+        return true;
+      }
+    }
+
+    return false;
+  })();
+
+  const isMainVisible = hasUnsavedChanges && !showPromptSelector && !editingPrompt && !showConfirmation;
+  const canSave = isMainVisible && !loading && totalPhotos > 0;
 
   useTelegramScreen({
     id: 'edit-dating-profile-modal',
@@ -263,23 +327,50 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
     priority: 120,
     back: {
       visible: true,
-      onClick: handleBack,
+      onClick: showConfirmation ? () => setShowConfirmation(false) : handleBack,
     },
-    main: {
-      visible: true,
-      text: 'Сохранить',
-      onClick: handleSave,
-      enabled: canSave,
-      loading,
-      color: theme.colors.dating.primary,
+    main: showConfirmation
+      ? {
+          visible: true,
+          text: 'Выйти',
+          onClick: confirmClose,
+          enabled: !loading,
+          loading: false,
+          color: theme.colors.error,
+        }
+      : {
+          visible: isMainVisible,
+          text: 'Сохранить изменения',
+          onClick: handleSave,
+          enabled: canSave,
+          loading,
+          color: theme.colors.dating.action,
+        },
+    secondary: {
+      visible: showConfirmation,
+      text: 'Вернуться',
+      onClick: () => setShowConfirmation(false),
+      enabled: !loading,
+      loading: false,
     },
   });
 
   return (
     <>
-      <div style={styles.overlay} onClick={loading ? undefined : handleBack} />
+      <div
+        style={{
+          ...styles.overlay,
+          pointerEvents: showConfirmation ? 'none' : 'auto',
+        }}
+        onClick={loading || showConfirmation ? undefined : handleBack}
+      />
 
-      <div style={styles.modal}>
+      <div
+        style={{
+          ...styles.modal,
+          pointerEvents: showConfirmation ? 'none' : 'auto',
+        }}
+      >
         <DrilldownHeader title="Редактировать профиль" onBack={handleBack} />
 
         <div style={styles.content}>
@@ -498,6 +589,17 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
         onClose={() => setEditingPrompt(null)}
         prompt={editingPrompt}
         onSave={handlePromptSave}
+      />
+
+      <ConfirmationDialog
+        isOpen={showConfirmation}
+        title="Выйти без сохранения?"
+        message="Несохранённые изменения будут потеряны."
+        confirmText="Выйти"
+        cancelText="Вернуться"
+        confirmType="danger"
+        onConfirm={confirmClose}
+        onCancel={() => setShowConfirmation(false)}
       />
     </>
   );
@@ -842,12 +944,12 @@ const styles = {
     padding: '14px',
     borderRadius: 12,
     border: 'none',
-    background: 'linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 100%)',
+    background: theme.colors.dating.actionGradient,
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
     cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(255, 59, 92, 0.4)',
+    boxShadow: `0 4px 12px ${theme.colors.dating.actionGlow}`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

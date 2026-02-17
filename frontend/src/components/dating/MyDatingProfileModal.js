@@ -22,7 +22,6 @@ const Z_MODAL = 2500;
 function MyDatingProfileModal({ onClose, onEditClick }) {
   const { datingProfile, user } = useStore();
   const [stats, setStats] = useState({ likes_count: 0, matches_count: 0, views_count: 0 });
-  const [loadingStats, setLoadingStats] = useState(true);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
@@ -47,8 +46,7 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
       setStats(data);
     } catch (e) {
       console.error(e);
-    } finally {
-      setLoadingStats(false);
+      toast.warning('Не удалось загрузить статистику профиля');
     }
   };
 
@@ -60,19 +58,19 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
       await updateDatingSettings({ show_in_dating: newValue });
       useStore.setState({ user: { ...user, show_in_dating: newValue } });
       hapticFeedback('success');
+      if (newValue) {
+        toast.success('Анкета снова видна в дейтинге');
+      } else {
+        toast.info('Анкета скрыта из ленты дейтинга');
+      }
     } catch (e) {
-      toast.error('Не удалось изменить настройки');
+      toast.error('Не удалось изменить видимость анкеты');
     } finally {
       setTogglingVisibility(false);
     }
   };
 
   if (!datingProfile) return null;
-
-  // ✅ DEBUG: Проверяем данные
-  console.log('🔍 Dating Profile:', datingProfile);
-  console.log('🔍 Interests:', datingProfile.interests);
-  console.log('🔍 Prompts:', datingProfile.prompts);
 
   const photos = datingProfile.photos || [];
   const hasPhotos = photos.length > 0;
@@ -322,22 +320,6 @@ const styles = {
     flexDirection: 'column',
     animation: 'slideInFromRight 0.35s cubic-bezier(0.4, 0.0, 0.2, 1)',
   },
-  closeButton: {
-    position: 'fixed',
-    top: 'max(16px, env(safe-area-inset-top))',
-    right: 16,
-    zIndex: Z_MODAL + 2,
-    background: 'rgba(0,0,0,0.5)',
-    backdropFilter: 'blur(10px)',
-    border: 'none',
-    borderRadius: '50%',
-    width: 40,
-    height: 40,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-  },
   content: {
     flex: 1,
     overflowY: 'auto',
@@ -470,14 +452,14 @@ const styles = {
     margin: '0 16px 12px',
     width: 'calc(100% - 32px)',
     padding: '14px 20px',
-    background: 'linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 100%)',
+    background: theme.colors.dating.actionGradient,
     border: 'none',
     borderRadius: 12,
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
     cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(255, 59, 92, 0.3)',
+    boxShadow: `0 4px 12px ${theme.colors.dating.actionGlow}`,
     transition: 'transform 0.2s',
   },
   

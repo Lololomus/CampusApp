@@ -17,9 +17,13 @@ export const theme = {
       primary: '#ff3b5c',
       primaryHover: '#ff527a',
       secondary: '#ff6b9d',
+      action: '#ff6b9d',
+      actionHover: '#ff82b0',
       gradient: 'linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 100%)',
+      actionGradient: 'linear-gradient(135deg, #ff6b9d 0%, #f093fb 100%)',
       light: 'rgba(255, 59, 92, 0.1)',
       glow: 'rgba(255, 59, 92, 0.3)',
+      actionGlow: 'rgba(255, 107, 157, 0.35)',
     },
     
     // Фоны

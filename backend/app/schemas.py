@@ -802,8 +802,10 @@ class DatingProfile(BaseModel):
     course: Optional[int] = None
     group: Optional[str] = None
     interests: List[str] = []
+    match_reason: Optional[str] = None
+    common_interests: List[str] = []
 
-    @field_validator('interests', mode='before')
+    @field_validator('interests', 'common_interests', mode='before')
     @classmethod
     def parse_interests(cls, v):
         if v is None: return []
@@ -987,14 +989,35 @@ class DatingProfileResponse(BaseModel):
 
     @field_validator('photos', 'goals', 'lifestyle', 'prompts', mode='before')
     @classmethod
-    def parse_json(cls, v):
+    def parse_json(cls, v, info):
+        field_name = info.field_name
+
+        if field_name == 'prompts':
+            if v in (None, '', []):
+                return None
+            if isinstance(v, dict):
+                return v
+            if isinstance(v, str):
+                import json
+                try:
+                    parsed = json.loads(v) if v else None
+                except Exception:
+                    return None
+                return parsed if isinstance(parsed, dict) else None
+            return None
+
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
         if isinstance(v, str):
             import json
             try:
-                return json.loads(v)
-            except:
-                return [] if v != 'prompts' else None
-        return v or ([] if v != 'prompts' else None)
+                parsed = json.loads(v) if v else []
+                return parsed if isinstance(parsed, list) else []
+            except Exception:
+                return []
+        return []
 
     class Config:
         from_attributes = True

@@ -1176,60 +1176,146 @@ def get_dating_feed(
     current_user_id: int,
     limit: int = 10,
     offset: int = 0,
-    looking_for: Optional[str] = None
+    looking_for: Optional[str] = None,
+    debug: bool = False
 ) -> List[dict]:
     """
-    Получить ленту анкет.
-    """
+    Получить ленту анкет с балльным ранжированием (CampusMatch Scoring).
     
+    Pipeline:
+    1. SQL "Грубое сито" — базовые фильтры (пол, активность, не лайкнут)
+    2. Python scoring — расчёт баллов совместимости для каждого кандидата
+    3. Сортировка по score, выдача top-N
+    """
+    from app.services.dating_scoring import (
+        calculate_score, get_match_reason_label,
+        SCORING_POOL_SIZE, MIN_CANDIDATES_BEFORE_FALLBACK,
+        INACTIVE_HARD_CUTOFF_DAYS
+    )
+
+    # Текущий пользователь + его анкета
+    me_user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not me_user:
+        return []
+    me_profile = db.query(models.DatingProfile).filter(
+        models.DatingProfile.user_id == current_user_id
+    ).first()
+
     # ID тех, кого я уже лайкнул/скипнул
-    liked_ids = db.query(models.DatingLike.whom_liked_id).filter(
+    already_acted_ids = db.query(models.DatingLike.whom_liked_id).filter(
         models.DatingLike.who_liked_id == current_user_id
     ).subquery()
-    
-    # Базовый запрос: Джойним User и DatingProfile
-    query = db.query(models.DatingProfile).join(models.User).filter(
-        models.DatingProfile.user_id != current_user_id,
-        models.DatingProfile.is_active == True,
-        models.User.id.notin_(liked_ids) # Исключаем лайкнутых
-    )
-    
-    # Фильтр "Кого ищу" (если указан)
-    if looking_for and looking_for != 'all':
-        query = query.filter(models.DatingProfile.gender == looking_for)
-    
-    # Сортировка (сначала новые)
-    profiles = query.order_by(models.DatingProfile.updated_at.desc()).offset(offset).limit(limit).all()
-    
-    # Формируем плоский объект для фронтенда
-    results = []
-    for p in profiles:
-        user = p.user
-        
-        photos_raw = p.photos
+
+    # Порог активности (мёртвые души — полное исключение)
+    active_cutoff = datetime.now(timezone.utc) - timedelta(days=INACTIVE_HARD_CUTOFF_DAYS)
+
+    # === ШАГ 1: SQL "Грубое сито" ===
+    def _build_base_query(filter_university: bool = True):
+        q = db.query(models.DatingProfile).join(
+            models.User, models.DatingProfile.user_id == models.User.id
+        ).filter(
+            models.DatingProfile.user_id != current_user_id,
+            models.DatingProfile.is_active == True,
+            models.User.id.notin_(already_acted_ids),
+            models.User.last_active_at >= active_cutoff,
+        )
+
+        # Гендерный фильтр (мой looking_for → их gender)
+        if looking_for and looking_for != 'all':
+            q = q.filter(models.DatingProfile.gender == looking_for)
+
+        # Двусторонний фильтр (их looking_for → мой gender)
+        if me_profile and me_profile.gender:
+            my_gender = me_profile.gender
+            q = q.filter(
+                or_(
+                    models.DatingProfile.looking_for == my_gender,
+                    models.DatingProfile.looking_for == 'all',
+                    models.DatingProfile.looking_for == 'anyone',
+                )
+            )
+
+        # Фильтр по вузу (для первого прохода)
+        if filter_university and me_user.university:
+            q = q.filter(models.User.university == me_user.university)
+
+        return q
+
+    # Первый проход — мой вуз
+    candidates = _build_base_query(filter_university=True).limit(SCORING_POOL_SIZE).all()
+
+    # Fallback — если мало кандидатов, расширяем на город/все
+    if len(candidates) < MIN_CANDIDATES_BEFORE_FALLBACK:
+        candidates = _build_base_query(filter_university=False).limit(SCORING_POOL_SIZE).all()
+
+    if not candidates:
+        return []
+
+    # === ШАГ 2: Входящие лайки (кто лайкнул меня) ===
+    incoming_likes_rows = db.query(models.DatingLike.who_liked_id).filter(
+        models.DatingLike.whom_liked_id == current_user_id,
+        models.DatingLike.is_like == True
+    ).all()
+    incoming_like_ids = {row[0] for row in incoming_likes_rows}
+
+    # === ШАГ 3: Python Scoring ===
+    scored_candidates = []
+    for profile in candidates:
+        user = profile.user
+        result = calculate_score(
+            me_user=me_user,
+            me_profile=me_profile,
+            candidate_user=user,
+            candidate_profile=profile,
+            incoming_like_ids=incoming_like_ids
+        )
+
+        photos_raw = profile.photos
         photos = get_image_urls(photos_raw) if photos_raw else []
         if not photos and user.avatar:
             photos = [{"url": user.avatar, "w": 500, "h": 500}]
 
         interests = json.loads(user.interests) if user.interests else []
-        goals = json.loads(p.goals) if p.goals else []
+        goals = json.loads(profile.goals) if profile.goals else []
 
-        results.append({
+        candidate_data = {
             "id": user.id,
             "telegram_id": user.telegram_id,
             "name": user.name,
             "age": user.age,
-            "bio": p.bio or user.bio,
+            "bio": profile.bio or user.bio,
             "university": user.university,
             "institute": user.institute,
             "course": user.course,
             "photos": photos,
             "goals": goals,
             "interests": interests,
-            "looking_for": p.looking_for
-        })
-        
-    return results
+            "looking_for": profile.looking_for,
+            "match_reason": get_match_reason_label(result["match_reason"]),
+            "common_interests": result["breakdown"].get("common_interests", []),
+        }
+
+        # Debug mode — показываем breakdown скора
+        if debug:
+            candidate_data["_debug_score"] = result["breakdown"]
+
+        candidate_data["_sort_score"] = result["score"]
+        scored_candidates.append(candidate_data)
+
+    # === ШАГ 4: Сортировка и пагинация ===
+    scored_candidates.sort(key=lambda x: x["_sort_score"], reverse=True)
+
+    # Применяем offset/limit к отсортированному списку
+    page = scored_candidates[offset:offset + limit]
+
+    # Убираем внутреннее поле сортировки (если не debug)
+    for item in page:
+        if not debug:
+            item.pop("_sort_score", None)
+        else:
+            item["_debug_score"]["final_score"] = item.pop("_sort_score", 0)
+
+    return page
 
 def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
     if liker_id == liked_id:

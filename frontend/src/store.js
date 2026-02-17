@@ -8,7 +8,6 @@ import {
   logoutUser,
   setAccessToken,
 } from './api';
-import { toast } from './components/shared/Toast';
 
 export const useStore = create(
   persist(
@@ -622,11 +621,17 @@ export const useStore = create(
             onboardingData: {}
           });
           
-          toast.success('Добро пожаловать! 🎉');
+          get().addToast({
+            type: 'success',
+            message: 'Добро пожаловать! 🎉',
+          });
         } catch (error) {
           console.error('❌ Ошибка регистрации:', error);
           const message = error.response?.data?.detail || 'Не удалось зарегистрироваться. Попробуйте снова.';
-          toast.error(message);
+          get().addToast({
+            type: 'error',
+            message,
+          });
         }
       },
     }),
