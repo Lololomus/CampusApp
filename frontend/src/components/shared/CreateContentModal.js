@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, 
   Image as ImageIcon, Trash2, BarChart2, Clock, EyeOff, Eye,
-  Loader2, Star, Gift
+  Star, Gift
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { createPost, createRequest } from '../../api';
@@ -15,6 +15,8 @@ import PollCreator from '../posts/PollCreator';
 import ConfirmationDialog from './ConfirmationDialog';
 import { CharCounter, getBorderColor } from './FormValidation';
 import { toast } from './Toast';
+import { useTelegramScreen } from './telegram/useTelegramScreen';
+import DrilldownHeader from './DrilldownHeader';
 import { 
   POST_LIMITS, 
   REQUEST_LIMITS, 
@@ -600,6 +602,42 @@ function CreateContentModal({ onClose }) {
   };
   
   const placeholders = getPlaceholders();
+  const canSubmit = activeTab === 'post' ? isPostFormValid() : isRequestFormValid();
+  const editorTitle = activeTab === 'post' ? 'Создание поста' : 'Создание запроса';
+  const submitText = activeTab === 'post' ? 'Опубликовать' : 'Создать запрос';
+
+  useTelegramScreen({
+    id: 'create-content-modal',
+    title: editorTitle,
+    priority: 120,
+    back: {
+      visible: isVisible,
+      onClick: showConfirmation ? () => setShowConfirmation(false) : handleClose,
+    },
+    main: showConfirmation
+      ? {
+          visible: isVisible,
+          text: 'Выйти',
+          onClick: confirmClose,
+          enabled: !isSubmitting,
+          loading: false,
+          color: theme.colors.error,
+        }
+      : {
+          visible: isVisible,
+          text: submitText,
+          onClick: handleSubmit,
+          enabled: canSubmit && !isSubmitting,
+          loading: isSubmitting,
+        },
+    secondary: {
+      visible: isVisible && showConfirmation,
+      text: 'Вернуться',
+      onClick: () => setShowConfirmation(false),
+      enabled: !isSubmitting,
+      loading: false,
+    },
+  });
 
   return (
     <>
@@ -627,14 +665,8 @@ function CreateContentModal({ onClose }) {
             </div>
           )}
 
-          {/* HEADER */}
-          <div style={styles.header}>
-            <button onClick={handleClose} style={styles.closeButton} disabled={isSubmitting}>
-              <X size={24} />
-            </button>
-            <h2 style={styles.title}>Создать</h2>
-            <div style={{ width: 40 }} />
-          </div>
+          {/* Telegram/local header */}
+          <DrilldownHeader title={editorTitle} onBack={handleClose} />
 
           {/* TAB SWITCHER */}
           <div style={styles.contentTypeSection}>
@@ -1246,32 +1278,6 @@ function CreateContentModal({ onClose }) {
             </div>
           )}
 
-          {/* FOOTER */}
-          <div style={styles.footer}>
-            <button
-              onClick={handleSubmit}
-              disabled={isSubmitting || (activeTab === 'post' ? !isPostFormValid() : !isRequestFormValid())}
-              style={{
-                ...styles.publishButton,
-                opacity: (activeTab === 'post' ? isPostFormValid() : isRequestFormValid()) && !isSubmitting ? 1 : 0.6,
-                cursor: (activeTab === 'post' ? isPostFormValid() : isRequestFormValid()) && !isSubmitting ? 'pointer' : 'not-allowed',
-                background: (activeTab === 'post' ? isPostFormValid() : isRequestFormValid()) && !isSubmitting
-                  ? `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`
-                  : `rgba(${parseInt(theme.colors.primary.slice(1,3), 16)}, ${parseInt(theme.colors.primary.slice(3,5), 16)}, ${parseInt(theme.colors.primary.slice(5,7), 16)}, 0.2)`,
-                 border: (activeTab === 'post' ? isPostFormValid() : isRequestFormValid()) && !isSubmitting
-                   ? `2px solid ${theme.colors.primary}`
-                   : `2px dashed ${theme.colors.textDisabled}`
-              }}
-            >
-               {isSubmitting ? (
-                   <>
-                    <span style={styles.spinner} />
-                    {uploadProgress < 90 ? 'Загрузка...' : 'Завершение...'}
-                   </>
-               ) : (activeTab === 'post' ? (!isPostFormValid() ? 'Заполните все поля ⬆️' : 'Опубликовать') : (!isRequestFormValid() ? 'Заполните все поля ⬆️' : 'Создать запрос'))}
-            </button>
-          </div>
-
         </div>
       </div>
 
@@ -1363,6 +1369,7 @@ const styles = {
   },
   formScrollContent: {
     padding: theme.spacing.lg,
+    paddingBottom: `calc(${theme.spacing.lg}px + var(--screen-bottom-offset))`,
   },
 
   section: { marginBottom: theme.spacing.lg },

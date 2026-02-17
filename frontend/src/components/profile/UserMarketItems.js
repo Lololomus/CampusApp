@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom'; // ✅ Добавлено для рендера модалок поверх всего
-import { ArrowLeft } from 'lucide-react';
 import { getMyMarketItems, deleteMarketItem } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
@@ -13,6 +12,8 @@ import MarketDetail from '../market/MarketDetail';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_USER_MARKET_ITEMS } from '../../constants/zIndex';
 import theme from '../../theme';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 
 function UserMarketItems() {
   const { setShowUserMarketItems } = useStore();
@@ -28,6 +29,25 @@ function UserMarketItems() {
   const [selectedItem, setSelectedItem] = useState(null);
   
   const LIMIT = 20;
+
+  const closeScreen = () => {
+    setShowUserMarketItems(false);
+  };
+
+  const handleTelegramBack = () => {
+    hapticFeedback('light');
+    closeScreen();
+  };
+
+  useTelegramScreen({
+    id: 'user-market-items-screen',
+    title: 'Мои товары',
+    priority: 40,
+    back: {
+      visible: true,
+      onClick: handleTelegramBack,
+    },
+  });
 
   useEffect(() => {
     loadItems();
@@ -58,11 +78,6 @@ function UserMarketItems() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleBack = () => {
-    hapticFeedback('light');
-    setShowUserMarketItems(false);
   };
 
   const handleEdit = (item) => {
@@ -167,14 +182,7 @@ function UserMarketItems() {
 
   return (
     <div style={styles.container} onScroll={handleScroll}>
-      {/* Header */}
-      <div style={styles.header}>
-        <button onClick={handleBack} style={styles.backButton}>
-          <ArrowLeft size={24} />
-        </button>
-        <span style={styles.headerTitle}>Мои товары ({counts.all})</span>
-        <div style={{ width: 44 }}></div>
-      </div>
+      <DrilldownHeader title={`Мои товары (${counts.all})`} onBack={closeScreen} />
 
       {/* Filter Tabs */}
       <div style={styles.filterTabs}>
@@ -266,42 +274,6 @@ const styles = {
     paddingBottom: 20,
   },
   
-  header: {
-    position: 'sticky',
-    top: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    padding: '12px 16px',
-    backgroundColor: '#1a1a1a',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    zIndex: 10,
-    backdropFilter: 'blur(10px)',
-  },
-  
-  backButton: {
-    background: 'none',
-    border: 'none',
-    color: theme.colors.text,
-    cursor: 'pointer',
-    padding: 8,
-    display: 'flex',
-    alignItems: 'center',
-    minWidth: 44,
-    minHeight: 44,
-    borderRadius: '50%',
-    transition: 'background 0.2s',
-  },
-  
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 600,
-    color: theme.colors.text,
-    flex: 1,
-    textAlign: 'center',
-  },
-  
   filterTabs: {
     display: 'flex',
     gap: 8,
@@ -309,7 +281,7 @@ const styles = {
     borderBottom: `1px solid ${theme.colors.border}`,
     backgroundColor: theme.colors.bg,
     position: 'sticky',
-    top: 57,
+    top: 'calc(var(--drilldown-header-height) + env(safe-area-inset-top, 0px))',
     zIndex: 9,
   },
   

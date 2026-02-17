@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, 
   Image as ImageIcon, Trash2, BarChart2, Clock, EyeOff, Eye,
-  Loader2, Star, Lock, Info, Gift
+  Star, Lock, Info, Gift
 } from 'lucide-react';
 import { toast } from './Toast';
 import { updatePost, updateRequest } from '../../api';
@@ -13,6 +13,8 @@ import theme from '../../theme';
 import { Z_EDIT_POST, Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
 import imageCompression from 'browser-image-compression';
 import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from '../../types';
+import { useTelegramScreen } from './telegram/useTelegramScreen';
+import DrilldownHeader from './DrilldownHeader';
 
 // ===== CONSTANTS =====
 const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'сопромат'];
@@ -417,6 +419,41 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
       ? (POST_CATEGORIES.find(c => c.value === category) || POST_CATEGORIES[0])
       : (REQUEST_CATEGORIES.find(c => c.value === category) || REQUEST_CATEGORIES[0]);
 
+  const editorTitle = isPost ? 'Редактирование поста' : 'Редактирование запроса';
+
+  useTelegramScreen({
+    id: `edit-content-modal-${contentType}-${initialData?.id || 'unknown'}`,
+    title: editorTitle,
+    priority: 120,
+    back: {
+      visible: isVisible,
+      onClick: showConfirmation ? () => setShowConfirmation(false) : handleClose,
+    },
+    main: showConfirmation
+      ? {
+          visible: isVisible,
+          text: 'Выйти',
+          onClick: confirmClose,
+          enabled: !isSubmitting,
+          loading: false,
+          color: theme.colors.error,
+        }
+      : {
+          visible: isVisible,
+          text: 'Сохранить изменения',
+          onClick: handleSubmit,
+          enabled: !isSubmitting,
+          loading: isSubmitting,
+        },
+    secondary: {
+      visible: isVisible && showConfirmation,
+      text: 'Вернуться',
+      onClick: () => setShowConfirmation(false),
+      enabled: !isSubmitting,
+      loading: false,
+    },
+  });
+
   return (
     <>
       <style>{keyframesStyles}</style>
@@ -443,14 +480,8 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
             </div>
           )}
 
-          {/* HEADER */}
-          <div style={styles.header}>
-            <button onClick={handleClose} style={styles.closeButton} disabled={isSubmitting}>
-              <X size={24} />
-            </button>
-            <h2 style={styles.title}>Редактирование</h2>
-            <div style={{ width: 40 }} />
-          </div>
+                    {/* Telegram/local header */}
+          <DrilldownHeader title={editorTitle} onBack={handleClose} />
 
           {/* CONTENT */}
           <div style={styles.contentWrapper}>
@@ -851,27 +882,7 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
             </div>
           )}
 
-          {/* FOOTER */}
-          <div style={styles.footer}>
-            <button
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              style={{
-                ...styles.publishButton,
-                opacity: isSubmitting ? 0.7 : 1,
-                cursor: isSubmitting ? 'not-allowed' : 'pointer'
-              }}
-            >
-               {isSubmitting ? (
-                   <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Сохранение...
-                   </>
-               ) : 'Сохранить изменения'}
-            </button>
-          </div>
-
-        </div>
+                  </div>
       </div>
 
       {/* CONFIRMATION DIALOG */}
@@ -932,6 +943,7 @@ const styles = {
   },
   formScrollContent: {
     padding: theme.spacing.lg,
+    paddingBottom: `calc(${theme.spacing.lg}px + var(--screen-bottom-offset))`,
   },
 
   // FORM ELEMENTS

@@ -201,6 +201,18 @@ button[style*="translateY(-50%)"]:hover {
 :root {
   --info-bar-min-height: 260px;
   --header-height: 350px;
+  --drilldown-header-height: 56px;
+  --dev-action-bar-height: 0px;
+  --screen-bottom-offset: calc(var(--dev-action-bar-height) + env(safe-area-inset-bottom, 0px));
+}
+
+/* Utilities for screens that need shared drilldown spacing */
+.drilldown-content {
+  padding-top: var(--drilldown-header-height);
+}
+
+.with-dev-action-bar {
+  padding-bottom: var(--screen-bottom-offset);
 }
 
 /* Компенсация для iPhone с home indicator */

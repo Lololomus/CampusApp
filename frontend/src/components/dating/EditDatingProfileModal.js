@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Trash2, Save, Edit2 } from 'lucide-react';
+import { Camera, Trash2, Edit2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { updateDatingProfile } from '../../api';
 import { processImageFiles, revokeObjectURLs } from '../../utils/media';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
+import { toast } from '../shared/Toast';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 import {
   PROMPT_OPTIONS,
-  PROMPT_MAX_LENGTH,
-  PROMPTS_BY_CATEGORY,
   INTEREST_OPTIONS,
   MAX_INTERESTS,
   GOAL_OPTIONS,
@@ -79,7 +80,7 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
     hapticFeedback('light');
     
     if (totalPhotos + e.target.files.length > MAX_PHOTOS) {
-      alert(`Максимум ${MAX_PHOTOS} фото`);
+      toast.warning(`Максимум ${MAX_PHOTOS} фото`);
       return;
     }
     
@@ -89,7 +90,7 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
       setNewPhotos(prev => [...prev, ...processed.map(p => p.file)]);
       setNewPreviews(prev => [...prev, ...processed.map(p => p.preview)]);
     } catch (e) {
-      alert('Ошибка обработки фото');
+      toast.error('Ошибка обработки фото');
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -123,7 +124,7 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
         return prev.filter(i => i !== interest);
       }
       if (prev.length >= MAX_INTERESTS) {
-        alert(`Можно выбрать максимум ${MAX_INTERESTS} интересов`);
+        toast.warning(`Можно выбрать максимум ${MAX_INTERESTS} интересов`);
         return prev;
       }
       return [...prev, interest];
@@ -160,26 +161,42 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
     setPrompt(null);
   };
 
+  const handleBack = () => {
+    if (loading) return;
+
+    if (editingPrompt) {
+      setEditingPrompt(null);
+      return;
+    }
+
+    if (showPromptSelector) {
+      setShowPromptSelector(false);
+      return;
+    }
+
+    onClose();
+  };
+
   const handleSave = async () => {
     if (totalPhotos === 0) {
-      alert('Минимум 1 фото обязательно');
+      toast.warning('Минимум 1 фото обязательно');
       return;
     }
 
     if (bio.trim().length > 0) {
       if (bio.trim().length < BIO_MIN_LENGTH) {
-        alert(`Био должно содержать минимум ${BIO_MIN_LENGTH} символов`);
+        toast.warning(`Био должно содержать минимум ${BIO_MIN_LENGTH} символов`);
         return;
       }
       if (bio.trim().length > BIO_MAX_LENGTH) {
-        alert(`Био должно содержать максимум ${BIO_MAX_LENGTH} символов`);
+        toast.warning(`Био должно содержать максимум ${BIO_MAX_LENGTH} символов`);
         return;
       }
       
       const bioWithoutEmoji = bio.replace(/[\u{1F300}-\u{1F9FF}]/gu, '');
       const lettersOnly = bioWithoutEmoji.replace(/[^\wа-яА-ЯёЁ\s]/g, '');
       if (lettersOnly.trim().length < BIO_MIN_LENGTH) {
-        alert('Напиши хотя бы пару слов 😊');
+        toast.warning('Напиши хотя бы пару слов');
         return;
       }
     }
@@ -232,20 +249,38 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
       onClose();
     } catch (error) {
       console.error('Ошибка сохранения:', error);
-      alert(error.response?.data?.detail || 'Ошибка сохранения');
+      toast.error(error.response?.data?.detail || 'Ошибка сохранения');
     } finally {
       setLoading(false);
     }
   };
 
+  const canSave = !loading && totalPhotos > 0 && !showPromptSelector && !editingPrompt;
+
+  useTelegramScreen({
+    id: 'edit-dating-profile-modal',
+    title: 'Редактировать профиль',
+    priority: 120,
+    back: {
+      visible: true,
+      onClick: handleBack,
+    },
+    main: {
+      visible: true,
+      text: 'Сохранить',
+      onClick: handleSave,
+      enabled: canSave,
+      loading,
+      color: theme.colors.dating.primary,
+    },
+  });
+
   return (
     <>
-      <div style={styles.overlay} onClick={loading ? undefined : onClose} />
+      <div style={styles.overlay} onClick={loading ? undefined : handleBack} />
 
       <div style={styles.modal}>
-        <button onClick={onClose} style={styles.closeButton}>
-          <X size={24} color={theme.colors.text} />
-        </button>
+        <DrilldownHeader title="Редактировать профиль" onBack={handleBack} />
 
         <div style={styles.content}>
           
@@ -451,26 +486,6 @@ function EditDatingProfileModal({ onClose, onSuccess }) {
           </div>
         </div>
 
-        <div style={styles.fixedButtonsContainer}>
-          <button 
-            onClick={onClose}
-            disabled={loading}
-            style={styles.cancelButton}
-          >
-            Отмена
-          </button>
-          <button 
-            onClick={handleSave}
-            disabled={loading || totalPhotos === 0}
-            style={{
-              ...styles.saveButton,
-              opacity: loading || totalPhotos === 0 ? 0.5 : 1,
-            }}
-          >
-            <Save size={18} />
-            {loading ? 'Сохранение...' : 'Сохранить'}
-          </button>
-        </div>
       </div>
       <PromptSelectorModal
         isOpen={showPromptSelector}
@@ -524,8 +539,8 @@ const styles = {
     flex: 1,
     overflowY: 'auto',
     padding: '16px',
-    paddingTop: 'max(60px, env(safe-area-inset-top))',
-    paddingBottom: '90px',
+    paddingTop: '16px',
+    paddingBottom: 'var(--screen-bottom-offset)',
   },
   section: {
     marginBottom: 20,

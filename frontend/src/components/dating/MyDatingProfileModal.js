@@ -1,12 +1,15 @@
 // ===== 📄 ФАЙЛ: src/components/dating/MyDatingProfileModal.js (ФИНАЛ) =====
 
 import React, { useState, useEffect } from 'react';
-import { X, Eye, EyeOff, Heart, Users, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, EyeOff, Heart, Users, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStore } from '../../store';
 import { getDatingStats, updateDatingSettings } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import PhotoViewer from '../shared/PhotoViewer';
+import { toast } from '../shared/Toast';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 import {
   GOAL_LABELS,
   INTEREST_LABELS,
@@ -23,6 +26,16 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+
+  useTelegramScreen({
+    id: 'my-dating-profile-modal',
+    title: 'Мой профиль',
+    priority: 110,
+    back: {
+      visible: true,
+      onClick: onClose,
+    },
+  });
 
   useEffect(() => {
     loadStats();
@@ -48,7 +61,7 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
       useStore.setState({ user: { ...user, show_in_dating: newValue } });
       hapticFeedback('success');
     } catch (e) {
-      alert('Не удалось изменить настройки');
+      toast.error('Не удалось изменить настройки');
     } finally {
       setTogglingVisibility(false);
     }
@@ -89,9 +102,7 @@ function MyDatingProfileModal({ onClose, onEditClick }) {
       <div style={styles.overlay} onClick={onClose} />
 
       <div style={styles.modal}>
-        <button onClick={onClose} style={styles.closeButton}>
-          <X size={24} color="#fff" />
-        </button>
+        <DrilldownHeader title="Мой профиль" onBack={onClose} />
 
         <div style={styles.content}>
           

@@ -1,12 +1,12 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/EditMarketItemModal.js =====
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, AlertCircle, Loader2, Trash2, Plus, MapPin, Check } from 'lucide-react';
+import { AlertCircle, Loader2, Trash2, Plus, MapPin } from 'lucide-react';
 import { updateMarketItem } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import imageCompression from 'browser-image-compression';
-import { Z_MODAL_MARKET_DETAIL, Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
+import { Z_MODAL_MARKET_DETAIL } from '../../constants/zIndex';
 import { 
   CharCounter, 
   FieldHint,
@@ -16,6 +16,8 @@ import {
 } from '../shared/FormValidation';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { toast } from '../shared/Toast';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 
 const API_URL = 'http://localhost:8000';
 
@@ -45,6 +47,26 @@ const ALLOWED_FORMATS = IMAGE_SETTINGS.ALLOWED_FORMATS;
 
 const MARKET_COLOR = theme.colors.market;
 
+const normalizeText = (value) => String(value ?? '').trim();
+
+const normalizePrice = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const extractImageKey = (value) => {
+  const raw = String(value ?? '');
+  if (!raw) return '';
+
+  const withoutHash = raw.split('#')[0];
+  const withoutQuery = withoutHash.split('?')[0];
+  const normalized = withoutQuery.replace(/\\/g, '/');
+
+  if (!normalized) return '';
+  if (!normalized.includes('/')) return normalized;
+  return normalized.split('/').pop() || '';
+};
+
 const CATEGORIES = [
   { id: 'textbooks', label: 'Учебники', emoji: '📚' },
   { id: 'electronics', label: 'Электроника', emoji: '💻' },
@@ -63,6 +85,7 @@ const CONDITIONS = [
 
 function EditMarketItemModal({ item, onClose, onSuccess }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [isTelegramActionsVisible, setIsTelegramActionsVisible] = useState(true);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -115,15 +138,39 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
   }, [isSubmitting]);
 
   const hasChanges = () => {
-    if (title !== (item?.title || '')) return true;
-    if (description !== (item?.description || '')) return true;
-    if (String(price) !== String(item?.price || '')) return true;
-    
+    if (normalizeText(title) !== normalizeText(item?.title)) return true;
+    if (normalizeText(description) !== normalizeText(item?.description)) return true;
+
+    const currentPrice = normalizePrice(price);
+    const initialPrice = normalizePrice(item?.price);
+    if (currentPrice !== initialPrice) return true;
+
     const finalCategory = category === 'custom' ? customCategory : category;
-    if (finalCategory !== (item?.category || '')) return true;
-    
-    if (condition !== (item?.condition || '')) return true;
-    if (location !== (item?.location || '')) return true;
+    if (normalizeText(finalCategory) !== normalizeText(item?.category)) return true;
+
+    if (normalizeText(condition) !== normalizeText(item?.condition)) return true;
+    if (normalizeText(location) !== normalizeText(item?.location)) return true;
+
+    const hasNewImages = images.some((img) => img?.isNew);
+    if (hasNewImages) return true;
+
+    const currentExistingImageKeys = images
+      .filter((img) => !img?.isNew)
+      .map((img) => extractImageKey(img?.filename || img?.url))
+      .filter(Boolean);
+
+    const initialImageKeys = (item?.images || [])
+      .map((img) => extractImageKey(typeof img === 'object' ? img?.url : img))
+      .filter(Boolean);
+
+    if (currentExistingImageKeys.length !== initialImageKeys.length) return true;
+
+    for (let index = 0; index < currentExistingImageKeys.length; index += 1) {
+      if (currentExistingImageKeys[index] !== initialImageKeys[index]) {
+        return true;
+      }
+    }
+
     return false;
   };
 
@@ -220,6 +267,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
 
   const confirmClose = () => {
     hapticFeedback('light');
+    setIsTelegramActionsVisible(false);
     setIsVisible(false);
     setTimeout(() => {
       onClose();
@@ -294,7 +342,44 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
     }
   };
 
-    return (
+  const canSubmit = isFormValid();
+  const hasUnsavedChanges = hasChanges();
+
+  useTelegramScreen({
+    id: `edit-market-item-modal-${item?.id || 'unknown'}`,
+    title: 'Редактировать товар',
+    priority: 120,
+    back: {
+      visible: isTelegramActionsVisible,
+      onClick: showConfirmation ? () => setShowConfirmation(false) : handleClose,
+    },
+    main: !hasUnsavedChanges && !showConfirmation ? { visible: false } : showConfirmation
+      ? {
+          visible: isTelegramActionsVisible,
+          text: 'Выйти',
+          onClick: confirmClose,
+          enabled: !isSubmitting,
+          loading: false,
+          color: theme.colors.error,
+        }
+      : {
+          visible: isTelegramActionsVisible,
+          text: 'Сохранить изменения',
+          onClick: handleSubmit,
+          enabled: hasUnsavedChanges && canSubmit && !isSubmitting,
+          loading: isSubmitting,
+          color: MARKET_COLOR,
+        },
+    secondary: {
+      visible: isTelegramActionsVisible && showConfirmation,
+      text: 'Вернуться',
+      onClick: () => setShowConfirmation(false),
+      enabled: !isSubmitting,
+      loading: false,
+    },
+  });
+
+  return (
     <>
         <div
           style={{
@@ -323,20 +408,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
           </div>
         )}
 
-        {/* HEADER */}
-        <div style={styles.header}>
-          <button 
-            onClick={handleClose}
-            disabled={isSubmitting}
-            style={styles.closeButton}
-          >
-            <X size={24} />
-          </button>
-          
-          <h2 style={styles.title}>Редактировать товар</h2>
-          
-          <div style={{ width: '40px' }} />
-        </div>
+        <DrilldownHeader title="Редактировать товар" onBack={handleClose} />
 
         {/* ERROR */}
         {error && (
@@ -650,31 +722,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
           </div>
         </div>
 
-        {/* FOOTER С КНОПКОЙ СОХРАНИТЬ */}
-        <div style={styles.footer}>
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitting || !isFormValid()}
-            style={{
-              ...styles.publishButton,
-              opacity: isSubmitting || !isFormValid() ? 0.7 : 1,
-              cursor: isSubmitting || !isFormValid() ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                <span>Сохранение...</span>
-              </>
-            ) : (
-              <>
-                <Check size={18} />
-                <span>Сохранить изменения</span>
-              </>
-            )}
-          </button>
         </div>
-      </div>
       </div>
 
         {/* CONFIRMATION DIALOG */}
@@ -777,6 +825,7 @@ const styles = {
   },
   formScrollContent: {
     padding: theme.spacing.lg,
+    paddingBottom: `calc(${theme.spacing.lg}px + var(--screen-bottom-offset))`,
   },
   section: {
     marginBottom: theme.spacing.lg,

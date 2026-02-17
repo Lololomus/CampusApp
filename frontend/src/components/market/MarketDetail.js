@@ -14,6 +14,8 @@ import { hapticFeedback } from '../../utils/telegram';
 import DropdownMenu from '../DropdownMenu';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 
@@ -46,17 +48,24 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const isOwner = currentItem.seller_id === user?.id;
   const images = currentItem.images || [];
 
-  useEffect(() => {
-    if (window.Telegram?.WebApp?.BackButton) {
-      window.Telegram.WebApp.BackButton.show();
-      window.Telegram.WebApp.BackButton.onClick(onClose);
-      
-      return () => {
-        window.Telegram.WebApp.BackButton.hide();
-        window.Telegram.WebApp.BackButton.offClick(onClose);
-      };
-    }
-  }, [onClose]);
+  const closeDetail = () => {
+    onClose?.();
+  };
+
+  const handleTelegramBack = () => {
+    hapticFeedback('light');
+    closeDetail();
+  };
+
+  useTelegramScreen({
+    id: 'market-detail-screen',
+    title: 'Маркет',
+    priority: 90,
+    back: {
+      visible: true,
+      onClick: handleTelegramBack,
+    },
+  });
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -107,9 +116,13 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
     try {
       await toggleMarketFavorite(currentItem.id);
+      if (newState) {
+        toast.success('Добавлено в избранное');
+      }
     } catch (error) {
       console.error('Ошибка toggle избранного:', error);
       toggleMarketFavoriteOptimistic(currentItem.id, !newState);
+      toast.error('Не удалось обновить избранное');
     }
   };
 
@@ -121,7 +134,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       await deleteMarketItem(currentItem.id);
       deleteFromStore(currentItem.id);
       toast.success('Товар удалён');
-      onClose();
+      closeDetail();
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Ошибка удаления:', error);
@@ -311,6 +324,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   return (
     <>
       <div style={styles.container}>
+        <DrilldownHeader title="Маркет" onBack={closeDetail} />
         {images.length > 0 && (
           <div style={styles.galleryContainer}>
             <div
@@ -618,6 +632,7 @@ const styles = {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
+    objectPosition: 'top center',
   },
 
   imagePlaceholder: {

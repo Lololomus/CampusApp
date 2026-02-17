@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GraduationCap, ChevronUp, Heart, ChevronLeft, ChevronRight } from 'lucide-react';
+import { GraduationCap, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStore } from '../../store';
 import { getDatingFeed, likeUser, dislikeUser, getDatingStats, getWhoLikedMe, getMyDatingProfile, getMyMatches } from '../../api';
 import AppHeader from '../shared/AppHeader';
@@ -15,6 +15,9 @@ import LikesTab from './LikesTab';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 import ProfileInfoBar from './ProfileInfoBar';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
+import { toast } from '../shared/Toast';
 
 const GOAL_ICONS = {
   relationship: '💘 Отношения',
@@ -343,7 +346,6 @@ const MOCK_MATCHES = [
 
 function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage }) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  const [scrollY, setScrollY] = useState(0);
   const [isLiking, setIsLiking] = useState(false);
 
   const photos = profile?.photos || [];
@@ -372,12 +374,6 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
     };
   }, []);
 
-  const handleScroll = (e) => {
-    setScrollY(e.target.scrollTop);
-  };
-
-  const headerOpacity = Math.min(scrollY / 100, 0.95);
-
   const handleLikeClick = async () => {
     if (isLiking) return;
     
@@ -400,20 +396,29 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
     }
   };
 
+  const isMatchProfile = profileType === 'match';
+
+  useTelegramScreen({
+    id: `dating-likes-view-profile-${profileType || 'profile'}-${profile?.id || 'unknown'}`,
+    title: isMatchProfile ? 'Взаимность' : 'Кто лайкнул',
+    priority: 130,
+    back: {
+      visible: true,
+      onClick: onClose,
+    },
+    main: {
+      visible: true,
+      text: isMatchProfile ? 'Написать сообщение' : 'Лайкнуть в ответ',
+      onClick: isMatchProfile ? handleMessageClick : handleLikeClick,
+      enabled: !isLiking,
+      loading: !isMatchProfile && isLiking,
+      color: theme.colors.dating.primary,
+    },
+  });
+
   return (
-    <div style={styles.viewingOverlay} onScroll={handleScroll}>
-      {/* Header */}
-      <div
-        style={{
-          ...styles.viewingHeader,
-          background: `linear-gradient(to bottom, rgba(10, 10, 10, ${headerOpacity}) 0%, rgba(10, 10, 10, ${headerOpacity * 0.8}) 80%, transparent 100%)`,
-          backdropFilter: scrollY > 20 ? 'blur(12px)' : 'none',
-        }}
-      >
-        <button style={styles.backButtonNew} onClick={onClose}>
-          ← Назад
-        </button>
-      </div>
+    <div style={styles.viewingOverlay}>
+      <DrilldownHeader title={isMatchProfile ? 'Взаимность' : 'Кто лайкнул'} onBack={onClose} />
 
       {/* Content */}
       <div style={styles.viewingContent}>
@@ -554,32 +559,6 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
         </div>
       </div>
 
-      {/* Кнопка внизу (разная для match/like) */}
-      <div style={styles.viewingActions}>
-        {profileType === 'match' ? (
-          <button 
-            style={styles.viewingMessageButton} 
-            onClick={handleMessageClick}
-            disabled={isLiking}
-          >
-            💬 <span>Написать сообщение</span>
-          </button>
-        ) : (
-          <button 
-            style={{
-              ...styles.viewingLikeButton,
-              opacity: isLiking ? 0.6 : 1,
-              cursor: isLiking ? 'not-allowed' : 'pointer',
-            }}
-            onClick={handleLikeClick}
-            disabled={isLiking}
-          >
-            <Heart size={24} fill="#fff" strokeWidth={0} />
-            <span>{isLiking ? 'Отправка...' : 'Лайкнуть в ответ'}</span>
-          </button>
-        )}
-      </div>
-
       {/* PhotoViewer */}
       {showPhotoViewer && (
         <PhotoViewer
@@ -625,11 +604,28 @@ function DatingFeed() {
   const [viewingProfile, setViewingProfile] = useState(null);
   const [showMyProfile, setShowMyProfile] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
+  const [returnToMyProfileOnEditClose, setReturnToMyProfileOnEditClose] = useState(false);
   const [infoExpanded, setInfoExpanded] = useState(false);
   const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
+
+  const openEditProfile = useCallback((fromMyProfile = false) => {
+    setReturnToMyProfileOnEditClose(fromMyProfile);
+    if (fromMyProfile) {
+      setShowMyProfile(false);
+    }
+    setShowEditProfile(true);
+  }, []);
+
+  const closeEditProfile = useCallback(() => {
+    setShowEditProfile(false);
+    if (returnToMyProfileOnEditClose) {
+      setShowMyProfile(true);
+    }
+    setReturnToMyProfileOnEditClose(false);
+  }, [returnToMyProfileOnEditClose]);
   
   useEffect(() => {
     document.body.classList.add('dating-active');
@@ -860,7 +856,7 @@ function DatingFeed() {
     }, 500);
   };
 
-  const handleLike = async (profileId = null) => {
+  const handleLike = async (profileId = null, fallbackUser = null) => {
     const targetId = profileId || currentProfile?.id;
 
     if (isGuestMode) {
@@ -893,10 +889,11 @@ function DatingFeed() {
 
       if (USE_MOCK_DATA) {
         await new Promise(r => setTimeout(r, 300));
-        isMatch = Math.random() > 0.3;
+        // В likes tab лайк в ответ должен всегда давать мэтч.
+        isMatch = profileId ? true : Math.random() > 0.3;
         
         const baseUser = profileId 
-          ? whoLikedMe.find(u => u.id === profileId) 
+          ? (whoLikedMe.find(u => u.id === profileId) || fallbackUser)
           : currentProfile;
         
         if (isMatch && baseUser) {
@@ -915,6 +912,10 @@ function DatingFeed() {
         matchedUser = res.matched_user;
       }
 
+      if (isMatch && !matchedUser && fallbackUser) {
+        matchedUser = fallbackUser;
+      }
+
       if (profileId) {
         setWhoLikedMe(prev => (prev || []).filter(u => u.id !== targetId));
         setViewingProfile(null);
@@ -928,7 +929,7 @@ function DatingFeed() {
       return { is_match: isMatch, matched_user: matchedUser };
     } catch (e) {
       console.error('Like error:', e);
-      alert(`Ошибка: ${e.message || 'Не удалось поставить лайк'}`);
+      toast.error(e?.message || 'Не удалось поставить лайк');
       if (!profileId) {
         setSwipeDirection(null);
         setIsAnimating(false);
@@ -1157,7 +1158,7 @@ function DatingFeed() {
               console.log('Open chat with', user);
             }}
             onEmptyAction={() => {
-              setShowEditProfile(true);
+              openEditProfile(false);
             }}
           />
         )}
@@ -1172,8 +1173,9 @@ function DatingFeed() {
             }}
             onLike={() => {
               if (viewingProfile.type === 'like') {
-                handleLike(viewingProfile.user.id);
+                return handleLike(viewingProfile.user.id, viewingProfile.user);
               }
+              return Promise.resolve({ is_match: false });
             }}
             onMessage={() => {
               if (viewingProfile.type === 'match') {
@@ -1190,15 +1192,14 @@ function DatingFeed() {
         <MyDatingProfileModal 
           onClose={() => setShowMyProfile(false)}
           onEditClick={() => {
-            setShowMyProfile(false);
-            setShowEditProfile(true);
+            openEditProfile(true);
           }}
         />
       )}
 
       {showEditProfile && (
         <EditDatingProfileModal 
-          onClose={() => setShowEditProfile(false)}
+          onClose={closeEditProfile}
           onSuccess={() => console.log('✅')}
         />
       )}
@@ -1409,33 +1410,9 @@ const styles = {
     overflowY: 'auto',
     overflowX: 'hidden',
   },
-  viewingHeader: {
-    position: 'sticky',
-    top: 0,
-    left: 0,
-    right: 0,
-    padding: '12px 16px',
-    paddingTop: `max(env(safe-area-inset-top, 12px), 12px)`,
-    zIndex: 10,
-    transition: 'background 0.2s, backdrop-filter 0.2s',
-  },
-  backButtonNew: {
-    padding: '10px 16px',
-    background: 'rgba(28, 28, 28, 0.8)',
-    backdropFilter: 'blur(8px)',
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: 12,
-    color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: 600,
-    cursor: 'pointer',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-  },
   viewingContent: {
     minHeight: '100vh',
-    paddingBottom: 100,
+    paddingBottom: 'var(--screen-bottom-offset)',
   },
   viewingPhotoSection: {
     position: 'relative',
@@ -1582,33 +1559,6 @@ const styles = {
     border: `1px solid ${theme.colors.border}`,
     color: theme.colors.text,
   },
-  viewingActions: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: '12px 20px',
-    paddingBottom: `max(env(safe-area-inset-bottom, 16px), 16px)`,
-    background: theme.colors.bg,
-    borderTop: `1px solid ${theme.colors.border}`,
-    zIndex: 100,
-  },
-  viewingLikeButton: {
-    width: '100%',
-    padding: 16,
-    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    border: 'none',
-    borderRadius: 16,
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: 700,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    boxShadow: '0 4px 20px rgba(245, 87, 108, 0.4)',
-  },
   emptyState: {
     flex: 1,
     display: 'flex',
@@ -1626,22 +1576,6 @@ const styles = {
     fontSize: 20,
     fontWeight: 700,
     color: theme.colors.text,
-  },
-  viewingMessageButton: {
-    width: '100%',
-    padding: 16,
-    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    border: 'none',
-    borderRadius: 16,
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: 700,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    boxShadow: '0 4px 20px rgba(245, 87, 108, 0.4)',
   },
 };
 

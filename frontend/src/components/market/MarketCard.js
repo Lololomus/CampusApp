@@ -105,6 +105,9 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
 
     try {
       await toggleMarketFavorite(item.id);
+      if (newState) {
+        toast.success('Добавлено в избранное');
+      }
     } catch (error) {
       console.error('Ошибка toggle избранного:', error);
       toggleMarketFavoriteOptimistic(item.id, !newState);

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  ArrowLeft, Heart, MessageCircle, Eye, MapPin, Calendar,
-  ChevronLeft, ChevronRight, MoreVertical, Link as LinkIcon,
-  Gift, Phone, Trash2, Edit2, Flag
+  Heart, MessageCircle, Eye, MapPin, Calendar,
+  ChevronLeft, ChevronRight, MoreVertical,
+  Gift, Phone
 } from 'lucide-react';
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment, deletePost } from '../../api';
 import { useStore } from '../../store';
-import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/telegram';
+import { hapticFeedback } from '../../utils/telegram';
 import BottomActionBar from '../BottomActionBar';
 import DropdownMenu from '../DropdownMenu';
 import { Z_MODAL_POST_DETAIL } from '../../constants/zIndex';
@@ -16,6 +16,8 @@ import PhotoViewer from '../shared/PhotoViewer';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { toast } from '../shared/Toast'; 
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 
 const API_URL = 'http://localhost:8000';
 
@@ -44,11 +46,28 @@ function PostDetail() {
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
 
+  const closeDetail = () => {
+    setViewPostId(null);
+  };
+
+  const handleBack = () => {
+    hapticFeedback('light');
+    closeDetail();
+  };
+
+  useTelegramScreen({
+    id: 'post-detail-screen',
+    title: 'Пост',
+    priority: 90,
+    back: {
+      visible: true,
+      onClick: handleBack,
+    },
+  });
+
   useEffect(() => {
     if (viewPostId) {
       loadPost();
-      showBackButton(handleBack);
-      return () => hideBackButton();
     }
   }, [viewPostId]);
 
@@ -174,11 +193,6 @@ function PostDetail() {
           .filter(Boolean).join(' · ')
       : null;
   }, [post?.author, post?.is_anonymous]);
-
-  const handleBack = () => {
-    hapticFeedback('light');
-    setViewPostId(null);
-  };
 
   const handleLike = async () => {
     hapticFeedback('medium');
@@ -392,12 +406,7 @@ function PostDetail() {
       `}</style>
 
       <div style={styles.container}>
-        <div style={styles.header}>
-          <button onClick={handleBack} style={styles.backButton}>
-            <ArrowLeft size={24} />
-          </button>
-          <span style={styles.headerTitle}>Пост</span>
-        </div>
+        <DrilldownHeader title="Пост" onBack={closeDetail} />
 
         <div style={styles.scrollContent}>
           {loading || !post ? (
@@ -859,23 +868,6 @@ const styles = {
     willChange: 'transform',
     transform: 'translate3d(0,0,0)',
     WebkitOverflowScrolling: 'touch',
-  },
-  header: {
-    position: 'sticky', top: 0,
-    display: 'flex', alignItems: 'center', gap: theme.spacing.md,
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    backgroundColor: theme.colors.bgSecondary,
-    borderBottom: `1px solid ${theme.colors.border}`,
-    zIndex: 10,
-    minHeight: 60,
-  },
-  backButton: {
-    background: 'none', border: 'none', color: theme.colors.text,
-    cursor: 'pointer', padding: theme.spacing.sm,
-    display: 'flex', alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.semibold, color: theme.colors.text,
   },
   scrollContent: {
     flex: 1,

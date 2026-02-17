@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft } from 'lucide-react';
 import { getUserPosts } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
@@ -8,6 +7,8 @@ import PostCard from '../posts/PostCard';
 import { Z_USER_POSTS } from '../../constants/zIndex';
 import PostCardSkeleton from '../posts/PostCardSkeleton';
 import theme from '../../theme';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 
 function UserPosts() {
   const { user, setViewPostId, setShowUserPosts, updatedPostId, updatedPostData, clearUpdatedPost } = useStore();
@@ -18,6 +19,25 @@ function UserPosts() {
   const [filter, setFilter] = useState('all');
   const loadLockRef = useRef(false);
   const LIMIT = 10;
+
+  const closeScreen = () => {
+    setShowUserPosts(false);
+  };
+
+  const handleTelegramBack = () => {
+    hapticFeedback('light');
+    closeScreen();
+  };
+
+  useTelegramScreen({
+    id: 'user-posts-screen',
+    title: 'Мои посты',
+    priority: 40,
+    back: {
+      visible: true,
+      onClick: handleTelegramBack,
+    },
+  });
 
   useEffect(() => {
     loadPosts();
@@ -107,11 +127,6 @@ function UserPosts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts]);
 
-  const handleBack = () => {
-    hapticFeedback('light');
-    setShowUserPosts(false);
-  };
-
   const handlePostClick = (postId) => {
     hapticFeedback('light');
     setViewPostId(postId);
@@ -137,13 +152,7 @@ function UserPosts() {
 
   return (
     <div style={styles.container} onScroll={handleScroll}>
-      <div style={styles.header}>
-        <button onClick={handleBack} style={styles.backButton}>
-          <ArrowLeft size={24} />
-        </button>
-        <span style={styles.headerTitle}>Мои посты ({counts.all})</span>
-        <div style={{ width: 44 }} />
-      </div>
+      <DrilldownHeader title={`Мои посты (${counts.all})`} onBack={closeScreen} />
 
       <div style={styles.filterTabs}>
         <button
@@ -248,39 +257,6 @@ const styles = {
     overflowY: 'auto',
     paddingBottom: '20px',
   },
-  header: {
-    position: 'sticky',
-    top: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '12px',
-    padding: '12px 16px',
-    backgroundColor: '#1a1a1a',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    zIndex: 10,
-    backdropFilter: 'blur(10px)',
-  },
-  backButton: {
-    background: 'none',
-    border: 'none',
-    color: theme.colors.text,
-    cursor: 'pointer',
-    padding: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    minWidth: '44px',
-    minHeight: '44px',
-    borderRadius: '50%',
-    transition: 'background 0.2s',
-  },
-  headerTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: theme.colors.text,
-    flex: 1,
-    textAlign: 'center',
-  },
   filterTabs: {
     display: 'flex',
     gap: 8,
@@ -288,7 +264,7 @@ const styles = {
     borderBottom: `1px solid ${theme.colors.border}`,
     backgroundColor: theme.colors.bg,
     position: 'sticky',
-    top: 57,
+    top: 'calc(var(--drilldown-header-height) + env(safe-area-inset-top, 0px))',
     zIndex: 9,
   },
   filterTab: {

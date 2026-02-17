@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
 import { getMyRequests, deleteRequest } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
@@ -10,6 +9,8 @@ import EditContentModal from '../shared/EditContentModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import theme from '../../theme';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 
 function UserRequests() {
   const { user, setShowUserRequests, setCurrentRequest } = useStore();
@@ -23,6 +24,25 @@ function UserRequests() {
   const [showRequestDetail, setShowRequestDetail] = useState(false);
   
   const LIMIT = 20;
+
+  const closeScreen = () => {
+    setShowUserRequests(false);
+  };
+
+  const handleTelegramBack = () => {
+    hapticFeedback('light');
+    closeScreen();
+  };
+
+  useTelegramScreen({
+    id: 'user-requests-screen',
+    title: 'Мои запросы',
+    priority: 40,
+    back: {
+      visible: true,
+      onClick: handleTelegramBack,
+    },
+  });
 
   useEffect(() => {
     loadRequests();
@@ -49,10 +69,7 @@ function UserRequests() {
     }
   };
 
-  const handleBack = () => {
-    hapticFeedback('light');
-    setShowUserRequests(false);
-  };  const handleEditRequest = (request) => {
+  const handleEditRequest = (request) => {
     hapticFeedback('light');
     setEditingRequest(request);
   };
@@ -111,14 +128,7 @@ function UserRequests() {
 
   return (
     <div style={styles.container} onScroll={handleScroll}>
-      {/* Header */}
-      <div style={styles.header}>
-        <button onClick={handleBack} style={styles.backButton}>
-          <ArrowLeft size={24} />
-        </button>
-        <span style={styles.headerTitle}>Мои запросы ({counts.all})</span>
-        <div style={{ width: 44 }}></div>
-      </div>
+      <DrilldownHeader title={`Мои запросы (${counts.all})`} onBack={closeScreen} />
 
       {/* Filter Tabs */}
       <div style={styles.filterTabs}>
@@ -254,39 +264,6 @@ const styles = {
     overflowY: 'auto',
     paddingBottom: '20px',
   },
-  header: {
-    position: 'sticky',
-    top: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '12px',
-    padding: '12px 16px',
-    backgroundColor: '#1a1a1a',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    zIndex: 10,
-    backdropFilter: 'blur(10px)',
-  },
-  backButton: {
-    background: 'none',
-    border: 'none',
-    color: theme.colors.text,
-    cursor: 'pointer',
-    padding: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    minWidth: '44px',
-    minHeight: '44px',
-    borderRadius: '50%',
-    transition: 'background 0.2s',
-  },
-  headerTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: theme.colors.text,
-    flex: 1,
-    textAlign: 'center',
-  },
   filterTabs: {
     display: 'flex',
     gap: 8,
@@ -294,7 +271,7 @@ const styles = {
     borderBottom: `1px solid ${theme.colors.border}`,
     backgroundColor: theme.colors.bg,
     position: 'sticky',
-    top: 57,
+    top: 'calc(var(--drilldown-header-height) + env(safe-area-inset-top, 0px))',
     zIndex: 9,
   },
   filterTab: {
