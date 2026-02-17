@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app import models, schemas
-from app.auth import create_auth_session
+from app.auth_service import create_auth_session
 from app.config import get_settings
 from app.database import get_db
 

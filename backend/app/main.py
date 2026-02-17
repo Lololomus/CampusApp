@@ -9,10 +9,10 @@ from typing import List, Optional, Dict
 from app import models, schemas, crud
 from app.database import get_db, init_db
 from app.utils import get_image_urls, BASE_URL
-from app.auth import decode_authorization_header
+from app.auth_service import decode_authorization_header
 from app.config import get_settings
 import json
-from app.routers import dating, moderation, ads, notifications, auth, dev_auth
+from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router
 import shutil
 import uuid
 import os
@@ -29,8 +29,8 @@ app.include_router(dating.router)
 app.include_router(moderation.router)
 app.include_router(ads.router)
 app.include_router(notifications.router)
-app.include_router(auth.router)
-app.include_router(dev_auth.router)
+app.include_router(auth_router.router)
+app.include_router(dev_auth_router.router)
 
 settings = get_settings()
 

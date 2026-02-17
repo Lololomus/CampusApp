@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth_service import get_current_user
 from app import crud, schemas, models
 
 router = APIRouter(prefix="/ads", tags=["ads"])

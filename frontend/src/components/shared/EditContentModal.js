@@ -39,6 +39,62 @@ const REQUEST_CATEGORIES = [
   { value: 'hangout', label: 'Движ', icon: '🎉', color: '#f59e0b' }
 ];
 
+const normalizeText = (value) => String(value ?? '').trim();
+
+const normalizeTags = (rawTags) => {
+  let parsedTags = rawTags;
+
+  if (typeof rawTags === 'string') {
+    try {
+      parsedTags = JSON.parse(rawTags);
+    } catch {
+      parsedTags = [];
+    }
+  }
+
+  if (!Array.isArray(parsedTags)) return [];
+
+  return parsedTags
+    .map((tag) => normalizeText(tag).toLowerCase())
+    .filter(Boolean);
+};
+
+const extractImageKey = (value) => {
+  const raw = String(value ?? '');
+  if (!raw) return '';
+
+  const withoutHash = raw.split('#')[0];
+  const withoutQuery = withoutHash.split('?')[0];
+  const normalized = withoutQuery.replace(/\\/g, '/');
+
+  if (!normalized) return '';
+  if (!normalized.includes('/')) return normalized;
+  return normalized.split('/').pop() || '';
+};
+
+const normalizeInitialImageKeys = (rawImages) => {
+  let parsedImages = rawImages;
+
+  if (typeof rawImages === 'string') {
+    try {
+      parsedImages = JSON.parse(rawImages);
+    } catch {
+      parsedImages = [];
+    }
+  }
+
+  if (!Array.isArray(parsedImages)) return [];
+
+  return parsedImages
+    .map((img) => {
+      if (typeof img === 'object' && img !== null) {
+        return extractImageKey(img.filename || img.url);
+      }
+      return extractImageKey(img);
+    })
+    .filter(Boolean);
+};
+
 const getBorderColor = (isValid, attemptedSubmit) => {
   if (!attemptedSubmit) return theme.colors.border;
   return isValid ? theme.colors.success : theme.colors.error;
@@ -148,9 +204,59 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
   // ===== HANDLERS =====
 
   const hasChanges = () => {
-    if (title !== (initialData.title || '')) return true;
-    if (body !== (initialData.body || '')) return true;
-    return false; // Упрощенно
+    if (normalizeText(title) !== normalizeText(initialData?.title)) return true;
+    if (normalizeText(body) !== normalizeText(initialData?.body)) return true;
+
+    const currentTags = normalizeTags(tags);
+    const initialTags = normalizeTags(initialData?.tags);
+    if (JSON.stringify(currentTags) !== JSON.stringify(initialTags)) return true;
+
+    if (isPost) {
+      if (Boolean(isAnonymous) !== Boolean(initialData?.is_anonymous)) return true;
+      if (Boolean(isImportant) !== Boolean(initialData?.is_important)) return true;
+
+      if (category === 'lost_found') {
+        if (normalizeText(lostOrFound) !== normalizeText(initialData?.lost_or_found || 'lost')) return true;
+        if (normalizeText(itemDescription) !== normalizeText(initialData?.item_description)) return true;
+        if (normalizeText(location) !== normalizeText(initialData?.location)) return true;
+        if (normalizeText(rewardType) !== normalizeText(initialData?.reward_type || REWARD_TYPES.NONE)) return true;
+        if (normalizeText(rewardValue) !== normalizeText(initialData?.reward_value)) return true;
+      }
+
+      if (category === 'events') {
+        const initialEventDate = initialData?.event_date
+          ? new Date(initialData.event_date).toISOString().slice(0, 16)
+          : '';
+
+        if (normalizeText(eventName) !== normalizeText(initialData?.event_name)) return true;
+        if (normalizeText(eventDate) !== normalizeText(initialEventDate)) return true;
+        if (normalizeText(eventLocation) !== normalizeText(initialData?.event_location)) return true;
+        if (normalizeText(eventContact) !== normalizeText(initialData?.event_contact)) return true;
+      }
+    } else {
+      if (normalizeText(rewardType) !== normalizeText(initialData?.reward_type || REWARD_TYPES.NONE)) return true;
+      if (normalizeText(rewardValue) !== normalizeText(initialData?.reward_value)) return true;
+      if (normalizeText(expiresAt) !== normalizeText(initialData?.expires_at)) return true;
+    }
+
+    if (images.some((img) => img?.isNew)) return true;
+
+    const currentExistingImageKeys = images
+      .filter((img) => !img?.isNew)
+      .map((img) => extractImageKey(img?.filename || img?.url))
+      .filter(Boolean);
+
+    const initialImageKeys = normalizeInitialImageKeys(initialData?.images);
+
+    if (currentExistingImageKeys.length !== initialImageKeys.length) return true;
+
+    for (let index = 0; index < currentExistingImageKeys.length; index += 1) {
+      if (currentExistingImageKeys[index] !== initialImageKeys[index]) {
+        return true;
+      }
+    }
+
+    return false;
   };
 
   const handleFileSelect = async (e) => {
@@ -420,6 +526,7 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
       : (REQUEST_CATEGORIES.find(c => c.value === category) || REQUEST_CATEGORIES[0]);
 
   const editorTitle = isPost ? 'Редактирование поста' : 'Редактирование запроса';
+  const hasUnsavedChanges = hasChanges();
 
   useTelegramScreen({
     id: `edit-content-modal-${contentType}-${initialData?.id || 'unknown'}`,
@@ -439,10 +546,10 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
           color: theme.colors.error,
         }
       : {
-          visible: isVisible,
+          visible: isVisible && hasUnsavedChanges,
           text: 'Сохранить изменения',
           onClick: handleSubmit,
-          enabled: !isSubmitting,
+          enabled: hasUnsavedChanges && !isSubmitting,
           loading: isSubmitting,
         },
     secondary: {

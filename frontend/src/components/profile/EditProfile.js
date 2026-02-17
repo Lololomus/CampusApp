@@ -9,12 +9,18 @@ import { useStore } from '../../store';
 import { updateUserProfile, uploadUserAvatar } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 import theme from '../../theme';
 import { Z_EDIT_PROFILE } from '../../constants/zIndex';
 import {
-  CAMPUSES, COURSES, searchCampuses, getFacultiesForCampus,
+  COURSES, searchCampuses, getFacultiesForCampus,
   getCampusById, ONBOARDING_LIMITS,
 } from '../../constants/universityData';
+
+const normalizeText = (value) => String(value ?? '').trim();
+
+const normalizeUsername = (value) => normalizeText(value).replace(/^@/, '');
 
 
 function EditProfile() {
@@ -97,10 +103,78 @@ function EditProfile() {
       ? (customUni || 'Свой ВУЗ')
       : 'Не выбран';
 
+  const initialProfileState = useMemo(() => {
+    if (!user) {
+      return {
+        name: '',
+        username: '',
+        campusId: null,
+        isCustom: false,
+        customUni: '',
+        customCity: '',
+        finalFaculty: '',
+        course: null,
+        group: '',
+      };
+    }
+
+    const hasCampus = Boolean(user.campus_id);
+    const isCustomUniversity = !hasCampus && Boolean(user.custom_university || user.university);
+
+    return {
+      name: normalizeText(user.name),
+      username: normalizeUsername(user.username),
+      campusId: hasCampus ? user.campus_id : null,
+      isCustom: isCustomUniversity,
+      customUni: isCustomUniversity ? normalizeText(user.custom_university || user.university) : '',
+      customCity: isCustomUniversity ? normalizeText(user.custom_city || user.city) : '',
+      finalFaculty: normalizeText(user.custom_faculty || user.institute),
+      course: user.course || null,
+      group: normalizeText(user.group),
+    };
+  }, [user]);
+
+  const finalFaculty = useMemo(() => {
+    if (isCustom) return normalizeText(customFaculty);
+    if (faculty === 'Другой') return normalizeText(customFaculty);
+    return normalizeText(faculty);
+  }, [customFaculty, faculty, isCustom]);
+
+  const currentProfileState = useMemo(() => {
+    return {
+      name: normalizeText(name),
+      username: normalizeUsername(username),
+      campusId: isCustom ? null : (campusId || null),
+      isCustom,
+      customUni: isCustom ? normalizeText(customUni) : '',
+      customCity: isCustom ? normalizeText(customCity) : '',
+      finalFaculty,
+      course: course || null,
+      group: normalizeText(group),
+    };
+  }, [campusId, course, customCity, customUni, finalFaculty, group, isCustom, name, username]);
+
+  const hasUnsavedChanges = useMemo(() => {
+    return JSON.stringify(initialProfileState) !== JSON.stringify(currentProfileState);
+  }, [currentProfileState, initialProfileState]);
+
   const handleClose = useCallback(() => {
     hapticFeedback('light');
     setShowEditModal(false);
   }, [setShowEditModal]);
+
+  const handleBack = useCallback(() => {
+    if (loading) return;
+
+    hapticFeedback('light');
+
+    if (showCampusPicker) {
+      setShowCampusPicker(false);
+      return;
+    }
+
+    handleClose();
+  }, [handleClose, loading, showCampusPicker]);
 
   const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
@@ -204,17 +278,31 @@ function EditProfile() {
 
 
   // ============ РЕНДЕР: выбор кампуса (отдельный экран) ============
+  const canSave = !loading && hasUnsavedChanges && Boolean(name.trim());
+
+  useTelegramScreen({
+    id: 'edit-profile-screen',
+    title: showCampusPicker ? 'Выбор ВУЗа' : 'Редактирование профиля',
+    priority: 120,
+    back: {
+      visible: true,
+      onClick: handleBack,
+    },
+    main: {
+      visible: !showCampusPicker && hasUnsavedChanges,
+      text: 'Сохранить изменения',
+      onClick: handleSave,
+      enabled: canSave,
+      loading,
+      color: theme.colors.primary,
+    },
+  });
+
   if (showCampusPicker) {
     return (
       <div style={styles.overlay}>
         <div style={styles.container}>
-          <div style={styles.header}>
-            <button onClick={() => setShowCampusPicker(false)} style={styles.iconButton}>
-              <ChevronLeft size={24} color={theme.colors.text} />
-            </button>
-            <span style={styles.headerTitle}>Выбор ВУЗа</span>
-            <div style={{ width: 44 }} />
-          </div>
+          <DrilldownHeader title="Выбор ВУЗа" onBack={handleBack} />
 
           <div style={styles.scrollContent}>
             {/* Поиск */}
@@ -278,13 +366,7 @@ function EditProfile() {
       <div style={styles.container} className="slide-in-right">
 
         {/* HEADER */}
-        <div style={styles.header}>
-          <button onClick={handleClose} style={styles.iconButton}>
-            <X size={24} color={theme.colors.text} />
-          </button>
-          <span style={styles.headerTitle}>Редактирование</span>
-          <div style={{ width: 44 }} />
-        </div>
+        <DrilldownHeader title="Редактирование" onBack={handleBack} />
 
         <div style={styles.scrollContent}>
 
@@ -465,15 +547,9 @@ function EditProfile() {
             </div>
           </div>
 
-          <div style={{ height: 100 }} />
+          <div style={{ height: hasUnsavedChanges ? 8 : 0 }} />
         </div>
 
-        {/* FOOTER */}
-        <div style={styles.footer}>
-          <button style={styles.bigSaveButton} onClick={handleSave} disabled={loading}>
-            {loading ? 'Сохранение...' : 'Сохранить изменения'}
-          </button>
-        </div>
       </div>
 
       <style>{`
@@ -498,21 +574,13 @@ const styles = {
     flex: 1, display: 'flex', flexDirection: 'column',
     backgroundColor: theme.colors.bg, height: '100%',
   },
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: theme.spacing.lg, borderBottom: `1px solid ${theme.colors.borderLight}`,
-    backgroundColor: theme.colors.bg, zIndex: 10,
-  },
-  headerTitle: {
-    fontSize: 17, fontWeight: theme.fontWeight.semibold, color: theme.colors.text,
-  },
-  iconButton: {
-    background: 'none', border: 'none', padding: 8, cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    minWidth: 44, minHeight: 44,
-  },
   scrollContent: {
-    flex: 1, overflowY: 'auto', padding: theme.spacing.xl,
+    flex: 1,
+    overflowY: 'auto',
+    paddingTop: theme.spacing.xl,
+    paddingLeft: theme.spacing.xl,
+    paddingRight: theme.spacing.xl,
+    paddingBottom: `calc(${theme.spacing.xl}px + var(--screen-bottom-offset))`,
   },
 
   // Avatar
@@ -617,18 +685,6 @@ const styles = {
     color: theme.colors.primary,
   },
 
-  // Footer
-  footer: {
-    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px 30px`,
-    borderTop: `1px solid ${theme.colors.borderLight}`, backgroundColor: theme.colors.bg,
-  },
-  bigSaveButton: {
-    width: '100%', padding: 14, borderRadius: theme.radius.lg, border: 'none', cursor: 'pointer',
-    background: theme.colors.primary, color: '#fff',
-    fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold,
-    boxShadow: `0 4px 20px ${theme.colors.primaryGlow}`,
-    transition: `transform ${theme.transitions.fast}`,
-  },
 };
 
 export default EditProfile;

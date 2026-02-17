@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app import crud, models, schemas
-from app.auth import (
+from app.auth_service import (
     create_auth_session,
     refresh_auth_session,
     require_identity,
