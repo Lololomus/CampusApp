@@ -203,7 +203,10 @@ button[style*="translateY(-50%)"]:hover {
   --header-height: 350px;
   --drilldown-header-height: 56px;
   --dev-action-bar-height: 0px;
-  --screen-bottom-offset: calc(var(--dev-action-bar-height) + env(safe-area-inset-bottom, 0px));
+  --tg-content-safe-area-bottom: 0px;
+  --screen-bottom-offset: calc(
+    var(--dev-action-bar-height) + max(env(safe-area-inset-bottom, 0px), var(--tg-content-safe-area-bottom))
+  );
 }
 
 /* Utilities for screens that need shared drilldown spacing */

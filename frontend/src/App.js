@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useStore } from './store';
-import { initTelegramApp } from './utils/telegram';
+import { initTelegramApp, setClosingConfirmation } from './utils/telegram';
 
 import Navigation from './components/Navigation';
 import Feed from './components/Feed';
@@ -57,6 +57,18 @@ function App() {
     initTelegramApp();
     bootstrapAuth();
   }, [bootstrapAuth]);
+
+  useEffect(() => {
+    const hasUnsavedFlowOpen = Boolean(
+      showCreateModal ||
+      showCreateMarketItem ||
+      showEditModal ||
+      editingContent
+    );
+
+    setClosingConfirmation(hasUnsavedFlowOpen);
+    return () => setClosingConfirmation(false);
+  }, [showCreateModal, showCreateMarketItem, showEditModal, editingContent]);
 
   const renderContent = () => {
     if (showUserMarketItems) return <UserMarketItems />;

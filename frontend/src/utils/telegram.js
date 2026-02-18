@@ -5,6 +5,92 @@ const listeners = {
   main: null,
   secondary: null,
 };
+let telegramEventsBound = false;
+
+function toPx(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? `${numeric}px` : '0px';
+}
+
+function syncThemeVariables(tg) {
+  const root = document.documentElement;
+  const params = tg.themeParams || {};
+
+  root.style.setProperty('--tg-theme-bg-color', params.bg_color || '#1a1a1a');
+  root.style.setProperty('--tg-theme-text-color', params.text_color || '#ffffff');
+  root.style.setProperty('--tg-theme-secondary-bg-color', params.secondary_bg_color || '#1f1f1f');
+  root.style.setProperty('--tg-theme-hint-color', params.hint_color || '#8e8e93');
+  root.style.setProperty('--tg-theme-link-color', params.link_color || '#6ab2f2');
+  root.style.setProperty('--tg-theme-button-color', params.button_color || '#2ea6ff');
+  root.style.setProperty('--tg-theme-button-text-color', params.button_text_color || '#ffffff');
+
+  try {
+    tg.setHeaderColor?.('bg_color');
+  } catch (error) {
+    console.warn('Telegram setHeaderColor failed:', error);
+  }
+
+  try {
+    tg.setBackgroundColor?.(params.bg_color || '#1a1a1a');
+  } catch (error) {
+    console.warn('Telegram setBackgroundColor failed:', error);
+  }
+
+  try {
+    tg.setBottomBarColor?.(
+      params.bottom_bar_bg_color || params.secondary_bg_color || params.bg_color || '#1a1a1a'
+    );
+  } catch (error) {
+    console.warn('Telegram setBottomBarColor failed:', error);
+  }
+}
+
+function syncViewportVariables(tg) {
+  const root = document.documentElement;
+  const viewportHeight = Number(tg.viewportHeight || window.innerHeight || 0);
+  const viewportStableHeight = Number(tg.viewportStableHeight || viewportHeight || 0);
+
+  root.style.setProperty('--tg-app-viewport-height', toPx(viewportHeight));
+  root.style.setProperty('--tg-app-viewport-stable-height', toPx(viewportStableHeight));
+}
+
+function syncSafeAreaVariables(tg) {
+  const root = document.documentElement;
+  const safeAreaInset = tg.safeAreaInset || {};
+  const contentSafeAreaInset = tg.contentSafeAreaInset || {};
+
+  root.style.setProperty('--tg-safe-area-top', toPx(safeAreaInset.top));
+  root.style.setProperty('--tg-safe-area-right', toPx(safeAreaInset.right));
+  root.style.setProperty('--tg-safe-area-bottom', toPx(safeAreaInset.bottom));
+  root.style.setProperty('--tg-safe-area-left', toPx(safeAreaInset.left));
+
+  root.style.setProperty('--tg-content-safe-area-top', toPx(contentSafeAreaInset.top));
+  root.style.setProperty('--tg-content-safe-area-right', toPx(contentSafeAreaInset.right));
+  root.style.setProperty('--tg-content-safe-area-bottom', toPx(contentSafeAreaInset.bottom));
+  root.style.setProperty('--tg-content-safe-area-left', toPx(contentSafeAreaInset.left));
+}
+
+function bindTelegramEvents(tg) {
+  if (telegramEventsBound || typeof tg.onEvent !== 'function') return;
+
+  tg.onEvent('themeChanged', () => {
+    syncThemeVariables(tg);
+  });
+
+  tg.onEvent('viewportChanged', () => {
+    syncViewportVariables(tg);
+  });
+
+  tg.onEvent('safeAreaChanged', () => {
+    syncSafeAreaVariables(tg);
+  });
+
+  tg.onEvent('contentSafeAreaChanged', () => {
+    syncSafeAreaVariables(tg);
+  });
+
+  telegramEventsBound = true;
+}
 
 function detachListener(button, key) {
   const listener = listeners[key];
@@ -77,6 +163,40 @@ export function isTelegramSDKAvailable() {
   return Boolean(tg && typeof tg.ready === 'function');
 }
 
+export function setVerticalSwipesEnabled(enabled = true) {
+  const tg = getTelegramWebApp();
+  if (!tg) return false;
+
+  try {
+    if (enabled) {
+      tg.enableVerticalSwipes?.();
+    } else {
+      tg.disableVerticalSwipes?.();
+    }
+    return true;
+  } catch (error) {
+    console.warn('Telegram vertical swipe setup failed:', error);
+    return false;
+  }
+}
+
+export function setClosingConfirmation(enabled = true) {
+  const tg = getTelegramWebApp();
+  if (!tg) return false;
+
+  try {
+    if (enabled) {
+      tg.enableClosingConfirmation?.();
+    } else {
+      tg.disableClosingConfirmation?.();
+    }
+    return true;
+  } catch (error) {
+    console.warn('Telegram closing confirmation setup failed:', error);
+    return false;
+  }
+}
+
 export function initTelegramApp() {
   const tg = getTelegramWebApp();
   if (!tg) {
@@ -85,11 +205,22 @@ export function initTelegramApp() {
   }
 
   tg.ready?.();
-  tg.expand?.();
+  syncThemeVariables(tg);
+  syncViewportVariables(tg);
+  syncSafeAreaVariables(tg);
+  bindTelegramEvents(tg);
+  setVerticalSwipesEnabled(false);
 
-  const root = document.documentElement;
-  root.style.setProperty('--tg-theme-bg-color', tg.themeParams?.bg_color || '#1a1a1a');
-  root.style.setProperty('--tg-theme-text-color', tg.themeParams?.text_color || '#ffffff');
+  try {
+    if (typeof tg.requestFullscreen === 'function') {
+      tg.requestFullscreen();
+    } else {
+      tg.expand?.();
+    }
+  } catch (error) {
+    console.warn('Telegram fullscreen request failed, fallback to expand:', error);
+    tg.expand?.();
+  }
 }
 
 export function getInitData() {
