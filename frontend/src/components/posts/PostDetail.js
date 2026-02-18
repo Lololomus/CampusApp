@@ -21,6 +21,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 
 function PostDetail() {
   const { viewPostId, setViewPostId, user, setUpdatedPost, likedPosts, setPostLiked, setEditingContent } = useStore();
@@ -151,24 +152,16 @@ function PostDetail() {
 
   const { dateText, isEdited } = useMemo(() => {
     if (!post) return { dateText: '', isEdited: false };
-    const created = new Date(post.created_at);
-    const now = new Date();
-    const diffMs = now - created;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
+    const created = parseApiDate(post.created_at);
+    if (!created) return { dateText: '', isEdited: false };
 
-    let text = '';
-    if (diffMins < 1) text = 'Только что';
-    else if (diffMins < 60) text = `${diffMins}м назад`;
-    else if (diffHours < 24) text = `${diffHours}ч назад`;
-    else if (diffDays < 7) text = `${diffDays}д назад`;
-    else text = created.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-
-    const updated = new Date(post.updated_at || post.created_at);
-    const edited = (updated - created) > 5 * 60 * 1000;
+    const text = formatRelativeRu(created);
+    const updated = parseApiDate(post.updated_at || post.created_at) || created;
+    const edited = (updated.getTime() - created.getTime()) > 5 * 60 * 1000;
     return { dateText: text, isEdited: edited };
   }, [post?.created_at, post?.updated_at]);
+
+  const eventDate = useMemo(() => parseApiDate(post?.event_date), [post?.event_date]);
 
   const catInfo = useMemo(() => {
     if (!post) return { label: '', color: theme.colors.text };
@@ -473,13 +466,13 @@ function PostDetail() {
                   </div>
                 )}
 
-                {(post.event_date || post.lost_or_found || post.location || post.event_contact || post.reward_type) && (
+                {(eventDate || post.lost_or_found || post.location || post.event_contact || post.reward_type) && (
                   <div style={styles.specialBlock}>
-                    {post.event_date && (
+                    {eventDate && (
                       <div style={styles.specialItem}>
                         <Calendar size={14} />
                         <span>
-                          {new Date(post.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в {new Date(post.event_date).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
+                          {eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в {eventDate.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
                         </span>
                       </div>
                     )}

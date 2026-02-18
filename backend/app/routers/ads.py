@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth_service import get_current_user
 from app import crud, schemas, models
+from app.time_utils import normalize_datetime_payload, to_iso_z
 
 router = APIRouter(prefix="/ads", tags=["ads"])
 
@@ -259,13 +260,13 @@ def get_ads_for_feed(
             'cta_text': ad.cta_text,
             'cta_url': ad.cta_url,
             'is_ad': True,
-            'created_at': post.created_at.isoformat(),
+            'created_at': to_iso_z(post.created_at),
             'likes_count': post.likes_count,
             'comments_count': post.comments_count,
             'views_count': post.views_count,
         })
     
-    return result
+    return normalize_datetime_payload(result)
 
 
 # ========================================
@@ -368,7 +369,7 @@ def _ad_to_response(db_ad: models.AdPost) -> dict:
             'role': creator.role,
         }
     
-    return {
+    return normalize_datetime_payload({
         'id': db_ad.id,
         'post_id': db_ad.post_id,
         'created_by': db_ad.created_by,
@@ -397,4 +398,4 @@ def _ad_to_response(db_ad: models.AdPost) -> dict:
         'post_title': post.title if post else None,
         'post_body': post.body if post else None,
         'post_images': images_raw,
-    }
+    })

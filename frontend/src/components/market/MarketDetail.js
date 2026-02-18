@@ -17,6 +17,7 @@ import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
+import { parseApiDate } from '../../utils/datetime';
 
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 
@@ -230,7 +231,8 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseApiDate(dateString);
+    if (!date) return '';
     const now = new Date();
     
     const day = String(date.getDate()).padStart(2, '0');

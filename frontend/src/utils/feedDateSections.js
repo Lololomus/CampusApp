@@ -1,10 +1,9 @@
+import { parseApiDate } from './datetime';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function parseDate(value) {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
+  return parseApiDate(value);
 }
 
 function getDayStart(date) {
@@ -50,6 +49,7 @@ export function buildFeedSections(items, getDateValue, options = {}) {
     unknownLabel = 'Без даты',
     getItemKey,
   } = options;
+  const nowDate = parseDate(now) || new Date();
 
   const result = [];
   let lastSectionKey = null;
@@ -59,7 +59,7 @@ export function buildFeedSections(items, getDateValue, options = {}) {
     const parsedDate = parseDate(rawDate);
     const sectionKey = parsedDate ? getSectionKey(parsedDate) : 'unknown';
     const sectionLabel = parsedDate
-      ? formatSectionLabel(parsedDate, now, locale)
+      ? formatSectionLabel(parsedDate, nowDate, locale)
       : unknownLabel;
 
     if (sectionKey !== lastSectionKey) {
@@ -83,4 +83,3 @@ export function buildFeedSections(items, getDateValue, options = {}) {
 
   return result;
 }
-

@@ -15,6 +15,7 @@ import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { toast } from '../shared/Toast';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import { parseApiDate } from '../../utils/datetime';
 
 
 function RequestDetailModal({ onClose, onEdit, onDelete }) {
@@ -122,7 +123,8 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
     if (!request?.expires_at) return null;
 
     const now = new Date();
-    const expiresAt = new Date(request.expires_at);
+    const expiresAt = parseApiDate(request.expires_at);
+    if (!expiresAt) return null;
     const diffMs = expiresAt - now;
 
     if (diffMs <= 0) {
@@ -158,27 +160,28 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
 
   const timeRemaining = getTimeRemaining();
 
+  const formatRuDateTime = (value) => {
+    const parsed = parseApiDate(value);
+    if (!parsed) return '';
+    return parsed.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
 
   const getDatesInfo = () => {
     if (!request) return null;
 
-    const createdDate = new Date(request.created_at);
-    const expiresDate = new Date(request.expires_at);
+    const createdDate = parseApiDate(request.created_at);
+    const expiresDate = parseApiDate(request.expires_at);
+    if (!createdDate || !expiresDate) return null;
     const now = new Date();
 
-    const createdStr = createdDate.toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'long',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const expiresStr = expiresDate.toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'long',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const createdStr = formatRuDateTime(createdDate);
+    const expiresStr = formatRuDateTime(expiresDate);
 
     const isExpired = expiresDate < now;
     const diffMs = expiresDate - now;
@@ -515,12 +518,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
                           {response.author?.name || 'Аноним'}
                         </div>
                         <div style={styles.responseTime}>
-                          {new Date(response.created_at).toLocaleDateString('ru-RU', {
-                            day: 'numeric',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                          {formatRuDateTime(response.created_at)}
                         </div>
                       </div>
                     </div>

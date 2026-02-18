@@ -13,6 +13,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
+import { parseApiDate } from '../../utils/datetime';
 
 function UserRequests() {
   const { user, setShowUserRequests, setCurrentRequest } = useStore();
@@ -117,20 +118,27 @@ function UserRequests() {
 
   const now = new Date();
   const filteredRequests = requests.filter(request => {
+    const expiresAt = parseApiDate(request.expires_at);
     if (filter === 'all') return true;
     if (filter === 'active') {
-      return request.expires_at ? new Date(request.expires_at) > now : true;
+      return expiresAt ? expiresAt > now : true;
     }
     if (filter === 'expired') {
-      return request.expires_at ? new Date(request.expires_at) <= now : false;
+      return expiresAt ? expiresAt <= now : false;
     }
     return true;
   });
 
   const counts = {
     all: requests.length,
-    active: requests.filter(r => !r.expires_at || new Date(r.expires_at) > now).length,
-    expired: requests.filter(r => r.expires_at && new Date(r.expires_at) <= now).length,
+    active: requests.filter((r) => {
+      const expiresAt = parseApiDate(r.expires_at);
+      return !expiresAt || expiresAt > now;
+    }).length,
+    expired: requests.filter((r) => {
+      const expiresAt = parseApiDate(r.expires_at);
+      return !!expiresAt && expiresAt <= now;
+    }).length,
   };
 
   const requestRows = useMemo(() => (

@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict
 from app import models, schemas, crud
 from app.database import get_db, init_db
-from app.utils import get_image_urls, normalize_uploads_path
+from app.utils import get_image_urls, normalize_uploads_path, process_uploaded_files
 from app.auth_service import decode_authorization_header
 from app.config import get_settings
+from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
 from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router
 import shutil
@@ -164,7 +165,7 @@ def update_current_user(
     updated_user = crud.update_user(db, user.id, user_update)
     
     if changing_critical:
-        updated_user.last_profile_edit = datetime.utcnow()
+        updated_user.last_profile_edit = datetime.now(timezone.utc)
         db.commit()
         db.refresh(updated_user)
     
@@ -246,7 +247,7 @@ def get_user_posts_endpoint(
         }
         result.append(post_dict)
     
-    return result
+    return normalize_datetime_payload(result)
 
 @app.get("/users/{user_id}/stats")
 def get_user_stats(user_id: int, db: Session = Depends(get_db)):
@@ -378,11 +379,11 @@ def get_posts_feed(
         }
         result.append(post_dict)
 
-    return {
+    return normalize_datetime_payload({
         "items": result,
         "total": len(result),
         "has_more": len(posts) == limit
-    }
+    })
 
 @app.post("/posts/create", response_model=schemas.PostResponse)
 async def create_post_endpoint(
@@ -472,7 +473,8 @@ async def create_post_endpoint(
     
     try:
         # valid_images ВМЕСТО images
-        post = await crud.create_post(db, post_data, user.id, uploaded_files=valid_images)
+        images_meta = await process_uploaded_files(valid_images) if valid_images else []
+        post = crud.create_post(db, post_data, user.id, images_meta=images_meta)
         
         if poll_data:
             try:
@@ -546,7 +548,7 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
             "user_votes": user_votes_indices
         }
     
-    return {
+    return normalize_datetime_payload({
         "id": post.id,
         "author_id": author_id_data,
         "author": author_data,
@@ -574,7 +576,7 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
         "poll": poll_response,
         "created_at": post.created_at,
         "updated_at": post.updated_at
-    }
+    })
 
 @app.delete("/posts/{post_id}")
 def delete_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session = Depends(get_db)):
@@ -629,12 +631,13 @@ async def update_post_endpoint(
     
     tags_list = json.loads(tags) if tags else None
     keep_images_list = json.loads(keep_images) if keep_images else []
-    
-    total_images = len(keep_images_list) + len(new_images)
+    valid_new_images = [img for img in new_images if img.filename and len(img.filename) > 0]
+
+    total_images = len(keep_images_list) + len(valid_new_images)
     if total_images > 3:
         raise HTTPException(status_code=400, detail="Максимум 3 изображения")
     
-    if post.category == "confessions" and (len(new_images) > 0 or len(keep_images_list) > 0):
+    if post.category == "confessions" and (len(valid_new_images) > 0 or len(keep_images_list) > 0):
         raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
     
     post_update = schemas.PostUpdate(
@@ -655,9 +658,10 @@ async def update_post_endpoint(
     )
     
     try:
-        updated_post = await crud.update_post(
+        new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
+        updated_post = crud.update_post(
             db, post_id, post_update,
-            new_files=new_images,
+            new_images_meta=new_images_meta,
             keep_filenames=keep_images_list
         )
     except ValueError as e:
@@ -750,7 +754,7 @@ def get_post_comments_endpoint(
         }
         result.append(comment_dict)
     
-    return {"items": result, "total": len(result)}
+    return normalize_datetime_payload({"items": result, "total": len(result)})
 
 @app.post("/posts/{post_id}/comments", response_model=schemas.CommentResponse)
 def create_comment_endpoint(
@@ -779,7 +783,7 @@ def create_comment_endpoint(
     else:
         author_data = schemas.UserShort.from_orm(user)
     
-    return {
+    return normalize_datetime_payload({
         "id": comment.id,
         "post_id": comment.post_id,
         "author_id": author_id_data,
@@ -791,7 +795,7 @@ def create_comment_endpoint(
         "likes": 0,
         "is_liked": False,
         "created_at": comment.created_at
-    }
+    })
 
 @app.delete("/comments/{comment_id}")
 def delete_comment_endpoint(
@@ -832,7 +836,7 @@ def update_comment_endpoint(
     else:
         author_data = schemas.UserShort.from_orm(comment.author) if comment.author else None
     
-    return {
+    return normalize_datetime_payload({
         "id": comment.id,
         "post_id": comment.post_id,
         "author_id": author_id_data,
@@ -845,7 +849,7 @@ def update_comment_endpoint(
         "likes": comment.likes_count,
         "is_liked": getattr(comment, 'is_liked', False),
         "created_at": comment.created_at
-    }
+    })
 
 @app.post("/comments/{comment_id}/like")
 def toggle_comment_like_endpoint(
@@ -885,8 +889,9 @@ async def create_request_endpoint(
         raise HTTPException(status_code=404, detail="User not found")
     
     tags_list = json.loads(tags) if tags else []
-    
-    if len(images) > 3:
+    valid_images = [img for img in images if img.filename and len(img.filename) > 0]
+
+    if len(valid_images) > 3:
         raise HTTPException(status_code=400, detail="Максимум 3 изображения")
     
     request_data = schemas.RequestCreate(
@@ -902,7 +907,8 @@ async def create_request_endpoint(
     )
     
     try:
-        request = await crud.create_request(db, request_data, user.id, uploaded_files=images)
+        images_meta = await process_uploaded_files(valid_images) if valid_images else []
+        request = crud.create_request(db, request_data, user.id, images_meta=images_meta)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
@@ -924,11 +930,11 @@ async def create_request_endpoint(
         title=request.title,
         body=request.body,
         tags=json.loads(request.tags) if request.tags else [],
-        expires_at=request.expires_at,
+        expires_at=ensure_utc(request.expires_at),
         status=request.status,
         views_count=request.views_count,
         responses_count=0,
-        created_at=request.created_at,
+        created_at=ensure_utc(request.created_at),
         author=author_data,
         is_author=True,
         has_responded=False,
@@ -998,11 +1004,11 @@ def get_requests_feed_endpoint(
             title=req_dict['title'],
             body=req_dict['body'],
             tags=req_dict['tags'],
-            expires_at=req_dict['expires_at'],
+            expires_at=ensure_utc(req_dict['expires_at']),
             status=req_dict['status'],
             views_count=req_dict['views_count'],
             responses_count=req_dict['responses_count'],
-            created_at=req_dict['created_at'],
+            created_at=ensure_utc(req_dict['created_at']),
             author=author_data,
             is_author=req_dict['is_author'],
             has_responded=req_dict['has_responded'],
@@ -1066,7 +1072,7 @@ def get_my_requests_endpoint(
         }
         result.append(req_dict)
     
-    return result
+    return normalize_datetime_payload(result)
 
 @app.get("/api/requests/{request_id}", response_model=schemas.RequestResponse)
 def get_request_endpoint(
@@ -1100,11 +1106,11 @@ def get_request_endpoint(
         title=request_dict['title'],
         body=request_dict['body'],
         tags=request_dict['tags'],
-        expires_at=request_dict['expires_at'],
+        expires_at=ensure_utc(request_dict['expires_at']),
         status=request_dict['status'],
         views_count=request_dict['views_count'],
         responses_count=request_dict['responses_count'],
-        created_at=request_dict['created_at'],
+        created_at=ensure_utc(request_dict['created_at']),
         author=author_data,
         is_author=request_dict['is_author'],
         has_responded=request_dict['has_responded'],
@@ -1147,11 +1153,11 @@ def update_request_endpoint(
         title=request.title,
         body=request.body,
         tags=json.loads(request.tags) if request.tags else [],
-        expires_at=request.expires_at,
+        expires_at=ensure_utc(request.expires_at),
         status=request.status,
         views_count=request.views_count,
         responses_count=len(request.responses) if request.responses else 0,
-        created_at=request.created_at,
+        created_at=ensure_utc(request.created_at),
         author=author_data,
         is_author=True,
         has_responded=False,
@@ -1202,7 +1208,7 @@ def create_response_endpoint(
         id=response.id,
         message=response.message,
         telegram_contact=response.telegram_contact,
-        created_at=response.created_at,
+        created_at=ensure_utc(response.created_at),
         author=author_data
     )
 
@@ -1232,7 +1238,7 @@ def get_responses_endpoint(
             id=resp.id,
             message=resp.message,
             telegram_contact=resp.telegram_contact,
-            created_at=resp.created_at,
+            created_at=ensure_utc(resp.created_at),
             author=author_data
         ))
     
@@ -1286,10 +1292,10 @@ def get_unbound_users_endpoint(
             "institute": u.institute,
             "course": u.course,
             "avatar": u.avatar,
-            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "created_at": u.created_at,
         })
 
-    return {"items": items, "total": data["total"], "has_more": data["has_more"]}
+    return normalize_datetime_payload({"items": items, "total": data["total"], "has_more": data["has_more"]})
 
 
 @app.post("/admin/campuses/bind-user")
@@ -1416,11 +1422,11 @@ def get_market_feed_endpoint(
         }
         items.append(item_dict)
     
-    return {
+    return normalize_datetime_payload({
         "items": items,
         "total": feed_data['total'],
         "has_more": feed_data['has_more']
-    }
+    })
 
 @app.get("/market/favorites", response_model=List[schemas.MarketItemResponse])
 def get_market_favorites_endpoint(
@@ -1476,7 +1482,7 @@ def get_market_favorites_endpoint(
         }
         result.append(item_dict)
     
-    return result
+    return normalize_datetime_payload(result)
 
 @app.get("/market/my-items", response_model=List[schemas.MarketItemResponse])
 def get_my_market_items_endpoint(
@@ -1561,7 +1567,7 @@ def get_market_item_endpoint(
     is_favorited = crud.is_item_favorited(db, item.id, user.id) if user else False
     is_seller = bool(user and item.seller_id == user.id)
     
-    return {
+    return normalize_datetime_payload({
         "id": item.id,
         "seller_id": item.seller_id,
         "seller": seller_data,
@@ -1581,7 +1587,7 @@ def get_market_item_endpoint(
         "updated_at": item.updated_at,
         "is_seller": is_seller,
         "is_favorited": is_favorited
-    }
+    })
 
 @app.post("/market/items", response_model=schemas.MarketItemResponse)
 async def create_market_item_endpoint(
@@ -1599,10 +1605,12 @@ async def create_market_item_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if len(images) < 1:
+    valid_images = [img for img in images if img.filename and len(img.filename) > 0]
+
+    if len(valid_images) < 1:
         raise HTTPException(status_code=400, detail="Минимум 1 фото")
     
-    if len(images) > 5:
+    if len(valid_images) > 5:
         raise HTTPException(status_code=400, detail="Максимум 5 фото")
     
     item_data = schemas.MarketItemCreate(
@@ -1616,7 +1624,8 @@ async def create_market_item_endpoint(
     )
     
     try:
-        item = await crud.create_market_item(db, item_data, user.id, uploaded_files=images)
+        images_meta = await process_uploaded_files(valid_images) if valid_images else []
+        item = crud.create_market_item(db, item_data, user.id, images_meta=images_meta)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
@@ -1634,7 +1643,7 @@ async def create_market_item_endpoint(
         show_telegram_id=user.show_telegram_id
     )
     
-    return {
+    return normalize_datetime_payload({
         "id": item.id,
         "seller_id": item.seller_id,
         "seller": seller_data,
@@ -1654,7 +1663,7 @@ async def create_market_item_endpoint(
         "updated_at": item.updated_at,
         "is_seller": True,
         "is_favorited": False
-    }
+    })
 
 @app.patch("/market/{item_id}", response_model=schemas.MarketItemResponse)
 async def update_market_item_endpoint(
@@ -1675,8 +1684,9 @@ async def update_market_item_endpoint(
         raise HTTPException(status_code=404, detail="User not found")
     
     keep_images_list = json.loads(keep_images) if keep_images else []
-    
-    total_images = len(keep_images_list) + len(new_images)
+    valid_new_images = [img for img in new_images if img.filename and len(img.filename) > 0]
+
+    total_images = len(keep_images_list) + len(valid_new_images)
     if total_images < 1:
         raise HTTPException(status_code=400, detail="Минимум 1 фото")
     
@@ -1694,9 +1704,10 @@ async def update_market_item_endpoint(
     )
     
     try:
-        updated_item = await crud.update_market_item(
+        new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
+        updated_item = crud.update_market_item(
             db, item_id, user.id, item_update,
-            new_files=new_images,
+            new_images_meta=new_images_meta,
             keep_filenames=keep_images_list
         )
     except ValueError as e:
@@ -1721,7 +1732,7 @@ async def update_market_item_endpoint(
     
     is_favorited = crud.is_item_favorited(db, updated_item.id, user.id)
     
-    return {
+    return normalize_datetime_payload({
         "id": updated_item.id,
         "seller_id": updated_item.seller_id,
         "seller": seller_data,
@@ -1741,7 +1752,7 @@ async def update_market_item_endpoint(
         "updated_at": updated_item.updated_at,
         "is_seller": True,
         "is_favorited": is_favorited
-    }
+    })
 
 @app.delete("/market/{item_id}")
 def delete_market_item_endpoint(
@@ -1883,7 +1894,7 @@ def generate_mock_dating_data(
             db.commit()
             created_profiles.append(mock_user.name)
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     matches_created = []
     
     # Матч 1

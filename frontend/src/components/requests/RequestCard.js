@@ -15,6 +15,7 @@ import { useModerationActions } from '../shared/ModerationMenu';
 import { toast } from '../shared/Toast';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import { parseApiDate } from '../../utils/datetime';
 
 function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -90,7 +91,8 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
   // ===== ТАЙМЕР =====
   const getTimeRemaining = () => {
     const now = new Date();
-    const expiresAt = new Date(request.expires_at);
+    const expiresAt = parseApiDate(request.expires_at);
+    if (!expiresAt) return { text: 'Истёк', color: '#666', pulse: false };
     const diffMs = expiresAt - now;
 
     if (diffMs <= 0) return { text: 'Истёк', color: '#666', pulse: false };

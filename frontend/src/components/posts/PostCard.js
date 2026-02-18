@@ -16,6 +16,7 @@ import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { toast } from '../shared/Toast';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const { likedPosts, setPostLiked, user, setEditingContent } = useStore();
@@ -107,25 +108,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const { dateText, isEdited } = useMemo(() => {
     if (isAd) return { dateText: '', isEdited: false }; // У рекламы нет даты
 
-    const created = new Date(post.created_at);
-    const now = new Date();
-    const diffMs = now - created;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
+    const created = parseApiDate(post.created_at);
+    if (!created) return { dateText: '', isEdited: false };
 
-    let dateText = '';
-    if (diffMins < 1) dateText = 'Только что';
-    else if (diffMins < 60) dateText = `${diffMins}м назад`;
-    else if (diffHours < 24) dateText = `${diffHours}ч назад`;
-    else if (diffDays < 7) dateText = `${diffDays}д назад`;
-    else dateText = created.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-
-    const updated = new Date(post.updated_at || post.created_at);
-    const isEdited = (updated - created) > 5 * 60 * 1000;
+    const dateText = formatRelativeRu(created);
+    const updated = parseApiDate(post.updated_at || post.created_at) || created;
+    const isEdited = (updated.getTime() - created.getTime()) > 5 * 60 * 1000;
 
     return { dateText, isEdited };
   }, [post.created_at, post.updated_at, isAd]);
+
+  const eventDate = useMemo(() => parseApiDate(post.event_date), [post.event_date]);
 
   const catInfo = useMemo(() => {
     if (isAd) return { label: 'Реклама', color: theme.colors.textTertiary, bg: '#F3F4F6' };
@@ -404,13 +397,13 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           </div>
         )}
 
-        {(post.event_date || post.lost_or_found || post.location) && !isAd && (
+        {(eventDate || post.lost_or_found || post.location) && !isAd && (
           <div style={styles.specialBlock}>
-            {post.event_date && (
+            {eventDate && (
               <div style={styles.specialItem}>
                 <Calendar size={14} />
                 <span>
-                  {new Date(post.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в {new Date(post.event_date).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
+                  {eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в {eventDate.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
                 </span>
               </div>
             )}

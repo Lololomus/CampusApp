@@ -12,6 +12,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import ReportModal from '../shared/ReportModal';
 import { useModerationActions } from '../shared/ModerationMenu';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
+import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 
 const MarketCard = ({ item, onClick, index = 0 }) => {
   const { 
@@ -84,12 +85,13 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   };
 
   const formatRelativeDate = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseApiDate(dateString);
     const now = new Date();
+    if (!date) return '';
     const diffMs = now - date;
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     
-    if (diffDays === 0) return 'сегодня';
+    if (diffDays === 0) return formatRelativeRu(date, now);
     if (diffDays === 1) return 'вчера';
     if (diffDays < 7) return `${diffDays}д`;
     if (diffDays < 30) return `${Math.floor(diffDays / 7)}н`;
