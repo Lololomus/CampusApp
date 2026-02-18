@@ -1,6 +1,7 @@
 version: "3.8"
 
 services:
+  # === БАЗА ДАННЫХ ===
   postgres:
     image: postgres:15-alpine
     container_name: campus_postgres
@@ -13,6 +14,65 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - campus_network
+
+  # === BACKEND ===
+  backend:
+    build: ./backend
+    container_name: campus_backend
+    restart: always
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      # Переопределяем хост БД для Докера
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # CORS разрешаем для всех внутри контейнера
+      CORS_ORIGINS: "*"
+    volumes:
+      # Общая папка для картинок
+      - campus_uploads:/app/uploads
+    networks:
+      - campus_network
+
+  # === FRONTEND (NGINX) ===
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: campus_frontend
+    restart: always
+    ports:
+      - "80:80" # Сайт будет доступен просто по IP или localhost
+    depends_on:
+      - backend
+    networks:
+      - campus_network
+
+  # === TELEGRAM BOT ===
+  bot:
+    build: ./bot
+    container_name: campus_bot
+    restart: always
+    depends_on:
+      - backend
+      - postgres
+    env_file:
+      - .env
+    environment:
+      # Бот тоже должен знать, где база
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Если бот стучится к бэку по HTTP, используем имя сервиса:
+      API_BASE_URL: http://backend:8000
+    networks:
+      - campus_network
 
 volumes:
   postgres_data:
+  campus_uploads: # Чтобы аватарки жили вечно
+
+networks:
+  campus_network:
+    driver: bridge

@@ -3,7 +3,8 @@
 import axios from 'axios';
 import { getInitData } from './utils/telegram';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// В проде Nginx сам перехватит /api. Локально Vite проксирует /api.
+const API_BASE_URL = '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
