@@ -1,4 +1,4 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/moderation/AdManager.js =====
+// ===== 📄 ФАЙЛ: frontend/src/components/moderation/CampaignManager.js =====
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -33,7 +33,7 @@ const SCOPE_MAP = {
 };
 
 /** @param {{ isAdmin: boolean }} props */
-function AdManager({ isAdmin = false }) {
+function CampaignManager({ isAdmin = false }) {
   const { user } = useStore();
   const [ads, setAds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +53,7 @@ function AdManager({ isAdmin = false }) {
         if (ov) setOverview(ov);
       }
     } catch (err) {
-      console.error('AdManager load:', err);
+      console.error('CampaignManager load:', err);
     } finally {
       setLoading(false);
     }
@@ -396,4 +396,6 @@ const s = {
   spinner: { width: 28, height: 28, borderRadius: '50%', border: `3px solid ${theme.colors.border}`, borderTopColor: theme.colors.primary, animation: 'spin 0.8s linear infinite' },
 };
 
-export default AdManager;
+export default CampaignManager;
+
+

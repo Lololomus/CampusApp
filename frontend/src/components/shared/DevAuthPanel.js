@@ -13,8 +13,10 @@ function DevAuthPanel() {
   const [collapsed, setCollapsed] = useState(true);
 
   const isDevVisible = useMemo(() => {
-    const env = process.env.REACT_APP_APP_ENV || process.env.NODE_ENV;
-    return process.env.NODE_ENV !== 'production' && env === 'dev';
+    const mode = import.meta.env.MODE;
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+    return mode === 'development' && isLocalhost;
   }, []);
 
   if (!isDevVisible) return null;

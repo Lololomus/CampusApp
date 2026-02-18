@@ -3,8 +3,7 @@
 import React, { forwardRef } from 'react';
 import theme from '../../theme';
 import { getAvatarColor } from '../../utils/avatarColors';
-
-const API_URL = 'http://localhost:8000';
+import { resolveImageUrl } from '../../utils/mediaUrl';
 
 const Avatar = forwardRef(({ 
   user, 
@@ -26,10 +25,10 @@ const Avatar = forwardRef(({
 
     // ИСПРАВЛЕНИЕ: правильный путь uploads/avatars
     if (user?.avatar && user.avatar.trim() !== '') {
-      const avatarUrl = user.avatar.startsWith('http') 
-        ? user.avatar 
-        : `${API_URL}/uploads/avatars/${user.avatar}`;
-      return { type: 'image', value: avatarUrl };
+      const avatarUrl = resolveImageUrl(user.avatar, 'avatars');
+      if (avatarUrl) {
+        return { type: 'image', value: avatarUrl };
+      }
     }
 
     // Fallback на инициал если фото нет

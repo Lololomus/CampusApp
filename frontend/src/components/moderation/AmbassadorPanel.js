@@ -11,14 +11,14 @@ import AmbassadorDashboard from './AmbassadorDashboard';
 import ReportQueue from './ReportQueue';
 import ReportList from './ReportList';
 import ModerationHistory from './ModerationHistory';
-import AdManager from './AdManager';
+import CampaignManager from './CampaignManager';
 import CampusManager from './CampusManager';
 
 const TABS = [
   { id: 'dashboard', label: 'Обзор', icon: BarChart3 },
   { id: 'reports', label: 'Жалобы', icon: Layers },
   { id: 'campuses', label: 'Кампусы', icon: Building2 },
-  { id: 'ads', label: 'Реклама', icon: Megaphone },
+  { id: 'campaigns', label: 'Реклама', icon: Megaphone },
   { id: 'history', label: 'История', icon: Clock },
 ];
 
@@ -135,7 +135,7 @@ function AmbassadorPanel() {
           <ReportsTab reports={reports} loading={loading} onProcessed={handleReportProcessed} onRefresh={loadData} />
         )}
         {tab === 'campuses' && <CampusManager isAdmin={false} />}
-        {tab === 'ads' && <AdManager isAdmin={false} />}
+        {tab === 'campaigns' && <CampaignManager isAdmin={false} />}
         {tab === 'history' && <ModerationHistory />}
       </div>
     </div>

@@ -18,8 +18,7 @@ import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
-
-const API_URL = 'http://localhost:8000';
+import { resolveImageUrl } from '../../utils/mediaUrl';
 
 const MARKET_LIMITS = {
   TITLE_MIN: 3,
@@ -110,9 +109,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
     
     return parsedImages.map(img => {
       const filename = (typeof img === 'object' && img?.url) ? img.url : img;
-      const fullUrl = filename?.startsWith('http') 
-        ? filename 
-        : `${API_URL}/uploads/images/${filename}`;
+      const fullUrl = resolveImageUrl(filename, 'images');
       
       return {
         url: fullUrl,

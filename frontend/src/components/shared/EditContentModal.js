@@ -15,6 +15,7 @@ import imageCompression from 'browser-image-compression';
 import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from '../../types';
 import { useTelegramScreen } from './telegram/useTelegramScreen';
 import DrilldownHeader from './DrilldownHeader';
+import { resolveImageUrl } from '../../utils/mediaUrl';
 
 // ===== CONSTANTS =====
 const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'сопромат'];
@@ -25,7 +26,6 @@ const MAX_BODY_LENGTH = 1000;
 const MAX_TAGS = 5;
 const MAX_IMAGES = 3;
 const ALLOWED_FORMATS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-const API_URL = 'http://localhost:8000'; 
 
 // Категории
 const POST_CATEGORIES = CATEGORIES.map(cat => ({
@@ -135,7 +135,7 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
 
     return parsedImages.map(img => {
       let rawFilename = (typeof img === 'object' && img !== null) ? img.url : img;
-      const fullUrl = rawFilename.startsWith('http') ? rawFilename : `${API_URL}/uploads/images/${rawFilename}`;
+      const fullUrl = resolveImageUrl(rawFilename, 'images');
       return {
         url: fullUrl,
         filename: rawFilename,

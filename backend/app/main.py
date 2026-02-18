@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict
 from app import models, schemas, crud
 from app.database import get_db, init_db
-from app.utils import get_image_urls, BASE_URL
+from app.utils import get_image_urls, normalize_uploads_path
 from app.auth_service import decode_authorization_header
 from app.config import get_settings
 import json
@@ -128,7 +128,7 @@ async def upload_avatar(
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    avatar_url = f"{BASE_URL}/uploads/avatars/{filename}"
+    avatar_url = normalize_uploads_path(filename, "avatars")
     user.avatar = avatar_url
     db.commit()
     db.refresh(user)

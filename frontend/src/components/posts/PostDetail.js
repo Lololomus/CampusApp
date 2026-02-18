@@ -20,8 +20,7 @@ import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
-
-const API_URL = 'http://localhost:8000';
+import { resolveImageUrl } from '../../utils/mediaUrl';
 
 function PostDetail() {
   const { viewPostId, setViewPostId, user, setUpdatedPost, likedPosts, setPostLiked, setEditingContent } = useStore();
@@ -138,8 +137,7 @@ function PostDetail() {
   const getImageUrl = (img) => {
     if (!img) return '';
     const filename = (typeof img === 'object') ? img.url : img;
-    if (filename.startsWith('http')) return filename;
-    return `${API_URL}/uploads/images/${filename}`;
+    return resolveImageUrl(filename, 'images');
   };
 
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);

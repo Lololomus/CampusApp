@@ -8,7 +8,7 @@ import DropdownMenu from '../DropdownMenu'; // ✅ Используем общи
 import { useStore } from '../../store';
 import { getAvatarColor } from '../../utils/avatarColors';
 
-const API_URL = 'http://localhost:8000';
+import { resolveImageUrl } from '../../utils/mediaUrl';
 
 function ProfileMiniCard({ 
   isOpen, 
@@ -27,9 +27,7 @@ function ProfileMiniCard({
   // ===== ЛОГИКА ДАННЫХ =====
   const getAvatarUrl = () => {
     if (!user.avatar) return null;
-    return user.avatar.startsWith('http') 
-      ? user.avatar 
-      : `${API_URL}/uploads/avatars/${user.avatar}`;
+    return resolveImageUrl(user.avatar, 'avatars');
   };
 
   const avatarUrl = getAvatarUrl();

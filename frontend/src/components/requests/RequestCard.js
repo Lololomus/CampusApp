@@ -14,8 +14,7 @@ import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
 import { toast } from '../shared/Toast';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
-
-const API_URL = 'http://localhost:8000';
+import { resolveImageUrl } from '../../utils/mediaUrl';
 
 function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -83,8 +82,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
   const getImageUrl = (img) => {
     if (!img) return '';
     const filename = (typeof img === 'object') ? img.url : img;
-    if (filename.startsWith('http')) return filename;
-    return `${API_URL}/uploads/images/${filename}`;
+    return resolveImageUrl(filename, 'images');
   };
 
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);

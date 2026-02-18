@@ -15,8 +15,7 @@ import { useModerationActions } from '../shared/ModerationMenu';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { toast } from '../shared/Toast';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
-
-const API_URL = 'http://localhost:8000';
+import { resolveImageUrl } from '../../utils/mediaUrl';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const { likedPosts, setPostLiked, user, setEditingContent } = useStore();
@@ -56,8 +55,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const getImageUrl = (img) => {
     if (!img) return '';
     const filename = (typeof img === 'object') ? img.url : img;
-    if (filename.startsWith('http')) return filename;
-    return `${API_URL}/uploads/images/${filename}`;
+    return resolveImageUrl(filename, 'images');
   };
 
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);

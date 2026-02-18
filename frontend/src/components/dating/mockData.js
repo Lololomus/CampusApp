@@ -1,7 +1,10 @@
 // ===== 📄 ФАЙЛ: src/components/dating/mockData.js =====
 // Моковые данные для разработки. НЕ используются в продакшене.
 
-export const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.REACT_APP_USE_MOCK === 'true';
+const nodeEnv = import.meta.env.MODE;
+const useMockFromEnv = import.meta.env.VITE_USE_MOCK === 'true';
+
+export const USE_MOCK_DATA = nodeEnv === 'development' || useMockFromEnv;
 
 // 🎨 SVG placeholder генератор
 export const createAvatar = (letter, gradient1, gradient2, size = 400) => {

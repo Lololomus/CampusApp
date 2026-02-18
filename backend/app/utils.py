@@ -4,19 +4,14 @@ import os
 import base64
 import uuid
 import json
-import shutil
-from typing import List, Optional, Dict, Union
+from typing import List, Union
 from PIL import Image
 from io import BytesIO
 from fastapi import UploadFile
 from starlette.concurrency import run_in_threadpool
+from urllib.parse import urlparse
 
 # ================= CONFIG =================
-
-# Базовый URL (важно для формирования ссылок на картинки)
-# Для эмулятора Android: "http://10.0.2.2:8000"
-# Для iOS/Web: "http://127.0.0.1:8000" или "http://localhost:8000"
-BASE_URL = "http://127.0.0.1:8000"
 
 UPLOAD_DIR = "uploads/images"
 MAX_IMAGE_SIZE = 1200  # Макс размер стороны (px)
@@ -186,10 +181,41 @@ def delete_images(images_data: Union[List[dict], List[str], str]):
                 except Exception as e:
                     print(f"⚠️ Failed to delete {path}: {e}")
 
+def normalize_uploads_path(value: str, kind: str = "images") -> str:
+    """Normalize legacy absolute/local values to relative /uploads/... paths."""
+    raw = str(value or "").strip().replace("\\", "/")
+    if not raw:
+        return ""
+
+    clean = raw.split("#")[0].split("?")[0]
+    if clean.startswith("/uploads/"):
+        return clean
+    if clean.startswith("uploads/"):
+        return f"/{clean}"
+
+    parsed = urlparse(clean)
+    if parsed.scheme and parsed.netloc:
+        path = parsed.path.replace("\\", "/")
+        if path.startswith("/uploads/"):
+            return path
+        marker_index = path.find("/uploads/")
+        if marker_index >= 0:
+            return path[marker_index:]
+
+    marker_index = clean.find("uploads/")
+    if marker_index >= 0:
+        return f"/{clean[marker_index:]}"
+
+    filename = clean.split("/")[-1]
+    if not filename:
+        return ""
+    folder = "avatars" if kind == "avatars" else "images"
+    return f"/uploads/{folder}/{filename}"
+
 def get_image_urls(images_json: Union[str, List]) -> List[dict]:
     """
-    Преобразует хранящиеся данные (JSON или List) в список объектов с полными URL.
-    Гарантирует формат: [{"url": "http...", "w": 100, "h": 100}, ...]
+    Преобразует хранящиеся данные (JSON или List) в список объектов с relative URL.
+    Гарантирует формат: [{"url": "/uploads/...", "w": 100, "h": 100}, ...]
     """
     if not images_json:
         return []
@@ -205,18 +231,20 @@ def get_image_urls(images_json: Union[str, List]) -> List[dict]:
     if isinstance(data, list):
         for item in data:
             if isinstance(item, str):
-                # Старый формат (просто имя файла)
-                fname = item.split("/")[-1]
+                normalized_url = normalize_uploads_path(item, "images")
+                if not normalized_url:
+                    continue
                 result.append({
-                    "url": f"{BASE_URL}/uploads/images/{fname}",
+                    "url": normalized_url,
                     "w": 800, # Fake dimensions for legacy
                     "h": 800
                 })
             elif isinstance(item, dict):
-                # Новый формат (метаданные)
-                fname = item.get("url", "").split("/")[-1]
+                normalized_url = normalize_uploads_path(item.get("url", ""), "images")
+                if not normalized_url:
+                    continue
                 result.append({
-                    "url": f"{BASE_URL}/uploads/images/{fname}",
+                    "url": normalized_url,
                     "w": item.get("w", 800),
                     "h": item.get("h", 800)
                 })

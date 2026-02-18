@@ -15,7 +15,7 @@ import {
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import ActionFeed from './ActionFeed';
-import AdManager from './AdManager';
+import CampaignManager from './CampaignManager';
 import CampusManager from './CampusManager';
 
 const TABS = [
@@ -23,7 +23,7 @@ const TABS = [
   { id: 'ambassadors', label: 'Люди', icon: Users },
   { id: 'campuses', label: 'Кампусы', icon: Building2 },
   { id: 'appeals', label: 'Апелл.', icon: MessageSquare },
-  { id: 'ads', label: 'Рекл.', icon: Megaphone },
+  { id: 'campaigns', label: 'Рекл.', icon: Megaphone },
   { id: 'stats', label: 'Статы', icon: BarChart3 },
 ];
 
@@ -100,7 +100,7 @@ function AdminPanel() {
         {tab === 'ambassadors' && <AmbassadorManager />}
         {tab === 'campuses' && <CampusManager isAdmin={true} />}
         {tab === 'appeals' && <AppealsSection />}
-        {tab === 'ads' && <AdManager isAdmin={true} />}
+        {tab === 'campaigns' && <CampaignManager isAdmin={true} />}
         {tab === 'stats' && <StatsSection />}
       </div>
     </div>

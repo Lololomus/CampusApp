@@ -6,7 +6,7 @@ from app import models, schemas
 from typing import Optional, List, Dict, Union, Any
 from datetime import datetime, timedelta, timezone
 import json
-from app.utils import process_base64_images, delete_images, get_image_urls, BASE_URL
+from app.utils import process_base64_images, delete_images, get_image_urls
 from app.services import notification_service as notif
 
 # ===== HELPERS =====

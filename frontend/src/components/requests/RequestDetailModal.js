@@ -14,9 +14,7 @@ import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { toast } from '../shared/Toast';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
-
-
-const API_URL = 'http://localhost:8000';
+import { resolveImageUrl } from '../../utils/mediaUrl';
 
 
 function RequestDetailModal({ onClose, onEdit, onDelete }) {
@@ -78,8 +76,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const getImageUrl = (img) => {
     if (!img) return '';
     const filename = (typeof img === 'object') ? img.url : img;
-    if (filename.startsWith('http')) return filename;
-    return `${API_URL}/uploads/images/${filename}`;
+    return resolveImageUrl(filename, 'images');
   };
 
 
