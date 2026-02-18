@@ -7,27 +7,19 @@ import re
 
 from app.database import get_db
 from app import models, schemas, crud
-from app.utils import process_image_sync, get_image_urls
+from app.utils import (
+    delete_images,
+    get_image_urls,
+    get_storage_key,
+    parse_keep_file_list,
+    process_uploaded_files,
+)
 
 router = APIRouter(prefix="/dating", tags=["dating"])
 
 
 async def save_dating_photos(files: List[UploadFile]) -> List[dict]:
-    """Save and process uploaded dating photos"""
-    saved_photos = []
-    from starlette.concurrency import run_in_threadpool
-    
-    for file in files:
-        if not file.filename:
-            continue
-        content = await file.read()
-        try:
-            meta = await run_in_threadpool(process_image_sync, content)
-            saved_photos.append(meta)
-        except Exception as e:
-            print(f"Error processing image: {e}")
-    
-    return saved_photos
+    return await process_uploaded_files(files, kind="images")
 
 
 @router.get("/profile/me", response_model=Optional[schemas.DatingProfileResponse])
@@ -78,110 +70,154 @@ async def create_or_update_dating_profile(
     keep_photos: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    """Create or update dating profile"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     if age < 16 or age > 50:
-        raise HTTPException(status_code=400, detail="Возраст должен быть от 16 до 50 лет")
-    
+        raise HTTPException(status_code=400, detail="Age must be between 16 and 50")
+
     if bio:
         if len(bio) < 10:
-            raise HTTPException(400, detail="Биография должна содержать минимум 10 символов")
+            raise HTTPException(status_code=400, detail="Bio must be at least 10 characters")
         if len(bio) > 200:
-            raise HTTPException(400, detail="Биография не должна превышать 200 символов")
-        
-        bio_without_emoji = re.sub(r'[\U00010000-\U0010ffff]', '', bio, flags=re.UNICODE)
-        bio_letters_only = re.sub(r'[^\w\s]', '', bio_without_emoji, flags=re.UNICODE)
-        
+            raise HTTPException(status_code=400, detail="Bio must not exceed 200 characters")
+
+        bio_without_emoji = re.sub(r"[\U00010000-\U0010ffff]", "", bio, flags=re.UNICODE)
+        bio_letters_only = re.sub(r"[^\w\s]", "", bio_without_emoji, flags=re.UNICODE)
         if len(bio_letters_only.strip()) < 10:
-            raise HTTPException(400, detail="Биография должна содержать минимум 10 букв (без учёта эмодзи и символов)")
-    
-    saved_photos_meta = []
-    if photos:
-        saved_photos_meta = await save_dating_photos(photos)
-    
-    keep_photos_list = []
-    if keep_photos:
-        try:
-            raw_keep_photos = json.loads(keep_photos)
-            for photo in raw_keep_photos:
-                if isinstance(photo, str):
-                    filename = photo.replace("/uploads/images/", "").split("?")[0]
-                    if "." in filename and any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp"]):
-                        keep_photos_list.append(filename)
-                elif isinstance(photo, dict):
-                    url = photo.get("url", "")
-                    filename = url.replace("/uploads/images/", "").split("?")[0]
-                    if "." in filename and any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp"]):
-                        keep_photos_list.append({
-                            "url": filename,
-                            "w": photo.get("w", 1000),
-                            "h": photo.get("h", 1000)
-                        })
-        except Exception as e:
-            print(f"Error parsing keep_photos: {e}")
-    
-    final_photos = keep_photos_list + saved_photos_meta
-    
-    if not final_photos:
-        raise HTTPException(400, detail="Необходимо загрузить хотя бы 1 фото")
-    
+            raise HTTPException(status_code=400, detail="Bio must contain at least 10 letters")
+
     profile = crud.get_dating_profile(db, user.id)
-    goals_list = json.loads(goals) if goals else []
-    interests_list = json.loads(interests) if interests else []
-    
+
+    try:
+        keep_photo_keys = parse_keep_file_list(keep_photos, kind="images")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    valid_new_photos = [img for img in (photos or []) if img.filename and len(img.filename) > 0]
+    if len(valid_new_photos) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 photos")
+
+    if len(keep_photo_keys) + len(valid_new_photos) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 photos")
+
+    saved_photos_meta: List[dict] = []
+    if valid_new_photos:
+        try:
+            saved_photos_meta = await save_dating_photos(valid_new_photos)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    existing_photos_raw = []
+    if profile and profile.photos:
+        try:
+            existing_photos_raw = json.loads(profile.photos)
+        except Exception:
+            existing_photos_raw = []
+
+    existing_photo_map = {}
+    for item in existing_photos_raw:
+        if isinstance(item, str):
+            key = get_storage_key(item, kind="images")
+            if key:
+                existing_photo_map[key] = {"url": key, "w": 1000, "h": 1000}
+        elif isinstance(item, dict):
+            key = get_storage_key(item.get("url", ""), kind="images")
+            if key:
+                normalized_item = dict(item)
+                normalized_item["url"] = key
+                normalized_item.setdefault("w", 1000)
+                normalized_item.setdefault("h", 1000)
+                existing_photo_map[key] = normalized_item
+
+    kept_photos_meta: List[dict] = []
+    for key in keep_photo_keys:
+        if key in existing_photo_map:
+            kept_photos_meta.append(existing_photo_map[key])
+
+    final_photos = kept_photos_meta + saved_photos_meta
+
+    if not final_photos:
+        delete_images(saved_photos_meta, default_kind="images")
+        raise HTTPException(status_code=400, detail="At least one photo is required")
+
+    if len(final_photos) > 3:
+        delete_images(saved_photos_meta, default_kind="images")
+        raise HTTPException(status_code=400, detail="Maximum 3 photos")
+
+    try:
+        goals_list = json.loads(goals) if goals else []
+        interests_list = json.loads(interests) if interests else []
+    except json.JSONDecodeError:
+        delete_images(saved_photos_meta, default_kind="images")
+        raise HTTPException(status_code=400, detail="Invalid goals or interests payload")
+
     prompts_dict = None
     if prompt_question and prompt_answer:
         if len(prompt_answer.strip()) < 10:
-            raise HTTPException(400, detail="Ответ на вопрос должен быть минимум 10 символов")
+            delete_images(saved_photos_meta, default_kind="images")
+            raise HTTPException(status_code=400, detail="Prompt answer must be at least 10 characters")
         if len(prompt_answer) > 150:
-            raise HTTPException(400, detail="Ответ на вопрос не должен превышать 150 символов")
+            delete_images(saved_photos_meta, default_kind="images")
+            raise HTTPException(status_code=400, detail="Prompt answer must not exceed 150 characters")
         prompts_dict = {
             "question": prompt_question[:100],
-            "answer": prompt_answer[:150]
+            "answer": prompt_answer[:150],
         }
-    
+
+    files_to_delete: List[str] = []
     if profile:
-        profile.gender = gender
-        profile.age = age
-        profile.looking_for = looking_for
-        profile.bio = bio
-        profile.goals = json.dumps(goals_list)
-        profile.photos = json.dumps(final_photos)
-        profile.prompts = json.dumps(prompts_dict) if prompts_dict else None
-        profile.is_active = True
-        user.show_in_dating = True
-    else:
-        profile = models.DatingProfile(
-            user_id=user.id,
-            gender=gender,
-            age=age,
-            looking_for=looking_for,
-            bio=bio,
-            goals=json.dumps(goals_list),
-            photos=json.dumps(final_photos),
-            prompts=json.dumps(prompts_dict) if prompts_dict else None,
-            is_active=True
-        )
-        db.add(profile)
-        user.show_in_dating = True
-    
-    user.age = age
-    user.interests = json.dumps(interests_list)
-    
-    db.commit()
-    db.refresh(profile)
-    db.refresh(user)
-    
-    prompts_dict = None
+        kept_keys = {item["url"] for item in kept_photos_meta}
+        files_to_delete = [key for key in existing_photo_map.keys() if key not in kept_keys]
+
+    try:
+        if profile:
+            profile.gender = gender
+            profile.age = age
+            profile.looking_for = looking_for
+            profile.bio = bio
+            profile.goals = json.dumps(goals_list)
+            profile.photos = json.dumps(final_photos)
+            profile.prompts = json.dumps(prompts_dict) if prompts_dict else None
+            profile.is_active = True
+            user.show_in_dating = True
+        else:
+            profile = models.DatingProfile(
+                user_id=user.id,
+                gender=gender,
+                age=age,
+                looking_for=looking_for,
+                bio=bio,
+                goals=json.dumps(goals_list),
+                photos=json.dumps(final_photos),
+                prompts=json.dumps(prompts_dict) if prompts_dict else None,
+                is_active=True,
+            )
+            db.add(profile)
+            user.show_in_dating = True
+
+        user.age = age
+        user.interests = json.dumps(interests_list)
+
+        db.commit()
+        db.refresh(profile)
+        db.refresh(user)
+    except Exception:
+        db.rollback()
+        delete_images(saved_photos_meta, default_kind="images")
+        raise HTTPException(status_code=500, detail="Failed to save dating profile")
+
+    if files_to_delete:
+        delete_images(files_to_delete, default_kind="images")
+
+    prompts_response = None
     if profile.prompts:
         try:
-            prompts_dict = json.loads(profile.prompts)
-        except:
-            prompts_dict = None
-    
+            prompts_response = json.loads(profile.prompts)
+        except Exception:
+            prompts_response = None
+
     return {
         **profile.__dict__,
         "user_id": user.id,
@@ -193,9 +229,8 @@ async def create_or_update_dating_profile(
         "photos": get_image_urls(profile.photos) if profile.photos else [],
         "goals": json.loads(profile.goals) if profile.goals else [],
         "interests": json.loads(user.interests) if user.interests else [],
-        "prompts": prompts_dict
+        "prompts": prompts_response,
     }
-
 
 @router.get("/feed")
 def get_dating_feed(
@@ -703,3 +738,5 @@ def get_active_matches(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+

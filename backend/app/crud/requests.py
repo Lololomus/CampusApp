@@ -11,7 +11,7 @@ import json
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
-from app.utils import process_base64_images, get_image_urls
+from app.utils import delete_images, get_image_urls, process_base64_images
 from app.services import notification_service as notif
 
 
@@ -73,7 +73,6 @@ def create_request(
         db.refresh(db_request)
         return db_request
     except Exception as e:
-        from app.utils import delete_images
         if saved_images_meta:
             delete_images(saved_images_meta)
         raise e
@@ -292,12 +291,18 @@ def delete_request(db: Session, request_id: int, user_id: int) -> bool:
     ).first()
 
     if not request:
-        raise ValueError("Запрос не найден или нет прав")
+        raise ValueError("Request not found or no permissions")
+
+    if request.images:
+        try:
+            images_data = json.loads(request.images)
+            delete_images(images_data)
+        except Exception:
+            pass
 
     db.delete(request)
     db.commit()
     return True
-
 
 def get_my_requests(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.Request]:
     return db.query(models.Request).options(

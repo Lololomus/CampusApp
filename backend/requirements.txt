@@ -10,5 +10,6 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
 pillow==10.2.0
+pillow-heif>=0.15.0
 aiofiles==23.2.1
 requests==2.31.0

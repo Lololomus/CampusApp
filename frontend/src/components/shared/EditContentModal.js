@@ -293,7 +293,7 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
 
         const options = {
           maxSizeMB: 1,
-          maxWidthOrHeight: 1200,
+          maxWidthOrHeight: 1600,
           useWebWorker: true,
           onProgress: (prog) => {
             setProcessingImages(prev => prev.map(p => p.id === procId ? { ...p, progress: prog } : p));

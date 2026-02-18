@@ -203,7 +203,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
 
         const options = {
           maxSizeMB: 1,
-          maxWidthOrHeight: 1200,
+          maxWidthOrHeight: 1600,
           useWebWorker: true,
           onProgress: (prog) => {
             setProcessingImages(prev => 

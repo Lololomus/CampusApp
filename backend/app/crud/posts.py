@@ -13,7 +13,7 @@ import json
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
-from app.utils import process_base64_images, delete_images
+from app.utils import delete_images, get_storage_key, process_base64_images
 from app.services import notification_service as notif
 
 
@@ -230,9 +230,9 @@ def update_post(
     keep_filenames: Optional[List[str]] = None,
 ) -> Optional[models.Post]:
     """
-    Обновить пост (Smart Merge изображений).
+    Update post (smart image merge).
 
-    ⚠️ new_images_meta — уже обработанные файлы (из endpoint через process_uploaded_files).
+    `new_images_meta` contains files already processed by the endpoint.
     """
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
     if not db_post:
@@ -241,46 +241,63 @@ def update_post(
     update_data = post_update.model_dump(exclude_unset=True)
 
     if "tags" in update_data:
-        update_data['tags'] = sanitize_json_field(update_data['tags'])
+        update_data["tags"] = sanitize_json_field(update_data["tags"])
 
-    # Smart Merge изображений
+    files_to_delete: List[str] = []
+
     if new_images_meta is not None or keep_filenames is not None:
         raw_old_images = json.loads(db_post.images) if db_post.images else []
 
-        old_images_map = {}
+        old_images_map: Dict[str, dict] = {}
         for item in raw_old_images:
             if isinstance(item, str):
-                old_images_map[item] = {"url": item, "w": 1000, "h": 1000}
+                key = get_storage_key(item, kind="images")
+                if key:
+                    old_images_map[key] = {"url": key, "w": 1000, "h": 1000}
             elif isinstance(item, dict):
-                old_images_map[item.get("url")] = item
+                key = get_storage_key(item.get("url", ""), kind="images")
+                if key:
+                    normalized_item = dict(item)
+                    normalized_item["url"] = key
+                    normalized_item.setdefault("w", 1000)
+                    normalized_item.setdefault("h", 1000)
+                    old_images_map[key] = normalized_item
 
-        final_images_meta = []
+        final_images_meta: List[dict] = []
 
         if keep_filenames:
             for fname in keep_filenames:
-                if fname in old_images_map:
-                    final_images_meta.append(old_images_map[fname])
+                key = get_storage_key(fname, kind="images")
+                if key and key in old_images_map:
+                    final_images_meta.append(old_images_map[key])
 
         if new_images_meta:
             final_images_meta.extend(new_images_meta)
 
-        kept_urls = {img["url"] for img in final_images_meta}
+        kept_urls = {get_storage_key(img.get("url", ""), kind="images") for img in final_images_meta}
+        kept_urls.discard("")
         files_to_delete = [url for url in old_images_map if url not in kept_urls]
 
-        if files_to_delete:
-            delete_images(files_to_delete)
-
-        update_data['images'] = sanitize_json_field(final_images_meta)
+        update_data["images"] = sanitize_json_field(final_images_meta)
 
     for key, value in update_data.items():
         setattr(db_post, key, value)
 
     db_post.updated_at = datetime.now(timezone.utc)
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        if new_images_meta:
+            delete_images(new_images_meta)
+        raise
+
+    if files_to_delete:
+        delete_images(files_to_delete)
+
     db.refresh(db_post)
     return db_post
-
 
 def delete_post(db: Session, post_id: int) -> bool:
     """Удалить пост и его изображения"""
@@ -434,3 +451,4 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
         "success": True,
         "is_correct": option_indices[0] == poll.correct_option if poll.type == 'quiz' else None
     }
+

@@ -210,10 +210,12 @@ class PollResponse(BaseModel):
 # ===== POST SCHEMAS =====
 
 class ImageMeta(BaseModel):
-    """Модель изображения с метаданными"""
+    """Model for image metadata"""
     url: str
     w: int
     h: int
+    format: Optional[str] = None
+    size_bytes: Optional[int] = None
 
 class PostCreate(BaseModel):
     category: str
@@ -890,7 +892,7 @@ class MarketItemCreate(BaseModel):
     price: int = Field(..., ge=0, le=1000000)
     condition: str = Field(..., pattern="^(new|like_new|good|fair)$")
     location: Optional[str] = Field(None, max_length=200)
-    images: List[str] = Field(..., min_length=1, max_length=5)
+    images: List[str] = Field(..., min_length=1, max_length=3)
     
     @field_validator('category')
     @classmethod
@@ -905,8 +907,8 @@ class MarketItemCreate(BaseModel):
     def validate_images(cls, v):
         if len(v) < 1:
             raise ValueError('Минимум 1 фото обязательно')
-        if len(v) > 5:
-            raise ValueError('Максимум 5 фото')
+        if len(v) > 3:
+            raise ValueError('Максимум 3 фото')
         return v
 
 class MarketItemUpdate(BaseModel):
@@ -916,7 +918,7 @@ class MarketItemUpdate(BaseModel):
     price: Optional[int] = Field(None, ge=0, le=1000000)
     condition: Optional[str] = Field(None, pattern="^(new|like_new|good|fair)$")
     location: Optional[str] = Field(None, max_length=200)
-    images: Optional[List[str]] = Field(None, min_length=1, max_length=5)
+    images: Optional[List[str]] = Field(None, min_length=1, max_length=3)
     status: Optional[str] = Field(None, pattern="^(active|sold)$")
     
     @field_validator('images')
@@ -925,8 +927,8 @@ class MarketItemUpdate(BaseModel):
         if v is not None:
             if len(v) < 1:
                 raise ValueError('Минимум 1 фото обязательно')
-            if len(v) > 5:
-                raise ValueError('Максимум 5 фото')
+            if len(v) > 3:
+                raise ValueError('Максимум 3 фото')
         return v
 
 class MarketItemResponse(BaseModel):

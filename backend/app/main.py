@@ -8,14 +8,18 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict
 from app import models, schemas, crud
 from app.database import get_db, init_db
-from app.utils import get_image_urls, normalize_uploads_path, process_uploaded_files
+from app.utils import (
+    delete_images,
+    get_image_urls,
+    normalize_uploads_path,
+    parse_keep_file_list,
+    process_uploaded_files,
+)
 from app.auth_service import decode_authorization_header
 from app.config import get_settings
 from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
 from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router
-import shutil
-import uuid
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -119,21 +123,29 @@ async def upload_avatar(
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    file_ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
-    filename = f"avatar_{user.id}_{uuid.uuid4().hex[:8]}.{file_ext}"
-    
-    avatar_dir = "uploads/avatars"
-    filepath = f"{avatar_dir}/{filename}"
-    
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
-    avatar_url = normalize_uploads_path(filename, "avatars")
-    user.avatar = avatar_url
-    db.commit()
-    db.refresh(user)
-    
+
+    old_avatar = user.avatar
+    try:
+        avatars_meta = await process_uploaded_files([file], kind="avatars")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not avatars_meta:
+        raise HTTPException(status_code=400, detail="Avatar file is required")
+
+    avatar_url = normalize_uploads_path(avatars_meta[0]["url"], "avatars")
+    try:
+        user.avatar = avatar_url
+        db.commit()
+        db.refresh(user)
+    except Exception:
+        db.rollback()
+        delete_images([avatars_meta[0]], default_kind="avatars")
+        raise HTTPException(status_code=500, detail="Failed to save avatar")
+
+    if old_avatar and old_avatar != avatar_url:
+        delete_images([old_avatar], default_kind="avatars")
+
     return {"avatar": user.avatar}
 
 @app.patch("/users/me", response_model=schemas.UserResponse)
@@ -450,7 +462,7 @@ async def create_post_endpoint(
     
     # ПРОВЕРКА МАКСИМАЛЬНОГО КОЛИЧЕСТВА (ИСПОЛЬЗУЕМ valid_images)
     if len(valid_images) > 3:
-        raise HTTPException(status_code=400, detail="Максимум 3 изображения")
+        raise HTTPException(status_code=400, detail="Maximum 3 images")
     
     post_data = schemas.PostCreate(
         category=category,
@@ -630,12 +642,15 @@ async def update_post_endpoint(
         raise HTTPException(status_code=403, detail="Not authorized")
     
     tags_list = json.loads(tags) if tags else None
-    keep_images_list = json.loads(keep_images) if keep_images else []
+    try:
+        keep_images_list = parse_keep_file_list(keep_images, kind="images")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     valid_new_images = [img for img in new_images if img.filename and len(img.filename) > 0]
 
     total_images = len(keep_images_list) + len(valid_new_images)
     if total_images > 3:
-        raise HTTPException(status_code=400, detail="Максимум 3 изображения")
+        raise HTTPException(status_code=400, detail="Maximum 3 images")
     
     if post.category == "confessions" and (len(valid_new_images) > 0 or len(keep_images_list) > 0):
         raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
@@ -892,7 +907,7 @@ async def create_request_endpoint(
     valid_images = [img for img in images if img.filename and len(img.filename) > 0]
 
     if len(valid_images) > 3:
-        raise HTTPException(status_code=400, detail="Максимум 3 изображения")
+        raise HTTPException(status_code=400, detail="Maximum 3 images")
     
     request_data = schemas.RequestCreate(
         category=category,
@@ -1608,10 +1623,10 @@ async def create_market_item_endpoint(
     valid_images = [img for img in images if img.filename and len(img.filename) > 0]
 
     if len(valid_images) < 1:
-        raise HTTPException(status_code=400, detail="Минимум 1 фото")
+        raise HTTPException(status_code=400, detail="At least 1 photo is required")
     
-    if len(valid_images) > 5:
-        raise HTTPException(status_code=400, detail="Максимум 5 фото")
+    if len(valid_images) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 images")
     
     item_data = schemas.MarketItemCreate(
         category=category,
@@ -1683,15 +1698,18 @@ async def update_market_item_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    keep_images_list = json.loads(keep_images) if keep_images else []
+    try:
+        keep_images_list = parse_keep_file_list(keep_images, kind="images")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     valid_new_images = [img for img in new_images if img.filename and len(img.filename) > 0]
 
     total_images = len(keep_images_list) + len(valid_new_images)
     if total_images < 1:
-        raise HTTPException(status_code=400, detail="Минимум 1 фото")
+        raise HTTPException(status_code=400, detail="At least 1 photo is required")
     
-    if total_images > 5:
-        raise HTTPException(status_code=400, detail="Максимум 5 фото")
+    if total_images > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 images")
     
     item_update = schemas.MarketItemUpdate(
         title=title,
@@ -2021,3 +2039,7 @@ def generate_mock_dating_data(
         "matches": matches_created,
         "regular_likes": "2 лайка без взаимности"
     }
+
+
+
+
