@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, MoreVertical,
   Gift, Phone
 } from 'lucide-react';
-import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, reportComment, deletePost } from '../../api';
+import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import BottomActionBar from '../BottomActionBar';
@@ -13,11 +13,13 @@ import { Z_MODAL_POST_DETAIL } from '../../constants/zIndex';
 import theme from '../../theme';
 import PollView from './PollView';
 import PhotoViewer from '../shared/PhotoViewer';
+import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { toast } from '../shared/Toast'; 
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 
 const API_URL = 'http://localhost:8000';
 
@@ -39,8 +41,10 @@ function PostDetail() {
 
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
-  const [reportingComment, setReportingComment] = useState(null);
+  const [commentReportTargetId, setCommentReportTargetId] = useState(null);
   const [replyToName, setReplyToName] = useState('');
+  const [showPostReportModal, setShowPostReportModal] = useState(false);
+  const [showPostAuthorReportModal, setShowPostAuthorReportModal] = useState(false);
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
@@ -180,12 +184,11 @@ function PostDetail() {
     }
   }, [post?.category]);
 
-  const isOwner = useMemo(() => {
-    if (!user || !post) return false;
-    const userId = user.id || user.user_id;
-    const authorId = post.author_id;
-    return (authorId && userId && String(authorId) === String(userId));
-  }, [user, post?.author_id]);
+  const isOwner = useMemo(() => isEntityOwner('post', post, user), [post, user]);
+  const postActionSet = useMemo(
+    () => getEntityActionSet('post', isOwner, { shareEnabled: false }),
+    [isOwner]
+  );
 
   const authorMeta = useMemo(() => {
     return post && !post.is_anonymous && post.author
@@ -323,21 +326,8 @@ function PostDetail() {
 
   const handleReportComment = (commentId) => {
     hapticFeedback('light');
-    setReportingComment(commentId);
+    setCommentReportTargetId(commentId);
     setMenuOpen(null);
-  };
-
-  const submitReport = async (reason) => {
-    hapticFeedback('medium');
-    try {
-      await reportComment(reportingComment, reason);
-      setReportingComment(null);
-      hapticFeedback('success');
-      toast.success('Жалоба отправлена');
-    } catch (error) {
-      console.error('Ошибка отправки жалобы:', error);
-      toast.error('Не удалось отправить жалобу');
-    }
   };
 
   const commentTree = useMemo(() => {
@@ -353,36 +343,34 @@ function PostDetail() {
   }, [comments]);
 
   const postMenuItems = [
-    { 
+    ...(postActionSet.canCopyLink ? [{
       label: 'Скопировать ссылку', 
       icon: '🔗',
       actionType: 'copy',
       onClick: handleCopyLink 
-    },
-    ...(isOwner ? [
-      { 
+    }] : []),
+    ...(postActionSet.canEdit ? [{
         label: 'Редактировать', 
         icon: '✏️',
         actionType: 'edit',
         onClick: handleEditPost 
-      },
-      { 
+      }] : []),
+    ...(postActionSet.canDelete ? [{
         label: 'Удалить', 
         icon: '🗑️',
         actionType: 'delete',
         onClick: handleDeletePost 
-      }
-    ] : [
-      { 
+      }] : []),
+    ...(postActionSet.canReportContent ? [{
         label: 'Пожаловаться', 
         icon: '🚩',
         actionType: 'report',
         onClick: () => { 
-          toast.success('Жалоба отправлена'); 
+          hapticFeedback('light');
           setPostMenuOpen(false); 
+          setShowPostReportModal(true);
         }
-      }
-    ])
+      }] : [])
   ];
 
   if (!viewPostId) return null;
@@ -647,17 +635,6 @@ function PostDetail() {
           isAnonymousPost={post?.is_anonymous}
         />
 
-        {reportingComment && (
-          <div style={styles.modalOverlay} onClick={() => setReportingComment(null)}>
-            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-              <h3 style={styles.modalTitle}>Причина жалобы</h3>
-              <button onClick={() => { submitReport('spam'); }} style={styles.reportButton}>Спам</button>
-              <button onClick={() => { submitReport('offensive'); }} style={styles.reportButton}>Оскорбления</button>
-              <button onClick={() => setReportingComment(null)} style={styles.cancelButtonModal}>Отмена</button>
-            </div>
-          </div>
-        )}
-
         {isPhotoViewerOpen && (
           <PhotoViewer
             photos={viewerPhotos}
@@ -665,6 +642,27 @@ function PostDetail() {
             onClose={() => setIsPhotoViewerOpen(false)}
           />
         )}
+
+        <ReportModal
+          isOpen={showPostReportModal}
+          onClose={() => setShowPostReportModal(false)}
+          targetType="post"
+          targetId={post?.id}
+        />
+        <ReportModal
+          isOpen={showPostAuthorReportModal}
+          onClose={() => setShowPostAuthorReportModal(false)}
+          targetType="user"
+          targetId={post?.author?.id || post?.author_id}
+          sourceType="post"
+          sourceId={post?.id}
+        />
+        <ReportModal
+          isOpen={!!commentReportTargetId}
+          onClose={() => setCommentReportTargetId(null)}
+          targetType="comment"
+          targetId={commentReportTargetId}
+        />
         
         {/* ProfileMiniCard для автора поста */}
         {!loading && post && !post.is_anonymous && post.author && (
@@ -673,9 +671,10 @@ function PostDetail() {
             onClose={() => setProfileOpen(false)}
             user={post.author}
             anchorRef={avatarRef}
-            onReport={() => {
-              // TODO: открыть модалку жалобы на автора поста
-              console.log('Report post author');
+            onReportUser={() => {
+              const targetUserId = post.author?.id || post.author_id;
+              if (!targetUserId || isOwner) return;
+              setShowPostAuthorReportModal(true);
             }}
           />
         )}
@@ -688,11 +687,11 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
   const menuButtonRef = useRef(null);
   const avatarRef = useRef(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
+  const [showUserReportModal, setShowUserReportModal] = useState(false);
   
   const likes = commentLikes[comment.id] || { isLiked: false, count: comment.likes || 0 };
   const maxDepth = 3;
-  const isMyComment = currentUser && comment.author_id === currentUser.id;
+  const isMyComment = isEntityOwner('comment', comment, currentUser);
   const isEditing = editingComment === comment.id;
 
   const isAnonymousComment = comment.is_anonymous || false;
@@ -849,9 +848,21 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
           onClose={() => setProfileOpen(false)}
           user={comment.author}
           anchorRef={avatarRef}
-          onReport={() => setShowReportModal(true)}
+          onReportUser={() => {
+            const targetUserId = comment.author?.id || comment.author_id;
+            if (!targetUserId || isMyComment) return;
+            setShowUserReportModal(true);
+          }}
         />
       )}
+      <ReportModal
+        isOpen={showUserReportModal}
+        onClose={() => setShowUserReportModal(false)}
+        targetType="user"
+        targetId={comment.author?.id || comment.author_id}
+        sourceType="comment"
+        sourceId={comment.id}
+      />
     </div>
   );
 });

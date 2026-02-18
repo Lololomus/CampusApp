@@ -14,6 +14,7 @@ import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { toast } from '../shared/Toast';
+import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 
 const API_URL = 'http://localhost:8000';
 
@@ -24,6 +25,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -64,12 +66,12 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
 
   const isOwner = useMemo(() => {
     if (isAd) return false; // Реклама не "своя" в контексте редактирования
-    if (!user) return false;
-    const userId = user.id || user.user_id;
-    if (post.author_id && userId && String(post.author_id) === String(userId)) return true;
-    if (post.author_telegram_id && user.telegram_id && String(user.telegram_id) === String(post.author_telegram_id)) return true;
-    return false;
+    return isEntityOwner('post', post, user);
   }, [user, post, isAd]);
+  const actionSet = useMemo(
+    () => getEntityActionSet('post', isOwner, { shareEnabled: false }),
+    [isOwner]
+  );
 
   // --- ЛОГИКА ЗАГОЛОВКА (АВТОР vs РЕКЛАМОДАТЕЛЬ) ---
   const headerInfo = useMemo(() => {
@@ -269,33 +271,30 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   };
 
   const menuItems = [
-    { 
-      label: 'Скопировать ссылку', 
+    ...(actionSet.canCopyLink ? [{
+      label: 'Скопировать ссылку',
       icon: '🔗',
       onClick: handleCopyLink,
       actionType: MENU_ACTIONS.COPY
-    },
-    ...(isOwner ? [
-      { 
-        label: 'Редактировать', 
-        icon: '✏️', 
-        onClick: handleEdit,
-        actionType: MENU_ACTIONS.EDIT
-      },
-      { 
-        label: 'Удалить', 
-        icon: '🗑️', 
-        onClick: handleDelete,
-        actionType: MENU_ACTIONS.DELETE
-      }
-    ] : [
-      { 
-        label: 'Пожаловаться', 
-        icon: '🚩', 
-        onClick: () => { setMenuOpen(false); setShowReportModal(true); },
-        actionType: MENU_ACTIONS.REPORT
-      }
-    ]),
+    }] : []),
+    ...(actionSet.canEdit ? [{
+      label: 'Редактировать',
+      icon: '✏️',
+      onClick: handleEdit,
+      actionType: MENU_ACTIONS.EDIT
+    }] : []),
+    ...(actionSet.canDelete ? [{
+      label: 'Удалить',
+      icon: '🗑️',
+      onClick: handleDelete,
+      actionType: MENU_ACTIONS.DELETE
+    }] : []),
+    ...(actionSet.canReportContent ? [{
+      label: 'Пожаловаться',
+      icon: '🚩',
+      onClick: () => { setMenuOpen(false); setShowReportModal(true); },
+      actionType: MENU_ACTIONS.REPORT
+    }] : []),
     ...moderationMenuItems,
   ];
 
@@ -528,6 +527,14 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         targetType="post"
         targetId={post.id}
       />
+      <ReportModal
+        isOpen={showUserReportModal}
+        onClose={() => setShowUserReportModal(false)}
+        targetType="user"
+        targetId={post.author?.id || post.author_id}
+        sourceType="post"
+        sourceId={post.id}
+      />
       <ConfirmationDialog
         isOpen={showDeleteDialog}
         title="Удалить пост?"
@@ -549,7 +556,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           onClose={() => setProfileOpen(false)}
           user={post.author}
           anchorRef={avatarRef}
-          onReport={() => setShowReportModal(true)}
+          onReportUser={() => {
+            const targetUserId = post.author?.id || post.author_id;
+            if (!targetUserId || isOwner) return;
+            setShowUserReportModal(true);
+          }}
         />
       )}
     </>

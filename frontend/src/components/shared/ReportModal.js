@@ -6,30 +6,13 @@ import { hapticFeedback } from '../../utils/telegram';
 import { toast } from './Toast';
 import theme from '../../theme';
 import SwipeableModal from './SwipeableModal';
+import { getReportReasons, REPORT_TARGET_LABELS } from '../../constants/reportConstants';
 
-const REPORT_REASONS = [
-  { value: 'spam', label: 'Спам', icon: '📨' },
-  { value: 'abuse', label: 'Оскорбления', icon: '🤬' },
-  { value: 'inappropriate', label: 'Неприемл. контент', icon: '⚠️' },
-  { value: 'scam', label: 'Мошенничество', icon: '🎣' },
-  { value: 'nsfw', label: 'NSFW', icon: '🔞' },
-  { value: 'harassment', label: 'Травля', icon: '😡' },
-  { value: 'misinformation', label: 'Ложная инф-а', icon: '🤥' },
-  { value: 'other', label: 'Другое', icon: '📝' },
-];
-
-const TARGET_LABELS = {
-  post: 'пост',
-  comment: 'комментарий',
-  request: 'запрос',
-  market_item: 'товар',
-  dating_profile: 'профиль',
-};
-
-function ReportModal({ isOpen, onClose, targetType, targetId }) {
+function ReportModal({ isOpen, onClose, targetType, targetId, sourceType = null, sourceId = null }) {
   const [selectedReason, setSelectedReason] = useState(null);
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const reasons = getReportReasons(targetType);
 
   // Сброс формы при открытии
   useEffect(() => {
@@ -45,12 +28,18 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
   };
 
   const handleSubmit = async () => {
-    if (!selectedReason || isSubmitting) return;
+    if (!selectedReason || isSubmitting || !targetType || !targetId) return;
     setIsSubmitting(true);
     hapticFeedback('medium');
 
     try {
-      await createReport(targetType, targetId, selectedReason, description.trim() || null);
+      await createReport(
+        targetType,
+        targetId,
+        selectedReason,
+        description.trim() || null,
+        sourceType && sourceId ? { sourceType, sourceId } : null
+      );
       toast.success('Жалоба отправлена');
       hapticFeedback('success');
       onClose(); // Закрываемся
@@ -77,14 +66,14 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
             <div style={styles.headerIcon}>⚠️</div>
             <div>
               <h3 style={styles.title}>Пожаловаться</h3>
-              <span style={styles.subtitle}>на {TARGET_LABELS[targetType] || 'контент'}</span>
+              <span style={styles.subtitle}>на {REPORT_TARGET_LABELS[targetType] || 'контент'}</span>
             </div>
           </div>
         </div>
 
         {/* === GRID ПРИЧИН === */}
         <div style={styles.reasonsGrid}>
-          {REPORT_REASONS.map((reason) => {
+          {reasons.map((reason) => {
             const isSelected = selectedReason === reason.value;
             return (
               <button
@@ -141,11 +130,11 @@ function ReportModal({ isOpen, onClose, targetType, targetId }) {
         <button
           style={{
             ...styles.submitBtn,
-            opacity: !selectedReason || isSubmitting ? 0.4 : 1,
-            pointerEvents: !selectedReason || isSubmitting ? 'none' : 'auto',
+            opacity: !selectedReason || isSubmitting || !targetId ? 0.4 : 1,
+            pointerEvents: !selectedReason || isSubmitting || !targetId ? 'none' : 'auto',
           }}
           onClick={handleSubmit}
-          disabled={!selectedReason || isSubmitting}
+          disabled={!selectedReason || isSubmitting || !targetId}
         >
           <Send size={16} />
           <span>{isSubmitting ? 'Отправка...' : 'Отправить жалобу'}</span>

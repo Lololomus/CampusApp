@@ -2,6 +2,7 @@
 
 import React, { forwardRef } from 'react';
 import theme from '../../theme';
+import { getAvatarColor } from '../../utils/avatarColors';
 
 const API_URL = 'http://localhost:8000';
 
@@ -13,21 +14,6 @@ const Avatar = forwardRef(({
   isAnonymous = false,
   style = {}
 }, ref) => {
-  
-  // Генерация цвета из строки (для инициалов)
-  const generateColor = (str) => {
-    if (!str) return theme.colors.primary;
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const colors = [
-      '#8774e1', '#3b82f6', '#10b981', '#f59e0b', 
-      '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16'
-    ];
-    return colors[Math.abs(hash) % colors.length];
-  };
-
   // Получение данных для отображения
   const getAvatarData = () => {
     if (isAnonymous) {
@@ -49,7 +35,7 @@ const Avatar = forwardRef(({
     // Fallback на инициал если фото нет
     const displayName = user?.username || user?.name || 'A';
     const initial = displayName[0]?.toUpperCase() || 'A';
-    const bg = generateColor(displayName);
+    const bg = getAvatarColor(displayName);
     
     return { type: 'initial', value: initial, bg };
   };
@@ -92,7 +78,7 @@ const Avatar = forwardRef(({
               e.target.style.display = 'none';
               const displayName = user?.username || user?.name || 'A';
               const initial = displayName[0]?.toUpperCase() || 'A';
-              const bg = generateColor(displayName);
+              const bg = getAvatarColor(displayName);
               parent.style.background = bg;
               parent.innerHTML = `<span style="user-select: none; font-size: ${size * 0.45}px; font-weight: 700; color: #fff;">${initial}</span>`;
             }

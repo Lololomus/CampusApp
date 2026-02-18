@@ -262,7 +262,7 @@ function DropdownMenu({
         {header && (
           <div style={{ marginBottom: 4 }}>
             {header}
-            <div style={styles.divider} />
+            {items.length > 0 && <div style={styles.divider} />}
           </div>
         )}
 

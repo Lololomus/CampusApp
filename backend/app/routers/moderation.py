@@ -436,7 +436,7 @@ def create_report(
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Создать жалобу на контент (любой пользователь)"""
+    """Создать жалобу на контент или пользователя (любой пользователь)"""
     reporter = get_user_or_404(db, telegram_id)
 
     # Проверка дубликата (один юзер — одна жалоба на один объект)
@@ -448,10 +448,20 @@ def create_report(
     ).first()
 
     if existing:
-        raise HTTPException(status_code=400, detail="Вы уже отправили жалобу на этот контент")
+        raise HTTPException(status_code=400, detail="Вы уже отправили жалобу на этот объект")
 
-    # Определяем вуз автора контента (для скоупинга)
-    content_university = _get_content_university(db, data.target_type, data.target_id)
+    if data.target_type == 'user':
+        target_user = db.query(models.User).filter(models.User.id == data.target_id).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        if target_user.id == reporter.id:
+            raise HTTPException(status_code=400, detail="Нельзя отправить жалобу на самого себя")
+        content_university = target_user.university
+    else:
+        # Определяем вуз автора контента (для скоупинга)
+        content_university = _get_content_university(db, data.target_type, data.target_id)
+        if content_university is None:
+            raise HTTPException(status_code=404, detail="Контент не найден")
 
     report = models.Report(
         reporter_id=reporter.id,
@@ -459,6 +469,8 @@ def create_report(
         target_id=data.target_id,
         reason=data.reason,
         description=data.description,
+        source_type=data.source_type,
+        source_id=data.source_id,
         status='pending',
         university=content_university
     )
@@ -488,6 +500,9 @@ def _get_content_university(db: Session, target_type: str, target_id: int) -> Op
     elif target_type == 'dating_profile':
         obj = db.query(models.DatingProfile).options(joinedload(models.DatingProfile.user)).filter(models.DatingProfile.id == target_id).first()
         return obj.user.university if obj and obj.user else None
+    elif target_type == 'user':
+        obj = db.query(models.User).filter(models.User.id == target_id).first()
+        return obj.university if obj else None
     return None
 
 
@@ -502,14 +517,15 @@ def get_reports(
 ):
     """Список жалоб (амбассадор видит свой вуз, суперадмин — все)"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
+    normalized_status = 'reviewed' if status == 'resolved' else status
 
     query = db.query(models.Report).options(
         joinedload(models.Report.reporter)
     )
 
     # Фильтр по статусу
-    if status and status != 'all':
-        query = query.filter(models.Report.status == status)
+    if normalized_status and normalized_status != 'all':
+        query = query.filter(models.Report.status == normalized_status)
 
     # Фильтр по типу контента
     if target_type:
@@ -532,6 +548,8 @@ def get_reports(
             "target_id": r.target_id,
             "reason": r.reason,
             "description": r.description,
+            "source_type": r.source_type,
+            "source_id": r.source_id,
             "status": r.status,
             "university": r.university,
             "moderator_note": r.moderator_note,
@@ -545,13 +563,15 @@ def get_reports(
 @router.patch("/reports/{report_id}")
 def review_report(
     report_id: int,
-    status: str = Query(..., pattern="^(reviewed|dismissed)$"),
+    status: str = Query(..., pattern="^(reviewed|dismissed|resolved)$"),
     moderator_note: Optional[str] = Query(None),
     telegram_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
     """Обработать жалобу"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
+    # TODO(remove-resolved-alias): удалить alias после полной синхронизации клиентов.
+    normalized_status = 'reviewed' if status == 'resolved' else status
 
     report = db.query(models.Report).filter(models.Report.id == report_id).first()
     if not report:
@@ -564,12 +584,12 @@ def review_report(
     if moderator.role == 'ambassador' and report.university != moderator.university:
         raise HTTPException(status_code=403, detail="Нет доступа к жалобам другого вуза")
 
-    report.status = status
+    report.status = normalized_status
     report.reviewed_by = moderator.id
     report.reviewed_at = datetime.now(timezone.utc)
     report.moderator_note = moderator_note
 
-    action_name = 'resolve_report' if status == 'reviewed' else 'dismiss_report'
+    action_name = 'resolve_report' if normalized_status == 'reviewed' else 'dismiss_report'
     log_action(
         db, moderator.id, action_name, 'report', report.id,
         reason=moderator_note,

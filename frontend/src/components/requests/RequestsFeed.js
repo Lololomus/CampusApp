@@ -200,16 +200,6 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
     }
   };
 
-
-  // ===== ПОЖАЛОВАТЬСЯ =====
-  const handleReport = (request) => {
-    console.log('🚩 Жалоба на запрос:', request.id);
-    hapticFeedback('light');
-    alert('⚠️ Функция жалоб будет добавлена в следующем обновлении.');
-    // TODO: Реализовать систему жалоб
-  };
-
-
   // ===== КЛИК НА КАРТОЧКУ =====
   const handleCardClick = (request) => {
     setCurrentRequest(request);
@@ -252,7 +242,6 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
                   onClick={handleCardClick}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
-                  onReport={handleReport}
                   currentUserId={user?.id}
                 />
               </div>
@@ -274,7 +263,6 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
           onClose={() => setShowDetailModal(false)}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          onReport={handleReport}
         />
       )}
     </div>

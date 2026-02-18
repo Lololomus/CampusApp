@@ -1,6 +1,6 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketCard.js =====
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem } from '../../api';
 import theme from '../../theme';
@@ -10,9 +10,8 @@ import { toast } from '../shared/Toast';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import ReportModal from '../shared/ReportModal';
-import Avatar from '../shared/Avatar';
-import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
+import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 
 const MarketCard = ({ item, onClick, index = 0 }) => {
   const { 
@@ -29,7 +28,11 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const menuButtonRef = useRef(null);
   
-  const isOwner = user?.id === item.seller_id;
+  const isOwner = useMemo(() => isEntityOwner('market_item', item, user), [item, user]);
+  const actionSet = useMemo(
+    () => getEntityActionSet('market_item', isOwner, { shareEnabled: false }),
+    [isOwner]
+  );
 
   // ===== MODERATION HOOK =====
   const { moderationMenuItems, moderationModals } = useModerationActions({
@@ -153,39 +156,20 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
     }
   };
 
-  const handleShare = () => {
-    setIsMenuOpen(false);
-    hapticFeedback('light');
-    
-    const url = `${window.location.origin}/market/${item.id}`;
-    const text = `${item.title} - ${formatPrice(item.price)} ₽`;
-    
-    if (window.Telegram?.WebApp?.openTelegramLink) {
-      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
-      window.Telegram.WebApp.openTelegramLink(shareUrl);
-    } else if (navigator.share) {
-      navigator.share({ title: item.title, text, url }).catch(() => {});
-    } else {
-      handleCopyLink();
-    }
-  };
-
   const menuItems = [
-    {
+    ...(actionSet.canCopyLink ? [{
       icon: '🔗',
       label: 'Копировать ссылку',
       actionType: MENU_ACTIONS.COPY,
       onClick: handleCopyLink
-    },
-    
-    ...(isOwner ? [
-      {
+    }] : []),
+    ...(actionSet.canEdit ? [{
         icon: '✏️',
         label: 'Редактировать',
         actionType: MENU_ACTIONS.EDIT,
         onClick: handleEdit
-      },
-      {
+      }] : []),
+    ...(actionSet.canDelete ? [{
         icon: '🗑️',
         label: 'Удалить',
         actionType: MENU_ACTIONS.DELETE,
@@ -193,9 +177,8 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
           setIsMenuOpen(false);
           setShowDeleteDialog(true);
         }
-      }
-    ] : [
-      {
+      }] : []),
+    ...(actionSet.canReportContent ? [{
         icon: '🚩',
         label: 'Пожаловаться',
         actionType: MENU_ACTIONS.REPORT,
@@ -203,14 +186,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
           setIsMenuOpen(false);
           setShowReportModal(true);
         }
-      },
-      {
-        icon: '↗️',
-        label: 'Поделиться',
-        actionType: MENU_ACTIONS.SHARE,
-        onClick: handleShare
-      }
-    ]),
+      }] : []),
     // ✅ Модерация
     ...moderationMenuItems,
   ];

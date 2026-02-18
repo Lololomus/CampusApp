@@ -5,7 +5,6 @@ import {
   SkipForward, CheckCircle, Trash2, Clock, Ban,
   AlertTriangle, MessageSquare, User, Image, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import {
   reviewReport, moderateDeletePost, moderateDeleteRequest,
@@ -17,12 +16,17 @@ import theme from '../../theme';
 
 const REASON_LABELS = {
   spam: 'Спам',
+  abuse: 'Оскорбления',
+  inappropriate: 'Неприемлемый контент',
   harassment: 'Оскорбления',
-  hate_speech: 'Разжигание ненависти',
-  violence: 'Насилие',
-  nudity: 'Непристойный контент',
+  nsfw: 'NSFW',
   misinformation: 'Дезинформация',
   scam: 'Мошенничество',
+  spam_scam: 'Спам/скам',
+  impersonation: 'Фейк/выдача себя',
+  harassment_hate: 'Травля/хейт',
+  sexual_content: 'Сексуальный контент',
+  underage_risk: 'Риск с несоверш.',
   other: 'Другое',
 };
 
@@ -31,6 +35,7 @@ const TARGET_LABELS = {
   comment: 'Комментарий',
   request: 'Запрос',
   market_item: 'Товар',
+  user: 'Пользователь',
 };
 
 const TARGET_ICONS = {
@@ -38,6 +43,7 @@ const TARGET_ICONS = {
   comment: MessageSquare,
   request: AlertTriangle,
   market_item: Image,
+  user: User,
 };
 
 function ReportCard({ report, onProcessed, compact = false }) {
@@ -50,6 +56,9 @@ function ReportCard({ report, onProcessed, compact = false }) {
   const targetType = report.target_type;
   const TargetIcon = TARGET_ICONS[targetType] || MessageSquare;
   const reportCount = report.report_count || 1;
+  const isContentTarget = ['post', 'comment', 'request', 'market_item'].includes(targetType);
+  const targetUserId = report.target_user_id || (targetType === 'user' ? report.target_id : null);
+  const canBanTarget = Boolean(targetUserId);
 
   // === ACTIONS ===
 
@@ -88,9 +97,10 @@ function ReportCard({ report, onProcessed, compact = false }) {
       else if (targetType === 'comment') await moderateDeleteComment(targetId, reason);
       else if (targetType === 'request') await moderateDeleteRequest(targetId, reason);
       else if (targetType === 'market_item') await moderateDeleteMarketItem(targetId, reason);
+      else throw new Error('Удаление недоступно для этого типа жалобы');
 
       // Помечаем жалобу
-      await reviewReport(report.id, 'resolved', reason);
+      await reviewReport(report.id, 'reviewed', reason);
       toast.success('Контент удалён');
       onProcessed?.(report.id, 'deleted');
     } catch (err) {
@@ -108,16 +118,21 @@ function ReportCard({ report, onProcessed, compact = false }) {
       toast.error('Укажите причину бана');
       return;
     }
+    if (!targetUserId) {
+      hapticFeedback('error');
+      toast.error('Нет ID пользователя для бана');
+      return;
+    }
     hapticFeedback('heavy');
     setProcessing(true);
     try {
       await shadowBanUser({
-        user_id: report.target_user_id,
+        user_id: targetUserId,
         reason,
         duration_days: permanent ? null : banDays,
         is_permanent: permanent,
       });
-      await reviewReport(report.id, 'resolved', reason);
+      await reviewReport(report.id, 'reviewed', reason);
       toast.success(permanent ? 'Перманентный бан' : `Бан на ${banDays} дней`);
       onProcessed?.(report.id, permanent ? 'permaban' : 'timeout');
     } catch (err) {
@@ -193,7 +208,7 @@ function ReportCard({ report, onProcessed, compact = false }) {
           <div style={styles.authorRow}>
             <User size={14} color={theme.colors.textTertiary} />
             <span style={styles.authorName}>
-              {report.target_user_name || `Пользователь #${report.target_user_id}`}
+              {report.target_user_name || `Пользователь #${targetUserId || report.target_id || '?'}`}
             </span>
             {report.target_user_ban_count > 0 && (
               <span style={styles.banHistory}>
@@ -277,25 +292,30 @@ function ReportCard({ report, onProcessed, compact = false }) {
                 style={{ ...styles.actionBtn, ...styles.deleteBtn }}
                 onClick={() => { setActionMode('delete'); hapticFeedback('light'); }}
                 disabled={processing}
+                hidden={!isContentTarget}
               >
                 <Trash2 size={16} />
                 <span>Удалить</span>
               </button>
-              <button
-                style={{ ...styles.actionBtn, ...styles.timeoutBtn }}
-                onClick={() => { setActionMode('timeout'); hapticFeedback('light'); }}
-                disabled={processing}
-              >
-                <Clock size={16} />
-                <span>Бан</span>
-              </button>
-              <button
-                style={{ ...styles.actionBtn, ...styles.permaBtn }}
-                onClick={() => { setActionMode('permaban'); hapticFeedback('light'); }}
-                disabled={processing}
-              >
-                <Ban size={16} />
-              </button>
+              {canBanTarget && (
+                <button
+                  style={{ ...styles.actionBtn, ...styles.timeoutBtn }}
+                  onClick={() => { setActionMode('timeout'); hapticFeedback('light'); }}
+                  disabled={processing}
+                >
+                  <Clock size={16} />
+                  <span>Бан</span>
+                </button>
+              )}
+              {canBanTarget && (
+                <button
+                  style={{ ...styles.actionBtn, ...styles.permaBtn }}
+                  onClick={() => { setActionMode('permaban'); hapticFeedback('light'); }}
+                  disabled={processing}
+                >
+                  <Ban size={16} />
+                </button>
+              )}
             </div>
           )}
         </>

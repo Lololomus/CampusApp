@@ -1,6 +1,6 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketDetail.js =====
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
@@ -16,6 +16,7 @@ import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 
@@ -41,11 +42,16 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const [likeAnimating, setLikeAnimating] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showUserReportModal, setShowUserReportModal] = useState(false);
   
   const menuRef = useRef(null);
   const sellerAvatarRef = useRef(null);
 
-  const isOwner = currentItem.seller_id === user?.id;
+  const isOwner = useMemo(() => isEntityOwner('market_item', currentItem, user), [currentItem, user]);
+  const actionSet = useMemo(
+    () => getEntityActionSet('market_item', isOwner, { shareEnabled: false }),
+    [isOwner]
+  );
   const images = currentItem.images || [];
 
   const closeDetail = () => {
@@ -183,27 +189,6 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     }
   };
 
-  const handleShare = () => {
-    hapticFeedback('light');
-    setShowMenu(false);
-    
-    const url = `${window.location.origin}/market/${currentItem.id}`;
-    const text = `${currentItem.title} - ${formatPrice(currentItem.price)} ₽`;
-    
-    if (window.Telegram?.WebApp?.openTelegramLink) {
-      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
-      window.Telegram.WebApp.openTelegramLink(shareUrl);
-    } else if (navigator.share) {
-      navigator.share({
-        title: currentItem.title,
-        text: text,
-        url: url
-      }).catch(() => {});
-    } else {
-      handleCopyLink();
-    }
-  };
-
   const handleReport = () => {
     hapticFeedback('medium');
     setShowMenu(false);
@@ -291,34 +276,40 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const institute = currentItem.seller?.institute || '';
 
   const getMenuItems = () => {
-    const commonItems = [
-      {
-        actionType: 'share',
+    return [
+      ...(actionSet.canCopyLink ? [{
+        actionType: 'copy',
         label: 'Копировать ссылку',
         icon: '🔗',
         onClick: handleCopyLink
-      },
-      {
-        actionType: 'share',
-        label: 'Поделиться',
-        icon: '📤',
-        onClick: handleShare
-      }
-    ];
-
-    if (isOwner) {
-      return commonItems;
-    } else {
-      return [
-        ...commonItems,
-        {
-          actionType: 'report',
-          label: 'Пожаловаться',
-          icon: '⚠️',
-          onClick: handleReport
+      }] : []),
+      ...(actionSet.canEdit ? [{
+        actionType: 'edit',
+        label: 'Редактировать',
+        icon: '✏️',
+        onClick: () => {
+          hapticFeedback('light');
+          setShowMenu(false);
+          setShowEditModal(true);
         }
-      ];
-    }
+      }] : []),
+      ...(actionSet.canDelete ? [{
+        actionType: 'delete',
+        label: 'Удалить',
+        icon: '🗑️',
+        onClick: () => {
+          hapticFeedback('medium');
+          setShowMenu(false);
+          setShowDeleteDialog(true);
+        }
+      }] : []),
+      ...(actionSet.canReportContent ? [{
+        actionType: 'report',
+        label: 'Пожаловаться',
+        icon: '⚠️',
+        onClick: handleReport
+      }] : []),
+    ];
   };
 
   return (
@@ -554,7 +545,11 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
           onClose={() => setProfileOpen(false)}
           user={currentItem.seller}
           anchorRef={sellerAvatarRef}
-          onReport={() => setShowReportModal(true)}
+          onReportUser={() => {
+            const targetUserId = currentItem.seller?.id || currentItem.seller_id;
+            if (!targetUserId || isOwner) return;
+            setShowUserReportModal(true);
+          }}
         />
       )}
 
@@ -563,6 +558,14 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
         onClose={() => setShowReportModal(false)}
         targetType="market_item"
         targetId={currentItem.id}
+      />
+      <ReportModal
+        isOpen={showUserReportModal}
+        onClose={() => setShowUserReportModal(false)}
+        targetType="user"
+        targetId={currentItem.seller?.id || currentItem.seller_id}
+        sourceType="market_item"
+        sourceId={currentItem.id}
       />
     </>
   );

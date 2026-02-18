@@ -5,6 +5,8 @@ import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import PhotoViewer from './PhotoViewer';
 import DropdownMenu from '../DropdownMenu'; // ✅ Используем общий компонент
+import { useStore } from '../../store';
+import { getAvatarColor } from '../../utils/avatarColors';
 
 const API_URL = 'http://localhost:8000';
 
@@ -13,8 +15,11 @@ function ProfileMiniCard({
   onClose, 
   user,
   anchorRef,
+  avatarColor,
+  onReportUser,
   onReport
 }) {
+  const { user: currentUser } = useStore();
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
 
   if (!user) return null;
@@ -28,7 +33,20 @@ function ProfileMiniCard({
   };
 
   const avatarUrl = getAvatarUrl();
-  const displayName = user.username || user.name || 'Пользователь';
+  const usernameValue = user.username ? String(user.username).replace(/^@/, '') : null;
+  const displayName = usernameValue ? `@${usernameValue}` : (user.name || 'Пользователь');
+  const targetUserId = user.id != null ? String(user.id) : null;
+  const currentUserId = currentUser?.id != null
+    ? String(currentUser.id)
+    : (currentUser?.user_id != null ? String(currentUser.user_id) : null);
+  const targetTelegramId = user.telegram_id != null ? String(user.telegram_id) : null;
+  const currentTelegramId = currentUser?.telegram_id != null ? String(currentUser.telegram_id) : null;
+  const isSelf = Boolean(
+    (targetUserId && currentUserId && targetUserId === currentUserId) ||
+    (targetTelegramId && currentTelegramId && targetTelegramId === currentTelegramId)
+  );
+  const initial = (user.name || usernameValue || 'U').trim().charAt(0).toUpperCase();
+  const fallbackAvatarColor = avatarColor || getAvatarColor(usernameValue || user.name || 'A');
   
   const userInfo = [
     user.university,
@@ -50,7 +68,12 @@ function ProfileMiniCard({
   };
 
   const handleReport = () => {
+    if (isSelf) return;
     hapticFeedback('light');
+    if (onReportUser) {
+      onReportUser(user);
+      return;
+    }
     if (onReport) onReport(user);
   };
 
@@ -68,7 +91,7 @@ function ProfileMiniCard({
       actionType: 'edit',  // Зеленый цвет
       onClick: handleTelegramOpen
     },
-    {
+    !isSelf && {
       label: 'Пожаловаться',
       icon: '🚩',
       actionType: 'report', // Оранжевый цвет
@@ -79,8 +102,17 @@ function ProfileMiniCard({
   // ===== ШАПКА ПРОФИЛЯ (ПЕРЕДАЕМ В DROPDOWN) =====
   const headerContent = (
     <div style={styles.headerContainer}>
-      <div style={styles.username}>@{displayName}</div>
-      {userInfo && <div style={styles.userInfo}>{userInfo}</div>}
+      <div style={styles.headerTop}>
+        {avatarUrl ? (
+          <img src={avatarUrl} alt="" style={styles.headerAvatarImage} />
+        ) : (
+          <div style={{ ...styles.headerAvatarFallback, background: fallbackAvatarColor }}>{initial}</div>
+        )}
+        <div style={styles.headerTextBlock}>
+          <div style={styles.username} title={displayName}>{displayName}</div>
+          {userInfo && <div style={styles.userInfo} title={userInfo}>{userInfo}</div>}
+        </div>
+      </div>
     </div>
   );
 
@@ -118,14 +150,54 @@ const styles = {
     flexDirection: 'column',
     gap: 2,
   },
+  headerTop: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+  },
+  headerAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    objectFit: 'cover',
+    flexShrink: 0,
+    border: `1px solid ${theme.colors.border}`,
+  },
+  headerAvatarFallback: {
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+    background: theme.colors.bgSecondary,
+    border: `1px solid ${theme.colors.border}`,
+  },
+  headerTextBlock: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
   username: {
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.text,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   userInfo: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.textTertiary,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   }
 };
 

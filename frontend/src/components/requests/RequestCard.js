@@ -13,15 +13,17 @@ import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
 import { toast } from '../shared/Toast';
+import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 
 const API_URL = 'http://localhost:8000';
 
-function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUserId }) {
+function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const avatarRef = useRef(null);
   
@@ -50,7 +52,14 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
   };
 
   const categoryConfig = CATEGORIES[request.category] || CATEGORIES.study;
-  const isAuthor = currentUserId && request.author?.id === currentUserId;
+  const isAuthor = useMemo(
+    () => isEntityOwner('request', request, { id: currentUserId }),
+    [request, currentUserId]
+  );
+  const actionSet = useMemo(
+    () => getEntityActionSet('request', isAuthor, { shareEnabled: false }),
+    [isAuthor]
+  );
 
   // ===== MODERATION HOOK =====
   const { moderationMenuItems, moderationModals } = useModerationActions({
@@ -217,7 +226,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
 
   // ===== МЕНЮ ДЕЙСТВИЙ =====
   const menuItems = [
-    {
+    ...(actionSet.canCopyLink ? [{
       label: 'Скопировать ссылку',
       icon: '🔗',
       actionType: MENU_ACTIONS.COPY,
@@ -234,10 +243,8 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
           hapticFeedback('error');
         }
       }
-    },
-    
-    ...(isAuthor ? [
-      {
+    }] : []),
+    ...(actionSet.canEdit ? [{
         label: 'Редактировать',
         icon: '✏️',
         actionType: MENU_ACTIONS.EDIT,
@@ -246,8 +253,8 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
           setMenuOpen(false);
           if (onEdit) onEdit(request);
         }
-      },
-      {
+      }] : []),
+    ...(actionSet.canDelete ? [{
         label: 'Удалить',
         icon: '🗑️',
         actionType: MENU_ACTIONS.DELETE,
@@ -256,9 +263,8 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
           setMenuOpen(false);
           if (onDelete) onDelete(request);
         }
-      }
-    ] : [
-      {
+      }] : []),
+    ...(actionSet.canReportContent ? [{
         label: 'Пожаловаться',
         icon: '🚩',
         actionType: MENU_ACTIONS.REPORT,
@@ -267,8 +273,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
           setMenuOpen(false);
           setShowReportModal(true);
         }
-      }
-    ]),
+      }] : []),
     // ✅ Модерация
     ...moderationMenuItems,
   ];
@@ -410,6 +415,14 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
         targetType="request"
         targetId={request.id}
       />
+      <ReportModal
+        isOpen={showUserReportModal}
+        onClose={() => setShowUserReportModal(false)}
+        targetType="user"
+        targetId={request.author?.id || request.author_id}
+        sourceType="request"
+        sourceId={request.id}
+      />
 
       {/* Модалки модерации */}
       {moderationModals}
@@ -421,7 +434,11 @@ function RequestCard({ request, onClick, onEdit, onDelete, onReport, currentUser
           onClose={() => setProfileOpen(false)}
           user={request.author}
           anchorRef={avatarRef}
-          onReport={() => setShowReportModal(true)}
+          onReportUser={() => {
+            const targetUserId = request.author?.id || request.author_id;
+            if (!targetUserId || isAuthor) return;
+            setShowUserReportModal(true);
+          }}
         />
       )}
     </>  

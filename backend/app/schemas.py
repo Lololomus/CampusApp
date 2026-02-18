@@ -1,6 +1,6 @@
 # ===== 📄 ФАЙЛ: backend/app/schemas.py =====
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 from typing import Optional, List, Union, Dict, Any
 
@@ -569,8 +569,16 @@ class ResponseItem(BaseModel):
 
 # ===== REPORT SCHEMAS =====
 
-VALID_REPORT_REASONS = ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other']
-VALID_TARGET_TYPES = ['post', 'comment', 'request', 'market_item', 'dating_profile']
+REPORT_REASONS_BY_TARGET = {
+    'post': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
+    'comment': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
+    'request': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
+    'market_item': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
+    'dating_profile': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
+    'user': ['spam_scam', 'impersonation', 'harassment_hate', 'sexual_content', 'underage_risk', 'other'],
+}
+VALID_TARGET_TYPES = list(REPORT_REASONS_BY_TARGET.keys())
+VALID_REPORT_SOURCE_TYPES = ['post', 'comment', 'request', 'market_item', 'profile']
 
 class ReportCreate(BaseModel):
     """Создание жалобы на любой контент"""
@@ -578,6 +586,8 @@ class ReportCreate(BaseModel):
     target_id: int
     reason: str
     description: Optional[str] = Field(None, max_length=1000)
+    source_type: Optional[str] = None
+    source_id: Optional[int] = None
     
     @field_validator('target_type')
     @classmethod
@@ -586,12 +596,31 @@ class ReportCreate(BaseModel):
             raise ValueError(f'Допустимые типы: {", ".join(VALID_TARGET_TYPES)}')
         return v
     
-    @field_validator('reason')
+    @field_validator('source_type')
     @classmethod
-    def validate_reason(cls, v):
-        if v not in VALID_REPORT_REASONS:
-            raise ValueError(f'Допустимые причины: {", ".join(VALID_REPORT_REASONS)}')
+    def validate_source_type(cls, v):
+        if v is not None and v not in VALID_REPORT_SOURCE_TYPES:
+            raise ValueError(f'Допустимые source_type: {", ".join(VALID_REPORT_SOURCE_TYPES)}')
         return v
+
+    @model_validator(mode='after')
+    def validate_reason_and_source(self):
+        allowed_reasons = REPORT_REASONS_BY_TARGET.get(self.target_type, [])
+        if self.reason not in allowed_reasons:
+            raise ValueError(
+                f'Допустимые причины для {self.target_type}: {", ".join(allowed_reasons)}'
+            )
+
+        has_source_type = self.source_type is not None
+        has_source_id = self.source_id is not None
+
+        if has_source_type != has_source_id:
+            raise ValueError('source_type и source_id должны передаваться вместе')
+
+        if self.target_type != 'user' and (has_source_type or has_source_id):
+            raise ValueError('source_type/source_id разрешены только для жалобы на пользователя')
+
+        return self
 
 class ReportResponse(BaseModel):
     """Жалоба (для модераторов)"""
@@ -602,6 +631,8 @@ class ReportResponse(BaseModel):
     target_id: int
     reason: str
     description: Optional[str] = None
+    source_type: Optional[str] = None
+    source_id: Optional[int] = None
     status: str
     university: Optional[str] = None
     moderator_note: Optional[str] = None

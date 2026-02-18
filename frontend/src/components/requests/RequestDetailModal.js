@@ -12,12 +12,14 @@ import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
+import { toast } from '../shared/Toast';
+import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 
 
 const API_URL = 'http://localhost:8000';
 
 
-function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
+function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const { currentRequest, setCurrentRequest, user, updateRequest: updateStoreRequest } = useStore();
   
   const [request, setRequest] = useState(null);
@@ -31,6 +33,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
   const [isDropdownJustClosed, setIsDropdownJustClosed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showUserReportModal, setShowUserReportModal] = useState(false);
   
   const menuButtonRef = useRef(null);
   const authorAvatarRef = useRef(null);
@@ -81,6 +84,11 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
 
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
+  const isOwner = useMemo(() => isEntityOwner('request', request, user), [request, user]);
+  const actionSet = useMemo(
+    () => getEntityActionSet('request', isOwner, { shareEnabled: false }),
+    [isOwner]
+  );
 
 
   useEffect(() => {
@@ -100,7 +108,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
       const data = await getRequestById(currentRequest.id);
       setRequest(data);
 
-      if (data.is_author) {
+      if (isEntityOwner('request', data, user)) {
         const responsesData = await getRequestResponses(currentRequest.id);
         setResponses(responsesData || []);
       }
@@ -218,7 +226,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
 
   const handleRespond = async () => {
-    if (!request || request.is_author || request.has_responded || datesInfo?.isExpired) {
+    if (!request || isOwner || request.has_responded || datesInfo?.isExpired) {
       return;
     }
 
@@ -254,7 +262,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
 
   const handleCloseRequest = async () => {
-    if (!request || !request.is_author) return;
+    if (!request || !isOwner) return;
 
     if (!window.confirm('Закрыть запрос? Его больше нельзя будет открыть.')) {
       return;
@@ -281,10 +289,31 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
     window.open(`https://t.me/${cleanUsername}`, '_blank');
   };
 
+  const handleCopyLink = async () => {
+    if (!request) return;
+    hapticFeedback('light');
+    const link = `campusapp://request/${request.id}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success('Ссылка скопирована');
+      setMenuOpen(false);
+      setIsDropdownJustClosed(true);
+      setTimeout(() => setIsDropdownJustClosed(false), 300);
+    } catch (error) {
+      console.error('Copy request link error:', error);
+      toast.error('Не удалось скопировать ссылку');
+    }
+  };
+
 
   const menuItems = [
-    ...(request?.is_author ? [
-      {
+    ...(actionSet.canCopyLink ? [{
+      label: 'Скопировать ссылку',
+      icon: '🔗',
+      actionType: 'copy',
+      onClick: handleCopyLink
+    }] : []),
+    ...(actionSet.canEdit ? [{
         label: 'Редактировать',
         icon: '✏️',
         actionType: 'edit',
@@ -295,8 +324,8 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
           setTimeout(() => setIsDropdownJustClosed(false), 300);
           if (onEdit) onEdit(request);
         }
-      },
-      {
+      }] : []),
+    ...(actionSet.canDelete ? [{
         label: 'Удалить',
         icon: '🗑️',
         actionType: 'delete',
@@ -307,9 +336,8 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
           setTimeout(() => setIsDropdownJustClosed(false), 300);
           if (onDelete) onDelete(request);
         }
-      }
-    ] : []),
-    {
+      }] : []),
+    ...(actionSet.canReportContent ? [{
       label: 'Пожаловаться',
       icon: '🚩',
       actionType: 'report',
@@ -320,7 +348,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
         setTimeout(() => setIsDropdownJustClosed(false), 300);
         setShowReportModal(true);
       }
-    }
+    }] : [])
   ];
 
 
@@ -398,7 +426,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
                 ].filter(Boolean).join(' • ')}
               </div>
             </div>
-            {request.is_author && (
+            {isOwner && (
               <div style={styles.authorBadge}>Вы</div>
             )}
           </div>
@@ -472,7 +500,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
             </div>
           )}
 
-          {request.is_author && responses.length > 0 && (
+          {isOwner && responses.length > 0 && (
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>
                 Отклики ({responses.length})
@@ -523,7 +551,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
 
           {/* Bottom Bar */}
           <div style={styles.bottomBar}>
-            {request.is_author ? (
+            {isOwner ? (
               <button
                 onClick={handleCloseRequest}
                 style={styles.closeRequestButton}
@@ -581,7 +609,11 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
           onClose={() => setProfileOpen(false)}
           user={request.author}
           anchorRef={authorAvatarRef}
-          onReport={() => setShowReportModal(true)}
+          onReportUser={() => {
+            const targetUserId = request.author?.id || request.author_id;
+            if (!targetUserId || isOwner) return;
+            setShowUserReportModal(true);
+          }}
         />
       )}
 
@@ -590,6 +622,14 @@ function RequestDetailModal({ onClose, onEdit, onDelete, onReport }) {
         onClose={() => setShowReportModal(false)}
         targetType="request"
         targetId={request.id}
+      />
+      <ReportModal
+        isOpen={showUserReportModal}
+        onClose={() => setShowUserReportModal(false)}
+        targetType="user"
+        targetId={request.author?.id || request.author_id}
+        sourceType="request"
+        sourceId={request.id}
       />
     </>
   );

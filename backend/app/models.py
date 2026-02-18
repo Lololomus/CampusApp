@@ -581,13 +581,15 @@ class Report(Base):
     reporter_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
     # Что жалуемся
-    target_type = Column(String(30), nullable=False, index=True)  # post / comment / request / market_item / dating_profile
+    target_type = Column(String(30), nullable=False, index=True)  # post / comment / request / market_item / dating_profile / user
     target_id = Column(Integer, nullable=False)
     
     # Причина
     reason = Column(String(50), nullable=False)
     # Допустимые значения: spam, abuse, inappropriate, scam, nsfw, harassment, misinformation, other
     description = Column(String(1000), nullable=True)  # опциональное описание от юзера
+    source_type = Column(String(30), nullable=True)  # где отправлена жалоба на user: post/comment/request/market_item/profile
+    source_id = Column(Integer, nullable=True)
     
     # Статус обработки
     status = Column(String(20), default='pending', nullable=False, index=True)  # pending / reviewed / dismissed

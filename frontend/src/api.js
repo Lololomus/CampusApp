@@ -465,20 +465,8 @@ export async function updateComment(commentId, text) {
 }
 
 export async function reportComment(commentId, reason, description = null) {
-  try {
-    const telegram_id = getTelegramId();
-    const response = await api.post(`/comments/${commentId}/report`, {
-      comment_id: commentId,
-      reason,
-      description
-    }, {
-      params: { telegram_id }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Ошибка отправки жалобы:', error);
-    throw error;
-  }
+  // Deprecated: оставляем для обратной совместимости старых вызовов UI.
+  return createReport('comment', commentId, reason, description);
 }
 
 export async function createRequest(requestData, onProgress = null) {
@@ -1057,14 +1045,21 @@ export async function shadowUnbanUser(userId) {
 // ========================================
 
 /** Отправить жалобу (любой пользователь) */
-export async function createReport(targetType, targetId, reason, description = null) {
+export async function createReport(targetType, targetId, reason, description = null, meta = null) {
   const telegram_id = getTelegramId();
-  const response = await api.post('/reports', {
+  const payload = {
     target_type: targetType,
     target_id: targetId,
     reason,
     description
-  }, {
+  };
+
+  if (meta?.sourceType && meta?.sourceId) {
+    payload.source_type = meta.sourceType;
+    payload.source_id = meta.sourceId;
+  }
+
+  const response = await api.post('/reports', payload, {
     params: { telegram_id }
   });
   return response.data;

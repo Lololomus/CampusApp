@@ -10,7 +10,7 @@ import ReportCard from './ReportCard';
 
 const STATUS_OPTIONS = [
   { id: 'pending', label: 'Ожидают' },
-  { id: 'resolved', label: 'Решено' },
+  { id: 'reviewed', label: 'Решено' },
   { id: 'dismissed', label: 'Отклонено' },
 ];
 
@@ -20,6 +20,7 @@ const TYPE_OPTIONS = [
   { id: 'comment', label: 'Комменты' },
   { id: 'request', label: 'Запросы' },
   { id: 'market_item', label: 'Товары' },
+  { id: 'user', label: 'Пользователи' },
 ];
 
 function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }) {
