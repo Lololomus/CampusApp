@@ -84,7 +84,7 @@ function MyMarketCard({ item, onEdit, onDelete, onOpen }) {
         {/* ЛЕВАЯ ЧАСТЬ: Фото */}
         <div style={styles.imageContainer}>
           {primaryImage ? (
-            <img src={primaryImage} alt={item.title} style={styles.image} />
+            <img src={primaryImage} alt={item.title} style={styles.image} loading="lazy" decoding="async" />
           ) : (
             <div style={styles.imagePlaceholder}>📦</div>
           )}

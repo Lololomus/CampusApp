@@ -71,6 +71,8 @@ const Avatar = forwardRef(({
           src={avatarData.value} 
           alt="" 
           style={styles.avatarImage}
+          loading="lazy"
+          decoding="async"
           onError={(e) => {
             // Fallback к инициалу если фото не загрузилось
             const parent = e.target.parentElement;

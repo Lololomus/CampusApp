@@ -10,6 +10,8 @@ import MarketFilters from './MarketFilters';
 import CreateMarketItem from './CreateMarketItem';
 import EditMarketItemModal from './EditMarketItemModal';
 import theme from '../../theme';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 const Market = () => {
   const { 
@@ -89,6 +91,14 @@ const Market = () => {
     if (stabilizedFilters.sort !== 'newest') count++;
     return count;
   }, [stabilizedFilters]);
+
+  const marketRows = useMemo(() => (
+    buildFeedSections(
+      marketItems,
+      (item) => item.created_at,
+      { getItemKey: (item) => item.id }
+    )
+  ), [marketItems]);
 
   // ===== LOAD DATA =====
   const loadItems = useCallback(async (reset = false) => {
@@ -312,13 +322,19 @@ const Market = () => {
           }}
           key={animationKey} // ✅ СОХРАНИЛИ ДЛЯ АНИМАЦИИ
         >
-          {marketItems.map((item, index) => (
-            <MarketCard
-              key={item.id}
-              item={item}
-              index={index}
-              onClick={() => handleCardClick(item)}
-            />
+          {marketRows.map((row) => (
+            row.type === 'divider' ? (
+              <div key={row.key} style={styles.gridDividerItem}>
+                <FeedDateDivider label={row.label} />
+              </div>
+            ) : (
+              <MarketCard
+                key={row.key}
+                item={row.item}
+                index={row.index}
+                onClick={() => handleCardClick(row.item)}
+              />
+            )
           ))}
           
           {loading && [...Array(4)].map((_, i) => (
@@ -432,6 +448,9 @@ const styles = {
     gridTemplateColumns: 'repeat(2, 1fr)',
     gap: theme.spacing.md,
     padding: '0 12px 100px 12px',
+  },
+  gridDividerItem: {
+    gridColumn: '1 / -1',
   },
 
   refreshIndicator: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, color: theme.colors.textSecondary },

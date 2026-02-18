@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { getMyRequests, deleteRequest } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
@@ -11,6 +11,8 @@ import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import theme from '../../theme';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 function UserRequests() {
   const { user, setShowUserRequests, setCurrentRequest } = useStore();
@@ -59,8 +61,13 @@ function UserRequests() {
         setHasMore(false);
       }
       
-      setRequests([...requests, ...newRequests]);
-      setOffset(offset + LIMIT);
+      setRequests((prev) => {
+        const merged = [...prev, ...newRequests];
+        const byId = new Map();
+        merged.forEach((req) => byId.set(req.id, req));
+        return Array.from(byId.values());
+      });
+      setOffset((prev) => prev + newRequests.length);
     } catch (error) {
       console.error('Ошибка загрузки запросов:', error);
       toast.error('Не удалось загрузить запросы');
@@ -102,7 +109,7 @@ function UserRequests() {
   };
 
   const handleScroll = (e) => {
-    const bottom = e.target.scrollHeight - e.target.scrollTop === e.target.clientHeight;
+    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 2;
     if (bottom && hasMore && !loading) {
       loadRequests();
     }
@@ -125,6 +132,14 @@ function UserRequests() {
     active: requests.filter(r => !r.expires_at || new Date(r.expires_at) > now).length,
     expired: requests.filter(r => r.expires_at && new Date(r.expires_at) <= now).length,
   };
+
+  const requestRows = useMemo(() => (
+    buildFeedSections(
+      filteredRequests,
+      (request) => request.created_at,
+      { getItemKey: (request) => request.id }
+    )
+  ), [filteredRequests]);
 
   return (
     <div style={styles.container} onScroll={handleScroll}>
@@ -155,21 +170,25 @@ function UserRequests() {
       {/* Requests List */}
       <div style={styles.content}>
         {filteredRequests.length > 0 ? (
-          filteredRequests.map((request, idx) => (
-            <div 
-              key={request.id} 
-              style={{
-                animation: `fadeInUp 0.4s ease ${idx * 0.05}s both`
-              }}
-            >
-              <RequestCard 
-                request={request} 
-                currentUserId={user?.id}
-                onClick={handleOpenRequest}
-                onEdit={handleEditRequest}
-                onDelete={handleDeleteRequest}
-              />
-            </div>
+          requestRows.map((row) => (
+            row.type === 'divider' ? (
+              <FeedDateDivider key={row.key} label={row.label} />
+            ) : (
+              <div
+                key={row.key}
+                style={{
+                  animation: `fadeInUp 0.4s ease ${row.index * 0.05}s both`
+                }}
+              >
+                <RequestCard
+                  request={row.item}
+                  currentUserId={user?.id}
+                  onClick={handleOpenRequest}
+                  onEdit={handleEditRequest}
+                  onDelete={handleDeleteRequest}
+                />
+              </div>
+            )
           ))
         ) : (
           <div style={styles.empty}>

@@ -10,16 +10,26 @@ import { useStore } from '../store';
 import PostCardSkeleton from './posts/PostCardSkeleton';
 import theme from '../theme';
 import AppHeader from './shared/AppHeader';
+import FeedDateDivider from './shared/FeedDateDivider';
+import { buildFeedSections } from '../utils/feedDateSections';
 
 function Feed() {
+  const POSTS_PAGE_SIZE = 20;
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
   const [feedAds, setFeedAds] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [requestsCategory, setRequestsCategory] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const postsOffsetRef = useRef(0);
+  const postsLoadingRef = useRef(false);
+  const hasMorePostsRef = useRef(true);
+  const pullToRefreshLockRef = useRef(false);
+  const lastPostCardRef = useRef(null);
+  const postsObserverRef = useRef(null);
   
   const { 
     feedSubTab, 
@@ -122,11 +132,23 @@ function Feed() {
     postsFilters.sort,
   ]);
 
-  const loadPosts = useCallback(async () => {
+  const loadPosts = useCallback(async (reset = false) => {
+    if (postsLoadingRef.current || (!reset && !hasMorePostsRef.current)) return;
+
+    postsLoadingRef.current = true;
     setLoading(true);
     try {
+      if (reset) {
+        postsOffsetRef.current = 0;
+        hasMorePostsRef.current = true;
+        setHasMorePosts(true);
+      }
+
+      const nextOffset = reset ? 0 : postsOffsetRef.current;
       const apiFilters = {
         category: activeCategory === 'all' ? null : activeCategory,
+        skip: nextOffset,
+        limit: POSTS_PAGE_SIZE,
       };
 
       if (stabilizedFilters.location === 'my_university') {
@@ -158,21 +180,39 @@ function Feed() {
         return { ...post, images };
       });
       
-      setPosts(postsWithImages);
+      if (reset) {
+        setPosts(postsWithImages);
+      } else {
+        setPosts((prevPosts) => {
+          const merged = [...prevPosts, ...postsWithImages];
+          const byId = new Map();
+          merged.forEach((post) => byId.set(post.id, post));
+          return Array.from(byId.values());
+        });
+      }
+
+      postsOffsetRef.current = nextOffset + postsWithImages.length;
+      hasMorePostsRef.current = Boolean(data.has_more);
+      setHasMorePosts(hasMorePostsRef.current);
 
       // Подгрузка рекламы
-      try { const ads = await getAdsForFeed(3); setFeedAds(ads || []); } catch { setFeedAds([]); }
+      if (reset) {
+        try { const ads = await getAdsForFeed(3); setFeedAds(ads || []); } catch { setFeedAds([]); }
+      }
     } catch (error) {
       console.error('Error loading posts:', error);
-      setPosts([]);
+      if (reset) {
+        setPosts([]);
+      }
     } finally {
+      postsLoadingRef.current = false;
       setLoading(false);
     }
-  }, [activeCategory, stabilizedFilters]); // ✅ ЗАВИСИТ ОТ СТАБИЛИЗИРОВАННОГО
+  }, [POSTS_PAGE_SIZE, activeCategory, stabilizedFilters]);
 
   // ✅ БЕЗ JSON.stringify
   useEffect(() => {
-    if (feedSubTab === 'posts') loadPosts();
+    if (feedSubTab === 'posts') loadPosts(true);
   }, [feedSubTab, loadPosts]);
 
   useEffect(() => {
@@ -200,27 +240,45 @@ function Feed() {
   }, [viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost]);
 
   // Pull to Refresh БЕЗ ЛИШНИХ ПЕРЕСОЗДАНИЙ
+  const handleRefresh = useCallback(() => {
+    haptic('light');
+    loadPosts(true);
+  }, [loadPosts]);
+
   const startYRef = useRef(0);
   
   useEffect(() => {
     const handleTouchStart = (e) => { 
+      pullToRefreshLockRef.current = false;
       if (window.scrollY === 0) startYRef.current = e.touches[0].clientY; 
     };
     
     const handleTouchMove = (e) => {
-      if (window.scrollY === 0 && e.touches[0].clientY - startYRef.current > 80 && !loading) {
+      if (
+        window.scrollY === 0 &&
+        e.touches[0].clientY - startYRef.current > 80 &&
+        !loading &&
+        !pullToRefreshLockRef.current
+      ) {
+        pullToRefreshLockRef.current = true;
         handleRefresh();
       }
     };
     
+    const handleTouchEnd = () => {
+      pullToRefreshLockRef.current = false;
+    };
+
     window.addEventListener('touchstart', handleTouchStart);
     window.addEventListener('touchmove', handleTouchMove);
+    window.addEventListener('touchend', handleTouchEnd);
     
     return () => {
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [loading]); // ✅ ТОЛЬКО loading
+  }, [loading, handleRefresh]);
 
   const handlePostClick = (postId) => setViewPostId(postId);
 
@@ -239,14 +297,9 @@ function Feed() {
 
   const handleFiltersApply = () => {
     if (feedSubTab === 'posts') {
-      loadPosts();
+      loadPosts(true);
     }
   };
-
-  const handleRefresh = useCallback(() => {
-    haptic('light');
-    loadPosts();
-  }, [loadPosts, haptic]);
 
   const handleTabSwitch = (tab) => {
     if (feedSubTab !== tab) {
@@ -291,7 +344,57 @@ function Feed() {
     return result;
   }, [posts, feedAds]); 
 
+  const postsWithDividers = useMemo(() => {
+    const withContextDate = postsWithAds.map((item, index, arr) => {
+      if (!item?._isAd || item.created_at) return item;
+
+      for (let i = index - 1; i >= 0; i -= 1) {
+        if (arr[i]?.created_at) {
+          return { ...item, _dividerDate: arr[i].created_at };
+        }
+      }
+      return item;
+    });
+
+    return buildFeedSections(
+      withContextDate,
+      (item) => item._dividerDate || item.created_at,
+      { getItemKey: (item) => item.id }
+    );
+  }, [postsWithAds]);
+
   // ✅ МЕМОИЗАЦИЯ ВЫНЕСЕННОГО СТИЛЯ
+  const lastVisiblePostId = useMemo(() => {
+    for (let i = postsWithDividers.length - 1; i >= 0; i -= 1) {
+      if (postsWithDividers[i].type === 'item') {
+        return postsWithDividers[i].item.id;
+      }
+    }
+    return null;
+  }, [postsWithDividers]);
+
+  useEffect(() => {
+    if (feedSubTab !== 'posts' || loading || !hasMorePosts) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !postsLoadingRef.current && hasMorePosts) {
+          loadPosts(false);
+        }
+      },
+      { threshold: 0.1, rootMargin: '200px' }
+    );
+
+    postsObserverRef.current = observer;
+    if (lastPostCardRef.current) observer.observe(lastPostCardRef.current);
+
+    return () => {
+      if (postsObserverRef.current) {
+        postsObserverRef.current.disconnect();
+      }
+    };
+  }, [feedSubTab, hasMorePosts, loading, loadPosts, lastVisiblePostId]);
+
   const postCardWrapperStyle = useMemo(() => ({ marginBottom: 16 }), []);
 
   return (
@@ -345,7 +448,7 @@ function Feed() {
       <div style={styles.content}>
         {feedSubTab === 'posts' ? (
           <>
-            {loading && (
+            {loading && posts.length === 0 && (
               <>
                 <PostCardSkeleton />
                 <PostCardSkeleton />
@@ -360,16 +463,28 @@ function Feed() {
               </div>
             )}
 
-            {!loading && posts.length > 0 && postsWithAds.map((post) => (
-              <div key={post.id} style={postCardWrapperStyle}>
-                 <PostCard 
-                   post={post} 
-                   onClick={post._isAd ? undefined : handlePostClick}
-                   onLikeUpdate={post._isAd ? undefined : handleLikeUpdate}
-                   onPostDeleted={post._isAd ? undefined : handlePostDeleted}
-                 />
-              </div>
+            {posts.length > 0 && postsWithDividers.map((row) => (
+              row.type === 'divider' ? (
+                <FeedDateDivider key={row.key} label={row.label} />
+              ) : (
+                <div
+                  key={row.key}
+                  style={postCardWrapperStyle}
+                  ref={row.item.id === lastVisiblePostId ? lastPostCardRef : null}
+                >
+                  <PostCard
+                    post={row.item}
+                    onClick={row.item._isAd ? undefined : handlePostClick}
+                    onLikeUpdate={row.item._isAd ? undefined : handleLikeUpdate}
+                    onPostDeleted={row.item._isAd ? undefined : handlePostDeleted}
+                  />
+                </div>
+              )
             ))}
+
+            {loading && posts.length > 0 && (
+              <PostCardSkeleton />
+            )}
           </>
         ) : (
           <RequestsFeed 
@@ -383,7 +498,7 @@ function Feed() {
         <CreateContentModal 
           onClose={() => {
             setShowCreateModal(false);
-            loadPosts();
+            loadPosts(true);
           }} 
         />
       )}

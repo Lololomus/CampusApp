@@ -321,7 +321,13 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
                 background: '#EEF2FF'
               }}>
                 {headerInfo.avatarUrl ? (
-                  <img src={headerInfo.avatarUrl} alt="" style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}} />
+                  <img
+                    src={headerInfo.avatarUrl}
+                    alt=""
+                    style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 ) : (
                   <Megaphone size={18} color={theme.colors.primary} />
                 )}
@@ -425,6 +431,8 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
               src={getImageUrl(images[currentImageIndex])}
               alt=""
               style={styles.image}
+              loading="lazy"
+              decoding="async"
             />
 
             {images.length > 1 && (

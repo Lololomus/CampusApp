@@ -1,6 +1,6 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/requests/RequestsFeed.js (ОБНОВЛЕНО) =====
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../../store';
 import { getRequestsFeed, deleteRequest, getRequestById } from '../../api';
 import RequestCard from './RequestCard';
@@ -8,6 +8,8 @@ import RequestCardSkeleton from './RequestCardSkeleton';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import RequestDetailModal from './RequestDetailModal';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 
 function RequestsFeed({ category = 'all', searchQuery = '' }) {
@@ -91,7 +93,12 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
       if (reset) {
         setRequests(newRequests);
       } else {
-        setRequests([...requests, ...newRequests]);
+        setRequests((prev) => {
+          const merged = [...prev, ...newRequests];
+          const byId = new Map();
+          merged.forEach((req) => byId.set(req.id, req));
+          return Array.from(byId.values());
+        });
       }
 
       setHasMore(response.has_more);
@@ -103,13 +110,13 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
       setLoading(false);
       isLoadingRef.current = false;
     }
-  }, [category, requests, setRequests, requestsFilters]); // ✅ ДОБАВИЛИ requestsFilters
+  }, [category, setRequests, requestsFilters]); // ✅ ДОБАВИЛИ requestsFilters
 
 
   // ===== INITIAL LOAD (ОБНОВЛЕНО) =====
   useEffect(() => {
     loadRequests(true);
-  }, [category, requestsFilters]); // ✅ ДОБАВИЛИ requestsFilters
+  }, [loadRequests]); // ✅ ДОБАВИЛИ requestsFilters
 
 
   // ===== INFINITE SCROLL =====
@@ -219,6 +226,18 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
     );
   });
 
+  const requestRows = useMemo(() => (
+    buildFeedSections(
+      filteredRequests,
+      (req) => req.created_at,
+      { getItemKey: (req) => req.id }
+    )
+  ), [filteredRequests]);
+
+  const lastVisibleRequestId = filteredRequests.length
+    ? filteredRequests[filteredRequests.length - 1].id
+    : null;
+
 
   return (
     <div style={styles.container}>
@@ -232,19 +251,23 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
           </>
         ) : filteredRequests.length > 0 ? (
           <>
-            {filteredRequests.map((request, index) => (
-              <div
-                key={request.id}
-                ref={index === filteredRequests.length - 1 ? lastCardRef : null}
-              >
-                <RequestCard
-                  request={request}
-                  onClick={handleCardClick}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  currentUserId={user?.id}
-                />
-              </div>
+            {requestRows.map((row) => (
+              row.type === 'divider' ? (
+                <FeedDateDivider key={row.key} label={row.label} />
+              ) : (
+                <div
+                  key={row.key}
+                  ref={row.item.id === lastVisibleRequestId ? lastCardRef : null}
+                >
+                  <RequestCard
+                    request={row.item}
+                    onClick={handleCardClick}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    currentUserId={user?.id}
+                  />
+                </div>
+              )
             ))}
 
             {loading && hasMore && <RequestCardSkeleton />}

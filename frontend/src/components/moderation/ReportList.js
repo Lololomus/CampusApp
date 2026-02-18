@@ -1,12 +1,14 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/moderation/ReportList.js =====
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Filter, RefreshCw, Inbox } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import { getReports } from '../../api';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import ReportCard from './ReportCard';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 const STATUS_OPTIONS = [
   { id: 'pending', label: 'Ожидают' },
@@ -24,28 +26,44 @@ const TYPE_OPTIONS = [
 ];
 
 function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }) {
+  const PAGE_SIZE = 50;
   const [status, setStatus] = useState('pending');
   const [typeFilter, setTypeFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [reports, setReports] = useState(initialReports);
+  const [reports, setReports] = useState(initialReports || []);
   const [localLoading, setLocalLoading] = useState(false);
+  const [offset, setOffset] = useState((initialReports || []).length);
+  const [hasMore, setHasMore] = useState((initialReports || []).length >= PAGE_SIZE);
+  const loadMoreTriggerRef = useRef(null);
+  const observerRef = useRef(null);
 
   // Sync с props для pending (начальных)
-  React.useEffect(() => {
-    if (status === 'pending') setReports(initialReports);
-  }, [initialReports, status]);
+  useEffect(() => {
+    if (status === 'pending' && typeFilter === 'all') {
+      const incoming = initialReports || [];
+      setReports(incoming);
+      setOffset(incoming.length);
+      setHasMore(incoming.length >= PAGE_SIZE);
+    }
+  }, [PAGE_SIZE, initialReports, status, typeFilter]);
 
   const handleStatusChange = async (newStatus) => {
     hapticFeedback('selection');
     setStatus(newStatus);
     if (newStatus === 'pending') {
-      setReports(initialReports);
+      const incoming = initialReports || [];
+      setReports(incoming);
+      setOffset(incoming.length);
+      setHasMore(incoming.length >= PAGE_SIZE);
       return;
     }
     setLocalLoading(true);
     try {
-      const data = await getReports(newStatus, typeFilter === 'all' ? null : typeFilter, 50, 0);
-      setReports(Array.isArray(data) ? data : data?.items || []);
+      const data = await getReports(newStatus, typeFilter === 'all' ? null : typeFilter, PAGE_SIZE, 0);
+      const items = Array.isArray(data) ? data : data?.items || [];
+      setReports(items);
+      setOffset(items.length);
+      setHasMore(Array.isArray(data) ? items.length >= PAGE_SIZE : Boolean(data?.has_more));
     } catch (err) {
       toast.error('Ошибка загрузки');
       console.error(err);
@@ -59,14 +77,45 @@ function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }
     setTypeFilter(type);
     setLocalLoading(true);
     try {
-      const data = await getReports(status, type === 'all' ? null : type, 50, 0);
-      setReports(Array.isArray(data) ? data : data?.items || []);
+      const data = await getReports(status, type === 'all' ? null : type, PAGE_SIZE, 0);
+      const items = Array.isArray(data) ? data : data?.items || [];
+      setReports(items);
+      setOffset(items.length);
+      setHasMore(Array.isArray(data) ? items.length >= PAGE_SIZE : Boolean(data?.has_more));
     } catch (err) {
       toast.error('Ошибка загрузки');
     } finally {
       setLocalLoading(false);
     }
   };
+
+  const handleLoadMore = useCallback(async () => {
+    if (localLoading || !hasMore) return;
+
+    setLocalLoading(true);
+    try {
+      const data = await getReports(
+        status,
+        typeFilter === 'all' ? null : typeFilter,
+        PAGE_SIZE,
+        offset
+      );
+      const items = Array.isArray(data) ? data : data?.items || [];
+      setReports((prev) => {
+        const merged = [...prev, ...items];
+        const byId = new Map();
+        merged.forEach((report) => byId.set(report.id, report));
+        return Array.from(byId.values());
+      });
+      setOffset((prev) => prev + items.length);
+      setHasMore(Array.isArray(data) ? items.length >= PAGE_SIZE : Boolean(data?.has_more));
+    } catch (err) {
+      toast.error('Ошибка загрузки');
+      console.error(err);
+    } finally {
+      setLocalLoading(false);
+    }
+  }, [PAGE_SIZE, hasMore, localLoading, offset, status, typeFilter]);
 
   const handleProcessed = (reportId) => {
     setReports(prev => prev.filter(r => r.id !== reportId));
@@ -77,7 +126,35 @@ function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }
     ? reports
     : reports.filter(r => r.target_type === typeFilter);
 
-  const isLoading = loading || localLoading;
+  const reportRows = useMemo(() => (
+    buildFeedSections(
+      filteredReports,
+      (report) => report.created_at,
+      { getItemKey: (report, index) => report.id || `report-${index}` }
+    )
+  ), [filteredReports]);
+
+  useEffect(() => {
+    if (!hasMore || localLoading || filteredReports.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !localLoading) {
+          handleLoadMore();
+        }
+      },
+      { threshold: 0.1, rootMargin: '200px' }
+    );
+
+    observerRef.current = observer;
+    if (loadMoreTriggerRef.current) observer.observe(loadMoreTriggerRef.current);
+
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, [filteredReports.length, hasMore, localLoading, handleLoadMore]);
+
+  const isLoading = loading || (localLoading && reports.length === 0);
 
   return (
     <div style={styles.container}>
@@ -136,22 +213,52 @@ function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }
         <div style={styles.emptyState}>
           <Inbox size={40} color={theme.colors.textTertiary} strokeWidth={1.5} />
           <div style={styles.emptyText}>Нет жалоб</div>
-          <button style={styles.refreshBtn} onClick={onRefresh}>
+          <button
+            style={styles.refreshBtn}
+            onClick={() => {
+              if (status === 'pending' && typeFilter === 'all') onRefresh?.();
+              else handleTypeFilter(typeFilter);
+            }}
+          >
             <RefreshCw size={14} />
             <span>Обновить</span>
           </button>
         </div>
       ) : (
         <div style={styles.list}>
-          {filteredReports.map(report => (
-            <ReportCard
-              key={report.id}
-              report={report}
-              onProcessed={handleProcessed}
-              compact={true}
-            />
+          {reportRows.map((row) => (
+            row.type === 'divider' ? (
+              <FeedDateDivider key={row.key} label={row.label} />
+            ) : (
+              <ReportCard
+                key={row.key}
+                report={row.item}
+                onProcessed={handleProcessed}
+                compact={true}
+              />
+            )
           ))}
         </div>
+      )}
+
+      {!loading && hasMore && filteredReports.length > 0 && (
+        <>
+          <div ref={loadMoreTriggerRef} style={styles.loadMoreTrigger} />
+          <button
+            style={styles.loadMoreBtn}
+            onClick={handleLoadMore}
+            disabled={localLoading}
+          >
+            {localLoading ? (
+              <div style={styles.spinnerSmall} />
+            ) : (
+              <>
+                <RefreshCw size={14} />
+                <span>Загрузить ещё</span>
+              </>
+            )}
+          </button>
+        </>
       )}
     </div>
   );
@@ -259,6 +366,32 @@ const styles = {
     fontWeight: 600,
     cursor: 'pointer',
     marginTop: 8,
+  },
+  loadMoreTrigger: {
+    height: 4,
+  },
+  loadMoreBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    width: '100%',
+    padding: '10px',
+    borderRadius: 10,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.textSecondary,
+    border: `1px solid ${theme.colors.border}`,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  spinnerSmall: {
+    width: 16,
+    height: 16,
+    borderRadius: '50%',
+    border: `2px solid ${theme.colors.border}`,
+    borderTopColor: theme.colors.primary,
+    animation: 'spin 0.8s linear infinite',
   },
 };
 

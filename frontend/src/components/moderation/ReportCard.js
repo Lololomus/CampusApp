@@ -192,6 +192,8 @@ function ReportCard({ report, onProcessed, compact = false }) {
                 src={report.content_image}
                 alt=""
                 style={styles.previewImage}
+                loading="lazy"
+                decoding="async"
               />
             )}
           </div>

@@ -9,6 +9,8 @@ import PostCardSkeleton from '../posts/PostCardSkeleton';
 import theme from '../../theme';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 function UserPosts() {
   const { user, setViewPostId, setShowUserPosts, updatedPostId, updatedPostData, clearUpdatedPost } = useStore();
@@ -76,7 +78,7 @@ function UserPosts() {
         const byId = new Map();
         newPosts.forEach((post) => byId.set(post.id, post));
         setPosts(Array.from(byId.values()));
-        setOffset(LIMIT);
+        setOffset(newPosts.length);
       } else {
         setPosts((prev) => {
           const merged = [...prev, ...newPosts];
@@ -127,6 +129,14 @@ function UserPosts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts]);
 
+  const postRows = useMemo(() => (
+    buildFeedSections(
+      filteredPosts,
+      (post) => post.created_at,
+      { getItemKey: (post) => post.id }
+    )
+  ), [filteredPosts]);
+
   const handlePostClick = (postId) => {
     hapticFeedback('light');
     setViewPostId(postId);
@@ -144,7 +154,7 @@ function UserPosts() {
   };
 
   const handleScroll = (e) => {
-    const bottom = e.target.scrollHeight - e.target.scrollTop === e.target.clientHeight;
+    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 2;
     if (bottom && hasMore && !loading) {
       loadPosts();
     }
@@ -196,20 +206,24 @@ function UserPosts() {
             </p>
           </div>
         ) : (
-          filteredPosts.map((post, idx) => (
-            <div
-              key={post.id}
-              style={{
-                animation: `fadeInUp 0.4s ease ${idx * 0.05}s both`,
-              }}
-            >
-              <PostCard
-                post={post}
-                onClick={handlePostClick}
-                onPostDeleted={handlePostDeleted}
-                onLikeUpdate={handleLikeUpdate}
-              />
-            </div>
+          postRows.map((row) => (
+            row.type === 'divider' ? (
+              <FeedDateDivider key={row.key} label={row.label} />
+            ) : (
+              <div
+                key={row.key}
+                style={{
+                  animation: `fadeInUp 0.4s ease ${row.index * 0.05}s both`,
+                }}
+              >
+                <PostCard
+                  post={row.item}
+                  onClick={handlePostClick}
+                  onPostDeleted={handlePostDeleted}
+                  onLikeUpdate={handleLikeUpdate}
+                />
+              </div>
+            )
           ))
         )}
 

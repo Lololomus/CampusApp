@@ -1,6 +1,6 @@
 // ===== 📄 ФАЙЛ: src/components/profile/UserMarketItems.js =====
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom'; // ✅ Добавлено для рендера модалок поверх всего
 import { getMyMarketItems, deleteMarketItem } from '../../api';
 import { useStore } from '../../store';
@@ -14,6 +14,8 @@ import { Z_USER_MARKET_ITEMS } from '../../constants/zIndex';
 import theme from '../../theme';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 function UserMarketItems() {
   const { setShowUserMarketItems } = useStore();
@@ -71,7 +73,7 @@ function UserMarketItems() {
         return [...prev, ...uniqueNewItems];
       });
       
-      setOffset(prev => prev + LIMIT);
+      setOffset(prev => prev + newItems.length);
     } catch (error) {
       console.error('Error loading items:', error);
       toast.error('Не удалось загрузить товары');
@@ -135,6 +137,14 @@ function UserMarketItems() {
     active: items.filter(i => i.status === 'active').length,
     sold: items.filter(i => i.status === 'sold').length,
   };
+
+  const itemRows = useMemo(() => (
+    buildFeedSections(
+      filteredItems,
+      (item) => item.created_at,
+      { getItemKey: (item) => item.id }
+    )
+  ), [filteredItems]);
 
   // ✅ FIX: Рендерим модалки через Portal, чтобы они были поверх родительских трансформаций
   const renderModals = () => {
@@ -209,15 +219,19 @@ function UserMarketItems() {
       {/* Items List */}
       <div style={styles.content}>
         {filteredItems.length > 0 ? (
-          filteredItems.map((item, idx) => (
-            <div key={item.id} style={{ animation: `fadeInUp 0.4s ease ${idx * 0.05}s both` }}>
-              <MyMarketCard 
-                item={item} 
-                onOpen={handleOpenItem}
-                onEdit={handleEdit}
-                onDelete={() => handleDeleteClick(item.id)}
-              />
-            </div>
+          itemRows.map((row) => (
+            row.type === 'divider' ? (
+              <FeedDateDivider key={row.key} label={row.label} />
+            ) : (
+              <div key={row.key} style={{ animation: `fadeInUp 0.4s ease ${row.index * 0.05}s both` }}>
+                <MyMarketCard
+                  item={row.item}
+                  onOpen={handleOpenItem}
+                  onEdit={handleEdit}
+                  onDelete={() => handleDeleteClick(row.item.id)}
+                />
+              </div>
+            )
           ))
         ) : (
           <div style={styles.empty}>

@@ -241,7 +241,11 @@ export async function getUserStats(userId) {
 export async function getPosts(filters = {}) {
   try {
     const telegram_id = getTelegramId();
-    const params = { telegram_id, skip: 0, limit: 50 };
+    const params = {
+      telegram_id,
+      skip: Number.isFinite(filters.skip) ? filters.skip : 0,
+      limit: Number.isFinite(filters.limit) ? filters.limit : 20,
+    };
     
     if (filters.category && filters.category !== 'all') {
       params.category = filters.category;

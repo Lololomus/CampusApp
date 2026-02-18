@@ -104,7 +104,7 @@ function ProfileMiniCard({
     <div style={styles.headerContainer}>
       <div style={styles.headerTop}>
         {avatarUrl ? (
-          <img src={avatarUrl} alt="" style={styles.headerAvatarImage} />
+          <img src={avatarUrl} alt="" style={styles.headerAvatarImage} loading="lazy" decoding="async" />
         ) : (
           <div style={{ ...styles.headerAvatarFallback, background: fallbackAvatarColor }}>{initial}</div>
         )}

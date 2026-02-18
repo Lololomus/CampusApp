@@ -1,11 +1,13 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/moderation/ModerationHistory.js =====
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Clock, Trash2, Ban, Pin, RefreshCw } from 'lucide-react';
 import { getModerationLogs } from '../../api';
 import { useStore } from '../../store';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 const ACTION_CONFIG = {
   delete_post: { icon: Trash2, label: 'Удалён пост', color: '#f59e0b' },
@@ -30,8 +32,20 @@ function ModerationHistory() {
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const loadMoreTriggerRef = useRef(null);
+  const observerRef = useRef(null);
+
+  const logRows = useMemo(() => (
+    buildFeedSections(
+      logs,
+      (log) => log.created_at,
+      { getItemKey: (log, index) => log.id || `history-log-${index}` }
+    )
+  ), [logs]);
 
   const loadLogs = async (reset = false) => {
+    if (loading && !reset) return;
+
     setLoading(true);
     try {
       const newOffset = reset ? 0 : offset;
@@ -60,6 +74,28 @@ function ModerationHistory() {
   useEffect(() => {
     loadLogs(true);
   }, []);
+
+  useEffect(() => {
+    if (!hasMore || loading || logs.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading) {
+          loadLogs(false);
+        }
+      },
+      { threshold: 0.1, rootMargin: '200px' }
+    );
+
+    observerRef.current = observer;
+    if (loadMoreTriggerRef.current) observer.observe(loadMoreTriggerRef.current);
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [hasMore, loading, logs.length, offset, user?.id]);
 
   const formatTime = (dateStr) => {
     if (!dateStr) return '';
@@ -101,7 +137,12 @@ function ModerationHistory() {
   return (
     <div style={styles.container}>
       <div style={styles.list}>
-        {logs.map((log, i) => {
+        {logRows.map((row) => {
+          if (row.type === 'divider') {
+            return <FeedDateDivider key={row.key} label={row.label} />;
+          }
+
+          const log = row.item;
           const actionCfg = ACTION_CONFIG[log.action] || {
             icon: Clock, label: log.action, color: '#6b7280'
           };
@@ -110,7 +151,7 @@ function ModerationHistory() {
           const StatusIcon = statusCfg.icon;
 
           return (
-            <div key={log.id || i} style={styles.logItem}>
+            <div key={row.key} style={styles.logItem}>
               {/* Left icon */}
               <div style={{ ...styles.iconWrap, backgroundColor: `${actionCfg.color}15` }}>
                 <ActionIcon size={16} color={actionCfg.color} />
@@ -140,6 +181,10 @@ function ModerationHistory() {
       </div>
 
       {/* Load more */}
+      {hasMore && (
+        <div ref={loadMoreTriggerRef} style={styles.loadMoreTrigger} />
+      )}
+
       {hasMore && (
         <button
           style={styles.loadMoreBtn}
@@ -240,6 +285,9 @@ const styles = {
     fontWeight: 600,
     cursor: 'pointer',
     marginTop: 12,
+  },
+  loadMoreTrigger: {
+    height: 4,
   },
 
   loadingState: {

@@ -1,6 +1,6 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/moderation/ActionFeed.js =====
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   RotateCcw, Trash2, Ban, Pin, CheckCircle, Eye,
   Filter, RefreshCw, AlertTriangle, Clock, Shield
@@ -9,6 +9,8 @@ import { getModerationLogs } from '../../api';
 import { toast } from '../shared/Toast';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 const ACTION_CONFIG = {
   delete_post: { icon: Trash2, label: 'Удалил пост', color: '#f59e0b', heavy: false },
@@ -33,8 +35,20 @@ function ActionFeed({ onReverse }) {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [reversingId, setReversingId] = useState(null);
+  const loadMoreTriggerRef = useRef(null);
+  const observerRef = useRef(null);
+
+  const logRows = useMemo(() => (
+    buildFeedSections(
+      logs,
+      (log) => log.created_at,
+      { getItemKey: (log, index) => log.id || `log-${index}` }
+    )
+  ), [logs]);
 
   const loadLogs = useCallback(async (reset = false) => {
+    if (loading && !reset) return;
+
     setLoading(true);
     try {
       const params = {
@@ -65,11 +79,33 @@ function ActionFeed({ onReverse }) {
     } finally {
       setLoading(false);
     }
-  }, [offset, filters]);
+  }, [loading, offset, filters]);
 
   useEffect(() => {
     loadLogs(true);
   }, [filters.moderator_id, filters.action, filters.heavyOnly]);
+
+  useEffect(() => {
+    if (!hasMore || loading || logs.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading) {
+          loadLogs(false);
+        }
+      },
+      { threshold: 0.1, rootMargin: '200px' }
+    );
+
+    observerRef.current = observer;
+    if (loadMoreTriggerRef.current) observer.observe(loadMoreTriggerRef.current);
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [hasMore, loading, logs.length, loadLogs]);
 
   const handleReverse = async (log) => {
     hapticFeedback('heavy');
@@ -140,7 +176,12 @@ function ActionFeed({ onReverse }) {
         </div>
       ) : (
         <div style={styles.feed}>
-          {logs.map((log, i) => {
+          {logRows.map((row) => {
+            if (row.type === 'divider') {
+              return <FeedDateDivider key={row.key} label={row.label} />;
+            }
+
+            const log = row.item;
             const cfg = ACTION_CONFIG[log.action] || {
               icon: Clock, label: log.action, color: '#6b7280', heavy: false
             };
@@ -150,7 +191,7 @@ function ActionFeed({ onReverse }) {
 
             return (
               <div
-                key={log.id || i}
+                key={row.key}
                 style={{
                   ...styles.feedItem,
                   opacity: isReversed ? 0.5 : 1,
@@ -207,6 +248,9 @@ function ActionFeed({ onReverse }) {
       )}
 
       {/* Load more */}
+      {hasMore && logs.length > 0 && (
+        <div ref={loadMoreTriggerRef} style={styles.loadMoreTrigger} />
+      )}
       {hasMore && logs.length > 0 && (
         <button
           style={styles.loadMoreBtn}
@@ -359,6 +403,9 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadMoreTrigger: {
+    height: 4,
   },
 
   loadingState: {

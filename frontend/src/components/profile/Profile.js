@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/components/profile/Profile.js =====
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Edit2, Grid, ShoppingBag, FileText, Share2, Heart, 
   MessageCircle, Calendar, Building2, Users, Award, ChevronRight,
@@ -27,6 +27,8 @@ import EditMarketItemModal from '../market/EditMarketItemModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import RequestDetailModal from '../requests/RequestDetailModal';
 import MarketDetail from '../market/MarketDetail';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
@@ -130,6 +132,29 @@ function Profile() {
 
   const activeTabIndex = tabs.findIndex(t => t.id === activeTab);
   const activeColor = TAB_COLORS[activeTab];
+
+  const previewPostsRows = useMemo(
+    () => buildFeedSections(posts, (post) => post.created_at, { getItemKey: (post) => post.id }),
+    [posts]
+  );
+
+  const previewRequestsRows = useMemo(
+    () => buildFeedSections(
+      requests.slice(0, 3),
+      (request) => request.created_at,
+      { getItemKey: (request) => request.id }
+    ),
+    [requests]
+  );
+
+  const previewMarketRows = useMemo(
+    () => buildFeedSections(
+      marketItems.slice(0, 4),
+      (item) => item.created_at,
+      { getItemKey: (item) => item.id }
+    ),
+    [marketItems]
+  );
 
   const handleOpenMyPosts = () => {
     hapticFeedback('medium');
@@ -364,15 +389,19 @@ function Profile() {
               
               {posts.length > 0 ? (
                 <div style={styles.listGap}>
-                  {posts.map(post => (
-                    <PostCard
-                      key={post.id}
-                      post={post}
-                      onClick={handlePostClick}
-                      onPostDeleted={(postId) => {
-                        setPosts(prev => prev.filter(p => p.id !== postId));
-                      }}
-                    />
+                  {previewPostsRows.map((row) => (
+                    row.type === 'divider' ? (
+                      <FeedDateDivider key={row.key} label={row.label} />
+                    ) : (
+                      <PostCard
+                        key={row.key}
+                        post={row.item}
+                        onClick={handlePostClick}
+                        onPostDeleted={(postId) => {
+                          setPosts(prev => prev.filter(p => p.id !== postId));
+                        }}
+                      />
+                    )
                   ))}
                 </div>
               ) : (
@@ -395,15 +424,19 @@ function Profile() {
               
               {requests.length > 0 ? (
                 <div style={styles.listGap}>
-                  {requests.slice(0, 3).map(req => (
-                    <RequestCard
-                      key={req.id}
-                      request={req}
-                      currentUserId={user?.id}
-                      onClick={handleRequestClick}
-                      onEdit={handleEditRequest}
-                      onDelete={handleDeleteRequest}
-                    />
+                  {previewRequestsRows.map((row) => (
+                    row.type === 'divider' ? (
+                      <FeedDateDivider key={row.key} label={row.label} />
+                    ) : (
+                      <RequestCard
+                        key={row.key}
+                        request={row.item}
+                        currentUserId={user?.id}
+                        onClick={handleRequestClick}
+                        onEdit={handleEditRequest}
+                        onDelete={handleDeleteRequest}
+                      />
+                    )
                   ))}
                 </div>
               ) : (
@@ -426,14 +459,18 @@ function Profile() {
 
               {marketItems.length > 0 ? (
                 <div style={styles.listGap}>
-                  {marketItems.slice(0, 4).map(item => (
-                    <MyMarketCard 
-                      key={item.id} 
-                      item={item}
-                      onOpen={handleMarketItemOpen}
-                      onEdit={handleEditMarketItem}
-                      onDelete={handleDeleteMarketItem}
-                    />
+                  {previewMarketRows.map((row) => (
+                    row.type === 'divider' ? (
+                      <FeedDateDivider key={row.key} label={row.label} />
+                    ) : (
+                      <MyMarketCard
+                        key={row.key}
+                        item={row.item}
+                        onOpen={handleMarketItemOpen}
+                        onEdit={handleEditMarketItem}
+                        onDelete={handleDeleteMarketItem}
+                      />
+                    )
                   ))}
                 </div>
               ) : (
