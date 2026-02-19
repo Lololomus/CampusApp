@@ -52,7 +52,16 @@ app.add_middleware(
 
 
 PUBLIC_PATHS = ("/", "/health", "/openapi.json")
-public_prefixes = ["/docs", "/redoc", "/uploads", "/auth/telegram/login", "/auth/refresh", "/auth/logout"]
+public_prefixes = [
+    "/docs",
+    "/redoc",
+    "/uploads",
+    "/auth/telegram/login",
+    "/auth/refresh",
+    "/auth/logout",
+    "/notifications/queue",
+    "/notifications/followups",
+]
 if settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
     public_prefixes.append("/dev/auth")
 PUBLIC_PREFIXES = tuple(public_prefixes)
@@ -2045,5 +2054,4 @@ def generate_mock_dating_data(
         "matches": matches_created,
         "regular_likes": "2 лайка без взаимности"
     }
-
 

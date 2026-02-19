@@ -4,6 +4,7 @@ import {
   registerUser,
   loginWithTelegram,
   refreshToken,
+  ensureAccessToken,
   getCurrentUser,
   logoutUser,
   setAccessToken,
@@ -550,39 +551,59 @@ export const useStore = create(
       // ACTIONS
       bootstrapAuth: async () => {
         set({ authStatus: 'loading' });
-        try {
-          const loginData = await loginWithTelegram();
-          setAccessToken(loginData.access_token);
+        const setRegisteredState = (user) => {
+          set({
+            user,
+            isRegistered: true,
+            authStatus: 'ready',
+            showAuthModal: false,
+          });
+        };
 
-          if (loginData.user) {
-            set({
-              user: loginData.user,
-              isRegistered: true,
-              authStatus: 'ready',
-              showAuthModal: false,
-            });
-          } else {
-            set({
-              user: {},
-              isRegistered: false,
-              authStatus: 'ready',
-              showAuthModal: true,
-              activeTab: 'feed',
-            });
-          }
-        } catch (loginError) {
+        const setUnregisteredState = () => {
+          set({
+            user: {},
+            isRegistered: false,
+            authStatus: 'ready',
+            showAuthModal: true,
+            activeTab: 'feed',
+          });
+        };
+
+        const loadCurrentUserAfterToken = async () => {
           try {
-            const refreshed = await refreshToken();
-            setAccessToken(refreshed.access_token);
             const me = await getCurrentUser();
-            set({
-              user: me || {},
-              isRegistered: !!me,
-              authStatus: 'ready',
-              showAuthModal: !me,
-              activeTab: me ? useStore.getState().activeTab : 'feed',
-            });
-          } catch (refreshError) {
+            if (me) {
+              setRegisteredState(me);
+            } else {
+              setUnregisteredState();
+            }
+          } catch (error) {
+            const status = error?.response?.status;
+            const detail = String(error?.response?.data?.detail || '').toLowerCase();
+            if (status === 404 && detail.includes('user not found')) {
+              setUnregisteredState();
+              return;
+            }
+            throw error;
+          }
+        };
+
+        try {
+          await refreshToken();
+          await loadCurrentUserAfterToken();
+          return;
+        } catch (refreshError) {
+          try {
+            const loginData = await loginWithTelegram();
+            setAccessToken(loginData.access_token);
+
+            if (loginData.user) {
+              setRegisteredState(loginData.user);
+            } else {
+              setUnregisteredState();
+            }
+          } catch (loginError) {
             setAccessToken(null);
             set({
               user: {},
@@ -603,6 +624,8 @@ export const useStore = create(
 
       finishRegistration: async (data) => {
         try {
+          await ensureAccessToken();
+
           const fullData = {
             ...useStore.getState().onboardingData,
             ...data
@@ -627,7 +650,10 @@ export const useStore = create(
           });
         } catch (error) {
           console.error('❌ Ошибка регистрации:', error);
-          const message = error.response?.data?.detail || error.message || 'Не удалось зарегистрироваться. Попробуйте снова.';
+          const detail = String(error?.response?.data?.detail || '');
+          const message = detail.toLowerCase().includes('telegram auth data expired')
+            ? 'Сессия Telegram истекла. Закройте и заново откройте Mini App.'
+            : (detail || error.message || 'Не удалось зарегистрироваться. Попробуйте снова.');
           get().addToast({
             type: 'error',
             message,

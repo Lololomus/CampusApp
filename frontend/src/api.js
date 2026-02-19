@@ -156,6 +156,18 @@ export async function loginWithTelegram() {
   return response.data;
 }
 
+export async function ensureAccessToken() {
+  if (hasAccessToken()) return accessToken;
+
+  try {
+    const refreshed = await refreshToken();
+    return refreshed.access_token;
+  } catch {
+    const loginData = await loginWithTelegram();
+    return loginData.access_token;
+  }
+}
+
 export async function refreshToken() {
   const response = await api.post('/auth/refresh');
   setAccessToken(response.data.access_token);
@@ -187,9 +199,7 @@ export async function devResetUser(telegramId, hard = false) {
 
 export async function registerUser(userData) {
   try {
-    if (!hasAccessToken()) {
-      await loginWithTelegram();
-    }
+    await ensureAccessToken();
     const response = await api.post('/auth/register', userData);
     return response.data;
   } catch (error) {

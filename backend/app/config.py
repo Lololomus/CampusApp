@@ -6,6 +6,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
+PROD_ENV_VALUES = {"prod", "production"}
+
 # Получаем путь к папке, где лежит этот файл (backend/app)
 current_dir = Path(__file__).resolve().parent
 # Поднимаемся на 2 уровня вверх: app -> backend -> CampusApp
@@ -34,7 +36,7 @@ class Settings(BaseModel):
     jwt_alg: str = Field(default="HS256")
     access_ttl_min: int = Field(default=15)
     refresh_ttl_days: int = Field(default=30)
-    auth_max_skew_seconds: int = Field(default=120)
+    auth_max_skew_seconds: int = Field(default=1800)
 
     # --- Настройки фронтенда и CORS ---
     cors_origins: List[str] = Field(default_factory=list)
@@ -48,12 +50,13 @@ class Settings(BaseModel):
 
     @property
     def is_prod(self) -> bool:
-        return self.app_env.lower() == "prod"
+        return self.app_env.lower() in PROD_ENV_VALUES
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     app_env = os.getenv("APP_ENV", "dev").lower()
+    is_prod_env = app_env in PROD_ENV_VALUES
 
     # Парсим список доменов
     cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
@@ -68,19 +71,19 @@ def get_settings() -> Settings:
     # Ищем секрет в разных местах
     secret_key = os.getenv("SECRET_KEY") or os.getenv("JWT_SECRET")
     if not secret_key:
-        if app_env == "prod":
+        if is_prod_env:
             raise RuntimeError("SECRET_KEY/JWT_SECRET must be set when APP_ENV=prod")
         secret_key = "unsafe-secret-key"
 
     bot_secret = os.getenv("BOT_SECRET")
     if not bot_secret:
-        if app_env == "prod":
+        if is_prod_env:
             raise RuntimeError("BOT_SECRET must be set when APP_ENV=prod")
         bot_secret = "dev-bot-secret"
 
     sql_echo_raw = os.getenv("SQL_ECHO")
     if sql_echo_raw is None:
-        sql_echo = app_env != "prod"
+        sql_echo = not is_prod_env
     else:
         sql_echo = sql_echo_raw.strip().lower() in {"1", "true", "yes", "on"}
 
@@ -97,7 +100,7 @@ def get_settings() -> Settings:
         jwt_alg=os.getenv("JWT_ALG", "HS256"),
         access_ttl_min=int(os.getenv("ACCESS_TTL_MIN", "15")),
         refresh_ttl_days=int(os.getenv("REFRESH_TTL_DAYS", "30")),
-        auth_max_skew_seconds=int(os.getenv("AUTH_MAX_SKEW_SECONDS", "120")),
+        auth_max_skew_seconds=int(os.getenv("AUTH_MAX_SKEW_SECONDS", "1800")),
         
         cors_origins=cors_list,
         cookie_secure=os.getenv("COOKIE_SECURE", "false").lower() == "true",
