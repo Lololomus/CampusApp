@@ -8,19 +8,8 @@ from keyboards.inline import (
 
 
 def format_welcome() -> dict:
-    """Welcome-сообщение при /start"""
-    text = (
-        "👋 <b>Привет! Я бот CampusApp</b>\n"
-        "\n"
-        "Буду присылать тебе:\n"
-        "🎉 Матчи и лайки\n"
-        "💬 Комментарии и ответы\n"
-        "📦 Отклики на товары и запросы\n"
-        "🔥 Достижения твоих постов\n"
-        "\n"
-        "Настроить уведомления можно в приложении:\n"
-        "Профиль → ⚙️ Настройки"
-    )
+    """Welcome message for /start."""
+    text = "Добро пожаловать в CampusApp!"
     return {"text": text, "reply_markup": welcome_kb()}
 
 

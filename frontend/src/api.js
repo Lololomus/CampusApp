@@ -22,6 +22,10 @@ export function setAccessToken(token) {
   accessToken = token || null;
 }
 
+export function hasAccessToken() {
+  return Boolean(accessToken);
+}
+
 function parseJwtPayload(token) {
   if (!token) return null;
   try {
@@ -145,7 +149,7 @@ api.interceptors.response.use(
 export async function loginWithTelegram() {
   const init_data = getInitData();
   if (!init_data) {
-    throw new Error('Telegram initData is missing');
+    throw new Error('Telegram initData is missing. Open the app from Telegram bot.');
   }
   const response = await api.post('/auth/telegram/login', { init_data });
   setAccessToken(response.data.access_token);
@@ -183,6 +187,9 @@ export async function devResetUser(telegramId, hard = false) {
 
 export async function registerUser(userData) {
   try {
+    if (!hasAccessToken()) {
+      await loginWithTelegram();
+    }
     const response = await api.post('/auth/register', userData);
     return response.data;
   } catch (error) {

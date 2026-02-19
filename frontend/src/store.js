@@ -627,7 +627,7 @@ export const useStore = create(
           });
         } catch (error) {
           console.error('❌ Ошибка регистрации:', error);
-          const message = error.response?.data?.detail || 'Не удалось зарегистрироваться. Попробуйте снова.';
+          const message = error.response?.data?.detail || error.message || 'Не удалось зарегистрироваться. Попробуйте снова.';
           get().addToast({
             type: 'error',
             message,
