@@ -12,6 +12,7 @@ import theme from '../theme';
 import AppHeader from './shared/AppHeader';
 import FeedDateDivider from './shared/FeedDateDivider';
 import { buildFeedSections } from '../utils/feedDateSections';
+import { hapticFeedback } from '../utils/telegram';
 
 function Feed() {
   const POSTS_PAGE_SIZE = 20;
@@ -45,9 +46,7 @@ function Feed() {
   } = useStore();
 
   const haptic = (type = 'light') => {
-    if (window.Telegram?.WebApp?.HapticFeedback) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
-    }
+    hapticFeedback(type);
   };
 
   const postCategories = [

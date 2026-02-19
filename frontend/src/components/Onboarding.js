@@ -3,11 +3,12 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Camera, User, AtSign, Search, GraduationCap, Building2, ChevronLeft, X } from 'lucide-react';
 import { useStore } from '../store';
-import { hapticFeedback, getTelegramUser } from '../utils/telegram';
+import { hapticFeedback, getTelegramUser, isTelegramSDKAvailable } from '../utils/telegram';
 import { uploadUserAvatar } from '../api';
 import { toast } from './shared/Toast';
 import theme from '../theme';
 import { Z_ONBOARDING_MAIN } from '../constants/zIndex';
+import { useTelegramScreen } from './shared/telegram/useTelegramScreen';
 import {
   CAMPUSES, COURSES, searchCampuses, getFacultiesForCampus,
   ONBOARDING_LIMITS,
@@ -24,11 +25,27 @@ function Onboarding() {
 
   const [direction, setDirection] = useState('forward');
   const [educationDraft, setEducationDraft] = useState({});
+  const isTelegram = useMemo(() => isTelegramSDKAvailable(), []);
 
   const goToStep = useCallback((step, forward = true) => {
     setDirection(forward ? 'forward' : 'backward');
     setOnboardingStep(step);
   }, [setOnboardingStep]);
+
+  const handleNativeBack = useCallback(() => {
+    if (onboardingStep > 1) {
+      goToStep(onboardingStep - 1, false);
+    }
+  }, [goToStep, onboardingStep]);
+
+  useTelegramScreen({
+    id: 'onboarding-flow',
+    priority: 3000,
+    back: {
+      visible: onboardingStep > 1,
+      onClick: handleNativeBack,
+    },
+  });
 
   const renderStep = () => {
     const animClass = direction === 'forward' ? 'onb-slide-right' : 'onb-slide-left';
@@ -53,6 +70,7 @@ function Onboarding() {
               setEducationDraft={setEducationDraft}
               onBack={() => goToStep(1, false)}
               onFinish={finishRegistration}
+              showLocalBackButton={!isTelegram}
             />
           </div>
         );
@@ -272,7 +290,14 @@ function StepAboutYou({ onboardingData, setOnboardingData, onNext }) {
 // Step 2: campus + faculty + course + group
 // ========================================
 
-function StepEducation({ onboardingData, educationDraft, setEducationDraft, onBack, onFinish }) {
+function StepEducation({
+  onboardingData,
+  educationDraft,
+  setEducationDraft,
+  onBack,
+  onFinish,
+  showLocalBackButton = true,
+}) {
   const resolveCampusById = useCallback((campusId) => {
     if (!campusId) return null;
     return CAMPUSES.find((campus) => campus.id === campusId) || null;
@@ -360,6 +385,14 @@ function StepEducation({ onboardingData, educationDraft, setEducationDraft, onBa
     onBack();
   };
 
+  const localBackControl = showLocalBackButton ? (
+    <button style={styles.backButton} className="onb-pressable" onClick={handleBack}>
+      <ChevronLeft size={22} color={theme.colors.text} />
+    </button>
+  ) : (
+    <div style={styles.backButtonSpacer} />
+  );
+
   const handleResetCampus = () => {
     hapticFeedback('light');
     setSelectedCampus(null);
@@ -433,11 +466,9 @@ function StepEducation({ onboardingData, educationDraft, setEducationDraft, onBa
         <div style={styles.stepShell}>
           <div style={styles.stepTopZone}>
             <div style={styles.stepHeader}>
-              <button style={styles.backButton} className="onb-pressable" onClick={handleBack}>
-                <ChevronLeft size={22} color={theme.colors.text} />
-              </button>
+              {localBackControl}
               <div style={styles.stepIndicator}>Шаг 2 из 2</div>
-              <div style={{ width: 40 }} />
+              <div style={styles.backButtonSpacer} />
             </div>
 
             <div style={styles.stepTitle}>
@@ -512,11 +543,9 @@ function StepEducation({ onboardingData, educationDraft, setEducationDraft, onBa
       <div style={styles.stepShell}>
         <div style={styles.stepTopZone}>
           <div style={styles.stepHeader}>
-            <button style={styles.backButton} className="onb-pressable" onClick={handleBack}>
-              <ChevronLeft size={22} color={theme.colors.text} />
-            </button>
+            {localBackControl}
             <div style={styles.stepIndicator}>Шаг 2 из 2</div>
-            <div style={{ width: 40 }} />
+            <div style={styles.backButtonSpacer} />
           </div>
 
           <div style={styles.selectedCampus} className="onb-fade-up">
@@ -683,16 +712,21 @@ const styles = {
     backgroundColor: theme.colors.bg,
     zIndex: Z_ONBOARDING_MAIN,
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     overflowY: 'auto',
     overflowX: 'hidden',
-    padding: `${theme.spacing.xl}px`,
+    paddingTop: `calc(${theme.spacing.lg}px + var(--screen-top-offset))`,
+    paddingBottom: `calc(${theme.spacing.lg}px + var(--screen-bottom-offset))`,
+    paddingLeft: `${theme.spacing.xl}px`,
+    paddingRight: `${theme.spacing.xl}px`,
+    boxSizing: 'border-box',
   },
   container: {
     width: '100%',
     maxWidth: 500,
-    paddingBottom: 40,
+    paddingBottom: 0,
+    minHeight: 0,
     backfaceVisibility: 'hidden',
     WebkitBackfaceVisibility: 'hidden',
     WebkitFontSmoothing: 'antialiased',
@@ -710,8 +744,8 @@ const styles = {
   stepShell: {
     display: 'flex',
     flexDirection: 'column',
-    height: `min(760px, calc(100dvh - ${theme.spacing.xl * 2}px))`,
-    minHeight: `min(640px, calc(100dvh - ${theme.spacing.xl * 2}px))`,
+    height: `min(760px, calc(var(--tg-app-viewport-stable-height, 100dvh) - ${theme.spacing.lg * 2}px - var(--screen-top-offset) - var(--screen-bottom-offset)))`,
+    minHeight: `min(640px, calc(var(--tg-app-viewport-stable-height, 100dvh) - ${theme.spacing.lg * 2}px - var(--screen-top-offset) - var(--screen-bottom-offset)))`,
     width: '100%',
     minWidth: 0,
   },
@@ -755,6 +789,11 @@ const styles = {
     minHeight: 40,
     borderRadius: theme.radius.sm,
     transition: `transform ${theme.transitions.fast}, opacity ${theme.transitions.fast}`,
+  },
+  backButtonSpacer: {
+    width: 40,
+    height: 40,
+    flexShrink: 0,
   },
   stepIndicator: {
     fontSize: theme.fontSize.sm,

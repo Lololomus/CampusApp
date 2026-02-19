@@ -12,6 +12,7 @@ import EditMarketItemModal from './EditMarketItemModal';
 import theme from '../../theme';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
+import { hapticFeedback } from '../../utils/telegram';
 
 const Market = () => {
   const { 
@@ -197,7 +198,7 @@ const Market = () => {
   }, [refreshing, loading]); // ✅ ТОЛЬКО НУЖНЫЕ ЗАВИСИМОСТИ
 
   // ===== HANDLERS =====
-  const haptic = (type) => window.Telegram?.WebApp?.HapticFeedback?.impactOccurred(type);
+  const haptic = (type = 'light') => hapticFeedback(type);
 
   const handleRefresh = useCallback(() => { 
     haptic('light'); 

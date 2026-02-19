@@ -6,6 +6,8 @@ const listeners = {
   secondary: null,
 };
 let telegramEventsBound = false;
+const IMPACT_STYLES = new Set(['light', 'medium', 'heavy', 'rigid', 'soft']);
+const NOTIFICATION_TYPES = new Set(['success', 'warning', 'error']);
 
 function toPx(value) {
   const numeric = Number(value);
@@ -240,7 +242,37 @@ export function getTelegramUser() {
 
 export function hapticFeedback(type = 'light') {
   const tg = getTelegramWebApp();
-  tg?.HapticFeedback?.impactOccurred?.(type);
+  const haptic = tg?.HapticFeedback;
+  if (!haptic) return false;
+
+  const normalizedType = typeof type === 'string' ? type.toLowerCase() : 'light';
+
+  try {
+    if (normalizedType === 'selection') {
+      if (typeof haptic.selectionChanged === 'function') {
+        haptic.selectionChanged();
+      } else {
+        haptic.impactOccurred?.('light');
+      }
+      return true;
+    }
+
+    if (NOTIFICATION_TYPES.has(normalizedType)) {
+      if (typeof haptic.notificationOccurred === 'function') {
+        haptic.notificationOccurred(normalizedType);
+      } else {
+        haptic.impactOccurred?.('medium');
+      }
+      return true;
+    }
+
+    const impactStyle = IMPACT_STYLES.has(normalizedType) ? normalizedType : 'light';
+    haptic.impactOccurred?.(impactStyle);
+    return true;
+  } catch (error) {
+    console.warn('Telegram haptic feedback failed:', error);
+    return false;
+  }
 }
 
 export function setBackButton(config = {}) {

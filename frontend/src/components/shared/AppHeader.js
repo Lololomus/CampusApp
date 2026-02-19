@@ -3,12 +3,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Search, Filter, X } from 'lucide-react';
 import theme from '../../theme';
-
-const hapticFeedback = (type = 'light') => {
-  if (window.Telegram?.WebApp?.HapticFeedback) {
-    window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
-  }
-};
+import { hapticFeedback } from '../../utils/telegram';
 
 const AppHeader = ({
   title = '',
