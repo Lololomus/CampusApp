@@ -598,10 +598,15 @@ const styles = {
   },
 
   footer: {
+    position: 'sticky',
+    bottom: 0,
     display: 'flex',
     gap: theme.spacing.md,
     marginTop: theme.spacing.md,
+    marginBottom: `calc(-1 * var(--screen-bottom-offset))`,
     paddingTop: theme.spacing.lg,
+    paddingBottom: `calc(${theme.spacing.md}px + var(--screen-bottom-offset))`,
+    background: theme.colors.bg,
     borderTop: `1px solid ${theme.colors.border}`,
   },
 

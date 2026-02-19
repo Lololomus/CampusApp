@@ -141,7 +141,7 @@ const AppHeader = ({
       backdropFilter: transparent ? 'blur(20px)' : 'none',
       WebkitBackdropFilter: transparent ? 'blur(20px)' : 'none',
       borderBottom: `1px solid ${theme.colors.border}`,
-      paddingTop: 'env(safe-area-inset-top, 0px)',
+      paddingTop: 'var(--screen-top-offset)',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     },
     

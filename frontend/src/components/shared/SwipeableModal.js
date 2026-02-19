@@ -109,7 +109,7 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: `${theme.spacing.md}px ${theme.spacing.xl}px ${theme.spacing.xl}px`,
+            padding: `${theme.spacing.md}px ${theme.spacing.xl}px calc(${theme.spacing.xl}px + var(--screen-bottom-offset))`,
           }}
           onTouchStart={(e) => e.stopPropagation()} 
           onMouseDown={(e) => e.stopPropagation()}

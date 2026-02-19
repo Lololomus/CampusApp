@@ -52,7 +52,7 @@ const styles = {
     top: 0,
     zIndex: 105,
     minHeight: 'var(--drilldown-header-height)',
-    paddingTop: 'env(safe-area-inset-top, 0px)',
+    paddingTop: 'var(--screen-top-offset)',
     background: theme.colors.bgSecondary,
     borderBottom: `1px solid ${theme.colors.border}`,
     backdropFilter: 'blur(12px)',

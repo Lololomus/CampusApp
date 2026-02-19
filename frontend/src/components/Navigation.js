@@ -200,7 +200,7 @@ const styles = {
     height: 64,
     backgroundColor: theme.colors.bgSecondary,
     borderTop: `1px solid ${theme.colors.border}`,
-    paddingBottom: 'env(safe-area-inset-bottom)',
+    paddingBottom: 'var(--screen-bottom-offset)',
     zIndex: Z_NAVIGATION,
   },
 

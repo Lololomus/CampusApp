@@ -173,13 +173,13 @@ function App() {
 
 const styles = {
   app: {
-    minHeight: '100vh',
+    minHeight: 'var(--tg-app-viewport-stable-height, 100vh)',
     backgroundColor: '#121212',
     color: '#fff',
-    paddingBottom: '80px',
+    paddingBottom: 'calc(80px + var(--screen-bottom-offset))',
   },
   loading: {
-    minHeight: '100vh',
+    minHeight: 'var(--tg-app-viewport-stable-height, 100vh)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
