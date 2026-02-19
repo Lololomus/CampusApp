@@ -8,7 +8,6 @@
 # - POST /notifications/followups/{id}/sent — подтверждение отправки
 
 import json
-import os
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -17,17 +16,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, crud
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
-BOT_SECRET = os.getenv("BOT_SECRET", "bot-secret-key")
-
-
 def _verify_bot(bot_secret: str = Query(...)):
     """Простая проверка авторизации бота"""
-    if bot_secret != BOT_SECRET:
+    if bot_secret != get_settings().bot_secret:
         raise HTTPException(status_code=403, detail="Invalid bot secret")
 
 

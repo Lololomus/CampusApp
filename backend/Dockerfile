@@ -25,4 +25,4 @@ COPY . .
 RUN mkdir -p uploads/avatars uploads/images
 
 # Запуск через Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-2}"]

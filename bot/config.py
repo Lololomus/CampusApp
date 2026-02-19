@@ -9,6 +9,7 @@ ROOT_DIR = os.path.dirname(BASE_DIR)
 load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
 # --- Telegram Settings ---
+APP_ENV = os.getenv("APP_ENV", "dev").lower()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     sys.exit("Error: BOT_TOKEN is not set in .env")
@@ -26,7 +27,14 @@ WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" if WEBHOOK_HOST else None
 # --- Backend & MiniApp ---
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 # Секрет для защиты эндпоинтов бота (чтобы никто левый не слал фейковые апдейты, если порт открыт)
-BOT_SECRET = os.getenv("BOT_SECRET", "my-secret-internal-key")
+BOT_SECRET = os.getenv("BOT_SECRET")
+if not BOT_SECRET:
+    if APP_ENV == "prod":
+        sys.exit("Error: BOT_SECRET must be set when APP_ENV=prod")
+    BOT_SECRET = "dev-bot-secret"
+
+NOTIFICATION_POLL_INTERVAL = int(os.getenv("NOTIFICATION_POLL_INTERVAL", "20"))
+FOLLOWUP_POLL_INTERVAL = int(os.getenv("FOLLOWUP_POLL_INTERVAL", "30"))
 
 MINIAPP_URL = os.getenv("MINIAPP_URL", "https://t.me/MyCampusBot/app")
 

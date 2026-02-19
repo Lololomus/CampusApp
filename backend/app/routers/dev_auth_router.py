@@ -40,7 +40,7 @@ def dev_login_as(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
+        secure=settings.cookie_secure or settings.is_prod,
         samesite=settings.cookie_samesite,
         path="/auth",
         max_age=settings.refresh_ttl_days * 24 * 60 * 60,

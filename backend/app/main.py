@@ -30,14 +30,15 @@ app = FastAPI(
 )
 
 # ===== ROUTERS =====
+settings = get_settings()
+
 app.include_router(dating.router)
 app.include_router(moderation.router)
 app.include_router(ads.router)
 app.include_router(notifications.router)
 app.include_router(auth_router.router)
-app.include_router(dev_auth_router.router)
-
-settings = get_settings()
+if settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
+    app.include_router(dev_auth_router.router)
 
 # ===== CORS =====
 app.add_middleware(
@@ -51,7 +52,10 @@ app.add_middleware(
 
 
 PUBLIC_PATHS = ("/", "/health", "/openapi.json")
-PUBLIC_PREFIXES = ("/docs", "/redoc", "/uploads", "/auth/telegram/login", "/auth/refresh", "/auth/logout", "/dev/auth")
+public_prefixes = ["/docs", "/redoc", "/uploads", "/auth/telegram/login", "/auth/refresh", "/auth/logout"]
+if settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
+    public_prefixes.append("/dev/auth")
+PUBLIC_PREFIXES = tuple(public_prefixes)
 
 
 @app.middleware("http")
@@ -1809,7 +1813,9 @@ def generate_mock_dating_data(
     db: Session = Depends(get_db)
 ):
     """⚠️ DEV ONLY: Генерирует mock-анкеты для dating!"""
-    
+    if settings.app_env.lower() != "dev":
+        raise HTTPException(status_code=404, detail="Not found")
+
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -2039,7 +2045,5 @@ def generate_mock_dating_data(
         "matches": matches_created,
         "regular_likes": "2 лайка без взаимности"
     }
-
-
 
 

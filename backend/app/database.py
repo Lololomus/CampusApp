@@ -40,7 +40,7 @@ DATABASE_URL = _normalize_database_url(settings.database_url)
 
 engine = create_engine(
     DATABASE_URL,
-    echo=True,
+    echo=settings.sql_echo,
 )
 
 SessionLocal = sessionmaker(

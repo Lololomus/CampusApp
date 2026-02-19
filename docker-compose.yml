@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # === БАЗА ДАННЫХ ===
   postgres:
@@ -11,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -30,7 +28,7 @@ services:
       # Переопределяем хост БД для Докера
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # CORS разрешаем для всех внутри контейнера
-      CORS_ORIGINS: "*"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     volumes:
       # Общая папка для картинок
       - campus_uploads:/app/uploads
