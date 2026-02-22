@@ -1,4 +1,7 @@
 # ===== 📄 ФАЙЛ: backend/app/schemas.py =====
+#
+# ✅ Фаза 1.4: Убраны parse_json / parse_interests / parse_tags / parse_images
+#    валидаторы — JSONB возвращает нативные list/dict, парсеры не нужны.
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
@@ -89,15 +92,12 @@ class UserResponse(BaseModel):
     updated_at: Optional[datetime] = None
     last_profile_edit: Optional[datetime] = None
 
+    # ✅ JSONB: interests приходит как list из БД, парсер не нужен.
+    #    Оставляем минимальный fallback на случай None.
     @field_validator('interests', mode='before')
     @classmethod
-    def parse_interests(cls, v):
-        if v is None:
-            return []
-        if isinstance(v, str):
-            import json
-            return json.loads(v) if v else []
-        return v
+    def coerce_interests(cls, v):
+        return v if isinstance(v, list) else (v or [])
 
     class Config:
         from_attributes = True
@@ -139,13 +139,8 @@ class UserPublic(BaseModel):
 
     @field_validator('interests', mode='before')
     @classmethod
-    def parse_interests(cls, v):
-        if v is None:
-            return []
-        if isinstance(v, str):
-            import json
-            return json.loads(v) if v else []
-        return v
+    def coerce_interests(cls, v):
+        return v if isinstance(v, list) else (v or [])
     
     class Config:
         from_attributes = True
@@ -346,7 +341,7 @@ class PostResponse(BaseModel):
     # Опрос
     poll: Optional[PollResponse] = None
     
-    # === 📢 ДАННЫЕ РЕКЛАМЫ (НОВОЕ) ===
+    # === 📢 ДАННЫЕ РЕКЛАМЫ ===
     ad_id: Optional[int] = None
     advertiser_name: Optional[str] = None
     advertiser_logo: Optional[str] = None
@@ -370,23 +365,14 @@ class PostResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
+    # ✅ JSONB: tags/images приходят как list из БД. Минимальный coerce для None.
     @field_validator('tags', 'images', mode='before')
     @classmethod
-    def parse_json_fields(cls, v):
+    def coerce_list_fields(cls, v):
         if v is None:
             return []
-            
         if isinstance(v, list):
             return v
-            
-        if isinstance(v, str):
-            import json
-            try:
-                parsed = json.loads(v) if v else []
-                return parsed
-            except:
-                return []
-                
         return v
 
 class PostsFeedResponse(BaseModel):
@@ -508,29 +494,14 @@ class RequestResponse(BaseModel):
     images: List[ImageMeta] = []
     is_deleted: bool = False
     
-    @field_validator('tags', mode='before')
+    # ✅ JSONB: tags/images приходят как list из БД
+    @field_validator('tags', 'images', mode='before')
     @classmethod
-    def parse_tags(cls, v):
-        if v is None:
-            return []
-        if isinstance(v, str):
-            import json
-            return json.loads(v) if v else []
-        return v
-    
-    @field_validator('images', mode='before')
-    @classmethod
-    def parse_images(cls, v):
+    def coerce_list_fields(cls, v):
         if v is None:
             return []
         if isinstance(v, list):
             return v
-        if isinstance(v, str):
-            import json
-            try:
-                return json.loads(v) if v else []
-            except:
-                return []
         return v
     
     class Config:
@@ -573,59 +544,31 @@ class ResponseItem(BaseModel):
 
 REPORT_REASONS_BY_TARGET = {
     'post': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
-    'comment': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
-    'request': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
-    'market_item': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
-    'dating_profile': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
-    'user': ['spam_scam', 'impersonation', 'harassment_hate', 'sexual_content', 'underage_risk', 'other'],
+    'comment': ['spam', 'abuse', 'inappropriate', 'harassment', 'other'],
+    'request': ['spam', 'scam', 'inappropriate', 'other'],
+    'market_item': ['spam', 'scam', 'inappropriate', 'fake', 'other'],
+    'dating_profile': ['spam', 'inappropriate', 'fake', 'harassment', 'other'],
+    'user': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
 }
-VALID_TARGET_TYPES = list(REPORT_REASONS_BY_TARGET.keys())
-VALID_REPORT_SOURCE_TYPES = ['post', 'comment', 'request', 'market_item', 'profile']
 
 class ReportCreate(BaseModel):
-    """Создание жалобы на любой контент"""
-    target_type: str
+    """Создание жалобы"""
+    target_type: str = Field(..., pattern="^(post|comment|request|market_item|dating_profile|user)$")
     target_id: int
     reason: str
     description: Optional[str] = Field(None, max_length=1000)
     source_type: Optional[str] = None
     source_id: Optional[int] = None
     
-    @field_validator('target_type')
-    @classmethod
-    def validate_target_type(cls, v):
-        if v not in VALID_TARGET_TYPES:
-            raise ValueError(f'Допустимые типы: {", ".join(VALID_TARGET_TYPES)}')
-        return v
-    
-    @field_validator('source_type')
-    @classmethod
-    def validate_source_type(cls, v):
-        if v is not None and v not in VALID_REPORT_SOURCE_TYPES:
-            raise ValueError(f'Допустимые source_type: {", ".join(VALID_REPORT_SOURCE_TYPES)}')
-        return v
-
     @model_validator(mode='after')
-    def validate_reason_and_source(self):
-        allowed_reasons = REPORT_REASONS_BY_TARGET.get(self.target_type, [])
-        if self.reason not in allowed_reasons:
-            raise ValueError(
-                f'Допустимые причины для {self.target_type}: {", ".join(allowed_reasons)}'
-            )
-
-        has_source_type = self.source_type is not None
-        has_source_id = self.source_id is not None
-
-        if has_source_type != has_source_id:
-            raise ValueError('source_type и source_id должны передаваться вместе')
-
-        if self.target_type != 'user' and (has_source_type or has_source_id):
-            raise ValueError('source_type/source_id разрешены только для жалобы на пользователя')
-
+    def validate_reason_for_target(self):
+        valid_reasons = REPORT_REASONS_BY_TARGET.get(self.target_type, [])
+        if self.reason not in valid_reasons:
+            raise ValueError(f'Недопустимая причина "{self.reason}" для {self.target_type}')
         return self
 
 class ReportResponse(BaseModel):
-    """Жалоба (для модераторов)"""
+    """Жалоба (для модератора)"""
     id: int
     reporter_id: int
     reporter: Optional[UserShort] = None
@@ -636,13 +579,19 @@ class ReportResponse(BaseModel):
     source_type: Optional[str] = None
     source_id: Optional[int] = None
     status: str
-    university: Optional[str] = None
+    reviewed_by: Optional[int] = None
     moderator_note: Optional[str] = None
+    university: Optional[str] = None
     created_at: datetime
     reviewed_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
+
+class ReportReviewAction(BaseModel):
+    """Действие по жалобе"""
+    action: str = Field(..., pattern="^(resolve|dismiss)$")
+    moderator_note: Optional[str] = Field(None, max_length=500)
 
 class ReportsFeedResponse(BaseModel):
     """Лента жалоб"""
@@ -838,14 +787,11 @@ class DatingProfile(BaseModel):
     match_reason: Optional[str] = None
     common_interests: List[str] = []
 
+    # ✅ JSONB: минимальный coerce для None
     @field_validator('interests', 'common_interests', mode='before')
     @classmethod
-    def parse_interests(cls, v):
-        if v is None: return []
-        if isinstance(v, str):
-            import json
-            return json.loads(v) if v else []
-        return v
+    def coerce_list(cls, v):
+        return v if isinstance(v, list) else (v or [])
 
     class Config:
         from_attributes = True
@@ -875,7 +821,7 @@ class MarketSeller(BaseModel):
     name: str
     username: Optional[str] = None
     university: str
-    institute: str
+    institute: Optional[str] = None          # ✅ Фаза 1.3: nullable
     course: Optional[int] = None
     avatar: Optional[str] = None
     show_profile: bool = True
@@ -945,7 +891,7 @@ class MarketItemResponse(BaseModel):
     images: List[ImageMeta] = []
     status: str
     university: str
-    institute: str
+    institute: Optional[str] = None         # ✅ Фаза 1.3: nullable
     views_count: int = 0
     favorites_count: int = 0
     created_at: datetime
@@ -954,19 +900,14 @@ class MarketItemResponse(BaseModel):
     is_favorited: bool = False
     is_deleted: bool = False
     
+    # ✅ JSONB: images приходят как list из БД
     @field_validator('images', mode='before')
     @classmethod
-    def parse_images(cls, v):
+    def coerce_images(cls, v):
         if v is None:
             return []
         if isinstance(v, list):
             return v
-        if isinstance(v, str):
-            import json
-            try:
-                return json.loads(v) if v else []
-            except:
-                return []
         return v
     
     class Config:
@@ -993,13 +934,11 @@ class DatingProfileCreate(BaseModel):
     prompt_question: Optional[str] = Field(None, max_length=100)
     prompt_answer: Optional[str] = Field(None, max_length=100)
 
+    # ✅ JSONB: goals может прийти как list напрямую, парсер не нужен
     @field_validator('goals', mode='before')
     @classmethod
-    def parse_goals(cls, v):
-        if isinstance(v, str):
-            import json
-            return json.loads(v)
-        return v or []
+    def coerce_goals(cls, v):
+        return v if isinstance(v, list) else (v or [])
 
 # Схема для ответа (полная анкета)
 class DatingProfileResponse(BaseModel):
@@ -1020,37 +959,24 @@ class DatingProfileResponse(BaseModel):
     institute: Optional[str] = None
     course: Optional[int] = None
 
-    @field_validator('photos', 'goals', 'lifestyle', 'prompts', mode='before')
+    # ✅ JSONB: все поля приходят как нативные типы из БД
+    @field_validator('photos', 'goals', 'lifestyle', mode='before')
     @classmethod
-    def parse_json(cls, v, info):
-        field_name = info.field_name
-
-        if field_name == 'prompts':
-            if v in (None, '', []):
-                return None
-            if isinstance(v, dict):
-                return v
-            if isinstance(v, str):
-                import json
-                try:
-                    parsed = json.loads(v) if v else None
-                except Exception:
-                    return None
-                return parsed if isinstance(parsed, dict) else None
-            return None
-
+    def coerce_list(cls, v):
         if v is None:
             return []
         if isinstance(v, list):
             return v
-        if isinstance(v, str):
-            import json
-            try:
-                parsed = json.loads(v) if v else []
-                return parsed if isinstance(parsed, list) else []
-            except Exception:
-                return []
         return []
+
+    @field_validator('prompts', mode='before')
+    @classmethod
+    def coerce_prompts(cls, v):
+        if v is None or v == '' or v == []:
+            return None
+        if isinstance(v, dict):
+            return v
+        return None
 
     class Config:
         from_attributes = True
@@ -1208,6 +1134,7 @@ class NotificationResponse(BaseModel):
     @field_validator('payload', mode='before')
     @classmethod
     def parse_payload(cls, v):
+        """Notification.payload хранится как Text (не JSONB), поэтому парсим."""
         if isinstance(v, str):
             import json
             return json.loads(v)

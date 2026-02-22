@@ -1,6 +1,11 @@
 # ===== 📄 ФАЙЛ: backend/app/models.py =====
+#
+# ✅ Фаза 1.2: Составные индексы для частых запросов
+# ✅ Фаза 1.3: MarketItem.institute → nullable=True
+# ✅ Фаза 1.4: JSON (Text) → JSONB для всех JSON-полей
 
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, DateTime, ForeignKey, Enum, CheckConstraint, UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone 
 from .database import Base
@@ -49,7 +54,7 @@ class User(Base):
     # Dating поля
     show_in_dating = Column(Boolean, default=True)
     hide_course_group = Column(Boolean, default=False)
-    interests = Column(Text, nullable=True)  # JSON array как строка: ["python", "спорт"]
+    interests = Column(JSONB, nullable=True, default=list)  # ✅ JSONB: ["python", "спорт"]
     dating_profile = relationship("DatingProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
     # Метаданные
@@ -148,8 +153,8 @@ class Post(Base):
     
     title = Column(String(200), nullable=True)
     body = Column(Text, nullable=False)
-    tags = Column(Text, nullable=True)  # JSON array: '["python", "react"]'
-    images = Column(Text, nullable=True)  # JSON array
+    tags = Column(JSONB, nullable=True, default=list)      # ✅ JSONB: ["python", "react"]
+    images = Column(JSONB, nullable=True, default=list)     # ✅ JSONB: [{url, w, h}, ...]
     
     # АНОНИМНОСТЬ
     is_anonymous = Column(Boolean, default=False)
@@ -193,6 +198,12 @@ class Post(Base):
     comments = relationship('Comment', back_populates='post', cascade='all, delete-orphan')
     poll = relationship("Poll", back_populates="post", uselist=False, cascade="all, delete-orphan")
 
+    # ✅ Фаза 1.2: Составные индексы
+    __table_args__ = (
+        Index('ix_post_author_deleted', 'author_id', 'is_deleted'),
+        Index('ix_post_category_deleted_created', 'category', 'is_deleted', 'created_at'),
+    )
+
 
 class Poll(Base):
     """Модель опроса для постов"""
@@ -202,7 +213,7 @@ class Poll(Base):
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), unique=True, nullable=False)
     
     question = Column(String(500), nullable=False)
-    options = Column(Text, nullable=False)  # JSON: [{"text": "Вариант 1", "votes": 5}, ...]
+    options = Column(JSONB, nullable=False)  # ✅ JSONB: [{"text": "Вариант 1", "votes": 5}, ...]
     
     type = Column(String(20), default="regular")  # "regular" | "quiz"
     correct_option = Column(Integer, nullable=True)
@@ -228,7 +239,7 @@ class PollVote(Base):
     poll_id = Column(Integer, ForeignKey("polls.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
-    option_indices = Column(Text, nullable=False)  # JSON: [0, 2]
+    option_indices = Column(JSONB, nullable=False)  # ✅ JSONB: [0, 2]
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
@@ -269,7 +280,7 @@ class Request(Base):
     
     title = Column(String(200), nullable=False)
     body = Column(Text, nullable=False)
-    tags = Column(Text, nullable=True)
+    tags = Column(JSONB, nullable=True, default=list)       # ✅ JSONB
     
     expires_at = Column(DateTime, nullable=False, index=True)
     max_responses = Column(Integer, default=5)
@@ -281,7 +292,7 @@ class Request(Base):
     
     reward_type = Column(String(50), nullable=True)
     reward_value = Column(String(255), nullable=True)
-    images = Column(Text, nullable=True)
+    images = Column(JSONB, nullable=True, default=list)     # ✅ JSONB
     
     # Мягкое удаление (модерация)
     is_deleted = Column(Boolean, default=False, index=True)
@@ -299,6 +310,12 @@ class Request(Base):
     # Отношения
     author = relationship('User', foreign_keys=[author_id], back_populates='requests')
     responses = relationship('RequestResponse', back_populates='request', cascade='all, delete-orphan')
+
+    # ✅ Фаза 1.2: Составные индексы
+    __table_args__ = (
+        Index('ix_request_author_status', 'author_id', 'status'),
+        Index('ix_request_status_expires', 'status', 'expires_at'),
+    )
 
 
 class RequestResponse(Base):
@@ -351,6 +368,11 @@ class Comment(Base):
     # Отношения
     post = relationship('Post', back_populates='comments')
     author = relationship('User', foreign_keys=[author_id], back_populates='comments')
+
+    # ✅ Фаза 1.2: Составной индекс
+    __table_args__ = (
+        Index('ix_comment_post_created', 'post_id', 'created_at'),
+    )
 
 
 class CommentLike(Base):
@@ -416,7 +438,7 @@ class MarketItem(Base):
     )
     
     location = Column(String(200), nullable=True)
-    images = Column(Text, nullable=False)
+    images = Column(JSONB, nullable=False)                  # ✅ JSONB
     
     status = Column(
         Enum('active', 'sold', name='market_status_enum'),
@@ -426,7 +448,7 @@ class MarketItem(Base):
     )
     
     university = Column(String(255), nullable=False)
-    institute = Column(String(255), nullable=False)
+    institute = Column(String(255), nullable=True)          # ✅ Фаза 1.3: nullable=True
     
     # Мягкое удаление (модерация)
     is_deleted = Column(Boolean, default=False, index=True)
@@ -448,6 +470,12 @@ class MarketItem(Base):
     back_populates='market_items'
     )
     favorites = relationship('MarketFavorite', back_populates='item', cascade='all, delete-orphan')
+
+    # ✅ Фаза 1.2: Составные индексы
+    __table_args__ = (
+        Index('ix_market_seller_status', 'seller_id', 'status'),
+        Index('ix_market_status_deleted_created', 'status', 'is_deleted', 'created_at'),
+    )
 
 
 class MarketFavorite(Base):
@@ -481,10 +509,10 @@ class DatingProfile(Base):
     age = Column(Integer, nullable=False)
     looking_for = Column(String(50), nullable=False)
     bio = Column(Text, nullable=True)
-    goals = Column(Text, nullable=True)
-    photos = Column(Text, nullable=True)
-    lifestyle = Column(Text, nullable=True)
-    prompts = Column(Text, nullable=True)
+    goals = Column(JSONB, nullable=True, default=list)          # ✅ JSONB
+    photos = Column(JSONB, nullable=True, default=list)         # ✅ JSONB
+    lifestyle = Column(JSONB, nullable=True, default=list)      # ✅ JSONB
+    prompts = Column(JSONB, nullable=True)                      # ✅ JSONB
     
     is_active = Column(Boolean, default=True)
     
@@ -504,8 +532,10 @@ class DatingLike(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     matched_at = Column(DateTime, nullable=True)
 
+    # ✅ Фаза 1.2: Составной индекс + UniqueConstraint (из Фазы 0.4)
     __table_args__ = (
         UniqueConstraint('who_liked_id', 'whom_liked_id', name='unique_dating_like'),
+        Index('ix_dating_like_whom', 'whom_liked_id', 'is_like'),
     )
 
 

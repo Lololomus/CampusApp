@@ -35,10 +35,7 @@ def get_my_dating_profile(telegram_id: int, db: Session = Depends(get_db)):
     
     prompts_dict = None
     if profile.prompts:
-        try:
-            prompts_dict = json.loads(profile.prompts)
-        except:
-            prompts_dict = None
+        prompts_dict = profile.prompts if isinstance(profile.prompts, dict) else None
     
     return {
         **profile.__dict__,
@@ -49,8 +46,8 @@ def get_my_dating_profile(telegram_id: int, db: Session = Depends(get_db)):
         "institute": user.institute,
         "course": user.course,
         "photos": get_image_urls(profile.photos) if profile.photos else [],
-        "goals": json.loads(profile.goals) if profile.goals else [],
-        "interests": json.loads(user.interests) if user.interests else [],
+        "goals": profile.goals or [],
+        "interests": user.interests or [],
         "prompts": prompts_dict
     }
 
@@ -111,10 +108,7 @@ async def create_or_update_dating_profile(
 
     existing_photos_raw = []
     if profile and profile.photos:
-        try:
-            existing_photos_raw = json.loads(profile.photos)
-        except Exception:
-            existing_photos_raw = []
+        existing_photos_raw = profile.photos if isinstance(profile.photos, list) else []
 
     existing_photo_map = {}
     for item in existing_photos_raw:
@@ -177,9 +171,9 @@ async def create_or_update_dating_profile(
             profile.age = age
             profile.looking_for = looking_for
             profile.bio = bio
-            profile.goals = json.dumps(goals_list)
-            profile.photos = json.dumps(final_photos)
-            profile.prompts = json.dumps(prompts_dict) if prompts_dict else None
+            profile.goals = goals_list
+            profile.photos = final_photos
+            profile.prompts = prompts_dict
             profile.is_active = True
             user.show_in_dating = True
         else:
@@ -189,16 +183,16 @@ async def create_or_update_dating_profile(
                 age=age,
                 looking_for=looking_for,
                 bio=bio,
-                goals=json.dumps(goals_list),
-                photos=json.dumps(final_photos),
-                prompts=json.dumps(prompts_dict) if prompts_dict else None,
+                goals=goals_list,
+                photos=final_photos,
+                prompts=prompts_dict,
                 is_active=True,
             )
             db.add(profile)
             user.show_in_dating = True
 
         user.age = age
-        user.interests = json.dumps(interests_list)
+        user.interests = interests_list
 
         db.commit()
         db.refresh(profile)
@@ -213,10 +207,7 @@ async def create_or_update_dating_profile(
 
     prompts_response = None
     if profile.prompts:
-        try:
-            prompts_response = json.loads(profile.prompts)
-        except Exception:
-            prompts_response = None
+        prompts_response = profile.prompts if isinstance(profile.prompts, dict) else None
 
     return {
         **profile.__dict__,
@@ -227,8 +218,8 @@ async def create_or_update_dating_profile(
         "institute": user.institute,
         "course": user.course,
         "photos": get_image_urls(profile.photos) if profile.photos else [],
-        "goals": json.loads(profile.goals) if profile.goals else [],
-        "interests": json.loads(user.interests) if user.interests else [],
+        "goals": profile.goals or [],
+        "interests": user.interests or [],
         "prompts": prompts_response,
     }
 
@@ -345,7 +336,7 @@ def get_likes_received(
         if not photos and u.avatar:
             photos = [{"url": u.avatar, "w": 500, "h": 500}]
         
-        interests_list = json.loads(u.interests) if u.interests else []
+        interests_list = u.interests or []
         
         result.append({
             "id": u.id,
@@ -595,15 +586,12 @@ def get_active_matches(telegram_id: int = Query(...), db: Session = Depends(get_
                 minutes_left = int((time_left.total_seconds() % 3600) / 60)
                 
                 # Data
-                interests_list = json.loads(other_user.interests) if other_user.interests else []
-                goals_list = json.loads(dp.goals) if dp.goals else []
+                interests_list = other_user.interests or []
+                goals_list = dp.goals or []
                 
                 prompts_dict = None
                 if dp.prompts:
-                    try:
-                        prompts_dict = json.loads(dp.prompts)
-                    except:
-                        pass
+                    prompts_dict = dp.prompts if isinstance(dp.prompts, dict) else None
                 
                 result.append({
                     "id": dp.id,
@@ -695,16 +683,13 @@ def get_active_matches(
                 minutes_left = int((time_left.total_seconds() % 3600) / 60)
                 
                 # Интересы
-                interests_list = json.loads(other_user.interests) if other_user.interests else []
-                goals_list = json.loads(dp.goals) if dp.goals else []
+                interests_list = other_user.interests or []
+                goals_list = dp.goals or []
                 
                 # Prompts
                 prompts_dict = None
                 if dp.prompts:
-                    try:
-                        prompts_dict = json.loads(dp.prompts)
-                    except:
-                        pass
+                    prompts_dict = dp.prompts if isinstance(dp.prompts, dict) else None
                 
                 result.append({
                     "id": dp.id,
@@ -738,5 +723,3 @@ def get_active_matches(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-

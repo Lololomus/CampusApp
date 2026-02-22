@@ -1,12 +1,13 @@
 # ===== 📄 ФАЙЛ: backend/app/crud/dating.py =====
 # Dating CRUD: анкеты, лента с scoring, лайки, матчи, настройки
+#
+# ✅ Фаза 1.4: Убраны json.loads() — JSONB-колонки возвращают нативные list/dict.
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
-import json
 
 from app import models
 from app.crud.helpers import sanitize_json_field
@@ -132,8 +133,9 @@ def get_dating_feed(
         if not photos and user.avatar:
             photos = [{"url": user.avatar, "w": 500, "h": 500}]
 
-        interests = json.loads(user.interests) if user.interests else []
-        goals = json.loads(profile.goals) if profile.goals else []
+        # ✅ JSONB: user.interests и profile.goals уже list
+        interests = user.interests or []
+        goals = profile.goals or []
 
         candidate_data = {
             "id": user.id,
@@ -316,7 +318,7 @@ def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optiona
     if 'interests' in settings:
         val = settings['interests']
         if isinstance(val, list):
-            user.interests = sanitize_json_field(val)
+            user.interests = val               # ✅ JSONB: list напрямую
         else:
             user.interests = val
 

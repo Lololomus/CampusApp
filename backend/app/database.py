@@ -1,4 +1,6 @@
 # ===== FILE: backend/app/database.py =====
+#
+# ✅ Фаза 1.5: Connection Pool настройка
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -9,18 +11,14 @@ from app.config import get_settings
 # Current backend is sync-oriented (routes use `def`, CRUD uses `db.query(...)`).
 # Keep DB layer sync for production stability until full async migration is done.
 #
-# TODO(async-migration, phase 1):
+# TODO(async-migration, phase 2):
 # - Switch engine to `create_async_engine(...)` and AsyncSession.
 # - Change `get_db()` to `async def` and yield AsyncSession.
 #
-# TODO(async-migration, phase 2):
+# TODO(async-migration, phase 3):
 # - Convert all DB routes/services/crud from `db.query(...)` to
 #   `await db.execute(select(...))` + `scalars()`.
 # - Replace `db.commit()/refresh()/delete()` with awaited async equivalents.
-#
-# TODO(async-migration, phase 3):
-# - Make startup/shutdown DB lifecycle async-safe.
-# - Run full regression tests for Posts/Dating/Market/Profile + auth.
 
 settings = get_settings()
 
@@ -38,9 +36,15 @@ def _normalize_database_url(url: str) -> str:
 
 DATABASE_URL = _normalize_database_url(settings.database_url)
 
+# ✅ Фаза 1.5: Connection Pool — защита от мёртвых соединений после рестарта PG
 engine = create_engine(
     DATABASE_URL,
     echo=settings.sql_echo,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(

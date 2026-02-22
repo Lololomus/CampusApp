@@ -216,7 +216,7 @@ def get_user_posts_endpoint(
     
     result = []
     for post in posts:
-        tags = json.loads(post.tags) if post.tags else []
+        tags = post.tags or []
         images = get_image_urls(post.images) if post.images else []
         
         if post.is_anonymous:
@@ -327,7 +327,7 @@ def get_posts_feed(
 
     result = []
     for post in posts:
-        tags = json.loads(post.tags) if post.tags else []
+        tags = post.tags or []
         is_liked = crud.is_post_liked_by_user(db, post.id, user.id) if user else False
         images = get_image_urls(post.images) if post.images else []
 
@@ -346,9 +346,9 @@ def get_posts_feed(
                     models.PollVote.poll_id == post.poll.id,
                     models.PollVote.user_id == user.id
                 ).first()
-            user_votes_indices = json.loads(user_vote.option_indices) if user_vote else []
+            user_votes_indices = user_vote.option_indices if user_vote else []
 
-            options_data = json.loads(post.poll.options)
+            options_data = post.poll.options or []
             options_response = []
             for opt in options_data:
                 percentage = (opt['votes'] / post.poll.total_votes * 100) if post.poll.total_votes > 0 else 0
@@ -526,7 +526,7 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
         crud.increment_post_views(db, post_id, user.id)
     
     is_liked = crud.is_post_liked_by_user(db, post_id, user.id) if user else False
-    tags = json.loads(post.tags) if post.tags else []
+    tags = post.tags or []
     images = get_image_urls(post.images) if post.images else []
     
     author_id_data = post.author_id if post.is_anonymous else post.author_id
@@ -546,9 +546,9 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
                 models.PollVote.user_id == user.id
             ).first()
         
-        user_votes_indices = json.loads(user_vote.option_indices) if user_vote else []
+        user_votes_indices = user_vote.option_indices if user_vote else []
         
-        options_data = json.loads(post.poll.options)
+        options_data = post.poll.options or []
         options_response = []
         for opt in options_data:
             percentage = (opt['votes'] / post.poll.total_votes * 100) if post.poll.total_votes > 0 else 0
@@ -957,7 +957,7 @@ async def create_request_endpoint(
         category=request.category,
         title=request.title,
         body=request.body,
-        tags=json.loads(request.tags) if request.tags else [],
+        tags=request.tags or [],
         expires_at=ensure_utc(request.expires_at),
         status=request.status,
         views_count=request.views_count,
@@ -1067,7 +1067,7 @@ def get_my_requests_endpoint(
     
     result = []
     for req in requests:
-        tags = json.loads(req.tags) if req.tags else []
+        tags = req.tags or []
         images = get_image_urls(req.images) if req.images else []
         
         author_data = schemas.UserShort(
@@ -1180,7 +1180,7 @@ def update_request_endpoint(
         category=request.category,
         title=request.title,
         body=request.body,
-        tags=json.loads(request.tags) if request.tags else [],
+        tags=request.tags or [],
         expires_at=ensure_utc(request.expires_at),
         status=request.status,
         views_count=request.views_count,
@@ -1840,7 +1840,7 @@ def generate_mock_dating_data(
             "institute": user.institute,
             "course": 2,
             "group": "ПИ-23",
-            "interests": '["it","music","games"]',
+            "interests": ["it","music","games"],
             "show_in_dating": True
         },
         {
@@ -1852,7 +1852,7 @@ def generate_mock_dating_data(
             "institute": user.institute,
             "course": 3,
             "group": "ДП-31",
-            "interests": '["art","travel","coffee"]',
+            "interests": ["art","travel","coffee"],
             "show_in_dating": True
         },
         {
@@ -1864,7 +1864,7 @@ def generate_mock_dating_data(
             "institute": user.institute,
             "course": 2,
             "group": "ИИ-22",
-            "interests": '["it","science","books"]',
+            "interests": ["it","science","books"],
             "show_in_dating": True
         },
         {
@@ -1876,7 +1876,7 @@ def generate_mock_dating_data(
             "institute": user.institute,
             "course": 4,
             "group": "ФК-41",
-            "interests": '["sport","fitness","travel"]',
+            "interests": ["sport","fitness","travel"],
             "show_in_dating": True
         },
         {
@@ -1888,7 +1888,7 @@ def generate_mock_dating_data(
             "institute": user.institute,
             "course": 1,
             "group": "ФЛ-13",
-            "interests": '["books","coffee","art"]',
+            "interests": ["books","coffee","art"],
             "show_in_dating": True
         }
     ]
@@ -1919,8 +1919,8 @@ def generate_mock_dating_data(
                 age=mock_user.age,
                 looking_for="anyone",
                 bio=mock_user.bio,
-                goals='["friends","study"]',
-                photos='[]',
+                goals=["friends","study"],
+                photos=[],
                 is_active=True
             )
             db.add(dating_profile)
@@ -2054,4 +2054,3 @@ def generate_mock_dating_data(
         "matches": matches_created,
         "regular_likes": "2 лайка без взаимности"
     }
-

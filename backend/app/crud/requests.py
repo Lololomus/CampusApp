@@ -1,13 +1,13 @@
 # ===== 📄 ФАЙЛ: backend/app/crud/requests.py =====
 # Requests CRUD: запросы помощи, отклики, автоистечение
 #
-# ⚠️ ИСПРАВЛЕНО: create_request был async def с sync DB-вызовами.
+# ✅ Фаза 1.4: Убраны json.loads()/json.dumps() — JSONB-колонки возвращают
+#    нативные list/dict.
 
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, case, update as sa_update
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
-import json
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
@@ -23,18 +23,7 @@ def create_request(
     author_id: int,
     images_meta: Optional[List[dict]] = None,
 ) -> models.Request:
-    """
-    Создать запрос помощи.
-
-    ⚠️ images_meta — уже обработанные файлы. Пример вызова из endpoint:
-
-        images_meta = []
-        if uploaded_files:
-            images_meta = await process_uploaded_files(uploaded_files)
-        elif request_data.images:
-            images_meta = process_base64_images(request_data.images)
-        db_request = crud.create_request(db, request_data, user.id, images_meta=images_meta)
-    """
+    """Создать запрос помощи."""
     active_count = db.query(models.Request).filter(
         models.Request.author_id == author_id,
         models.Request.category == request.category,
@@ -58,13 +47,13 @@ def create_request(
         category=request.category,
         title=request.title,
         body=request.body,
-        tags=sanitize_json_field(request.tags),
+        tags=sanitize_json_field(request.tags),              # ✅ JSONB: list
         expires_at=request.expires_at,
         max_responses=request.max_responses,
         status='active',
         reward_type=request.reward_type,
         reward_value=request.reward_value,
-        images=sanitize_json_field(saved_images_meta)
+        images=sanitize_json_field(saved_images_meta)        # ✅ JSONB: list
     )
 
     try:
@@ -194,7 +183,8 @@ def get_requests_feed(
 
     result = []
     for req in requests:
-        tags = json.loads(req.tags) if req.tags else []
+        # ✅ JSONB: req.tags уже list, req.images уже list
+        tags = req.tags or []
         images = get_image_urls(req.images) if req.images else []
 
         req_dict = {
@@ -241,7 +231,8 @@ def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[in
     db.commit()
     db.refresh(request)
 
-    tags = json.loads(request.tags) if request.tags else []
+    # ✅ JSONB: request.tags уже list, request.images уже list
+    tags = request.tags or []
     images = get_image_urls(request.images) if request.images else []
 
     return {
@@ -278,7 +269,7 @@ def update_request(db: Session, request_id: int, user_id: int, data: schemas.Req
     update_data = data.model_dump(exclude_unset=True)
 
     if 'tags' in update_data:
-        update_data['tags'] = sanitize_json_field(update_data['tags'])
+        update_data['tags'] = sanitize_json_field(update_data['tags'])  # ✅ JSONB: list
 
     for key, value in update_data.items():
         setattr(request, key, value)
@@ -298,10 +289,10 @@ def delete_request(db: Session, request_id: int, user_id: int) -> bool:
     if not request:
         raise ValueError("Request not found or no permissions")
 
+    # ✅ JSONB: request.images уже list, не нужен json.loads()
     if request.images:
         try:
-            images_data = json.loads(request.images)
-            delete_images(images_data)
+            delete_images(request.images)
         except Exception:
             pass
 

@@ -1,20 +1,21 @@
 # ===== 📄 ФАЙЛ: backend/app/crud/market.py =====
 # Market CRUD: товары, избранное, категории, просмотры
 #
-# ⚠️ ИСПРАВЛЕНО: create_market_item и update_market_item были async def
-#    с sync DB-вызовами. Теперь они sync.
+# ✅ Фаза 1.4: Убраны json.loads()/json.dumps() — JSONB-колонки возвращают
+#    нативные list/dict.
 
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, update as sa_update
 from typing import Optional, List, Dict
 from datetime import datetime, timezone
-import json
+import logging
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
 from app.crud.users import get_user_by_id
 from app.utils import delete_images, get_storage_key, process_base64_images
 
+logger = logging.getLogger(__name__)
 
 STANDARD_CATEGORIES = [
     'textbooks',
@@ -34,18 +35,7 @@ def create_market_item(
     seller_id: int,
     images_meta: Optional[List[dict]] = None,
 ) -> models.MarketItem:
-    """
-    Создать товар на маркетплейсе.
-
-    ⚠️ images_meta — уже обработанные файлы. Пример вызова из endpoint:
-
-        images_meta = []
-        if uploaded_files:
-            images_meta = await process_uploaded_files(uploaded_files)
-        elif item.images:
-            images_meta = process_base64_images(item.images)
-        db_item = crud.create_market_item(db, item, user.id, images_meta=images_meta)
-    """
+    """Создать товар на маркетплейсе."""
     seller = get_user_by_id(db, seller_id)
     if not seller:
         raise ValueError("Продавец не найден")
@@ -69,7 +59,7 @@ def create_market_item(
         price=item.price,
         condition=item.condition,
         location=item.location or f"{seller.university}, {seller.institute}",
-        images=sanitize_json_field(saved_images_meta),
+        images=saved_images_meta,              # ✅ JSONB: list напрямую
         status='active',
         university=seller.university,
         institute=seller.institute
@@ -94,11 +84,7 @@ def update_market_item(
     new_images_meta: Optional[List[dict]] = None,
     keep_filenames: Optional[List[str]] = None,
 ) -> Optional[models.MarketItem]:
-    """
-    Update market item (smart image merge).
-
-    `new_images_meta` contains files already processed by the endpoint.
-    """
+    """Update market item (smart image merge)."""
     db_item = db.query(models.MarketItem).filter(
         models.MarketItem.id == item_id,
         models.MarketItem.seller_id == seller_id
@@ -111,7 +97,8 @@ def update_market_item(
     files_to_delete: List[str] = []
 
     if new_images_meta is not None or keep_filenames is not None:
-        raw_old_images = json.loads(db_item.images) if db_item.images else []
+        # ✅ JSONB: db_item.images уже list, не нужен json.loads()
+        raw_old_images = db_item.images or []
         old_images_map: Dict[str, dict] = {}
         for img in raw_old_images:
             if isinstance(img, str):
@@ -145,7 +132,7 @@ def update_market_item(
         kept_urls.discard("")
         files_to_delete = [url for url in old_images_map if url not in kept_urls]
 
-        update_data["images"] = sanitize_json_field(final_images_meta)
+        update_data["images"] = final_images_meta  # ✅ JSONB: list напрямую
 
     update_data = {k: v for k, v in update_data.items() if v is not None}
 
@@ -178,12 +165,12 @@ def delete_market_item(db: Session, item_id: int, seller_id: int) -> bool:
     if not db_item:
         return False
 
+    # ✅ JSONB: db_item.images уже list, не нужен json.loads()
     if db_item.images:
         try:
-            images_data = json.loads(db_item.images)
-            delete_images(images_data)
+            delete_images(db_item.images)
         except Exception as e:
-            print(f"⚠️ Ошибка удаления изображений товара {item_id}: {e}")
+            logger.warning("Ошибка удаления изображений товара %s: %s", item_id, e)
 
     db.delete(db_item)
     db.commit()

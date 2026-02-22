@@ -230,8 +230,7 @@ def get_ads_for_feed(
     result = []
     for ad in ads:
         post = ad.post
-        import json
-        images_raw = json.loads(post.images) if post.images else []
+        images_raw = post.images or []
         
         result.append({
             'ad_id': ad.id,
@@ -331,15 +330,11 @@ def get_overview_stats(
 
 def _ad_to_response(db_ad: models.AdPost) -> dict:
     """Конвертация модели AdPost в response dict"""
-    import json
     
     post = db_ad.post
     images_raw = []
     if post and post.images:
-        try:
-            images_raw = json.loads(post.images)
-        except:
-            images_raw = []
+        images_raw = post.images if isinstance(post.images, list) else []
     
     creator = db_ad.creator
     creator_short = None

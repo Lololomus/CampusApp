@@ -1,15 +1,13 @@
 # ===== 📄 ФАЙЛ: backend/app/crud/posts.py =====
 # Posts CRUD: создание, обновление, лента, лайки, просмотры, опросы
 #
-# ⚠️ ИСПРАВЛЕНО: create_post и update_post были async def с sync DB-вызовами,
-#    что блокировало event loop. Теперь они sync.
-#    Обработка файлов (process_uploaded_files) вынесена на уровень endpoint.
+# ✅ Фаза 1.4: Убраны json.loads()/json.dumps() — JSONB-колонки возвращают
+#    нативные list/dict. sanitize_json_field() тоже возвращает list/dict.
 
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, update as sa_update
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
-import json
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
@@ -84,7 +82,10 @@ def get_posts(
     if tags:
         tags_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
         if tags_list:
-            tag_conditions = [models.Post.tags.like(f'%"{tag}"%') for tag in tags_list]
+            # ✅ JSONB: используем оператор @> для проверки вхождения
+            from sqlalchemy import cast
+            from sqlalchemy.dialects.postgresql import JSONB as JSONB_TYPE
+            tag_conditions = [models.Post.tags.op('@>')(cast([tag], JSONB_TYPE)) for tag in tags_list]
             query = query.filter(or_(*tag_conditions))
 
     # Фильтр по дате
@@ -157,14 +158,7 @@ def create_post(
     Создать новый пост.
 
     ⚠️ Обработка файлов (process_uploaded_files) должна происходить в endpoint,
-       а результат передаваться в images_meta. Пример вызова из endpoint:
-
-        images_meta = []
-        if uploaded_files:
-            images_meta = await process_uploaded_files(uploaded_files)
-        elif post.images:
-            images_meta = process_base64_images(post.images)
-        db_post = crud.create_post(db, post, user.id, images_meta=images_meta)
+       а результат передаваться в images_meta.
     """
     # Rate Limiting (10 постов в час)
     recent_posts_count = db.query(func.count(models.Post.id)).filter(
@@ -188,8 +182,8 @@ def create_post(
         category=post.category,
         title=post.title,
         body=post.body,
-        tags=sanitize_json_field(post.tags),
-        images=sanitize_json_field(saved_images_meta),
+        tags=sanitize_json_field(post.tags),              # ✅ JSONB: list напрямую
+        images=sanitize_json_field(saved_images_meta),     # ✅ JSONB: list напрямую
         is_anonymous=post.is_anonymous,
         enable_anonymous_comments=post.enable_anonymous_comments,
         # Lost & Found
@@ -246,7 +240,8 @@ def update_post(
     files_to_delete: List[str] = []
 
     if new_images_meta is not None or keep_filenames is not None:
-        raw_old_images = json.loads(db_post.images) if db_post.images else []
+        # ✅ JSONB: db_post.images уже list, не нужен json.loads()
+        raw_old_images = db_post.images or []
 
         old_images_map: Dict[str, dict] = {}
         for item in raw_old_images:
@@ -278,7 +273,7 @@ def update_post(
         kept_urls.discard("")
         files_to_delete = [url for url in old_images_map if url not in kept_urls]
 
-        update_data["images"] = sanitize_json_field(final_images_meta)
+        update_data["images"] = sanitize_json_field(final_images_meta)  # ✅ JSONB: list
 
     for key, value in update_data.items():
         setattr(db_post, key, value)
@@ -305,12 +300,13 @@ def delete_post(db: Session, post_id: int) -> bool:
     if not db_post:
         return False
 
+    # ✅ JSONB: db_post.images уже list, не нужен json.loads()
     if db_post.images:
         try:
-            images_data = json.loads(db_post.images)
-            delete_images(images_data)
+            delete_images(db_post.images)
         except Exception as e:
-            print(f"⚠️ Ошибка удаления изображений поста {post_id}: {e}")
+            import logging
+            logging.getLogger(__name__).warning("Ошибка удаления изображений поста %s: %s", post_id, e)
 
     db.delete(db_post)
     db.commit()
@@ -404,7 +400,7 @@ def create_poll(db: Session, post_id: int, poll_data: schemas.PollCreate) -> mod
     db_poll = models.Poll(
         post_id=post_id,
         question=poll_data.question,
-        options=sanitize_json_field(options_json),
+        options=options_json,                  # ✅ JSONB: list напрямую
         type=poll_data.type,
         correct_option=poll_data.correct_option if poll_data.type == 'quiz' else None,
         allow_multiple=poll_data.allow_multiple,
@@ -436,7 +432,8 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
     if existing_vote:
         raise ValueError("Вы уже проголосовали")
 
-    options_data = json.loads(poll.options)
+    # ✅ JSONB: poll.options уже list, не нужен json.loads()
+    options_data = list(poll.options)  # copy чтобы не мутировать in-place
     for idx in option_indices:
         if idx < 0 or idx >= len(options_data):
             raise ValueError(f"Неверный индекс варианта: {idx}")
@@ -445,9 +442,9 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
         raise ValueError("Множественный выбор запрещен")
 
     for idx in option_indices:
-        options_data[idx]['votes'] += 1
+        options_data[idx] = {**options_data[idx], 'votes': options_data[idx]['votes'] + 1}
 
-    poll.options = sanitize_json_field(options_data)
+    poll.options = options_data  # ✅ JSONB: присваиваем list напрямую
 
     db.execute(
         sa_update(models.Poll)
@@ -458,7 +455,7 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
     db_vote = models.PollVote(
         poll_id=poll_id,
         user_id=user_id,
-        option_indices=sanitize_json_field(option_indices)
+        option_indices=option_indices          # ✅ JSONB: list напрямую
     )
 
     db.add(db_vote)

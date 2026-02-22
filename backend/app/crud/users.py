@@ -1,5 +1,7 @@
 # ===== 📄 ФАЙЛ: backend/app/crud/users.py =====
 # User CRUD: создание, обновление, кампус, cooldown, статистика
+#
+# ✅ Фаза 1.4: interests → JSONB, передаём list напрямую вместо json.dumps()
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -30,7 +32,7 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
         **user_data,
         show_in_dating=True,
         hide_course_group=False,
-        interests="[]"
+        interests=[]                           # ✅ JSONB: list напрямую (было "[]")
     )
     db.add(db_user)
     db.commit()
@@ -47,7 +49,7 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate) -> O
     update_data = user_update.model_dump(exclude_unset=True)
 
     if 'interests' in update_data:
-        update_data['interests'] = sanitize_json_field(update_data['interests'])
+        update_data['interests'] = sanitize_json_field(update_data['interests'])  # ✅ JSONB: list
 
     for key, value in update_data.items():
         setattr(db_user, key, value)
