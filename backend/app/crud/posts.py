@@ -6,7 +6,7 @@
 #    Обработка файлов (process_uploaded_files) вынесена на уровень endpoint.
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, update as sa_update
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
 import json
@@ -338,9 +338,11 @@ def increment_post_views(db: Session, post_id: int, user_id: int):
         new_view = models.PostView(post_id=post_id, user_id=user_id)
         db.add(new_view)
 
-        db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
-        if db_post:
-            db_post.views_count += 1
+        db.execute(
+            sa_update(models.Post)
+            .where(models.Post.id == post_id)
+            .values(views_count=models.Post.views_count + 1)
+        )
 
         db.commit()
     except Exception:
@@ -371,15 +373,25 @@ def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
 
     if like:
         db.delete(like)
-        post.likes_count = max(0, post.likes_count - 1)
+        db.execute(
+            sa_update(models.Post)
+            .where(models.Post.id == post_id)
+            .values(likes_count=func.greatest(models.Post.likes_count - 1, 0))
+        )
         db.commit()
+        post = db.query(models.Post).filter(models.Post.id == post_id).first()
         return {"is_liked": False, "likes": post.likes_count}
     else:
         new_like = models.PostLike(user_id=user_id, post_id=post_id)
         db.add(new_like)
-        post.likes_count += 1
+        db.execute(
+            sa_update(models.Post)
+            .where(models.Post.id == post_id)
+            .values(likes_count=models.Post.likes_count + 1)
+        )
         notif.check_milestone(db, post)
         db.commit()
+        db.refresh(post)
         return {"is_liked": True, "likes": post.likes_count}
 
 
@@ -436,7 +448,12 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
         options_data[idx]['votes'] += 1
 
     poll.options = sanitize_json_field(options_data)
-    poll.total_votes += 1
+
+    db.execute(
+        sa_update(models.Poll)
+        .where(models.Poll.id == poll_id)
+        .values(total_votes=models.Poll.total_votes + 1)
+    )
 
     db_vote = models.PollVote(
         poll_id=poll_id,
@@ -451,4 +468,3 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
         "success": True,
         "is_correct": option_indices[0] == poll.correct_option if poll.type == 'quiz' else None
     }
-

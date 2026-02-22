@@ -5,7 +5,7 @@
 #    с sync DB-вызовами. Теперь они sync.
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, update as sa_update
 from typing import Optional, List, Dict
 from datetime import datetime, timezone
 import json
@@ -296,8 +296,13 @@ def get_market_item(db: Session, item_id: int, user_id: Optional[int] = None) ->
                 try:
                     new_view = models.MarketItemView(item_id=item_id, user_id=user_id)
                     db.add(new_view)
-                    item.views_count += 1
+                    db.execute(
+                        sa_update(models.MarketItem)
+                        .where(models.MarketItem.id == item_id)
+                        .values(views_count=models.MarketItem.views_count + 1)
+                    )
                     db.commit()
+                    db.refresh(item)
                 except Exception:
                     db.rollback()
 
@@ -319,14 +324,24 @@ def toggle_market_favorite(db: Session, item_id: int, user_id: int) -> dict:
 
     if favorite:
         db.delete(favorite)
-        item.favorites_count = max(0, item.favorites_count - 1)
+        db.execute(
+            sa_update(models.MarketItem)
+            .where(models.MarketItem.id == item_id)
+            .values(favorites_count=func.greatest(models.MarketItem.favorites_count - 1, 0))
+        )
         db.commit()
+        item = db.query(models.MarketItem).filter(models.MarketItem.id == item_id).first()
         return {"is_favorited": False, "favorites_count": item.favorites_count}
     else:
         new_favorite = models.MarketFavorite(user_id=user_id, item_id=item_id)
         db.add(new_favorite)
-        item.favorites_count += 1
+        db.execute(
+            sa_update(models.MarketItem)
+            .where(models.MarketItem.id == item_id)
+            .values(favorites_count=models.MarketItem.favorites_count + 1)
+        )
         db.commit()
+        item = db.query(models.MarketItem).filter(models.MarketItem.id == item_id).first()
         return {"is_favorited": True, "favorites_count": item.favorites_count}
 
 
@@ -384,4 +399,3 @@ def get_market_categories(db: Session) -> Dict[str, List[str]]:
         'standard': STANDARD_CATEGORIES,
         'popular_custom': popular_custom
     }
-

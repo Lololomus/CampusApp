@@ -2,7 +2,7 @@
 # Comments CRUD: создание, удаление, редактирование, лайки
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_
+from sqlalchemy import or_, func, update as sa_update
 from typing import Optional, List
 
 from app import models, schemas
@@ -31,14 +31,24 @@ def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
 
     if like:
         db.delete(like)
-        comment.likes_count = max(0, comment.likes_count - 1)
+        db.execute(
+            sa_update(models.Comment)
+            .where(models.Comment.id == comment_id)
+            .values(likes_count=func.greatest(models.Comment.likes_count - 1, 0))
+        )
         db.commit()
+        comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
         return {"is_liked": False, "likes": comment.likes_count}
     else:
         new_like = models.CommentLike(user_id=user_id, comment_id=comment_id)
         db.add(new_like)
-        comment.likes_count += 1
+        db.execute(
+            sa_update(models.Comment)
+            .where(models.Comment.id == comment_id)
+            .values(likes_count=models.Comment.likes_count + 1)
+        )
         db.commit()
+        comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
         return {"is_liked": True, "likes": comment.likes_count}
 
 
@@ -126,8 +136,12 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
         anonymous_index=anonymous_index
     )
 
-    post.comments_count += 1
     db.add(db_comment)
+    db.execute(
+        sa_update(models.Post)
+        .where(models.Post.id == comment.post_id)
+        .values(comments_count=models.Post.comments_count + 1)
+    )
     db.flush()
 
     # --- Уведомления ---
@@ -185,6 +199,10 @@ def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
     else:
         db.delete(comment)
         if post:
-            post.comments_count = max(0, post.comments_count - 1)
+            db.execute(
+                sa_update(models.Post)
+                .where(models.Post.id == post.id)
+                .values(comments_count=func.greatest(models.Post.comments_count - 1, 0))
+            )
         db.commit()
         return {"success": True, "type": "hard_delete"}

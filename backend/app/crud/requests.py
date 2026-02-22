@@ -4,7 +4,7 @@
 # ⚠️ ИСПРАВЛЕНО: create_request был async def с sync DB-вызовами.
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_, case
+from sqlalchemy import func, or_, case, update as sa_update
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
 import json
@@ -233,8 +233,13 @@ def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[in
     if not request:
         return None
 
-    request.views_count += 1
+    db.execute(
+        sa_update(models.Request)
+        .where(models.Request.id == request_id)
+        .values(views_count=models.Request.views_count + 1)
+    )
     db.commit()
+    db.refresh(request)
 
     tags = json.loads(request.tags) if request.tags else []
     images = get_image_urls(request.images) if request.images else []
@@ -344,7 +349,11 @@ def create_response(db: Session, request_id: int, user_id: int, data: schemas.Re
     )
     db.add(response)
 
-    request.responses_count += 1
+    db.execute(
+        sa_update(models.Request)
+        .where(models.Request.id == request_id)
+        .values(responses_count=models.Request.responses_count + 1)
+    )
 
     notif.notify_request_response(db, request, user)
 
@@ -380,7 +389,11 @@ def delete_response(db: Session, response_id: int, user_id: int) -> bool:
 
     request = db.query(models.Request).filter(models.Request.id == response.request_id).first()
     if request:
-        request.responses_count = max(0, request.responses_count - 1)
+        db.execute(
+            sa_update(models.Request)
+            .where(models.Request.id == request.id)
+            .values(responses_count=func.greatest(models.Request.responses_count - 1, 0))
+        )
 
     db.delete(response)
     db.commit()

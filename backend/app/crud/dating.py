@@ -3,6 +3,7 @@
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 import json
@@ -186,8 +187,12 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
 
     new_like = models.DatingLike(who_liked_id=liker_id, whom_liked_id=liked_id, is_like=True)
     db.add(new_like)
-    notif.notify_dating_like(db, liked_id)
-    db.commit()
+    try:
+        notif.notify_dating_like(db, liked_id)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return {"success": True, "is_match": False, "already_liked": True}
 
     reverse_like = db.query(models.DatingLike).filter(
         models.DatingLike.who_liked_id == liked_id,

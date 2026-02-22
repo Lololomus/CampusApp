@@ -1,6 +1,6 @@
 # ===== 📄 ФАЙЛ: backend/app/models.py =====
 
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Enum, CheckConstraint, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, DateTime, ForeignKey, Enum, CheckConstraint, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone 
 from .database import Base
@@ -10,7 +10,7 @@ class User(Base):
     __tablename__ = 'users'
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(Integer, unique=True, index=True, nullable=False)
+    telegram_id = Column(BigInteger, unique=True, index=True, nullable=False)
     username = Column(String(255), nullable=True)
     name = Column(String(255), nullable=False)
     age = Column(Integer, nullable=True)
@@ -93,9 +93,7 @@ class User(Base):
         cascade='all, delete-orphan'
     )
     
-    # Dating отношения
-    likes_given = relationship('Like', foreign_keys='Like.liker_id', back_populates='liker', cascade='all, delete-orphan')
-    likes_received = relationship('Like', foreign_keys='Like.liked_id', back_populates='liked', cascade='all, delete-orphan')
+    # Dating отношения (Like модель удалена — использовать DatingLike)
     
     # Market отношения
     market_items = relationship(
@@ -123,7 +121,7 @@ class AuthSession(Base):
     __tablename__ = 'auth_sessions'
 
     id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(Integer, nullable=False, index=True)
+    telegram_id = Column(BigInteger, nullable=False, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
     refresh_hash = Column(String(128), nullable=False, unique=True, index=True)
     user_agent = Column(String(500), nullable=True)
@@ -369,23 +367,9 @@ class CommentLike(Base):
     )
 
 
-class Like(Base):
-    """Лайки для знакомств (dating режим)"""
-    __tablename__ = 'likes'
-    
-    id = Column(Integer, primary_key=True, index=True)
-    liker_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    liked_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    
-    # Отношения
-    liker = relationship('User', foreign_keys=[liker_id], back_populates='likes_given')
-    liked = relationship('User', foreign_keys=[liked_id], back_populates='likes_received')
-    
-    __table_args__ = (
-        UniqueConstraint('liker_id', 'liked_id', name='unique_like'),
-        CheckConstraint('liker_id != liked_id', name='no_self_like'),
-    )
+# NOTE: class Like удалена (Фаза 0.5) — мёртвая модель, не использовалась в CRUD.
+# Для dating-лайков используется DatingLike.
+# Alembic: DROP TABLE likes;
 
 
 class Match(Base):
@@ -514,11 +498,15 @@ class DatingLike(Base):
     __tablename__ = 'dating_likes'
     
     id = Column(Integer, primary_key=True, index=True)
-    who_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    whom_liked_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    who_liked_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    whom_liked_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     is_like = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     matched_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint('who_liked_id', 'whom_liked_id', name='unique_dating_like'),
+    )
 
 
 # ========================================

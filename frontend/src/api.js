@@ -1206,17 +1206,13 @@ export async function getAdminStats() {
 
 /** Создать рекламный пост */
 export async function createAdPost(adData) {
-  const telegram_id = getTelegramId();
-  const response = await api.post('/ads/create', adData, {
-    params: { telegram_id }
-  });
+  const response = await api.post('/ads/create', adData);
   return response.data;
 }
 
 /** Список рекламных постов (для админки) */
 export async function getAdPosts(filters = {}) {
-  const telegram_id = getTelegramId();
-  const params = { telegram_id, limit: filters.limit || 20, offset: filters.offset || 0 };
+  const params = { limit: filters.limit || 20, offset: filters.offset || 0 };
   if (filters.status) params.status = filters.status;
   if (filters.scope) params.scope = filters.scope;
   const response = await api.get('/ads/list', { params });
@@ -1225,70 +1221,52 @@ export async function getAdPosts(filters = {}) {
 
 /** Получить рекламный пост по ID */
 export async function getAdPost(adId) {
-  const telegram_id = getTelegramId();
-  const response = await api.get(`/ads/${adId}`, { params: { telegram_id } });
+  const response = await api.get(`/ads/${adId}`);
   return response.data;
 }
 
 /** Обновить рекламный пост */
 export async function updateAdPost(adId, updateData) {
-  const telegram_id = getTelegramId();
-  const response = await api.patch(`/ads/${adId}`, updateData, {
-    params: { telegram_id }
-  });
+  const response = await api.patch(`/ads/${adId}`, updateData);
   return response.data;
 }
 
 /** Удалить рекламный пост */
 export async function deleteAdPost(adId) {
-  const telegram_id = getTelegramId();
-  const response = await api.delete(`/ads/${adId}`, { params: { telegram_id } });
+  const response = await api.delete(`/ads/${adId}`);
   return response.data;
 }
 
 /** Одобрить рекламный пост */
 export async function approveAdPost(adId) {
-  const telegram_id = getTelegramId();
-  const response = await api.post(`/ads/${adId}/approve`, null, {
-    params: { telegram_id }
-  });
+  const response = await api.post(`/ads/${adId}/approve`);
   return response.data;
 }
 
 /** Отклонить рекламный пост */
 export async function rejectAdPost(adId, rejectReason = null) {
-  const telegram_id = getTelegramId();
   const response = await api.post(`/ads/${adId}/reject`, {
     reject_reason: rejectReason
-  }, {
-    params: { telegram_id }
   });
   return response.data;
 }
 
 /** Пауза / снять паузу */
 export async function pauseAdPost(adId) {
-  const telegram_id = getTelegramId();
-  const response = await api.post(`/ads/${adId}/pause`, null, {
-    params: { telegram_id }
-  });
+  const response = await api.post(`/ads/${adId}/pause`);
   return response.data;
 }
 
 export async function resumeAdPost(adId) {
-  const telegram_id = getTelegramId();
-  const response = await api.post(`/ads/${adId}/resume`, null, {
-    params: { telegram_id }
-  });
+  const response = await api.post(`/ads/${adId}/resume`);
   return response.data;
 }
 
 /** Получить рекламные посты для подмешивания в ленту */
 export async function getAdsForFeed(limit = 3) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.get('/ads/feed/active', {
-      params: { telegram_id, limit }
+      params: { limit }
     });
     return response.data;
   } catch (error) {
@@ -1300,10 +1278,7 @@ export async function getAdsForFeed(limit = 3) {
 /** Трекинг показа рекламы */
 export async function trackAdImpression(adId) {
   try {
-    const telegram_id = getTelegramId();
-    await api.post(`/ads/${adId}/impression`, null, {
-      params: { telegram_id }
-    });
+    await api.post(`/ads/${adId}/impression`);
   } catch (error) {
     // Тихо проглатываем — трекинг не должен ломать UX
     console.warn('Ad impression tracking failed:', error);
@@ -1313,10 +1288,7 @@ export async function trackAdImpression(adId) {
 /** Трекинг клика по CTA */
 export async function trackAdClick(adId) {
   try {
-    const telegram_id = getTelegramId();
-    await api.post(`/ads/${adId}/click`, null, {
-      params: { telegram_id }
-    });
+    await api.post(`/ads/${adId}/click`);
   } catch (error) {
     console.warn('Ad click tracking failed:', error);
   }
@@ -1324,19 +1296,13 @@ export async function trackAdClick(adId) {
 
 /** Статистика по рекламному посту */
 export async function getAdStats(adId) {
-  const telegram_id = getTelegramId();
-  const response = await api.get(`/ads/${adId}/stats`, {
-    params: { telegram_id }
-  });
+  const response = await api.get(`/ads/${adId}/stats`);
   return response.data;
 }
 
 /** Сводная статистика рекламы */
 export async function getAdOverviewStats() {
-  const telegram_id = getTelegramId();
-  const response = await api.get('/ads/stats/overview', {
-    params: { telegram_id }
-  });
+  const response = await api.get('/ads/stats/overview');
   return response.data;
 }
 
@@ -1348,10 +1314,7 @@ export async function getAdOverviewStats() {
 /** Получить настройки уведомлений */
 export async function getNotificationSettings() {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get('/notifications/settings', {
-      params: { telegram_id }
-    });
+    const response = await api.get('/notifications/settings');
     return response.data;
   } catch (error) {
     console.error('Ошибка получения настроек уведомлений:', error);
@@ -1372,10 +1335,7 @@ export async function getNotificationSettings() {
 /** Обновить настройки уведомлений */
 export async function updateNotificationSettings(settings) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.patch('/notifications/settings', settings, {
-      params: { telegram_id }
-    });
+    const response = await api.patch('/notifications/settings', settings);
     return response.data;
   } catch (error) {
     console.error('Ошибка обновления настроек уведомлений:', error);

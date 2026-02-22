@@ -65,7 +65,7 @@ def init_db():
     from app.models import (
         User, Post, Poll, PollVote, PostLike,
         Request, RequestResponse, Comment, CommentLike,
-        Like, Match, MarketItem, MarketFavorite,
+        Match, MarketItem, MarketFavorite,
         DatingProfile, DatingLike,
         ModerationLog, Report, Appeal,
         PostView, MarketItemView,

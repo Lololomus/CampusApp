@@ -7,6 +7,7 @@ from typing import Optional
 from config import API_BASE_URL, BOT_SECRET
 
 logger = logging.getLogger(__name__)
+BOT_HEADERS = {"X-Bot-Secret": BOT_SECRET}
 
 
 class ApiClient:
@@ -47,7 +48,8 @@ class ApiClient:
             session = await self._get_session()
             async with session.get(
                 "/notifications/queue",
-                params={"bot_secret": BOT_SECRET, "limit": limit}
+                headers=BOT_HEADERS,
+                params={"limit": limit}
             ) as resp:
                 if resp.status == 200:
                     return await resp.json()
@@ -65,7 +67,7 @@ class ApiClient:
             session = await self._get_session()
             async with session.post(
                 f"/notifications/queue/{notification_id}/sent",
-                params={"bot_secret": BOT_SECRET}
+                headers=BOT_HEADERS
             ) as resp:
                 return resp.status == 200
         except aiohttp.ClientError as e:
@@ -78,7 +80,8 @@ class ApiClient:
             session = await self._get_session()
             async with session.post(
                 f"/notifications/queue/{notification_id}/failed",
-                params={"bot_secret": BOT_SECRET, "error": error[:200]}
+                headers=BOT_HEADERS,
+                params={"error": error[:200]}
             ) as resp:
                 return resp.status == 200
         except aiohttp.ClientError as e:
@@ -98,7 +101,7 @@ class ApiClient:
             session = await self._get_session()
             async with session.get(
                 "/notifications/followups/pending",
-                params={"bot_secret": BOT_SECRET}
+                headers=BOT_HEADERS
             ) as resp:
                 if resp.status == 200:
                     return await resp.json()
@@ -119,7 +122,7 @@ class ApiClient:
             session = await self._get_session()
             async with session.post(
                 f"/notifications/followups/{followup_id}/answer",
-                params={"bot_secret": BOT_SECRET},
+                headers=BOT_HEADERS,
                 json={"answer": answer}
             ) as resp:
                 if resp.status == 200:
@@ -138,7 +141,7 @@ class ApiClient:
             session = await self._get_session()
             async with session.post(
                 f"/notifications/followups/{followup_id}/sent",
-                params={"bot_secret": BOT_SECRET}
+                headers=BOT_HEADERS
             ) as resp:
                 return resp.status == 200
         except aiohttp.ClientError as e:

@@ -1,8 +1,10 @@
 # ===== 📄 ФАЙЛ: backend/app/crud/ads.py =====
 # Ads CRUD: рекламные посты, показы, клики, статистика
+#
+# ✅ Фаза 0.6: Счётчики → SQL expressions (race condition fix)
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, update as sa_update
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
@@ -268,7 +270,7 @@ def get_active_ads_for_user(
 
 
 def track_ad_impression(db: Session, ad_post_id: int, user_id: int) -> bool:
-    """Зафиксировать показ рекламного поста"""
+    """Зафиксировать показ рекламного поста (✅ атомарные счётчики)"""
     db_ad = db.query(models.AdPost).filter(models.AdPost.id == ad_post_id).first()
     if not db_ad:
         return False
@@ -290,26 +292,40 @@ def track_ad_impression(db: Session, ad_post_id: int, user_id: int) -> bool:
     )
     db.add(impression)
 
-    db_ad.impressions_count += 1
-
-    # Проверяем уникальность
+    # Проверяем уникальность ДО инкремента
     existing = db.query(models.AdImpression).filter(
         models.AdImpression.ad_post_id == ad_post_id,
         models.AdImpression.user_id == user_id,
     ).count()
-    if existing == 0:
-        db_ad.unique_views_count += 1
+    is_new_unique = existing == 0
+
+    # Атомарные счётчики через SQL expression
+    update_values = {
+        'impressions_count': models.AdPost.impressions_count + 1,
+    }
+    if is_new_unique:
+        update_values['unique_views_count'] = models.AdPost.unique_views_count + 1
+
+    db.execute(
+        sa_update(models.AdPost)
+        .where(models.AdPost.id == ad_post_id)
+        .values(**update_values)
+    )
 
     # Автозавершение при достижении лимита
-    if db_ad.impression_limit and db_ad.impressions_count >= db_ad.impression_limit:
-        db_ad.status = 'completed'
+    if db_ad.impression_limit and (db_ad.impressions_count + 1) >= db_ad.impression_limit:
+        db.execute(
+            sa_update(models.AdPost)
+            .where(models.AdPost.id == ad_post_id)
+            .values(status='completed')
+        )
 
     db.commit()
     return True
 
 
 def track_ad_click(db: Session, ad_post_id: int, user_id: int) -> bool:
-    """Зафиксировать клик по CTA"""
+    """Зафиксировать клик по CTA (✅ атомарный счётчик)"""
     db_ad = db.query(models.AdPost).filter(models.AdPost.id == ad_post_id).first()
     if not db_ad:
         return False
@@ -319,7 +335,13 @@ def track_ad_click(db: Session, ad_post_id: int, user_id: int) -> bool:
         user_id=user_id,
     )
     db.add(click)
-    db_ad.clicks_count += 1
+
+    db.execute(
+        sa_update(models.AdPost)
+        .where(models.AdPost.id == ad_post_id)
+        .values(clicks_count=models.AdPost.clicks_count + 1)
+    )
+
     db.commit()
     return True
 

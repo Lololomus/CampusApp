@@ -11,20 +11,21 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, crud
+from app.auth_service import require_user
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
-def _verify_bot(bot_secret: str = Query(...)):
-    """Простая проверка авторизации бота"""
-    if bot_secret != get_settings().bot_secret:
+def _verify_bot(x_bot_secret: str = Header(..., alias="X-Bot-Secret")):
+    """Проверка авторизации бота через заголовок (✅ Фаза 0.3)"""
+    if x_bot_secret != get_settings().bot_secret:
         raise HTTPException(status_code=403, detail="Invalid bot secret")
 
 
@@ -34,13 +35,10 @@ def _verify_bot(bot_secret: str = Query(...)):
 
 @router.get("/settings", response_model=schemas.NotificationSettingsResponse)
 def get_notification_settings(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Получить настройки уведомлений текущего юзера"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(404, "User not found")
 
     settings = db.query(models.NotificationSettings).filter(
         models.NotificationSettings.user_id == user.id
@@ -59,13 +57,10 @@ def get_notification_settings(
 @router.patch("/settings", response_model=schemas.NotificationSettingsResponse)
 def update_notification_settings(
     data: schemas.NotificationSettingsUpdate,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Обновить настройки уведомлений"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(404, "User not found")
 
     settings = db.query(models.NotificationSettings).filter(
         models.NotificationSettings.user_id == user.id
@@ -109,15 +104,13 @@ NOTIF_TYPE_TO_SETTING = {
 @router.get("/queue")
 def get_notification_queue(
     limit: int = Query(50, ge=1, le=100),
-    bot_secret: str = Query(...),
+    _=Depends(_verify_bot),
     db: Session = Depends(get_db),
 ):
     """
     Забрать pending уведомления для отправки.
     Бот вызывает этот endpoint периодически.
     """
-    _verify_bot(bot_secret)
-
     notifications = (
         db.query(models.Notification)
         .filter(models.Notification.status == 'pending')
@@ -161,12 +154,10 @@ def get_notification_queue(
 @router.post("/queue/{notification_id}/sent")
 def mark_notification_sent(
     notification_id: int,
-    bot_secret: str = Query(...),
+    _=Depends(_verify_bot),
     db: Session = Depends(get_db),
 ):
     """Бот подтверждает успешную отправку"""
-    _verify_bot(bot_secret)
-
     n = db.query(models.Notification).get(notification_id)
     if not n:
         raise HTTPException(404, "Notification not found")
@@ -182,12 +173,10 @@ def mark_notification_sent(
 def mark_notification_failed(
     notification_id: int,
     error: str = Query("unknown"),
-    bot_secret: str = Query(...),
+    _=Depends(_verify_bot),
     db: Session = Depends(get_db),
 ):
     """Бот сообщает об ошибке отправки"""
-    _verify_bot(bot_secret)
-
     n = db.query(models.Notification).get(notification_id)
     if not n:
         raise HTTPException(404, "Notification not found")
@@ -205,14 +194,12 @@ def mark_notification_failed(
 
 @router.get("/followups/pending")
 def get_pending_followups(
-    bot_secret: str = Query(...),
+    _=Depends(_verify_bot),
     db: Session = Depends(get_db),
 ):
     """
     Забрать follow-up'ы, которые пора отправить (scheduled_at <= now).
     """
-    _verify_bot(bot_secret)
-
     now = datetime.now(timezone.utc)
 
     followups = (
@@ -269,12 +256,10 @@ def get_pending_followups(
 @router.post("/followups/{followup_id}/sent")
 def mark_followup_sent(
     followup_id: int,
-    bot_secret: str = Query(...),
+    _=Depends(_verify_bot),
     db: Session = Depends(get_db),
 ):
     """Бот подтверждает отправку follow-up"""
-    _verify_bot(bot_secret)
-
     f = db.query(models.Followup).get(followup_id)
     if not f:
         raise HTTPException(404, "Followup not found")
@@ -289,7 +274,7 @@ def mark_followup_sent(
 def answer_followup(
     followup_id: int,
     data: schemas.FollowupAnswer,
-    bot_secret: str = Query(...),
+    _=Depends(_verify_bot),
     db: Session = Depends(get_db),
 ):
     """
@@ -299,8 +284,6 @@ def answer_followup(
     answer='no': оставить активным, больше не спрашиваем
     answer='in_progress': повторный follow-up через 48ч (макс 2 попытки)
     """
-    _verify_bot(bot_secret)
-
     f = db.query(models.Followup).get(followup_id)
     if not f:
         raise HTTPException(404, "Followup not found")

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.auth_service import get_current_user
+from app.auth_service import require_user
 from app import crud, schemas, models
 from app.time_utils import normalize_datetime_payload, to_iso_z
 
@@ -18,14 +18,13 @@ router = APIRouter(prefix="/ads", tags=["ads"])
 @router.post("/create", response_model=schemas.AdPostResponse)
 def create_ad(
     ad_data: schemas.AdPostCreate,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """
     Создать рекламный пост.
     Амбассадор/суперадмин. Амбассадор → pending_review, суперадмин → active.
     """
-    user = get_current_user(db, telegram_id)
     if user.role not in ('ambassador', 'superadmin'):
         raise HTTPException(403, "Только амбассадоры и админы могут создавать рекламу")
     
@@ -41,18 +40,17 @@ def create_ad(
 
 @router.get("/list", response_model=schemas.AdPostFeedResponse)
 def list_ads(
-    telegram_id: int = Query(...),
     status: str = Query(None),
     scope: str = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """
     Список рекламных постов (для админки / амбассадора).
     Амбассадор видит только свои, суперадмин — все.
     """
-    user = get_current_user(db, telegram_id)
     if user.role not in ('ambassador', 'superadmin'):
         raise HTTPException(403, "Нет доступа")
     
@@ -77,11 +75,10 @@ def list_ads(
 @router.get("/{ad_id}", response_model=schemas.AdPostResponse)
 def get_ad(
     ad_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Получить рекламный пост по ID"""
-    user = get_current_user(db, telegram_id)
     db_ad = crud.get_ad_post(db, ad_id)
     if not db_ad:
         raise HTTPException(404, "Рекламный пост не найден")
@@ -97,11 +94,10 @@ def get_ad(
 def update_ad(
     ad_id: int,
     update_data: schemas.AdPostUpdate,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Обновить рекламный пост (автор или суперадмин)"""
-    user = get_current_user(db, telegram_id)
     db_ad = crud.get_ad_post(db, ad_id)
     if not db_ad:
         raise HTTPException(404, "Рекламный пост не найден")
@@ -120,11 +116,10 @@ def update_ad(
 @router.delete("/{ad_id}")
 def delete_ad(
     ad_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Удалить рекламный пост (автор или суперадмин)"""
-    user = get_current_user(db, telegram_id)
     db_ad = crud.get_ad_post(db, ad_id)
     if not db_ad:
         raise HTTPException(404, "Рекламный пост не найден")
@@ -144,11 +139,10 @@ def delete_ad(
 @router.post("/{ad_id}/approve", response_model=schemas.AdPostResponse)
 def approve_ad(
     ad_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Одобрить рекламный пост (только суперадмин)"""
-    user = get_current_user(db, telegram_id)
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин может одобрять рекламу")
     
@@ -163,11 +157,10 @@ def approve_ad(
 def reject_ad(
     ad_id: int,
     action: schemas.AdReviewAction,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Отклонить рекламный пост (только суперадмин)"""
-    user = get_current_user(db, telegram_id)
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин может отклонять рекламу")
     
@@ -181,11 +174,10 @@ def reject_ad(
 @router.post("/{ad_id}/pause", response_model=schemas.AdPostResponse)
 def pause_ad(
     ad_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Поставить на паузу (суперадмин)"""
-    user = get_current_user(db, telegram_id)
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин")
     
@@ -198,11 +190,10 @@ def pause_ad(
 @router.post("/{ad_id}/resume", response_model=schemas.AdPostResponse)
 def resume_ad(
     ad_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Снять с паузы (суперадмин)"""
-    user = get_current_user(db, telegram_id)
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин")
     
@@ -219,15 +210,14 @@ def resume_ad(
 
 @router.get("/feed/active")
 def get_ads_for_feed(
-    telegram_id: int = Query(...),
     limit: int = Query(3, ge=1, le=10),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """
     Получить рекламные посты для подмешивания в ленту.
     Фронт вызывает при загрузке ленты, потом вставляет каждый N-й.
     """
-    user = get_current_user(db, telegram_id)
     
     ads = crud.get_active_ads_for_user(
         db=db,
@@ -277,11 +267,10 @@ def get_ads_for_feed(
 @router.post("/{ad_id}/impression")
 def track_impression(
     ad_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Зафиксировать показ рекламного поста в ленте"""
-    user = get_current_user(db, telegram_id)
     success = crud.track_ad_impression(db, ad_id, user.id)
     return {"tracked": success}
 
@@ -289,11 +278,10 @@ def track_impression(
 @router.post("/{ad_id}/click")
 def track_click(
     ad_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Зафиксировать клик по CTA"""
-    user = get_current_user(db, telegram_id)
     success = crud.track_ad_click(db, ad_id, user.id)
     return {"tracked": success}
 
@@ -306,11 +294,10 @@ def track_click(
 @router.get("/{ad_id}/stats", response_model=schemas.AdStatsResponse)
 def get_stats(
     ad_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Детальная статистика по рекламному посту"""
-    user = get_current_user(db, telegram_id)
     if user.role not in ('ambassador', 'superadmin'):
         raise HTTPException(403, "Нет доступа")
     
@@ -328,11 +315,10 @@ def get_stats(
 
 @router.get("/stats/overview", response_model=schemas.AdOverviewStats)
 def get_overview_stats(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Сводная статистика рекламной системы (суперадмин)"""
-    user = get_current_user(db, telegram_id)
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин")
     return crud.get_ad_overview_stats(db)
