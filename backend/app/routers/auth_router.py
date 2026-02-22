@@ -1,3 +1,7 @@
+# ===== FILE: backend/app/routers/auth_router.py =====
+#
+# ✅ Фаза 2: get_db → get_db_sync (DEPRECATED, async в Фазе 3.2)
+
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Deque, Dict
@@ -13,7 +17,7 @@ from app.auth_service import (
     revoke_auth_session,
     verify_telegram_auth,
 )
-from app.database import get_db
+from app.database import get_db_sync
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -38,7 +42,7 @@ def telegram_login(
     payload: schemas.TelegramAuth,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     _check_rate_limit(request, "auth_login")
     auth_data = verify_telegram_auth(payload.init_data)
@@ -46,7 +50,6 @@ def telegram_login(
     if not user_data_raw:
         raise HTTPException(status_code=401, detail="Telegram user not found")
 
-    # Telegram отправляет user как JSON-строку в init_data
     import json
 
     try:
@@ -92,7 +95,7 @@ def telegram_login(
 def register_user(
     user_data: schemas.UserRegister,
     identity=Depends(require_identity),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     existing_user = crud.get_user_by_telegram_id(db, identity.telegram_id)
     if existing_user:
@@ -104,7 +107,6 @@ def register_user(
     )
     user = crud.create_user(db, create_payload)
 
-    # Привязываем незавершенные auth sessions этого telegram_id к созданному user
     db.query(models.AuthSession).filter(
         models.AuthSession.telegram_id == identity.telegram_id,
         models.AuthSession.revoked_at.is_(None),
@@ -118,7 +120,7 @@ def register_user(
 def refresh_token(
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     _check_rate_limit(request, "auth_refresh")
     refresh_token_cookie = request.cookies.get("refresh_token")
@@ -147,7 +149,7 @@ def refresh_token(
 def logout(
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     refresh_token_cookie = request.cookies.get("refresh_token")
     revoke_auth_session(db, refresh_token_cookie)

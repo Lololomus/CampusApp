@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, and_, desc
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
-from app.database import get_db
+from app.database import get_db_sync
 from app import models, schemas
 from app.services import notification_service as notif
 
@@ -123,7 +123,7 @@ def moderate_delete_post(
     post_id: int,
     action: schemas.ModerationAction = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Мягкое удаление поста (амбассадор своего вуза / суперадмин)"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -161,7 +161,7 @@ def moderate_delete_comment(
     comment_id: int,
     action: schemas.ModerationAction = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Мягкое удаление комментария"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -204,7 +204,7 @@ def moderate_delete_request(
     request_id: int,
     action: schemas.ModerationAction = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Мягкое удаление запроса"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -242,7 +242,7 @@ def moderate_delete_market_item(
     item_id: int,
     action: schemas.ModerationAction = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Мягкое удаление товара"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -285,7 +285,7 @@ def toggle_pin_post(
     post_id: int,
     telegram_id: int = Query(...),
     action: schemas.PinPostAction = Body(default=None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Закрепить/открепить пост (макс. 3 на вуз)"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -354,7 +354,7 @@ def toggle_pin_post(
 def shadow_ban_user(
     data: schemas.ShadowBanCreate = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Теневой бан пользователя"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -399,7 +399,7 @@ def shadow_ban_user(
 def shadow_unban_user(
     user_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Снять теневой бан"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -434,7 +434,7 @@ def shadow_unban_user(
 def create_report(
     data: schemas.ReportCreate = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Создать жалобу на контент или пользователя (любой пользователь)"""
     reporter = get_user_or_404(db, telegram_id)
@@ -513,7 +513,7 @@ def get_reports(
     target_type: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Список жалоб (амбассадор видит свой вуз, суперадмин — все)"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -566,7 +566,7 @@ def review_report(
     status: str = Query(..., pattern="^(reviewed|dismissed|resolved)$"),
     moderator_note: Optional[str] = Query(None),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Обработать жалобу"""
     moderator = require_moderator(get_user_or_404(db, telegram_id))
@@ -609,7 +609,7 @@ def review_report(
 def create_appeal(
     data: schemas.AppealCreate = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Обжаловать действие модерации"""
     user = get_user_or_404(db, telegram_id)
@@ -654,7 +654,7 @@ def get_appeals(
     status: str = Query('pending'),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Список обжалований (только суперадмин)"""
     admin = require_superadmin(get_user_or_404(db, telegram_id))
@@ -693,7 +693,7 @@ def review_appeal(
     status: str = Query(..., pattern="^(approved|rejected)$"),
     reviewer_note: Optional[str] = Query(None),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Рассмотреть обжалование (суперадмин). Approved = откат действия."""
     admin = require_superadmin(get_user_or_404(db, telegram_id))
@@ -791,7 +791,7 @@ def _rollback_moderation(db: Session, mod_log: models.ModerationLog, admin_id: i
 @router.get("/admin/ambassadors")
 def list_ambassadors(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Список всех амбассадоров (суперадмин)"""
     admin = require_superadmin(get_user_or_404(db, telegram_id))
@@ -826,7 +826,7 @@ def list_ambassadors(
 def assign_ambassador(
     data: schemas.AssignAmbassadorRequest = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Назначить амбассадора (суперадмин)"""
     admin = require_superadmin(get_user_or_404(db, telegram_id))
@@ -872,7 +872,7 @@ def assign_ambassador(
 def remove_ambassador(
     user_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Снять роль амбассадора (суперадмин)"""
     admin = require_superadmin(get_user_or_404(db, telegram_id))
@@ -909,7 +909,7 @@ def get_moderation_logs(
     university: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Лог модерации (суперадмин — все, амбассадор — свои действия)"""
     user = require_moderator(get_user_or_404(db, telegram_id))
@@ -959,7 +959,7 @@ def get_moderation_logs(
 @router.get("/admin/stats")
 def get_admin_stats(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Общая статистика приложения (суперадмин)"""
     admin = require_superadmin(get_user_or_404(db, telegram_id))
@@ -1022,7 +1022,7 @@ def get_admin_stats(
 @router.get("/moderation/my-role")
 def get_my_moderation_role(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Получить свою роль и возможности (для UI)"""
     user = get_user_or_404(db, telegram_id)
@@ -1046,3 +1046,4 @@ def get_my_moderation_role(
         result["pending_reports"] = reports_query.scalar()
 
     return result
+

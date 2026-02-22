@@ -5,7 +5,7 @@ from typing import List, Optional
 import json
 import re
 
-from app.database import get_db
+from app.database import get_db_sync
 from app import models, schemas, crud
 from app.utils import (
     delete_images,
@@ -23,7 +23,7 @@ async def save_dating_photos(files: List[UploadFile]) -> List[dict]:
 
 
 @router.get("/profile/me", response_model=Optional[schemas.DatingProfileResponse])
-def get_my_dating_profile(telegram_id: int, db: Session = Depends(get_db)):
+def get_my_dating_profile(telegram_id: int, db: Session = Depends(get_db_sync)):
     """Get current user's dating profile"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -65,7 +65,7 @@ async def create_or_update_dating_profile(
     prompt_answer: Optional[str] = Form(None),
     photos: List[UploadFile] = File(None),
     keep_photos: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -229,7 +229,7 @@ def get_dating_feed(
     limit: int = 10,
     offset: int = 0,
     debug: bool = Query(False, description="Показать breakdown скоринга"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Get dating feed with CampusMatch scoring"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -246,7 +246,7 @@ def get_dating_feed(
 def like_user(
     target_user_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Like another user"""
     from datetime import datetime
@@ -298,7 +298,7 @@ def like_user(
 def dislike_user(
     target_user_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Dislike/skip another user"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -320,7 +320,7 @@ def get_likes_received(
     telegram_id: int = Query(...),
     limit: int = 20,
     offset: int = 0,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Get users who liked current user"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -361,7 +361,7 @@ def get_my_matches(
     telegram_id: int = Query(...),
     limit: int = 20,
     offset: int = 0,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Get all matches for current user"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -386,7 +386,7 @@ def get_my_matches(
 @router.get("/stats", response_model=schemas.DatingStatsResponse)
 def get_dating_stats(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Get dating statistics for current user"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -400,7 +400,7 @@ def get_dating_stats(
 def update_dating_settings(
     telegram_id: int = Query(...),
     settings: schemas.DatingSettings = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Update dating settings"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -529,7 +529,7 @@ def ensure_mock_matches(db: Session, user_id: int) -> int:
 
 
 @router.get("/matches-active")
-def get_active_matches(telegram_id: int = Query(...), db: Session = Depends(get_db)):
+def get_active_matches(telegram_id: int = Query(...), db: Session = Depends(get_db_sync)):
     """Получить активные мэтчи (24 часа) с авто-обновлением моков"""
     from datetime import datetime, timedelta
     
@@ -628,7 +628,7 @@ def get_active_matches(telegram_id: int = Query(...), db: Session = Depends(get_
 @router.get("/matches-active")
 def get_active_matches(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Получить активные мэтчи (в течение 24 часов)"""
     from datetime import datetime, timedelta

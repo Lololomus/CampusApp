@@ -1,5 +1,7 @@
 # ===== 📄 ФАЙЛ: backend/app/main.py =====
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict
 from app import models, schemas, crud
-from app.database import get_db, init_db
+from app.database import get_db_sync, async_engine, sync_engine, init_db
 from app.utils import (
     delete_images,
     get_image_urls,
@@ -21,12 +23,27 @@ from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
 from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router
 import os
+import logging
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Запуск приложения...")
+    init_db()
+    logger.info("База данных инициализирована")
+    yield
+    await async_engine.dispose()
+    sync_engine.dispose()
+    logger.info("Engines disposed")
 
 app = FastAPI(
     title="Campus App API",
     description="Backend API для студенческой социальной сети",
-    version="2.1.0"
+    version="2.2.0",
+    lifespan=lifespan,
 )
 
 # ===== ROUTERS =====
@@ -103,16 +120,9 @@ os.makedirs("uploads/avatars", exist_ok=True)
 os.makedirs("uploads/images", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# ===== STARTUP =====
-@app.on_event("startup")
-def startup_event():
-    print("🚀 Запуск приложения...")
-    init_db()
-    print("✅ База данных инициализирована!")
-
 @app.get("/")
 def root():
-    return {"message": "Campus App API ✅", "version": "2.1.0"}
+    return {"message": "Campus App API ✅", "version": "2.2.0"}
 
 @app.get("/health")
 def health_check():
@@ -121,7 +131,7 @@ def health_check():
 # ===== USER ENDPOINTS =====
 
 @app.get("/users/me", response_model=schemas.UserResponse)
-def get_current_user(telegram_id: int = Query(...), db: Session = Depends(get_db)):
+def get_current_user(telegram_id: int = Query(...), db: Session = Depends(get_db_sync)):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -130,7 +140,7 @@ def get_current_user(telegram_id: int = Query(...), db: Session = Depends(get_db
 @app.post("/users/me/avatar")
 async def upload_avatar(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
     telegram_id: int = Query(...)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -165,7 +175,7 @@ async def upload_avatar(
 def update_current_user(
     telegram_id: int = Query(...),
     user_update: schemas.UserUpdate = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -202,7 +212,7 @@ def get_user_posts_endpoint(
     limit: int = Query(5, ge=1, le=50),
     offset: int = Query(0, ge=0),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     requesting_user = crud.get_user_by_telegram_id(db, telegram_id)
     if not requesting_user:
@@ -275,7 +285,7 @@ def get_user_posts_endpoint(
     return normalize_datetime_payload(result)
 
 @app.get("/users/{user_id}/stats")
-def get_user_stats(user_id: int, db: Session = Depends(get_db)):
+def get_user_stats(user_id: int, db: Session = Depends(get_db_sync)):
     user = crud.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -303,7 +313,7 @@ def get_posts_feed(
     date_range: Optional[str] = Query(None),      # 'today' | 'week' | 'month'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'popular' | 'discussed'
     
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Лента постов с фильтрацией"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -434,7 +444,7 @@ async def create_post_endpoint(
     images: List[UploadFile] = File(default=[]),
     
     poll_data: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ
     print(f"\n{'='*60}")
@@ -515,7 +525,7 @@ async def create_post_endpoint(
     return get_post_endpoint(post.id, telegram_id, db)
 
 @app.get("/posts/{post_id}", response_model=schemas.PostResponse)
-def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session = Depends(get_db)):
+def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session = Depends(get_db_sync)):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     
     post = crud.get_post(db, post_id)
@@ -604,7 +614,7 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
     })
 
 @app.delete("/posts/{post_id}")
-def delete_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session = Depends(get_db)):
+def delete_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session = Depends(get_db_sync)):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -641,7 +651,7 @@ async def update_post_endpoint(
     is_important: Optional[bool] = Form(None),
     new_images: List[UploadFile] = File(default=[]),
     keep_images: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -701,7 +711,7 @@ async def update_post_endpoint(
 def toggle_post_like_endpoint(
     post_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -716,7 +726,7 @@ def vote_poll_endpoint(
     poll_id: int,
     vote_data: schemas.PollVoteCreate,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -734,7 +744,7 @@ def vote_poll_endpoint(
 def get_post_comments_endpoint(
     post_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     comments = crud.get_post_comments(db, post_id, user.id if user else None)
@@ -789,7 +799,7 @@ def create_comment_endpoint(
     post_id: int,
     telegram_id: int = Query(...),
     comment_data: schemas.CommentCreate = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -829,7 +839,7 @@ def create_comment_endpoint(
 def delete_comment_endpoint(
     comment_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -842,7 +852,7 @@ def update_comment_endpoint(
     comment_id: int,
     telegram_id: int = Query(...),
     comment_update: schemas.CommentUpdate = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -883,7 +893,7 @@ def update_comment_endpoint(
 def toggle_comment_like_endpoint(
     comment_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -910,7 +920,7 @@ async def create_request_endpoint(
     reward_value: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
     
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -988,7 +998,7 @@ def get_requests_feed_endpoint(
     urgency: Optional[str] = Query(None),         # 'soon' (<24h) | 'later'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'expires_soon' | 'most_responses'
     
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Лента запросов с фильтрацией"""
     current_user_id = None
@@ -1056,7 +1066,7 @@ def get_my_requests_endpoint(
     telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Получить МОИ запросы"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -1106,7 +1116,7 @@ def get_my_requests_endpoint(
 def get_request_endpoint(
     request_id: int,
     telegram_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     current_user_id = None
     if telegram_id:
@@ -1152,7 +1162,7 @@ def update_request_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
     data: schemas.RequestUpdate = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1198,7 +1208,7 @@ def update_request_endpoint(
 def delete_request_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1215,7 +1225,7 @@ def create_response_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
     data: schemas.ResponseCreate = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1244,7 +1254,7 @@ def create_response_endpoint(
 def get_responses_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1276,7 +1286,7 @@ def get_responses_endpoint(
 def delete_response_endpoint(
     response_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1296,7 +1306,7 @@ def get_unbound_users_endpoint(
     search: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Список юзеров без привязки к кампусу (для амбассадоров и админов)."""
     # Проверяем права
@@ -1333,7 +1343,7 @@ def bind_user_to_campus_endpoint(
     campus_id: str = Body(...),
     university: str = Body(...),
     city: Optional[str] = Body(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Привязать юзера к кампусу."""
     admin = crud.get_user_by_telegram_id(db, telegram_id)
@@ -1351,7 +1361,7 @@ def bind_user_to_campus_endpoint(
 def unbind_user_from_campus_endpoint(
     telegram_id: int = Query(...),
     user_id: int = Body(..., embed=True),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Отвязать юзера от кампуса."""
     admin = crud.get_user_by_telegram_id(db, telegram_id)
@@ -1368,7 +1378,7 @@ def unbind_user_from_campus_endpoint(
 # ===== MARKET ENDPOINTS =====
 
 @app.get("/market/categories", response_model=schemas.MarketCategoriesResponse)
-def get_market_categories_endpoint(db: Session = Depends(get_db)):
+def get_market_categories_endpoint(db: Session = Depends(get_db_sync)):
     return crud.get_market_categories(db)
 
 @app.get("/market/feed", response_model=schemas.MarketFeedResponse)
@@ -1386,7 +1396,7 @@ def get_market_feed_endpoint(
     institute: Optional[str] = Query(None),
     campus_id: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     current_user_id = user.id if user else None
@@ -1461,7 +1471,7 @@ def get_market_favorites_endpoint(
     telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1517,7 +1527,7 @@ def get_my_market_items_endpoint(
     telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """Получить МОИ товары (которые Я продаю)"""
     user = crud.get_user_by_telegram_id(db, telegram_id)
@@ -1571,7 +1581,7 @@ def get_my_market_items_endpoint(
 def get_market_item_endpoint(
     item_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     item = crud.get_market_item(db, item_id)
@@ -1627,7 +1637,7 @@ async def create_market_item_endpoint(
     condition: str = Form(...),
     location: Optional[str] = Form(None),
     images: List[UploadFile] = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1705,7 +1715,7 @@ async def update_market_item_endpoint(
     status: Optional[str] = Form(None),
     new_images: List[UploadFile] = File(default=[]),
     keep_images: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1789,7 +1799,7 @@ async def update_market_item_endpoint(
 def delete_market_item_endpoint(
     item_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1805,7 +1815,7 @@ def delete_market_item_endpoint(
 def toggle_market_favorite_endpoint(
     item_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     user = crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -1819,7 +1829,7 @@ def toggle_market_favorite_endpoint(
 @app.post("/dev/generate-mock-dating-data")
 def generate_mock_dating_data(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_sync)
 ):
     """⚠️ DEV ONLY: Генерирует mock-анкеты для dating!"""
     if settings.app_env.lower() != "dev":

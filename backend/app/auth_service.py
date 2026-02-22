@@ -1,3 +1,7 @@
+# ===== FILE: backend/app/auth_service.py =====
+#
+# ✅ Фаза 2: get_db → get_db_sync (DEPRECATED, будет async в Фазе 3.2)
+
 import hashlib
 import hmac
 import secrets
@@ -13,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import get_settings
-from app.database import get_db
+from app.database import get_db_sync
 
 
 @dataclass
@@ -213,7 +217,7 @@ def require_identity(request: Request) -> AuthIdentity:
 
 def require_user(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),       # DEPRECATED — async в Фазе 3.2
 ) -> models.User:
     identity = get_identity_from_request(request)
     user = db.query(models.User).filter(models.User.telegram_id == identity.telegram_id).first()

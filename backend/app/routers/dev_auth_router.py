@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.auth_service import create_auth_session
 from app.config import get_settings
-from app.database import get_db
+from app.database import get_db_sync
 
 router = APIRouter(prefix="/dev/auth", tags=["dev-auth"])
 
@@ -21,7 +21,7 @@ def dev_login_as(
     payload: schemas.DevLoginRequest,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     settings = _ensure_dev_mode()
     if settings.dev_telegram_ids and payload.telegram_id not in settings.dev_telegram_ids:
@@ -56,7 +56,7 @@ def dev_login_as(
 @router.post("/reset-user")
 def dev_reset_user(
     payload: schemas.DevResetRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     settings = _ensure_dev_mode()
     if settings.dev_telegram_ids and payload.telegram_id not in settings.dev_telegram_ids:
@@ -69,3 +69,4 @@ def dev_reset_user(
     db.query(models.AuthSession).filter(models.AuthSession.telegram_id == payload.telegram_id).delete()
     db.commit()
     return {"success": True}
+

@@ -1,8 +1,10 @@
 # ===== 📄 ФАЙЛ: backend/app/routers/ads.py =====
+#
+# ✅ Фаза 2: get_db → get_db_sync (DEPRECATED, async в Фазе 3.8)
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from app.database import get_db
+from app.database import get_db_sync
 from app.auth_service import require_user
 from app import crud, schemas, models
 from app.time_utils import normalize_datetime_payload, to_iso_z
@@ -19,12 +21,8 @@ router = APIRouter(prefix="/ads", tags=["ads"])
 def create_ad(
     ad_data: schemas.AdPostCreate,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """
-    Создать рекламный пост.
-    Амбассадор/суперадмин. Амбассадор → pending_review, суперадмин → active.
-    """
     if user.role not in ('ambassador', 'superadmin'):
         raise HTTPException(403, "Только амбассадоры и админы могут создавать рекламу")
     
@@ -45,12 +43,8 @@ def list_ads(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """
-    Список рекламных постов (для админки / амбассадора).
-    Амбассадор видит только свои, суперадмин — все.
-    """
     if user.role not in ('ambassador', 'superadmin'):
         raise HTTPException(403, "Нет доступа")
     
@@ -76,14 +70,12 @@ def list_ads(
 def get_ad(
     ad_id: int,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Получить рекламный пост по ID"""
     db_ad = crud.get_ad_post(db, ad_id)
     if not db_ad:
         raise HTTPException(404, "Рекламный пост не найден")
     
-    # Амбассадор видит только свои
     if user.role == 'ambassador' and db_ad.created_by != user.id:
         raise HTTPException(403, "Нет доступа")
     
@@ -95,9 +87,8 @@ def update_ad(
     ad_id: int,
     update_data: schemas.AdPostUpdate,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Обновить рекламный пост (автор или суперадмин)"""
     db_ad = crud.get_ad_post(db, ad_id)
     if not db_ad:
         raise HTTPException(404, "Рекламный пост не найден")
@@ -105,7 +96,6 @@ def update_ad(
     if user.role != 'superadmin' and db_ad.created_by != user.id:
         raise HTTPException(403, "Нет доступа")
     
-    # Нельзя редактировать после одобрения (кроме суперадмина)
     if db_ad.status in ('active', 'completed') and user.role != 'superadmin':
         raise HTTPException(400, "Нельзя редактировать активный рекламный пост")
     
@@ -117,9 +107,8 @@ def update_ad(
 def delete_ad(
     ad_id: int,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Удалить рекламный пост (автор или суперадмин)"""
     db_ad = crud.get_ad_post(db, ad_id)
     if not db_ad:
         raise HTTPException(404, "Рекламный пост не найден")
@@ -132,7 +121,7 @@ def delete_ad(
 
 
 # ========================================
-# МОДЕРАЦИЯ — одобрение / отклонение / пауза
+# МОДЕРАЦИЯ
 # ========================================
 
 
@@ -140,9 +129,8 @@ def delete_ad(
 def approve_ad(
     ad_id: int,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Одобрить рекламный пост (только суперадмин)"""
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин может одобрять рекламу")
     
@@ -158,9 +146,8 @@ def reject_ad(
     ad_id: int,
     action: schemas.AdReviewAction,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Отклонить рекламный пост (только суперадмин)"""
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин может отклонять рекламу")
     
@@ -175,9 +162,8 @@ def reject_ad(
 def pause_ad(
     ad_id: int,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Поставить на паузу (суперадмин)"""
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин")
     
@@ -191,9 +177,8 @@ def pause_ad(
 def resume_ad(
     ad_id: int,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Снять с паузы (суперадмин)"""
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин")
     
@@ -204,7 +189,7 @@ def resume_ad(
 
 
 # ========================================
-# ЛЕНТА — получение рекламы для подмешивания
+# ЛЕНТА
 # ========================================
 
 
@@ -212,17 +197,12 @@ def resume_ad(
 def get_ads_for_feed(
     limit: int = Query(3, ge=1, le=10),
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """
-    Получить рекламные посты для подмешивания в ленту.
-    Фронт вызывает при загрузке ленты, потом вставляет каждый N-й.
-    """
-    
     ads = crud.get_active_ads_for_user(
         db=db,
         user_university=user.university,
-        user_city=None,  # TODO: добавить city в User если нужно
+        user_city=None,
         limit=limit,
         exclude_seen_by_user_id=user.id,
     )
@@ -259,7 +239,7 @@ def get_ads_for_feed(
 
 
 # ========================================
-# ТРЕКИНГ — показы и клики
+# ТРЕКИНГ
 # ========================================
 
 
@@ -267,9 +247,8 @@ def get_ads_for_feed(
 def track_impression(
     ad_id: int,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Зафиксировать показ рекламного поста в ленте"""
     success = crud.track_ad_impression(db, ad_id, user.id)
     return {"tracked": success}
 
@@ -278,9 +257,8 @@ def track_impression(
 def track_click(
     ad_id: int,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Зафиксировать клик по CTA"""
     success = crud.track_ad_click(db, ad_id, user.id)
     return {"tracked": success}
 
@@ -294,13 +272,11 @@ def track_click(
 def get_stats(
     ad_id: int,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Детальная статистика по рекламному посту"""
     if user.role not in ('ambassador', 'superadmin'):
         raise HTTPException(403, "Нет доступа")
     
-    # Амбассадор видит только статистику своих постов
     if user.role == 'ambassador':
         db_ad = crud.get_ad_post(db, ad_id)
         if not db_ad or db_ad.created_by != user.id:
@@ -315,9 +291,8 @@ def get_stats(
 @router.get("/stats/overview", response_model=schemas.AdOverviewStats)
 def get_overview_stats(
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
-    """Сводная статистика рекламной системы (суперадмин)"""
     if user.role != 'superadmin':
         raise HTTPException(403, "Только суперадмин")
     return crud.get_ad_overview_stats(db)
@@ -329,8 +304,6 @@ def get_overview_stats(
 
 
 def _ad_to_response(db_ad: models.AdPost) -> dict:
-    """Конвертация модели AdPost в response dict"""
-    
     post = db_ad.post
     images_raw = []
     if post and post.images:

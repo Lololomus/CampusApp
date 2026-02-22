@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db_sync
 from app import models, schemas, crud
 from app.auth_service import require_user
 from app.config import get_settings
@@ -36,7 +36,7 @@ def _verify_bot(x_bot_secret: str = Header(..., alias="X-Bot-Secret")):
 @router.get("/settings", response_model=schemas.NotificationSettingsResponse)
 def get_notification_settings(
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     """Получить настройки уведомлений текущего юзера"""
 
@@ -58,7 +58,7 @@ def get_notification_settings(
 def update_notification_settings(
     data: schemas.NotificationSettingsUpdate,
     user: models.User = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     """Обновить настройки уведомлений"""
 
@@ -105,7 +105,7 @@ NOTIF_TYPE_TO_SETTING = {
 def get_notification_queue(
     limit: int = Query(50, ge=1, le=100),
     _=Depends(_verify_bot),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     """
     Забрать pending уведомления для отправки.
@@ -155,7 +155,7 @@ def get_notification_queue(
 def mark_notification_sent(
     notification_id: int,
     _=Depends(_verify_bot),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     """Бот подтверждает успешную отправку"""
     n = db.query(models.Notification).get(notification_id)
@@ -174,7 +174,7 @@ def mark_notification_failed(
     notification_id: int,
     error: str = Query("unknown"),
     _=Depends(_verify_bot),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     """Бот сообщает об ошибке отправки"""
     n = db.query(models.Notification).get(notification_id)
@@ -195,7 +195,7 @@ def mark_notification_failed(
 @router.get("/followups/pending")
 def get_pending_followups(
     _=Depends(_verify_bot),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     """
     Забрать follow-up'ы, которые пора отправить (scheduled_at <= now).
@@ -257,7 +257,7 @@ def get_pending_followups(
 def mark_followup_sent(
     followup_id: int,
     _=Depends(_verify_bot),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     """Бот подтверждает отправку follow-up"""
     f = db.query(models.Followup).get(followup_id)
@@ -275,7 +275,7 @@ def answer_followup(
     followup_id: int,
     data: schemas.FollowupAnswer,
     _=Depends(_verify_bot),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
 ):
     """
     Бот передаёт ответ пользователя на follow-up кнопку.
