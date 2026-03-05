@@ -1,11 +1,18 @@
+﻿# ===== 📄 ФАЙЛ: backend/app/routers/dating.py =====
+#
+# ✅ Фаза 3: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
+#    - legacy_query_api() → select() + await db.execute()
+#    - crud.*() → await crud.*()
+
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File, Query, Body
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy import select, or_
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import json
+import logging
 import re
 
-from app.database import get_db_sync
+from app.database import get_db
 from app import models, schemas, crud
 from app.utils import (
     delete_images,
@@ -15,6 +22,8 @@ from app.utils import (
     process_uploaded_files,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/dating", tags=["dating"])
 
 
@@ -23,20 +32,19 @@ async def save_dating_photos(files: List[UploadFile]) -> List[dict]:
 
 
 @router.get("/profile/me", response_model=Optional[schemas.DatingProfileResponse])
-def get_my_dating_profile(telegram_id: int, db: Session = Depends(get_db_sync)):
-    """Get current user's dating profile"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+async def get_my_dating_profile(telegram_id: int, db: AsyncSession = Depends(get_db)):
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    profile = crud.get_dating_profile(db, user.id)
+
+    profile = await crud.get_dating_profile(db, user.id)
     if not profile:
         return None
-    
+
     prompts_dict = None
     if profile.prompts:
         prompts_dict = profile.prompts if isinstance(profile.prompts, dict) else None
-    
+
     return {
         **profile.__dict__,
         "user_id": user.id,
@@ -65,9 +73,9 @@ async def create_or_update_dating_profile(
     prompt_answer: Optional[str] = Form(None),
     photos: List[UploadFile] = File(None),
     keep_photos: Optional[str] = Form(None),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -85,7 +93,7 @@ async def create_or_update_dating_profile(
         if len(bio_letters_only.strip()) < 10:
             raise HTTPException(status_code=400, detail="Bio must contain at least 10 letters")
 
-    profile = crud.get_dating_profile(db, user.id)
+    profile = await crud.get_dating_profile(db, user.id)
 
     try:
         keep_photo_keys = parse_keep_file_list(keep_photos, kind="images")
@@ -194,11 +202,11 @@ async def create_or_update_dating_profile(
         user.age = age
         user.interests = interests_list
 
-        db.commit()
-        db.refresh(profile)
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(profile)
+        await db.refresh(user)
     except Exception:
-        db.rollback()
+        await db.rollback()
         delete_images(saved_photos_meta, default_kind="images")
         raise HTTPException(status_code=500, detail="Failed to save dating profile")
 
@@ -223,121 +231,122 @@ async def create_or_update_dating_profile(
         "prompts": prompts_response,
     }
 
+
 @router.get("/feed")
-def get_dating_feed(
+async def get_dating_feed(
     telegram_id: int,
     limit: int = 10,
     offset: int = 0,
     debug: bool = Query(False, description="Показать breakdown скоринга"),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get dating feed with CampusMatch scoring"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    my_profile = crud.get_dating_profile(db, user.id)
+
+    my_profile = await crud.get_dating_profile(db, user.id)
     looking_for = my_profile.looking_for if my_profile else None
-    
-    return crud.get_dating_feed(db, user.id, limit, offset, looking_for, debug=debug)
+
+    return await crud.get_dating_feed(db, user.id, limit, offset, looking_for, debug=debug)
 
 
 @router.post("/{target_user_id}/like", response_model=schemas.LikeResult)
-def like_user(
+async def like_user(
     target_user_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Like another user"""
     from datetime import datetime
-    
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    result = crud.create_like(db, liker_id=user.id, liked_id=target_user_id)
-    
+
+    result = await crud.create_like(db, liker_id=user.id, liked_id=target_user_id)
+
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error"))
-    
-    # ✅ НОВОЕ: Сохраняем matched_at если это мэтч
+
     if result.get("is_match"):
-        # Обновляем оба лайка с matched_at
-        like1 = db.query(models.DatingLike).filter(
-            models.DatingLike.liker_id == user.id,
-            models.DatingLike.liked_id == target_user_id
-        ).first()
-        
-        like2 = db.query(models.DatingLike).filter(
-            models.DatingLike.liker_id == target_user_id,
-            models.DatingLike.liked_id == user.id
-        ).first()
-        
+        res1 = await db.execute(
+            select(models.DatingLike).where(
+                models.DatingLike.who_liked_id == user.id,
+                models.DatingLike.whom_liked_id == target_user_id
+            )
+        )
+        like1 = res1.scalar_one_or_none()
+
+        res2 = await db.execute(
+            select(models.DatingLike).where(
+                models.DatingLike.who_liked_id == target_user_id,
+                models.DatingLike.whom_liked_id == user.id
+            )
+        )
+        like2 = res2.scalar_one_or_none()
+
         now = datetime.utcnow()
         if like1:
             like1.matched_at = now
         if like2:
             like2.matched_at = now
-        
-        db.commit()
-    
+
+        await db.commit()
+
     response = {
         "success": True,
         "is_match": result.get("is_match", False),
         "match_id": result.get("match_id"),
         "matched_user": None
     }
-    
+
     if result.get("is_match") and result.get("matched_user"):
         response["matched_user"] = schemas.UserShort.from_orm(result["matched_user"])
-    
+
     return response
 
 
 @router.post("/{target_user_id}/dislike")
-def dislike_user(
+async def dislike_user(
     target_user_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Dislike/skip another user"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(404, detail="Пользователь не найден")
-    
+
     if target_user_id == user.id:
         raise HTTPException(400, detail="Нельзя дизлайкнуть себя")
-    
-    result = crud.create_dislike(db, user.id, target_user_id)
+
+    result = await crud.create_dislike(db, user.id, target_user_id)
     if not result["success"]:
         raise HTTPException(400, detail=result.get("error"))
-    
+
     return {"success": True}
 
 
 @router.get("/likes-received", response_model=List[schemas.DatingProfile])
-def get_likes_received(
+async def get_likes_received(
     telegram_id: int = Query(...),
     limit: int = 20,
     offset: int = 0,
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get users who liked current user"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    users = crud.get_who_liked_me(db, user.id, limit, offset)
+
+    users = await crud.get_who_liked_me(db, user.id, limit, offset)
     result = []
-    
+
     for u in users:
-        dp = crud.get_dating_profile(db, u.id)
+        dp = await crud.get_dating_profile(db, u.id)
         photos = get_image_urls(dp.photos) if (dp and dp.photos) else []
         if not photos and u.avatar:
             photos = [{"url": u.avatar, "w": 500, "h": 500}]
-        
+
         interests_list = u.interests or []
-        
+
         result.append({
             "id": u.id,
             "telegram_id": u.telegram_id,
@@ -352,25 +361,24 @@ def get_likes_received(
             "interests": interests_list,
             "user_id": u.id
         })
-    
+
     return result
 
 
 @router.get("/matches", response_model=List[schemas.MatchResponse])
-def get_my_matches(
+async def get_my_matches(
     telegram_id: int = Query(...),
     limit: int = 20,
     offset: int = 0,
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get all matches for current user"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    matches = crud.get_my_matches(db, user.id, limit, offset)
+
+    matches = await crud.get_my_matches(db, user.id, limit, offset)
     result = []
-    
+
     for m in matches:
         result.append({
             "id": m["id"],
@@ -379,347 +387,117 @@ def get_my_matches(
             "matched_at": m["matched_at"],
             "matched_user": schemas.UserShort.from_orm(m["matched_user"])
         })
-    
+
     return result
 
 
 @router.get("/stats", response_model=schemas.DatingStatsResponse)
-def get_dating_stats(
+async def get_dating_stats(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get dating statistics for current user"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    return crud.get_dating_stats(db, user.id)
+
+    return await crud.get_dating_stats(db, user.id)
 
 
 @router.patch("/settings", response_model=schemas.UserResponse)
-def update_dating_settings(
+async def update_dating_settings(
     telegram_id: int = Query(...),
     settings: schemas.DatingSettings = Body(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Update dating settings"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     settings_dict = settings.model_dump(exclude_unset=True)
-    return crud.update_dating_settings(db, user.id, settings_dict)
-
-def ensure_mock_matches(db: Session, user_id: int) -> int:
-    """
-    Автоматически создаёт/обновляет моки для активных матчей.
-    Гарантирует минимум 3 активных мэтча (< 24ч) для разработки.
-    """
-    from datetime import datetime, timedelta
-    import random
-    
-    # Найди текущего юзера
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        return 0
-    
-    # Проверь сколько активных матчей уже есть
-    now = datetime.utcnow()
-    cutoff = now - timedelta(hours=24)
-    
-    active_matches = db.query(models.Match).filter(
-        or_(
-            models.Match.user_a_id == user.id,
-            models.Match.user_b_id == user.id
-        ),
-        models.Match.matched_at >= cutoff
-    ).all()
-    
-    if len(active_matches) >= 3:
-        return len(active_matches)  # Уже достаточно
-    
-    # Найди всех пользователей с dating профилями (кроме текущего)
-    potential_matches = db.query(models.User).join(
-        models.DatingProfile
-    ).filter(
-        models.User.id != user.id,
-        models.DatingProfile.is_active == True
-    ).limit(5).all()
-    
-    if not potential_matches:
-        return 0
-    
-    # Создай/обнови матчи
-    created_count = 0
-    mock_times = [
-        timedelta(hours=22, minutes=30),  # Почти истёк
-        timedelta(hours=15),
-        timedelta(hours=6),
-        timedelta(hours=2),
-        timedelta(minutes=45),
-    ]
-    
-    for i, other_user in enumerate(potential_matches[:5]):
-        # Правильный порядок: user_a_id < user_b_id
-        user_a = min(user.id, other_user.id)
-        user_b = max(user.id, other_user.id)
-        
-        # Проверь существующий мэтч
-        existing = db.query(models.Match).filter(
-            models.Match.user_a_id == user_a,
-            models.Match.user_b_id == user_b
-        ).first()
-        
-        time_delta = mock_times[i] if i < len(mock_times) else timedelta(hours=5)
-        fresh_time = now - time_delta
-        
-        if existing:
-            # Обнови timestamp если мэтч "истёк" (старше 24ч)
-            if existing.matched_at < cutoff:
-                existing.matched_at = fresh_time
-                created_count += 1
-        else:
-            # Создай новый мэтч
-            new_match = models.Match(
-                user_a_id=user_a,
-                user_b_id=user_b,
-                matched_at=fresh_time
-            )
-            db.add(new_match)
-            created_count += 1
-            
-            # Создай соответствующие likes (для корректности)
-            like1 = db.query(models.DatingLike).filter(
-                models.DatingLike.who_liked_id == user.id,
-                models.DatingLike.whom_liked_id == other_user.id
-            ).first()
-            
-            if not like1:
-                like1 = models.DatingLike(
-                    who_liked_id=user.id,
-                    whom_liked_id=other_user.id,
-                    is_like=True,
-                    matched_at=fresh_time
-                )
-                db.add(like1)
-            
-            like2 = db.query(models.DatingLike).filter(
-                models.DatingLike.who_liked_id == other_user.id,
-                models.DatingLike.whom_liked_id == user.id
-            ).first()
-            
-            if not like2:
-                like2 = models.DatingLike(
-                    who_liked_id=other_user.id,
-                    whom_liked_id=user.id,
-                    is_like=True,
-                    matched_at=fresh_time
-                )
-                db.add(like2)
-    
-    try:
-        db.commit()
-        print(f"✅ Auto-refresh matches: обновлено/создано {created_count} матчей")
-    except Exception as e:
-        db.rollback()
-        print(f"❌ Ошибка auto-refresh: {e}")
-        return 0
-    
-    return created_count
+    return await crud.update_dating_settings(db, user.id, settings_dict)
 
 
 @router.get("/matches-active")
-def get_active_matches(telegram_id: int = Query(...), db: Session = Depends(get_db_sync)):
-    """Получить активные мэтчи (24 часа) с авто-обновлением моков"""
-    from datetime import datetime, timedelta
-    
-    try:
-        user = crud.get_user_by_telegram_id(db, telegram_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # ✅ НОВОЕ: Авто-создание моков для разработки
-        ensure_mock_matches(db, user.id)
-        
-        # Остальной код БЕЗ ИЗМЕНЕНИЙ
-        now = datetime.utcnow()
-        cutoff = now - timedelta(hours=24)
-        
-        matches_query = db.query(models.Match).filter(
-            or_(
-                models.Match.user_a_id == user.id,
-                models.Match.user_b_id == user.id
-            ),
-            models.Match.matched_at >= cutoff
-        ).all()
-        
-        print(f"🔍 [MATCHES] User: {user.name} (id={user.id})")
-        print(f"📊 [MATCHES] Найдено {len(matches_query)} активных матчей")
-        
-        result = []
-        for match in matches_query:
-            try:
-                # Определи другого юзера
-                other_user_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
-                
-                other_user = db.query(models.User).filter(models.User.id == other_user_id).first()
-                if not other_user:
-                    continue
-                
-                dp = crud.get_dating_profile(db, other_user_id)
-                if not dp:
-                    continue
-                
-                # Photos
-                photos = get_image_urls(dp.photos) if dp.photos else []
-                if not photos and other_user.avatar:
-                    photos = [{"url": other_user.avatar, "w": 500, "h": 500}]
-                
-                # Expires
-                expires_at = match.matched_at + timedelta(hours=24)
-                time_left = expires_at - now
-                
-                if time_left.total_seconds() <= 0:
-                    continue
-                
-                hours_left = int(time_left.total_seconds() / 3600)
-                minutes_left = int((time_left.total_seconds() % 3600) / 60)
-                
-                # Data
-                interests_list = other_user.interests or []
-                goals_list = dp.goals or []
-                
-                prompts_dict = None
-                if dp.prompts:
-                    prompts_dict = dp.prompts if isinstance(dp.prompts, dict) else None
-                
-                result.append({
-                    "id": dp.id,
-                    "user_id": other_user_id,
-                    "name": other_user.name,
-                    "age": other_user.age,
-                    "bio": dp.bio,
-                    "university": other_user.university,
-                    "institute": other_user.institute,
-                    "course": other_user.course,
-                    "photos": photos,
-                    "interests": interests_list,
-                    "goals": goals_list,
-                    "prompts": prompts_dict,
-                    "matched_at": match.matched_at.isoformat(),
-                    "expires_at": expires_at.isoformat(),
-                    "hours_left": hours_left,
-                    "minutes_left": minutes_left,
-                })
-                
-            except Exception as e:
-                print(f"❌ Error processing match {match.id}: {e}")
-                continue
-        
-        result.sort(key=lambda x: x['expires_at'])
-        return result
-        
-    except Exception as e:
-        print(f"❌ Error in get_active_matches: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/matches-active")
-def get_active_matches(
+async def get_active_matches(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
     """Получить активные мэтчи (в течение 24 часов)"""
     from datetime import datetime, timedelta
-    
-    try:
-        user = crud.get_user_by_telegram_id(db, telegram_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # ✅ ПРАВИЛЬНО: Используем таблицу Match
-        now = datetime.utcnow()
-        cutoff = now - timedelta(hours=24)
-        
-        # Получаем мэтчи где user - это user_a или user_b
-        matches_query = db.query(models.Match).filter(
+
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    now = datetime.utcnow()
+    cutoff = now - timedelta(hours=24)
+
+    res = await db.execute(
+        select(models.Match).where(
             or_(
                 models.Match.user_a_id == user.id,
                 models.Match.user_b_id == user.id
             ),
             models.Match.matched_at >= cutoff
-        ).all()
-        
-        result = []
-        
-        for match in matches_query:
-            try:
-                # Определяем второго пользователя
-                other_user_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
-                
-                # Получаем профиль
-                other_user = db.query(models.User).filter(models.User.id == other_user_id).first()
-                if not other_user:
-                    continue
-                
-                dp = crud.get_dating_profile(db, other_user_id)
-                if not dp:
-                    continue
-                
-                # Получаем фото
-                photos = get_image_urls(dp.photos) if dp.photos else []
-                if not photos and other_user.avatar:
-                    photos = [{"url": other_user.avatar, "w": 500, "h": 500}]
-                
-                # Вычисляем оставшееся время
-                expires_at = match.matched_at + timedelta(hours=24)
-                time_left = expires_at - now
-                
-                if time_left.total_seconds() <= 0:
-                    continue  # Пропускаем истёкшие
-                
-                hours_left = int(time_left.total_seconds() / 3600)
-                minutes_left = int((time_left.total_seconds() % 3600) / 60)
-                
-                # Интересы
-                interests_list = other_user.interests or []
-                goals_list = dp.goals or []
-                
-                # Prompts
-                prompts_dict = None
-                if dp.prompts:
-                    prompts_dict = dp.prompts if isinstance(dp.prompts, dict) else None
-                
-                result.append({
-                    "id": dp.id,
-                    "user_id": other_user_id,
-                    "name": other_user.name,
-                    "age": other_user.age,
-                    "bio": dp.bio,
-                    "university": other_user.university,
-                    "institute": other_user.institute,
-                    "course": other_user.course,
-                    "photos": photos,
-                    "interests": interests_list,
-                    "goals": goals_list,
-                    "prompts": prompts_dict,
-                    "matched_at": match.matched_at.isoformat(),
-                    "expires_at": expires_at.isoformat(),
-                    "hours_left": hours_left,
-                    "minutes_left": minutes_left,
-                })
-            except Exception as e:
-                print(f"❌ Error processing match {match.id}: {e}")
+        )
+    )
+    matches_query = res.scalars().all()
+
+    result = []
+
+    for match in matches_query:
+        try:
+            other_user_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
+
+            other_user = await db.get(models.User, other_user_id)
+            if not other_user:
                 continue
-        
-        # Сортируем по времени истечения (срочные первыми)
-        result.sort(key=lambda x: x["expires_at"])
-        
-        return result
-        
-    except Exception as e:
-        print(f"❌ Error in get_active_matches: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+
+            dp = await crud.get_dating_profile(db, other_user_id)
+            if not dp:
+                continue
+
+            photos = get_image_urls(dp.photos) if dp.photos else []
+            if not photos and other_user.avatar:
+                photos = [{"url": other_user.avatar, "w": 500, "h": 500}]
+
+            expires_at = match.matched_at + timedelta(hours=24)
+            time_left = expires_at - now
+
+            if time_left.total_seconds() <= 0:
+                continue
+
+            hours_left = int(time_left.total_seconds() / 3600)
+            minutes_left = int((time_left.total_seconds() % 3600) / 60)
+
+            interests_list = other_user.interests or []
+            goals_list = dp.goals or []
+
+            prompts_dict = None
+            if dp.prompts:
+                prompts_dict = dp.prompts if isinstance(dp.prompts, dict) else None
+
+            result.append({
+                "id": dp.id,
+                "user_id": other_user_id,
+                "name": other_user.name,
+                "age": other_user.age,
+                "bio": dp.bio,
+                "university": other_user.university,
+                "institute": other_user.institute,
+                "course": other_user.course,
+                "photos": photos,
+                "interests": interests_list,
+                "goals": goals_list,
+                "prompts": prompts_dict,
+                "matched_at": match.matched_at.isoformat(),
+                "expires_at": expires_at.isoformat(),
+                "hours_left": hours_left,
+                "minutes_left": minutes_left,
+            })
+        except Exception as e:
+            logger.warning(f"Error processing match {match.id}: {e}")
+            continue
+
+    result.sort(key=lambda x: x["expires_at"])
+    return result

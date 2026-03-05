@@ -6,10 +6,11 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict
 from app import models, schemas, crud
-from app.database import get_db_sync, async_engine, sync_engine, init_db
+from app.database import engine, get_db, init_db
 from app.utils import (
     delete_images,
     get_image_urls,
@@ -32,11 +33,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Запуск приложения...")
-    init_db()
+    await init_db()
     logger.info("База данных инициализирована")
     yield
-    await async_engine.dispose()
-    sync_engine.dispose()
+    await engine.dispose()
+    
     logger.info("Engines disposed")
 
 app = FastAPI(
@@ -131,8 +132,8 @@ def health_check():
 # ===== USER ENDPOINTS =====
 
 @app.get("/users/me", response_model=schemas.UserResponse)
-def get_current_user(telegram_id: int = Query(...), db: Session = Depends(get_db_sync)):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+async def get_current_user(telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -140,10 +141,10 @@ def get_current_user(telegram_id: int = Query(...), db: Session = Depends(get_db
 @app.post("/users/me/avatar")
 async def upload_avatar(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
     telegram_id: int = Query(...)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -159,10 +160,10 @@ async def upload_avatar(
     avatar_url = normalize_uploads_path(avatars_meta[0]["url"], "avatars")
     try:
         user.avatar = avatar_url
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
     except Exception:
-        db.rollback()
+        await db.rollback()
         delete_images([avatars_meta[0]], default_kind="avatars")
         raise HTTPException(status_code=500, detail="Failed to save avatar")
 
@@ -172,12 +173,12 @@ async def upload_avatar(
     return {"avatar": user.avatar}
 
 @app.patch("/users/me", response_model=schemas.UserResponse)
-def update_current_user(
+async def update_current_user(
     telegram_id: int = Query(...),
     user_update: schemas.UserUpdate = Body(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -190,39 +191,39 @@ def update_current_user(
     )
     
     if changing_critical:
-        if not crud.can_edit_critical_fields(db, user.id):
-            days_left = crud.get_cooldown_days_left(db, user.id)
+        if not await crud.can_edit_critical_fields(db, user.id):
+            days_left = await crud.get_cooldown_days_left(db, user.id)
             raise HTTPException(
                 status_code=403,
                 detail=f"Можно изменить через {days_left} дней (cooldown 30 дней)"
             )
     
-    updated_user = crud.update_user(db, user.id, user_update)
+    updated_user = await crud.update_user(db, user.id, user_update)
     
     if changing_critical:
-        updated_user.last_profile_edit = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(updated_user)
+        updated_user.last_profile_edit = datetime.utcnow()
+        await db.commit()
+        await db.refresh(updated_user)
     
     return updated_user
 
 @app.get("/users/{user_id}/posts", response_model=List[schemas.PostResponse])
-def get_user_posts_endpoint(
+async def get_user_posts_endpoint(
     user_id: int,
     limit: int = Query(5, ge=1, le=50),
     offset: int = Query(0, ge=0),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    requesting_user = crud.get_user_by_telegram_id(db, telegram_id)
+    requesting_user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not requesting_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    target_user = crud.get_user_by_id(db, user_id)
+    target_user = await crud.get_user_by_id(db, user_id)
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    posts = crud.get_user_posts(db, user_id, limit, offset)
+    posts = await crud.get_user_posts(db, user_id, limit, offset)
     
     result = []
     for post in posts:
@@ -238,7 +239,10 @@ def get_user_posts_endpoint(
         ad_data = {}
         if post.category == 'ad':
             # Ищем связанные данные рекламы
-            ad_info = db.query(models.AdPost).filter(models.AdPost.post_id == post.id).first()
+            ad_info_result = await db.execute(
+                select(models.AdPost).where(models.AdPost.post_id == post.id)
+            )
+            ad_info = ad_info_result.scalar_one_or_none()
             if ad_info:
                 ad_data = {
                     "ad_id": ad_info.id,
@@ -285,20 +289,20 @@ def get_user_posts_endpoint(
     return normalize_datetime_payload(result)
 
 @app.get("/users/{user_id}/stats")
-def get_user_stats(user_id: int, db: Session = Depends(get_db_sync)):
-    user = crud.get_user_by_id(db, user_id)
+async def get_user_stats(user_id: int, db: AsyncSession = Depends(get_db)):
+    user = await crud.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     return {
-        "posts_count": crud.count_user_posts(db, user_id),
-        "comments_count": crud.count_user_comments(db, user_id),
-        "likes_count": crud.count_user_total_likes(db, user_id)
+        "posts_count": await crud.count_user_posts(db, user_id),
+        "comments_count": await crud.count_user_comments(db, user_id),
+        "likes_count": await crud.count_user_total_likes(db, user_id)
     }
 
 # ===== POST ENDPOINTS + POLLS =====
 @app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
-def get_posts_feed(
+async def get_posts_feed(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     category: Optional[str] = Query(None),
@@ -313,14 +317,14 @@ def get_posts_feed(
     date_range: Optional[str] = Query(None),      # 'today' | 'week' | 'month'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'popular' | 'discussed'
     
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     """Лента постов с фильтрацией"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     current_user_id = user.id if user else None
 
     # Передаем все параметры фильтрации в CRUD
-    posts = crud.get_posts(
+    posts = await crud.get_posts(
         db, 
         skip=skip, 
         limit=limit, 
@@ -338,7 +342,7 @@ def get_posts_feed(
     result = []
     for post in posts:
         tags = post.tags or []
-        is_liked = crud.is_post_liked_by_user(db, post.id, user.id) if user else False
+        is_liked = await crud.is_post_liked_by_user(db, post.id, user.id) if user else False
         images = get_image_urls(post.images) if post.images else []
 
         author_id_data = post.author_id if post.is_anonymous else post.author_id
@@ -352,10 +356,13 @@ def get_posts_feed(
         if post.poll:
             user_vote = None
             if user:
-                user_vote = db.query(models.PollVote).filter(
+                user_vote_result = await db.execute(
+                    select(models.PollVote).where(
                     models.PollVote.poll_id == post.poll.id,
                     models.PollVote.user_id == user.id
-                ).first()
+                    )
+                )
+                user_vote = user_vote_result.scalar_one_or_none()
             user_votes_indices = user_vote.option_indices if user_vote else []
 
             options_data = post.poll.options or []
@@ -444,7 +451,7 @@ async def create_post_endpoint(
     images: List[UploadFile] = File(default=[]),
     
     poll_data: Optional[str] = Form(None),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ
     print(f"\n{'='*60}")
@@ -462,7 +469,7 @@ async def create_post_endpoint(
     
     print(f"{'='*60}\n")
     
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -509,13 +516,13 @@ async def create_post_endpoint(
     try:
         # valid_images ВМЕСТО images
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
-        post = crud.create_post(db, post_data, user.id, images_meta=images_meta)
+        post = await crud.create_post(db, post_data, user.id, images_meta=images_meta)
         
         if poll_data:
             try:
                 poll_dict = json.loads(poll_data)
                 poll_schema = schemas.PollCreate(**poll_dict)
-                crud.create_poll(db, post.id, poll_schema)
+                await crud.create_poll(db, post.id, poll_schema)
             except Exception as e:
                 print(f"⚠️ Ошибка создания опроса: {e}")
     
@@ -525,17 +532,17 @@ async def create_post_endpoint(
     return get_post_endpoint(post.id, telegram_id, db)
 
 @app.get("/posts/{post_id}", response_model=schemas.PostResponse)
-def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session = Depends(get_db_sync)):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+async def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     
-    post = crud.get_post(db, post_id)
+    post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
     if user:
-        crud.increment_post_views(db, post_id, user.id)
+        await crud.increment_post_views(db, post_id, user.id)
     
-    is_liked = crud.is_post_liked_by_user(db, post_id, user.id) if user else False
+    is_liked = await crud.is_post_liked_by_user(db, post_id, user.id) if user else False
     tags = post.tags or []
     images = get_image_urls(post.images) if post.images else []
     
@@ -551,10 +558,13 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
     if post.poll:
         user_vote = None
         if user:
-            user_vote = db.query(models.PollVote).filter(
+            user_vote_result = await db.execute(
+                select(models.PollVote).where(
                 models.PollVote.poll_id == post.poll.id,
                 models.PollVote.user_id == user.id
-            ).first()
+                )
+            )
+            user_vote = user_vote_result.scalar_one_or_none()
         
         user_votes_indices = user_vote.option_indices if user_vote else []
         
@@ -614,19 +624,19 @@ def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session =
     })
 
 @app.delete("/posts/{post_id}")
-def delete_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Session = Depends(get_db_sync)):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+async def delete_post_endpoint(post_id: int, telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    post = crud.get_post(db, post_id)
+    post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
     if post.author_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
     
-    success = crud.delete_post(db, post_id)
+    success = await crud.delete_post(db, post_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete")
     
@@ -651,13 +661,13 @@ async def update_post_endpoint(
     is_important: Optional[bool] = Form(None),
     new_images: List[UploadFile] = File(default=[]),
     keep_images: Optional[str] = Form(None),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    post = crud.get_post(db, post_id)
+    post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
@@ -697,7 +707,7 @@ async def update_post_endpoint(
     
     try:
         new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
-        updated_post = crud.update_post(
+        updated_post = await crud.update_post(
             db, post_id, post_update,
             new_images_meta=new_images_meta,
             keep_filenames=keep_images_list
@@ -708,32 +718,32 @@ async def update_post_endpoint(
     return get_post_endpoint(updated_post.id, telegram_id, db)
 
 @app.post("/posts/{post_id}/like")
-def toggle_post_like_endpoint(
+async def toggle_post_like_endpoint(
     post_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    return crud.toggle_post_like(db, post_id, user.id)
+    return await crud.toggle_post_like(db, post_id, user.id)
 
 # ===== POLL ENDPOINTS (NEW) =====
 
 @app.post("/polls/{poll_id}/vote")
-def vote_poll_endpoint(
+async def vote_poll_endpoint(
     poll_id: int,
     vote_data: schemas.PollVoteCreate,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     try:
-        result = crud.vote_poll(db, poll_id, user.id, vote_data.option_indices)
+        result = await crud.vote_poll(db, poll_id, user.id, vote_data.option_indices)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -741,13 +751,13 @@ def vote_poll_endpoint(
 # ===== COMMENT ENDPOINTS =====
 
 @app.get("/posts/{post_id}/comments", response_model=schemas.CommentsFeedResponse)
-def get_post_comments_endpoint(
+async def get_post_comments_endpoint(
     post_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    comments = crud.get_post_comments(db, post_id, user.id if user else None)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    comments = await crud.get_post_comments(db, post_id, user.id if user else None)
     
     result = []
     for comment in comments:
@@ -795,17 +805,17 @@ def get_post_comments_endpoint(
     return normalize_datetime_payload({"items": result, "total": len(result)})
 
 @app.post("/posts/{post_id}/comments", response_model=schemas.CommentResponse)
-def create_comment_endpoint(
+async def create_comment_endpoint(
     post_id: int,
     telegram_id: int = Query(...),
     comment_data: schemas.CommentCreate = Body(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    comment = crud.create_comment(db, comment_data, user.id)
+    comment = await crud.create_comment(db, comment_data, user.id)
     if not comment:
         raise HTTPException(status_code=404, detail="Post not found")
     
@@ -836,29 +846,29 @@ def create_comment_endpoint(
     })
 
 @app.delete("/comments/{comment_id}")
-def delete_comment_endpoint(
+async def delete_comment_endpoint(
     comment_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    return crud.delete_comment(db, comment_id, user.id)
+    return await crud.delete_comment(db, comment_id, user.id)
 
 @app.patch("/comments/{comment_id}", response_model=schemas.CommentResponse)
-def update_comment_endpoint(
+async def update_comment_endpoint(
     comment_id: int,
     telegram_id: int = Query(...),
     comment_update: schemas.CommentUpdate = Body(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    comment = crud.update_comment(db, comment_id, comment_update.body, user.id)
+    comment = await crud.update_comment(db, comment_id, comment_update.body, user.id)
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found or permission denied")
     
@@ -890,16 +900,16 @@ def update_comment_endpoint(
     })
 
 @app.post("/comments/{comment_id}/like")
-def toggle_comment_like_endpoint(
+async def toggle_comment_like_endpoint(
     comment_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    return crud.toggle_comment_like(db, comment_id, user.id)
+    return await crud.toggle_comment_like(db, comment_id, user.id)
 
 # ===== REQUEST ENDPOINTS =====
 
@@ -920,9 +930,9 @@ async def create_request_endpoint(
     reward_value: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
     
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -946,7 +956,7 @@ async def create_request_endpoint(
     
     try:
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
-        request = crud.create_request(db, request_data, user.id, images_meta=images_meta)
+        request = await crud.create_request(db, request_data, user.id, images_meta=images_meta)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
@@ -982,7 +992,7 @@ async def create_request_endpoint(
     )
 
 @app.get("/api/requests/feed", response_model=schemas.RequestsFeedResponse)
-def get_requests_feed_endpoint(
+async def get_requests_feed_endpoint(
     category: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
@@ -998,17 +1008,17 @@ def get_requests_feed_endpoint(
     urgency: Optional[str] = Query(None),         # 'soon' (<24h) | 'later'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'expires_soon' | 'most_responses'
     
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     """Лента запросов с фильтрацией"""
     current_user_id = None
     if telegram_id:
-        user = crud.get_user_by_telegram_id(db, telegram_id)
+        user = await crud.get_user_by_telegram_id(db, telegram_id)
         if user:
             current_user_id = user.id
 
     # Передаем все параметры фильтрации в CRUD
-    feed_data = crud.get_requests_feed(
+    feed_data = await crud.get_requests_feed(
         db, 
         category, 
         limit, 
@@ -1062,18 +1072,18 @@ def get_requests_feed_endpoint(
     )
 
 @app.get("/api/requests/my-items", response_model=List[schemas.RequestResponse])
-def get_my_requests_endpoint(
+async def get_my_requests_endpoint(
     telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     """Получить МОИ запросы"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    requests = crud.get_my_requests(db, user.id, limit=limit, offset=offset)
+    requests = await crud.get_my_requests(db, user.id, limit=limit, offset=offset)
     
     result = []
     for req in requests:
@@ -1113,18 +1123,18 @@ def get_my_requests_endpoint(
     return normalize_datetime_payload(result)
 
 @app.get("/api/requests/{request_id}", response_model=schemas.RequestResponse)
-def get_request_endpoint(
+async def get_request_endpoint(
     request_id: int,
     telegram_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     current_user_id = None
     if telegram_id:
-        user = crud.get_user_by_telegram_id(db, telegram_id)
+        user = await crud.get_user_by_telegram_id(db, telegram_id)
         if user:
             current_user_id = user.id
     
-    request_dict = crud.get_request_by_id(db, request_id, current_user_id)
+    request_dict = await crud.get_request_by_id(db, request_id, current_user_id)
     if not request_dict:
         raise HTTPException(status_code=404, detail="Request not found")
     
@@ -1158,18 +1168,18 @@ def get_request_endpoint(
     )
 
 @app.put("/api/requests/{request_id}", response_model=schemas.RequestResponse)
-def update_request_endpoint(
+async def update_request_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
     data: schemas.RequestUpdate = Body(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     try:
-        request = crud.update_request(db, request_id, user.id, data)
+        request = await crud.update_request(db, request_id, user.id, data)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     
@@ -1205,34 +1215,34 @@ def update_request_endpoint(
     )
 
 @app.delete("/api/requests/{request_id}")
-def delete_request_endpoint(
+async def delete_request_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     try:
-        crud.delete_request(db, request_id, user.id)
+        await crud.delete_request(db, request_id, user.id)
         return {"success": True}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
 
 @app.post("/api/requests/{request_id}/respond", response_model=schemas.ResponseItem)
-def create_response_endpoint(
+async def create_response_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
     data: schemas.ResponseCreate = Body(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     try:
-        response = crud.create_response(db, request_id, user.id, data)
+        response = await crud.create_response(db, request_id, user.id, data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
@@ -1251,17 +1261,17 @@ def create_response_endpoint(
     )
 
 @app.get("/api/requests/{request_id}/responses", response_model=List[schemas.ResponseItem])
-def get_responses_endpoint(
+async def get_responses_endpoint(
     request_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     try:
-        responses = crud.get_request_responses(db, request_id, user.id)
+        responses = await crud.get_request_responses(db, request_id, user.id)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     
@@ -1283,17 +1293,17 @@ def get_responses_endpoint(
     return result
 
 @app.delete("/api/responses/{response_id}")
-def delete_response_endpoint(
+async def delete_response_endpoint(
     response_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     try:
-        crud.delete_response(db, response_id, user.id)
+        await crud.delete_response(db, response_id, user.id)
         return {"success": True}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -1301,20 +1311,20 @@ def delete_response_endpoint(
 # ===== CAMPUS MANAGEMENT ENDPOINTS =====
 
 @app.get("/admin/campuses/unbound-users")
-def get_unbound_users_endpoint(
+async def get_unbound_users_endpoint(
     telegram_id: int = Query(...),
     search: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     """Список юзеров без привязки к кампусу (для амбассадоров и админов)."""
     # Проверяем права
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user or user.role not in ('ambassador', 'admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Нет доступа")
 
-    data = crud.get_unbound_users(db, search=search, limit=limit, offset=offset)
+    data = await crud.get_unbound_users(db, search=search, limit=limit, offset=offset)
 
     items = []
     for u in data["items"]:
@@ -1337,20 +1347,20 @@ def get_unbound_users_endpoint(
 
 
 @app.post("/admin/campuses/bind-user")
-def bind_user_to_campus_endpoint(
+async def bind_user_to_campus_endpoint(
     telegram_id: int = Query(...),
     user_id: int = Body(...),
     campus_id: str = Body(...),
     university: str = Body(...),
     city: Optional[str] = Body(None),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     """Привязать юзера к кампусу."""
-    admin = crud.get_user_by_telegram_id(db, telegram_id)
+    admin = await crud.get_user_by_telegram_id(db, telegram_id)
     if not admin or admin.role not in ('ambassador', 'admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Нет доступа")
 
-    user = crud.bind_user_to_campus(db, user_id, campus_id, university, city)
+    user = await crud.bind_user_to_campus(db, user_id, campus_id, university, city)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -1358,17 +1368,17 @@ def bind_user_to_campus_endpoint(
 
 
 @app.post("/admin/campuses/unbind-user")
-def unbind_user_from_campus_endpoint(
+async def unbind_user_from_campus_endpoint(
     telegram_id: int = Query(...),
     user_id: int = Body(..., embed=True),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     """Отвязать юзера от кампуса."""
-    admin = crud.get_user_by_telegram_id(db, telegram_id)
+    admin = await crud.get_user_by_telegram_id(db, telegram_id)
     if not admin or admin.role not in ('admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Только для админов")
 
-    user = crud.unbind_user_from_campus(db, user_id)
+    user = await crud.unbind_user_from_campus(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -1378,11 +1388,11 @@ def unbind_user_from_campus_endpoint(
 # ===== MARKET ENDPOINTS =====
 
 @app.get("/market/categories", response_model=schemas.MarketCategoriesResponse)
-def get_market_categories_endpoint(db: Session = Depends(get_db_sync)):
-    return crud.get_market_categories(db)
+async def get_market_categories_endpoint(db: AsyncSession = Depends(get_db)):
+    return await crud.get_market_categories(db)
 
 @app.get("/market/feed", response_model=schemas.MarketFeedResponse)
-def get_market_feed_endpoint(
+async def get_market_feed_endpoint(
     telegram_id: int = Query(...),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
@@ -1396,12 +1406,12 @@ def get_market_feed_endpoint(
     institute: Optional[str] = Query(None),
     campus_id: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     current_user_id = user.id if user else None
     
-    feed_data = crud.get_market_items(
+    feed_data = await crud.get_market_items(
         db,
         skip=skip,
         limit=limit,
@@ -1435,7 +1445,7 @@ def get_market_feed_endpoint(
         )
 
         is_seller = bool(user and item.seller_id == user.id)
-        is_favorited = crud.is_item_favorited(db, item.id, user.id) if user else False
+        is_favorited = await crud.is_item_favorited(db, item.id, user.id) if user else False
         
         item_dict = {
             "id": item.id,
@@ -1467,17 +1477,17 @@ def get_market_feed_endpoint(
     })
 
 @app.get("/market/favorites", response_model=List[schemas.MarketItemResponse])
-def get_market_favorites_endpoint(
+async def get_market_favorites_endpoint(
     telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    items = crud.get_user_favorites(db, user.id, limit, offset)
+    items = await crud.get_user_favorites(db, user.id, limit, offset)
     
     result = []
     for item in items:
@@ -1523,18 +1533,18 @@ def get_market_favorites_endpoint(
     return normalize_datetime_payload(result)
 
 @app.get("/market/my-items", response_model=List[schemas.MarketItemResponse])
-def get_my_market_items_endpoint(
+async def get_my_market_items_endpoint(
     telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     """Получить МОИ товары (которые Я продаю)"""
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    items = crud.get_user_market_items(db, user.id, limit, offset)
+    items = await crud.get_user_market_items(db, user.id, limit, offset)
     
     result = []
     for item in items:
@@ -1578,13 +1588,13 @@ def get_my_market_items_endpoint(
     return result
 
 @app.get("/market/{item_id}", response_model=schemas.MarketItemResponse)
-def get_market_item_endpoint(
+async def get_market_item_endpoint(
     item_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    item = crud.get_market_item(db, item_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    item = await crud.get_market_item(db, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     
@@ -1602,7 +1612,7 @@ def get_market_item_endpoint(
         show_telegram_id=item.seller.show_telegram_id
     )
     
-    is_favorited = crud.is_item_favorited(db, item.id, user.id) if user else False
+    is_favorited = await crud.is_item_favorited(db, item.id, user.id) if user else False
     is_seller = bool(user and item.seller_id == user.id)
     
     return normalize_datetime_payload({
@@ -1637,9 +1647,9 @@ async def create_market_item_endpoint(
     condition: str = Form(...),
     location: Optional[str] = Form(None),
     images: List[UploadFile] = File(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -1663,7 +1673,7 @@ async def create_market_item_endpoint(
     
     try:
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
-        item = crud.create_market_item(db, item_data, user.id, images_meta=images_meta)
+        item = await crud.create_market_item(db, item_data, user.id, images_meta=images_meta)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
@@ -1715,9 +1725,9 @@ async def update_market_item_endpoint(
     status: Optional[str] = Form(None),
     new_images: List[UploadFile] = File(default=[]),
     keep_images: Optional[str] = Form(None),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -1746,7 +1756,7 @@ async def update_market_item_endpoint(
     
     try:
         new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
-        updated_item = crud.update_market_item(
+        updated_item = await crud.update_market_item(
             db, item_id, user.id, item_update,
             new_images_meta=new_images_meta,
             keep_filenames=keep_images_list
@@ -1771,7 +1781,7 @@ async def update_market_item_endpoint(
         show_telegram_id=user.show_telegram_id
     )
     
-    is_favorited = crud.is_item_favorited(db, updated_item.id, user.id)
+    is_favorited = await crud.is_item_favorited(db, updated_item.id, user.id)
     
     return normalize_datetime_payload({
         "id": updated_item.id,
@@ -1796,46 +1806,46 @@ async def update_market_item_endpoint(
     })
 
 @app.delete("/market/{item_id}")
-def delete_market_item_endpoint(
+async def delete_market_item_endpoint(
     item_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    success = crud.delete_market_item(db, item_id, user.id)
+    success = await crud.delete_market_item(db, item_id, user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Item not found")
     
     return {"success": True}
 
 @app.post("/market/{item_id}/favorite")
-def toggle_market_favorite_endpoint(
+async def toggle_market_favorite_endpoint(
     item_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    result = crud.toggle_market_favorite(db, item_id, user.id)
+    result = await crud.toggle_market_favorite(db, item_id, user.id)
     return result
 
 # ===== DEV ENDPOINTS =====
 
 @app.post("/dev/generate-mock-dating-data")
-def generate_mock_dating_data(
+async def generate_mock_dating_data(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db)
 ):
     """⚠️ DEV ONLY: Генерирует mock-анкеты для dating!"""
     if settings.app_env.lower() != "dev":
         raise HTTPException(status_code=404, detail="Not found")
 
-    user = crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -1907,20 +1917,23 @@ def generate_mock_dating_data(
     created_profiles = []
     
     for mock_data in mock_users:
-        existing = crud.get_user_by_telegram_id(db, mock_data['telegram_id'])
+        existing = await crud.get_user_by_telegram_id(db, mock_data['telegram_id'])
         if not existing:
             new_user = models.User(**mock_data)
             db.add(new_user)
-            db.commit()
-            db.refresh(new_user)
+            await db.commit()
+            await db.refresh(new_user)
             created_users.append(new_user)
         else:
             created_users.append(existing)
     
     for mock_user in created_users:
-        existing_profile = db.query(models.DatingProfile).filter(
+        existing_profile_result = await db.execute(
+            select(models.DatingProfile).where(
             models.DatingProfile.user_id == mock_user.id
-        ).first()
+            )
+        )
+        existing_profile = existing_profile_result.scalar_one_or_none()
         
         if not existing_profile:
             dating_profile = models.DatingProfile(
@@ -1934,10 +1947,10 @@ def generate_mock_dating_data(
                 is_active=True
             )
             db.add(dating_profile)
-            db.commit()
+            await db.commit()
             created_profiles.append(mock_user.name)
     
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     matches_created = []
     
     # Матч 1
@@ -1946,28 +1959,37 @@ def generate_mock_dating_data(
     user_a_1 = min(user.id, user1.id)
     user_b_1 = max(user.id, user1.id)
     
-    existing_match_1 = db.query(models.Match).filter(
+    existing_match_1_result = await db.execute(
+        select(models.Match).where(
         models.Match.user_a_id == user_a_1,
         models.Match.user_b_id == user_b_1
-    ).first()
+        )
+    )
+    existing_match_1 = existing_match_1_result.scalar_one_or_none()
     
     if not existing_match_1:
         match1 = models.Match(user_a_id=user_a_1, user_b_id=user_b_1, matched_at=match_time_1)
         db.add(match1)
         matches_created.append(f"{user1.name} (2 дня назад)")
     
-    existing_like_1a = db.query(models.DatingLike).filter(
+    existing_like_1a_result = await db.execute(
+        select(models.DatingLike).where(
         models.DatingLike.who_liked_id == user.id,
         models.DatingLike.whom_liked_id == user1.id
-    ).first()
+        )
+    )
+    existing_like_1a = existing_like_1a_result.scalar_one_or_none()
     if not existing_like_1a:
         like1a = models.DatingLike(who_liked_id=user.id, whom_liked_id=user1.id, is_like=True, matched_at=match_time_1)
         db.add(like1a)
     
-    existing_like_1b = db.query(models.DatingLike).filter(
+    existing_like_1b_result = await db.execute(
+        select(models.DatingLike).where(
         models.DatingLike.who_liked_id == user1.id,
         models.DatingLike.whom_liked_id == user.id
-    ).first()
+        )
+    )
+    existing_like_1b = existing_like_1b_result.scalar_one_or_none()
     if not existing_like_1b:
         like1b = models.DatingLike(who_liked_id=user1.id, whom_liked_id=user.id, is_like=True, matched_at=match_time_1)
         db.add(like1b)
@@ -1978,28 +2000,37 @@ def generate_mock_dating_data(
     user_a_2 = min(user.id, user2.id)
     user_b_2 = max(user.id, user2.id)
     
-    existing_match_2 = db.query(models.Match).filter(
+    existing_match_2_result = await db.execute(
+        select(models.Match).where(
         models.Match.user_a_id == user_a_2,
         models.Match.user_b_id == user_b_2
-    ).first()
+        )
+    )
+    existing_match_2 = existing_match_2_result.scalar_one_or_none()
     
     if not existing_match_2:
         match2 = models.Match(user_a_id=user_a_2, user_b_id=user_b_2, matched_at=match_time_2)
         db.add(match2)
         matches_created.append(f"{user2.name} (6 часов назад)")
     
-    existing_like_2a = db.query(models.DatingLike).filter(
+    existing_like_2a_result = await db.execute(
+        select(models.DatingLike).where(
         models.DatingLike.who_liked_id == user.id,
         models.DatingLike.whom_liked_id == user2.id
-    ).first()
+        )
+    )
+    existing_like_2a = existing_like_2a_result.scalar_one_or_none()
     if not existing_like_2a:
         like2a = models.DatingLike(who_liked_id=user.id, whom_liked_id=user2.id, is_like=True, matched_at=match_time_2)
         db.add(like2a)
     
-    existing_like_2b = db.query(models.DatingLike).filter(
+    existing_like_2b_result = await db.execute(
+        select(models.DatingLike).where(
         models.DatingLike.who_liked_id == user2.id,
         models.DatingLike.whom_liked_id == user.id
-    ).first()
+        )
+    )
+    existing_like_2b = existing_like_2b_result.scalar_one_or_none()
     if not existing_like_2b:
         like2b = models.DatingLike(who_liked_id=user2.id, whom_liked_id=user.id, is_like=True, matched_at=match_time_2)
         db.add(like2b)
@@ -2010,52 +2041,67 @@ def generate_mock_dating_data(
     user_a_3 = min(user.id, user3.id)
     user_b_3 = max(user.id, user3.id)
     
-    existing_match_3 = db.query(models.Match).filter(
+    existing_match_3_result = await db.execute(
+        select(models.Match).where(
         models.Match.user_a_id == user_a_3,
         models.Match.user_b_id == user_b_3
-    ).first()
+        )
+    )
+    existing_match_3 = existing_match_3_result.scalar_one_or_none()
     
     if not existing_match_3:
         match3 = models.Match(user_a_id=user_a_3, user_b_id=user_b_3, matched_at=match_time_3)
         db.add(match3)
         matches_created.append(f"{user3.name} (15 минут назад)")
     
-    existing_like_3a = db.query(models.DatingLike).filter(
+    existing_like_3a_result = await db.execute(
+        select(models.DatingLike).where(
         models.DatingLike.who_liked_id == user.id,
         models.DatingLike.whom_liked_id == user3.id
-    ).first()
+        )
+    )
+    existing_like_3a = existing_like_3a_result.scalar_one_or_none()
     if not existing_like_3a:
         like3a = models.DatingLike(who_liked_id=user.id, whom_liked_id=user3.id, is_like=True, matched_at=match_time_3)
         db.add(like3a)
     
-    existing_like_3b = db.query(models.DatingLike).filter(
+    existing_like_3b_result = await db.execute(
+        select(models.DatingLike).where(
         models.DatingLike.who_liked_id == user3.id,
         models.DatingLike.whom_liked_id == user.id
-    ).first()
+        )
+    )
+    existing_like_3b = existing_like_3b_result.scalar_one_or_none()
     if not existing_like_3b:
         like3b = models.DatingLike(who_liked_id=user3.id, whom_liked_id=user.id, is_like=True, matched_at=match_time_3)
         db.add(like3b)
     
     # Обычные лайки (без взаимности)
     user4 = created_users[3]
-    existing_like_4 = db.query(models.DatingLike).filter(
+    existing_like_4_result = await db.execute(
+        select(models.DatingLike).where(
         models.DatingLike.who_liked_id == user4.id,
         models.DatingLike.whom_liked_id == user.id
-    ).first()
+        )
+    )
+    existing_like_4 = existing_like_4_result.scalar_one_or_none()
     if not existing_like_4:
         like4 = models.DatingLike(who_liked_id=user4.id, whom_liked_id=user.id, is_like=True)
         db.add(like4)
     
     user5 = created_users[4]
-    existing_like_5 = db.query(models.DatingLike).filter(
+    existing_like_5_result = await db.execute(
+        select(models.DatingLike).where(
         models.DatingLike.who_liked_id == user5.id,
         models.DatingLike.whom_liked_id == user.id
-    ).first()
+        )
+    )
+    existing_like_5 = existing_like_5_result.scalar_one_or_none()
     if not existing_like_5:
         like5 = models.DatingLike(who_liked_id=user5.id, whom_liked_id=user.id, is_like=True)
         db.add(like5)
     
-    db.commit()
+    await db.commit()
     
     return {
         "success": True,

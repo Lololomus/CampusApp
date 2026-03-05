@@ -1,8 +1,13 @@
 # ===== 📄 ФАЙЛ: backend/app/crud/comments.py =====
 # Comments CRUD: создание, удаление, редактирование, лайки
+#
+# ✅ Фаза 3.3: async/await + select() + AsyncSession
+# ✅ Фаза 3.3: legacy_query_api(Model).get(id) → await db.get(Model, id)
+# ✅ Фаза 3.3: joinedload → selectinload (MissingGreenlet prevention)
 
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, func, update as sa_update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, or_, func, update as sa_update
+from sqlalchemy.orm import selectinload
 from typing import Optional, List
 
 from app import models, schemas
@@ -11,73 +16,83 @@ from app.services import notification_service as notif
 
 # ===== ЛАЙКИ КОММЕНТАРИЕВ =====
 
-def is_comment_liked_by_user(db: Session, comment_id: int, user_id: int) -> bool:
-    like = db.query(models.CommentLike).filter(
-        models.CommentLike.comment_id == comment_id,
-        models.CommentLike.user_id == user_id
-    ).first()
-    return like is not None
+async def is_comment_liked_by_user(db: AsyncSession, comment_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        select(models.CommentLike).where(
+            models.CommentLike.comment_id == comment_id,
+            models.CommentLike.user_id == user_id
+        )
+    )
+    return result.scalar_one_or_none() is not None
 
 
-def toggle_comment_like(db: Session, comment_id: int, user_id: int) -> dict:
-    like = db.query(models.CommentLike).filter(
-        models.CommentLike.comment_id == comment_id,
-        models.CommentLike.user_id == user_id
-    ).first()
+async def toggle_comment_like(db: AsyncSession, comment_id: int, user_id: int) -> dict:
+    result = await db.execute(
+        select(models.CommentLike).where(
+            models.CommentLike.comment_id == comment_id,
+            models.CommentLike.user_id == user_id
+        )
+    )
+    like = result.scalar_one_or_none()
 
-    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+    comment = await db.get(models.Comment, comment_id)
     if not comment:
         return {"is_liked": False, "likes": 0}
 
     if like:
-        db.delete(like)
-        db.execute(
+        await db.delete(like)
+        await db.execute(
             sa_update(models.Comment)
             .where(models.Comment.id == comment_id)
             .values(likes_count=func.greatest(models.Comment.likes_count - 1, 0))
         )
-        db.commit()
-        comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+        await db.commit()
+        await db.refresh(comment)
         return {"is_liked": False, "likes": comment.likes_count}
     else:
         new_like = models.CommentLike(user_id=user_id, comment_id=comment_id)
         db.add(new_like)
-        db.execute(
+        await db.execute(
             sa_update(models.Comment)
             .where(models.Comment.id == comment_id)
             .values(likes_count=models.Comment.likes_count + 1)
         )
-        db.commit()
-        comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+        await db.commit()
+        await db.refresh(comment)
         return {"is_liked": True, "likes": comment.likes_count}
 
 
 # ===== ПОЛУЧЕНИЕ =====
 
-def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) -> List[models.Comment]:
+async def get_post_comments(db: AsyncSession, post_id: int, user_id: Optional[int] = None) -> List[models.Comment]:
     """Получить комментарии к посту (с фильтрацией shadow ban)"""
-    query = db.query(models.Comment)\
-        .options(joinedload(models.Comment.author))\
-        .filter(models.Comment.post_id == post_id)
+    query = (
+        select(models.Comment)
+        .options(selectinload(models.Comment.author))
+        .where(models.Comment.post_id == post_id)
+    )
 
     # Shadow ban: забаненный видит свои комменты, остальные — нет
     if user_id:
-        query = query.join(models.User, models.Comment.author_id == models.User.id).filter(
+        query = query.join(models.User, models.Comment.author_id == models.User.id).where(
             or_(
                 models.User.is_shadow_banned_comments == False,
                 models.Comment.author_id == user_id
             )
         )
     else:
-        query = query.join(models.User, models.Comment.author_id == models.User.id).filter(
+        query = query.join(models.User, models.Comment.author_id == models.User.id).where(
             models.User.is_shadow_banned_comments == False
         )
 
-    comments = query.order_by(models.Comment.created_at).all()
+    query = query.order_by(models.Comment.created_at)
+    result = await db.execute(query)
+    comments = result.scalars().all()
 
+    # NOTE: N+1 здесь — Фаза 4.1 заменит на batch-запрос лайков
     if user_id:
         for comment in comments:
-            comment.is_liked = is_comment_liked_by_user(db, comment.id, user_id)
+            comment.is_liked = await is_comment_liked_by_user(db, comment.id, user_id)
     else:
         for comment in comments:
             comment.is_liked = False
@@ -85,18 +100,24 @@ def get_post_comments(db: Session, post_id: int, user_id: Optional[int] = None) 
     return comments
 
 
-def count_post_comments(db: Session, post_id: int) -> int:
-    return db.query(models.Comment).filter(
-        models.Comment.post_id == post_id,
-        models.Comment.is_deleted == False
-    ).count()
+async def count_post_comments(db: AsyncSession, post_id: int) -> int:
+    result = await db.scalar(
+        select(func.count(models.Comment.id)).where(
+            models.Comment.post_id == post_id,
+            models.Comment.is_deleted == False
+        )
+    )
+    return result or 0
 
 
 # ===== СОЗДАНИЕ =====
 
-def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
+async def create_comment(db: AsyncSession, comment: schemas.CommentCreate, author_id: int):
     """Создание комментария с логикой анонимности"""
-    post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
+    result = await db.execute(
+        select(models.Post).where(models.Post.id == comment.post_id)
+    )
+    post = result.scalar_one_or_none()
     if not post:
         return None
 
@@ -109,11 +130,13 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
         if post.is_anonymous and post.author_id == author_id:
             anonymous_index = 0
         else:
-            existing_anon_comments = db.query(models.Comment)\
-                .filter(
+            anon_result = await db.execute(
+                select(models.Comment).where(
                     models.Comment.post_id == comment.post_id,
                     models.Comment.is_anonymous == True
-                ).all()
+                )
+            )
+            existing_anon_comments = anon_result.scalars().all()
 
             for existing in existing_anon_comments:
                 if existing.author_id == author_id:
@@ -137,32 +160,33 @@ def create_comment(db: Session, comment: schemas.CommentCreate, author_id: int):
     )
 
     db.add(db_comment)
-    db.execute(
+    await db.execute(
         sa_update(models.Post)
         .where(models.Post.id == comment.post_id)
         .values(comments_count=models.Post.comments_count + 1)
     )
-    db.flush()
+    await db.flush()
 
     # --- Уведомления ---
-    commenter = db.query(models.User).get(author_id)
+    # ✅ legacy_query_api(Model).get(id) → await db.get(Model, id)
+    commenter = await db.get(models.User, author_id)
     if commenter:
         if comment.parent_id:
-            parent = db.query(models.Comment).get(comment.parent_id)
+            parent = await db.get(models.Comment, comment.parent_id)
             if parent:
-                notif.notify_comment_reply(db, parent, db_comment, commenter)
+                await notif.notify_comment_reply(db, parent, db_comment, commenter)
         else:
-            notif.notify_new_comment(db, post, db_comment, commenter)
+            await notif.notify_new_comment(db, post, db_comment, commenter)
 
-    db.commit()
-    db.refresh(db_comment)
+    await db.commit()
+    await db.refresh(db_comment)
     return db_comment
 
 
 # ===== РЕДАКТИРОВАНИЕ И УДАЛЕНИЕ =====
 
-def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Optional[models.Comment]:
-    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+async def update_comment(db: AsyncSession, comment_id: int, text: str, user_id: int) -> Optional[models.Comment]:
+    comment = await db.get(models.Comment, comment_id)
     if not comment:
         return None
 
@@ -174,35 +198,38 @@ def update_comment(db: Session, comment_id: int, text: str, user_id: int) -> Opt
 
     comment.body = text
     comment.is_edited = True
-    db.commit()
-    db.refresh(comment)
+    await db.commit()
+    await db.refresh(comment)
     return comment
 
 
-def delete_comment(db: Session, comment_id: int, user_id: int) -> dict:
-    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+async def delete_comment(db: AsyncSession, comment_id: int, user_id: int) -> dict:
+    comment = await db.get(models.Comment, comment_id)
     if not comment:
         return {"success": False, "error": "Комментарий не найден"}
 
     if comment.author_id != user_id:
         return {"success": False, "error": "Нет прав"}
 
-    post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
+    post = await db.get(models.Post, comment.post_id)
 
-    has_replies = db.query(models.Comment).filter(models.Comment.parent_id == comment_id).count() > 0
+    replies_count = await db.scalar(
+        select(func.count(models.Comment.id)).where(models.Comment.parent_id == comment_id)
+    )
+    has_replies = (replies_count or 0) > 0
 
     if has_replies:
         comment.is_deleted = True
         comment.body = "Комментарий удалён"
-        db.commit()
+        await db.commit()
         return {"success": True, "type": "soft_delete"}
     else:
-        db.delete(comment)
+        await db.delete(comment)
         if post:
-            db.execute(
+            await db.execute(
                 sa_update(models.Post)
                 .where(models.Post.id == post.id)
                 .values(comments_count=func.greatest(models.Post.comments_count - 1, 0))
             )
-        db.commit()
+        await db.commit()
         return {"success": True, "type": "hard_delete"}

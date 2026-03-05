@@ -3,22 +3,28 @@
 #
 # ✅ Фаза 1.4: Убраны json.loads()/json.dumps() — JSONB-колонки возвращают
 #    нативные list/dict. sanitize_json_field() тоже возвращает list/dict.
+# ✅ Фаза 3.4: async/await + select() + AsyncSession
+# ✅ Фаза 3.4: joinedload → selectinload
 
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_, update as sa_update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, or_, update as sa_update
+from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
+import logging
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
 from app.utils import delete_images, get_storage_key, process_base64_images
 from app.services import notification_service as notif
 
+logger = logging.getLogger(__name__)
+
 
 # ===== ЛЕНТА И ПОЛУЧЕНИЕ =====
 
-def get_posts(
-    db: Session,
+async def get_posts(
+    db: AsyncSession,
     skip: int = 0,
     limit: int = 20,
     category: Optional[str] = None,
@@ -32,42 +38,45 @@ def get_posts(
     current_user_id: Optional[int] = None,
 ) -> List[models.Post]:
     """Получение постов с фильтрацией + soft delete + shadow ban"""
-    query = db.query(models.Post).options(
-        joinedload(models.Post.author),
-        joinedload(models.Post.poll).joinedload(models.Poll.votes)
+    query = (
+        select(models.Post)
+        .options(
+            selectinload(models.Post.author),
+            selectinload(models.Post.poll).selectinload(models.Poll.votes),
+        )
     )
 
     # Фильтр soft delete
-    query = query.filter(models.Post.is_deleted == False)
+    query = query.where(models.Post.is_deleted == False)
 
     # Исключаем рекламные посты из обычной ленты
-    ad_post_ids = db.query(models.AdPost.post_id).subquery()
-    query = query.filter(~models.Post.id.in_(ad_post_ids))
+    ad_post_ids = select(models.AdPost.post_id).scalar_subquery()
+    query = query.where(~models.Post.id.in_(ad_post_ids))
 
     # Фильтр shadow ban (забаненный видит свои посты, остальные — нет)
     if current_user_id:
-        query = query.join(models.User, models.Post.author_id == models.User.id).filter(
+        query = query.join(models.User, models.Post.author_id == models.User.id).where(
             or_(
                 models.User.is_shadow_banned_posts == False,
                 models.Post.author_id == current_user_id
             )
         )
     else:
-        query = query.join(models.User, models.Post.author_id == models.User.id).filter(
+        query = query.join(models.User, models.Post.author_id == models.User.id).where(
             models.User.is_shadow_banned_posts == False
         )
 
     # Фильтр по категории
     if category and category != 'all':
-        query = query.filter(models.Post.category == category)
+        query = query.where(models.Post.category == category)
 
     # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ (4 уровня) ===
     if campus_id:
-        query = query.filter(models.User.campus_id == campus_id)
+        query = query.where(models.User.campus_id == campus_id)
     elif university and university != 'all':
-        query = query.filter(models.User.university == university)
+        query = query.where(models.User.university == university)
     elif city:
-        query = query.filter(
+        query = query.where(
             or_(
                 models.User.city == city,
                 models.User.custom_city.ilike(f'%{city}%')
@@ -76,7 +85,7 @@ def get_posts(
 
     # Фильтр по институту
     if institute and institute != 'all':
-        query = query.filter(models.User.institute == institute)
+        query = query.where(models.User.institute == institute)
 
     # Фильтр по тегам
     if tags:
@@ -86,20 +95,20 @@ def get_posts(
             from sqlalchemy import cast
             from sqlalchemy.dialects.postgresql import JSONB as JSONB_TYPE
             tag_conditions = [models.Post.tags.op('@>')(cast([tag], JSONB_TYPE)) for tag in tags_list]
-            query = query.filter(or_(*tag_conditions))
+            query = query.where(or_(*tag_conditions))
 
     # Фильтр по дате
     if date_range:
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         if date_range == 'today':
             start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            query = query.filter(models.Post.created_at >= start_date)
+            query = query.where(models.Post.created_at >= start_date)
         elif date_range == 'week':
             start_date = now - timedelta(days=7)
-            query = query.filter(models.Post.created_at >= start_date)
+            query = query.where(models.Post.created_at >= start_date)
         elif date_range == 'month':
             start_date = now - timedelta(days=30)
-            query = query.filter(models.Post.created_at >= start_date)
+            query = query.where(models.Post.created_at >= start_date)
 
     # Сортировка
     if sort == 'popular':
@@ -120,53 +129,58 @@ def get_posts(
             models.Post.created_at.desc()
         )
 
-    return query.offset(skip).limit(limit).all()
+    result = await db.execute(query.offset(skip).limit(limit))
+    return result.scalars().all()
 
 
-def get_post(db: Session, post_id: int) -> Optional[models.Post]:
+async def get_post(db: AsyncSession, post_id: int) -> Optional[models.Post]:
     """Получить пост по ID (только неудалённые)"""
-    return db.query(models.Post).options(
-        joinedload(models.Post.author),
-        joinedload(models.Post.poll).joinedload(models.Poll.votes)
-    ).filter(
-        models.Post.id == post_id,
-        models.Post.is_deleted == False
-    ).first()
+    result = await db.execute(
+        select(models.Post)
+        .options(
+            selectinload(models.Post.author),
+            selectinload(models.Post.poll).selectinload(models.Poll.votes),
+        )
+        .where(
+            models.Post.id == post_id,
+            models.Post.is_deleted == False
+        )
+    )
+    return result.scalar_one_or_none()
 
 
-def get_user_posts(db: Session, user_id: int, limit: int = 5, offset: int = 0) -> List[models.Post]:
-    return db.query(models.Post)\
-        .filter(
+async def get_user_posts(db: AsyncSession, user_id: int, limit: int = 5, offset: int = 0) -> List[models.Post]:
+    result = await db.execute(
+        select(models.Post)
+        .where(
             models.Post.author_id == user_id,
             models.Post.is_deleted == False
-        )\
-        .order_by(models.Post.created_at.desc())\
-        .offset(offset)\
-        .limit(limit)\
-        .all()
+        )
+        .order_by(models.Post.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
 
 
 # ===== СОЗДАНИЕ И ОБНОВЛЕНИЕ =====
 
-def create_post(
-    db: Session,
+async def create_post(
+    db: AsyncSession,
     post: schemas.PostCreate,
     author_id: int,
     images_meta: Optional[List[dict]] = None,
 ) -> models.Post:
-    """
-    Создать новый пост.
-
-    ⚠️ Обработка файлов (process_uploaded_files) должна происходить в endpoint,
-       а результат передаваться в images_meta.
-    """
+    """Создать новый пост."""
     # Rate Limiting (10 постов в час)
-    recent_posts_count = db.query(func.count(models.Post.id)).filter(
-        models.Post.author_id == author_id,
-        models.Post.created_at > datetime.now(timezone.utc) - timedelta(hours=1)
-    ).scalar()
+    recent_posts_count = await db.scalar(
+        select(func.count(models.Post.id)).where(
+            models.Post.author_id == author_id,
+            models.Post.created_at > datetime.utcnow() - timedelta(hours=1)
+        )
+    )
 
-    if recent_posts_count >= 10:
+    if (recent_posts_count or 0) >= 10:
         raise ValueError("Превышен лимит создания постов (10 в час)")
 
     # Fallback на base64, если images_meta не переданы
@@ -182,24 +196,20 @@ def create_post(
         category=post.category,
         title=post.title,
         body=post.body,
-        tags=sanitize_json_field(post.tags),              # ✅ JSONB: list напрямую
-        images=sanitize_json_field(saved_images_meta),     # ✅ JSONB: list напрямую
+        tags=sanitize_json_field(post.tags),
+        images=sanitize_json_field(saved_images_meta),
         is_anonymous=post.is_anonymous,
         enable_anonymous_comments=post.enable_anonymous_comments,
-        # Lost & Found
         lost_or_found=post.lost_or_found,
         item_description=post.item_description,
         location=post.location,
         reward_type=post.reward_type,
         reward_value=post.reward_value,
-        # Events
         event_name=post.event_name,
         event_date=post.event_date,
         event_location=post.event_location,
         event_contact=post.event_contact,
-        # News
         is_important=post.is_important,
-        # Счётчики
         likes_count=0,
         comments_count=0,
         views_count=0
@@ -207,8 +217,8 @@ def create_post(
 
     try:
         db.add(db_post)
-        db.commit()
-        db.refresh(db_post)
+        await db.commit()
+        await db.refresh(db_post)
         return db_post
     except Exception as e:
         if saved_images_meta:
@@ -216,19 +226,15 @@ def create_post(
         raise e
 
 
-def update_post(
-    db: Session,
+async def update_post(
+    db: AsyncSession,
     post_id: int,
     post_update: schemas.PostUpdate,
     new_images_meta: Optional[List[dict]] = None,
     keep_filenames: Optional[List[str]] = None,
 ) -> Optional[models.Post]:
-    """
-    Update post (smart image merge).
-
-    `new_images_meta` contains files already processed by the endpoint.
-    """
-    db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    """Update post (smart image merge)."""
+    db_post = await db.get(models.Post, post_id)
     if not db_post:
         return None
 
@@ -240,7 +246,7 @@ def update_post(
     files_to_delete: List[str] = []
 
     if new_images_meta is not None or keep_filenames is not None:
-        # ✅ JSONB: db_post.images уже list, не нужен json.loads()
+        # ✅ JSONB: db_post.images уже list
         raw_old_images = db_post.images or []
 
         old_images_map: Dict[str, dict] = {}
@@ -273,17 +279,17 @@ def update_post(
         kept_urls.discard("")
         files_to_delete = [url for url in old_images_map if url not in kept_urls]
 
-        update_data["images"] = sanitize_json_field(final_images_meta)  # ✅ JSONB: list
+        update_data["images"] = sanitize_json_field(final_images_meta)
 
     for key, value in update_data.items():
         setattr(db_post, key, value)
 
-    db_post.updated_at = datetime.now(timezone.utc)
+    db_post.updated_at = datetime.utcnow()
 
     try:
-        db.commit()
+        await db.commit()
     except Exception:
-        db.rollback()
+        await db.rollback()
         if new_images_meta:
             delete_images(new_images_meta)
         raise
@@ -291,116 +297,123 @@ def update_post(
     if files_to_delete:
         delete_images(files_to_delete)
 
-    db.refresh(db_post)
+    await db.refresh(db_post)
     return db_post
 
-def delete_post(db: Session, post_id: int) -> bool:
+
+async def delete_post(db: AsyncSession, post_id: int) -> bool:
     """Удалить пост и его изображения"""
-    db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    db_post = await db.get(models.Post, post_id)
     if not db_post:
         return False
 
-    # ✅ JSONB: db_post.images уже list, не нужен json.loads()
     if db_post.images:
         try:
             delete_images(db_post.images)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("Ошибка удаления изображений поста %s: %s", post_id, e)
+            logger.warning("Ошибка удаления изображений поста %s: %s", post_id, e)
 
-    db.delete(db_post)
-    db.commit()
+    await db.delete(db_post)
+    await db.commit()
     return True
 
 
 # ===== ПРОСМОТРЫ =====
 
-def increment_post_views(db: Session, post_id: int, user_id: int):
+async def increment_post_views(db: AsyncSession, post_id: int, user_id: int):
     """Увеличить счётчик просмотров поста (уникальные по юзеру)."""
     # Пропускаем рекламу (у неё свои views в AdPost)
-    is_ad = db.query(models.AdPost).filter(models.AdPost.post_id == post_id).first()
-    if is_ad:
+    ad_check = await db.execute(
+        select(models.AdPost.id).where(models.AdPost.post_id == post_id)
+    )
+    if ad_check.scalar_one_or_none():
         return
 
-    has_viewed = db.query(models.PostView).filter(
-        models.PostView.post_id == post_id,
-        models.PostView.user_id == user_id
-    ).first()
-
-    if has_viewed:
+    view_check = await db.execute(
+        select(models.PostView).where(
+            models.PostView.post_id == post_id,
+            models.PostView.user_id == user_id
+        )
+    )
+    if view_check.scalar_one_or_none():
         return
 
     try:
         new_view = models.PostView(post_id=post_id, user_id=user_id)
         db.add(new_view)
 
-        db.execute(
+        await db.execute(
             sa_update(models.Post)
             .where(models.Post.id == post_id)
             .values(views_count=models.Post.views_count + 1)
         )
 
-        db.commit()
+        await db.commit()
     except Exception:
-        db.rollback()
+        await db.rollback()
 
 
 # ===== ЛАЙКИ ПОСТОВ =====
 
-def is_post_liked_by_user(db: Session, post_id: int, user_id: int) -> bool:
+async def is_post_liked_by_user(db: AsyncSession, post_id: int, user_id: int) -> bool:
     """Проверить лайкнул ли пользователь пост"""
-    like = db.query(models.PostLike).filter(
-        models.PostLike.post_id == post_id,
-        models.PostLike.user_id == user_id
-    ).first()
-    return like is not None
+    result = await db.execute(
+        select(models.PostLike).where(
+            models.PostLike.post_id == post_id,
+            models.PostLike.user_id == user_id
+        )
+    )
+    return result.scalar_one_or_none() is not None
 
 
-def toggle_post_like(db: Session, post_id: int, user_id: int) -> dict:
+async def toggle_post_like(db: AsyncSession, post_id: int, user_id: int) -> dict:
     """Toggle лайка (добавить или убрать)"""
-    like = db.query(models.PostLike).filter(
-        models.PostLike.post_id == post_id,
-        models.PostLike.user_id == user_id
-    ).first()
+    result = await db.execute(
+        select(models.PostLike).where(
+            models.PostLike.post_id == post_id,
+            models.PostLike.user_id == user_id
+        )
+    )
+    like = result.scalar_one_or_none()
 
-    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    post = await db.get(models.Post, post_id)
     if not post:
         return {"is_liked": False, "likes": 0}
 
     if like:
-        db.delete(like)
-        db.execute(
+        await db.delete(like)
+        await db.execute(
             sa_update(models.Post)
             .where(models.Post.id == post_id)
             .values(likes_count=func.greatest(models.Post.likes_count - 1, 0))
         )
-        db.commit()
-        post = db.query(models.Post).filter(models.Post.id == post_id).first()
+        await db.commit()
+        await db.refresh(post)
         return {"is_liked": False, "likes": post.likes_count}
     else:
         new_like = models.PostLike(user_id=user_id, post_id=post_id)
         db.add(new_like)
-        db.execute(
+        await db.execute(
             sa_update(models.Post)
             .where(models.Post.id == post_id)
             .values(likes_count=models.Post.likes_count + 1)
         )
-        notif.check_milestone(db, post)
-        db.commit()
-        db.refresh(post)
+        await notif.check_milestone(db, post)
+        await db.commit()
+        await db.refresh(post)
         return {"is_liked": True, "likes": post.likes_count}
 
 
 # ===== ОПРОСЫ (POLLS) =====
 
-def create_poll(db: Session, post_id: int, poll_data: schemas.PollCreate) -> models.Poll:
+async def create_poll(db: AsyncSession, post_id: int, poll_data: schemas.PollCreate) -> models.Poll:
     """Создать опрос для поста"""
     options_json = [{"text": option_text, "votes": 0} for option_text in poll_data.options]
 
     db_poll = models.Poll(
         post_id=post_id,
         question=poll_data.question,
-        options=options_json,                  # ✅ JSONB: list напрямую
+        options=options_json,
         type=poll_data.type,
         correct_option=poll_data.correct_option if poll_data.type == 'quiz' else None,
         allow_multiple=poll_data.allow_multiple,
@@ -410,29 +423,30 @@ def create_poll(db: Session, post_id: int, poll_data: schemas.PollCreate) -> mod
     )
 
     db.add(db_poll)
-    db.commit()
-    db.refresh(db_poll)
+    await db.commit()
+    await db.refresh(db_poll)
     return db_poll
 
 
-def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]) -> Dict:
+async def vote_poll(db: AsyncSession, poll_id: int, user_id: int, option_indices: List[int]) -> Dict:
     """Проголосовать в опросе"""
-    poll = db.query(models.Poll).filter(models.Poll.id == poll_id).first()
+    poll = await db.get(models.Poll, poll_id)
     if not poll:
         raise ValueError("Опрос не найден")
 
-    if poll.closes_at and poll.closes_at < datetime.now(timezone.utc):
+    if poll.closes_at and poll.closes_at < datetime.utcnow():
         raise ValueError("Опрос закрыт")
 
-    existing_vote = db.query(models.PollVote).filter(
-        models.PollVote.poll_id == poll_id,
-        models.PollVote.user_id == user_id
-    ).first()
-
-    if existing_vote:
+    existing_vote_result = await db.execute(
+        select(models.PollVote).where(
+            models.PollVote.poll_id == poll_id,
+            models.PollVote.user_id == user_id
+        )
+    )
+    if existing_vote_result.scalar_one_or_none():
         raise ValueError("Вы уже проголосовали")
 
-    # ✅ JSONB: poll.options уже list, не нужен json.loads()
+    # ✅ JSONB: poll.options уже list
     options_data = list(poll.options)  # copy чтобы не мутировать in-place
     for idx in option_indices:
         if idx < 0 or idx >= len(options_data):
@@ -444,9 +458,9 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
     for idx in option_indices:
         options_data[idx] = {**options_data[idx], 'votes': options_data[idx]['votes'] + 1}
 
-    poll.options = options_data  # ✅ JSONB: присваиваем list напрямую
+    poll.options = options_data
 
-    db.execute(
+    await db.execute(
         sa_update(models.Poll)
         .where(models.Poll.id == poll_id)
         .values(total_votes=models.Poll.total_votes + 1)
@@ -455,11 +469,11 @@ def vote_poll(db: Session, poll_id: int, user_id: int, option_indices: List[int]
     db_vote = models.PollVote(
         poll_id=poll_id,
         user_id=user_id,
-        option_indices=option_indices          # ✅ JSONB: list напрямую
+        option_indices=option_indices
     )
 
     db.add(db_vote)
-    db.commit()
+    await db.commit()
 
     return {
         "success": True,

@@ -129,7 +129,7 @@ def get_storage_key(value: str, kind: str = "images") -> str:
 
 def _make_storage_paths(kind: str) -> Tuple[str, Path, Path]:
     safe_kind = _kind_or_default(kind)
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     rel_dir = f"{now.year}/{now.month:02d}"
     filename = f"{uuid.uuid4().hex}.webp"
     relative_path = f"{rel_dir}/{filename}"

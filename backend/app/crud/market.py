@@ -3,9 +3,12 @@
 #
 # ✅ Фаза 1.4: Убраны json.loads()/json.dumps() — JSONB-колонки возвращают
 #    нативные list/dict.
+# ✅ Фаза 3.6: async/await + select() + AsyncSession
+# ✅ Фаза 3.6: joinedload → selectinload
 
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_, update as sa_update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select, func, or_, update as sa_update
 from typing import Optional, List, Dict
 from datetime import datetime, timezone
 import logging
@@ -29,14 +32,14 @@ STANDARD_CATEGORIES = [
 
 # ===== СОЗДАНИЕ И ОБНОВЛЕНИЕ =====
 
-def create_market_item(
-    db: Session,
+async def create_market_item(
+    db: AsyncSession,
     item: schemas.MarketItemCreate,
     seller_id: int,
     images_meta: Optional[List[dict]] = None,
 ) -> models.MarketItem:
     """Создать товар на маркетплейсе."""
-    seller = get_user_by_id(db, seller_id)
+    seller = await get_user_by_id(db, seller_id)
     if not seller:
         raise ValueError("Продавец не найден")
 
@@ -59,7 +62,7 @@ def create_market_item(
         price=item.price,
         condition=item.condition,
         location=item.location or f"{seller.university}, {seller.institute}",
-        images=saved_images_meta,              # ✅ JSONB: list напрямую
+        images=saved_images_meta,
         status='active',
         university=seller.university,
         institute=seller.institute
@@ -67,8 +70,8 @@ def create_market_item(
 
     try:
         db.add(db_item)
-        db.commit()
-        db.refresh(db_item)
+        await db.commit()
+        await db.refresh(db_item)
         return db_item
     except Exception as e:
         if saved_images_meta:
@@ -76,8 +79,8 @@ def create_market_item(
         raise e
 
 
-def update_market_item(
-    db: Session,
+async def update_market_item(
+    db: AsyncSession,
     item_id: int,
     seller_id: int,
     item_update: schemas.MarketItemUpdate,
@@ -85,10 +88,13 @@ def update_market_item(
     keep_filenames: Optional[List[str]] = None,
 ) -> Optional[models.MarketItem]:
     """Update market item (smart image merge)."""
-    db_item = db.query(models.MarketItem).filter(
-        models.MarketItem.id == item_id,
-        models.MarketItem.seller_id == seller_id
-    ).first()
+    result = await db.execute(
+        select(models.MarketItem).where(
+            models.MarketItem.id == item_id,
+            models.MarketItem.seller_id == seller_id
+        )
+    )
+    db_item = result.scalar_one_or_none()
 
     if not db_item:
         return None
@@ -97,7 +103,6 @@ def update_market_item(
     files_to_delete: List[str] = []
 
     if new_images_meta is not None or keep_filenames is not None:
-        # ✅ JSONB: db_item.images уже list, не нужен json.loads()
         raw_old_images = db_item.images or []
         old_images_map: Dict[str, dict] = {}
         for img in raw_old_images:
@@ -132,19 +137,19 @@ def update_market_item(
         kept_urls.discard("")
         files_to_delete = [url for url in old_images_map if url not in kept_urls]
 
-        update_data["images"] = final_images_meta  # ✅ JSONB: list напрямую
+        update_data["images"] = final_images_meta
 
     update_data = {k: v for k, v in update_data.items() if v is not None}
 
     for key, value in update_data.items():
         setattr(db_item, key, value)
 
-    db_item.updated_at = datetime.now(timezone.utc)
+    db_item.updated_at = datetime.utcnow()
 
     try:
-        db.commit()
+        await db.commit()
     except Exception:
-        db.rollback()
+        await db.rollback()
         if new_images_meta:
             delete_images(new_images_meta)
         raise
@@ -152,35 +157,38 @@ def update_market_item(
     if files_to_delete:
         delete_images(files_to_delete)
 
-    db.refresh(db_item)
+    await db.refresh(db_item)
     return db_item
 
-def delete_market_item(db: Session, item_id: int, seller_id: int) -> bool:
+
+async def delete_market_item(db: AsyncSession, item_id: int, seller_id: int) -> bool:
     """Удаление товара (только продавец)"""
-    db_item = db.query(models.MarketItem).filter(
-        models.MarketItem.id == item_id,
-        models.MarketItem.seller_id == seller_id
-    ).first()
+    result = await db.execute(
+        select(models.MarketItem).where(
+            models.MarketItem.id == item_id,
+            models.MarketItem.seller_id == seller_id
+        )
+    )
+    db_item = result.scalar_one_or_none()
 
     if not db_item:
         return False
 
-    # ✅ JSONB: db_item.images уже list, не нужен json.loads()
     if db_item.images:
         try:
             delete_images(db_item.images)
         except Exception as e:
             logger.warning("Ошибка удаления изображений товара %s: %s", item_id, e)
 
-    db.delete(db_item)
-    db.commit()
+    await db.delete(db_item)
+    await db.commit()
     return True
 
 
 # ===== ПОЛУЧЕНИЕ И ПОИСК =====
 
-def get_market_items(
-    db: Session,
+async def get_market_items(
+    db: AsyncSession,
     skip: int = 0,
     limit: int = 20,
     category: Optional[str] = None,
@@ -195,14 +203,18 @@ def get_market_items(
     search: Optional[str] = None,
     current_user_id: Optional[int] = None
 ) -> Dict:
-    query = db.query(models.MarketItem).options(joinedload(models.MarketItem.seller))
-
-    query = query.filter(models.MarketItem.status == 'active')
-    query = query.filter(models.MarketItem.is_deleted == False)
+    query = (
+        select(models.MarketItem)
+        .options(selectinload(models.MarketItem.seller))
+        .where(
+            models.MarketItem.status == 'active',
+            models.MarketItem.is_deleted == False,
+        )
+    )
 
     if search:
         search_term = f"%{search}%"
-        query = query.filter(
+        query = query.where(
             or_(
                 models.MarketItem.title.ilike(search_term),
                 models.MarketItem.description.ilike(search_term)
@@ -210,29 +222,29 @@ def get_market_items(
         )
 
     if category and category != 'all':
-        query = query.filter(models.MarketItem.category == category)
+        query = query.where(models.MarketItem.category == category)
 
     if price_min is not None:
-        query = query.filter(models.MarketItem.price >= price_min)
+        query = query.where(models.MarketItem.price >= price_min)
 
     if price_max is not None:
-        query = query.filter(models.MarketItem.price <= price_max)
+        query = query.where(models.MarketItem.price <= price_max)
 
     if condition:
         conditions = condition.split(',')
-        query = query.filter(models.MarketItem.condition.in_(conditions))
+        query = query.where(models.MarketItem.condition.in_(conditions))
 
     # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ ===
     _joined_seller = False
     if campus_id:
-        query = query.join(models.User, models.MarketItem.seller_id == models.User.id).filter(
+        query = query.join(models.User, models.MarketItem.seller_id == models.User.id).where(
             models.User.campus_id == campus_id
         )
         _joined_seller = True
     elif university and university != 'all':
-        query = query.filter(models.MarketItem.university == university)
+        query = query.where(models.MarketItem.university == university)
     elif city:
-        query = query.join(models.User, models.MarketItem.seller_id == models.User.id).filter(
+        query = query.join(models.User, models.MarketItem.seller_id == models.User.id).where(
             or_(
                 models.User.city == city,
                 models.User.custom_city.ilike(f'%{city}%')
@@ -241,9 +253,11 @@ def get_market_items(
         _joined_seller = True
 
     if institute and institute != 'all':
-        query = query.filter(models.MarketItem.institute == institute)
+        query = query.where(models.MarketItem.institute == institute)
 
-    total = query.count()
+    total = await db.scalar(
+        select(func.count()).select_from(query.subquery())
+    )
 
     if sort == 'price_asc':
         query = query.order_by(models.MarketItem.price.asc())
@@ -254,133 +268,143 @@ def get_market_items(
     else:
         query = query.order_by(models.MarketItem.created_at.desc())
 
-    items = query.offset(skip).limit(limit).all()
+    result = await db.execute(query.offset(skip).limit(limit))
+    items = result.scalars().all()
 
     return {
         'items': items,
-        'total': total,
-        'has_more': skip + limit < total
+        'total': total or 0,
+        'has_more': skip + limit < (total or 0)
     }
 
 
-def get_market_item(db: Session, item_id: int, user_id: Optional[int] = None) -> Optional[models.MarketItem]:
+async def get_market_item(db: AsyncSession, item_id: int, user_id: Optional[int] = None) -> Optional[models.MarketItem]:
     """Получить товар по ID. Если user_id — засчитать уникальный просмотр."""
-    item = db.query(models.MarketItem).options(
-        joinedload(models.MarketItem.seller)
-    ).filter(
-        models.MarketItem.id == item_id,
-        models.MarketItem.is_deleted == False
-    ).first()
+    result = await db.execute(
+        select(models.MarketItem)
+        .options(selectinload(models.MarketItem.seller))
+        .where(
+            models.MarketItem.id == item_id,
+            models.MarketItem.is_deleted == False
+        )
+    )
+    item = result.scalar_one_or_none()
 
     if item and user_id:
         if item.seller_id != user_id:
-            has_viewed = db.query(models.MarketItemView).filter(
-                models.MarketItemView.item_id == item_id,
-                models.MarketItemView.user_id == user_id
-            ).first()
+            view_check = await db.execute(
+                select(models.MarketItemView).where(
+                    models.MarketItemView.item_id == item_id,
+                    models.MarketItemView.user_id == user_id
+                )
+            )
 
-            if not has_viewed:
+            if not view_check.scalar_one_or_none():
                 try:
                     new_view = models.MarketItemView(item_id=item_id, user_id=user_id)
                     db.add(new_view)
-                    db.execute(
+                    await db.execute(
                         sa_update(models.MarketItem)
                         .where(models.MarketItem.id == item_id)
                         .values(views_count=models.MarketItem.views_count + 1)
                     )
-                    db.commit()
-                    db.refresh(item)
+                    await db.commit()
+                    await db.refresh(item)
                 except Exception:
-                    db.rollback()
+                    await db.rollback()
 
     return item
 
 
 # ===== ИЗБРАННОЕ =====
 
-def toggle_market_favorite(db: Session, item_id: int, user_id: int) -> dict:
+async def toggle_market_favorite(db: AsyncSession, item_id: int, user_id: int) -> dict:
     """Toggle избранное"""
-    favorite = db.query(models.MarketFavorite).filter(
-        models.MarketFavorite.item_id == item_id,
-        models.MarketFavorite.user_id == user_id
-    ).first()
+    fav_result = await db.execute(
+        select(models.MarketFavorite).where(
+            models.MarketFavorite.item_id == item_id,
+            models.MarketFavorite.user_id == user_id
+        )
+    )
+    favorite = fav_result.scalar_one_or_none()
 
-    item = db.query(models.MarketItem).filter(models.MarketItem.id == item_id).first()
+    item = await db.get(models.MarketItem, item_id)
     if not item:
         return {"is_favorited": False, "favorites_count": 0}
 
     if favorite:
-        db.delete(favorite)
-        db.execute(
+        await db.delete(favorite)
+        await db.execute(
             sa_update(models.MarketItem)
             .where(models.MarketItem.id == item_id)
             .values(favorites_count=func.greatest(models.MarketItem.favorites_count - 1, 0))
         )
-        db.commit()
-        item = db.query(models.MarketItem).filter(models.MarketItem.id == item_id).first()
+        await db.commit()
+        await db.refresh(item)
         return {"is_favorited": False, "favorites_count": item.favorites_count}
     else:
         new_favorite = models.MarketFavorite(user_id=user_id, item_id=item_id)
         db.add(new_favorite)
-        db.execute(
+        await db.execute(
             sa_update(models.MarketItem)
             .where(models.MarketItem.id == item_id)
             .values(favorites_count=models.MarketItem.favorites_count + 1)
         )
-        db.commit()
-        item = db.query(models.MarketItem).filter(models.MarketItem.id == item_id).first()
+        await db.commit()
+        await db.refresh(item)
         return {"is_favorited": True, "favorites_count": item.favorites_count}
 
 
-def is_item_favorited(db: Session, item_id: int, user_id: int) -> bool:
+async def is_item_favorited(db: AsyncSession, item_id: int, user_id: int) -> bool:
     """Проверка в избранном ли товар"""
-    favorite = db.query(models.MarketFavorite).filter(
-        models.MarketFavorite.item_id == item_id,
-        models.MarketFavorite.user_id == user_id
-    ).first()
-    return favorite is not None
+    result = await db.execute(
+        select(models.MarketFavorite).where(
+            models.MarketFavorite.item_id == item_id,
+            models.MarketFavorite.user_id == user_id
+        )
+    )
+    return result.scalar_one_or_none() is not None
 
 
-def get_user_favorites(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.MarketItem]:
+async def get_user_favorites(db: AsyncSession, user_id: int, limit: int = 20, offset: int = 0) -> List[models.MarketItem]:
     """Список избранных товаров"""
-    return (
-        db.query(models.MarketItem)
-        .options(joinedload(models.MarketItem.seller))
+    result = await db.execute(
+        select(models.MarketItem)
+        .options(selectinload(models.MarketItem.seller))
         .join(models.MarketFavorite)
-        .filter(models.MarketFavorite.user_id == user_id)
+        .where(models.MarketFavorite.user_id == user_id)
         .order_by(models.MarketFavorite.created_at.desc())
         .offset(offset)
         .limit(limit)
-        .all()
     )
+    return result.scalars().all()
 
 
-def get_user_market_items(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.MarketItem]:
+async def get_user_market_items(db: AsyncSession, user_id: int, limit: int = 20, offset: int = 0) -> List[models.MarketItem]:
     """Мои объявления"""
-    return (
-        db.query(models.MarketItem)
-        .filter(models.MarketItem.seller_id == user_id)
+    result = await db.execute(
+        select(models.MarketItem)
+        .where(models.MarketItem.seller_id == user_id)
         .order_by(models.MarketItem.created_at.desc())
         .offset(offset)
         .limit(limit)
-        .all()
     )
+    return result.scalars().all()
 
 
 # ===== КАТЕГОРИИ =====
 
-def get_market_categories(db: Session) -> Dict[str, List[str]]:
+async def get_market_categories(db: AsyncSession) -> Dict[str, List[str]]:
     """Список стандартных + популярных кастомных категорий"""
-    custom_categories = (
-        db.query(models.MarketItem.category, func.count(models.MarketItem.id).label('count'))
-        .filter(~models.MarketItem.category.in_(STANDARD_CATEGORIES))
+    result = await db.execute(
+        select(models.MarketItem.category, func.count(models.MarketItem.id).label('count'))
+        .where(~models.MarketItem.category.in_(STANDARD_CATEGORIES))
         .group_by(models.MarketItem.category)
         .order_by(func.count(models.MarketItem.id).desc())
         .limit(10)
-        .all()
     )
 
-    popular_custom = [cat[0] for cat in custom_categories]
+    popular_custom = [row[0] for row in result.all()]
 
     return {
         'standard': STANDARD_CATEGORIES,

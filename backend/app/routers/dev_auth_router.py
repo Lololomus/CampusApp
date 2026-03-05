@@ -1,10 +1,15 @@
+# ===== FILE: backend/app/routers/dev_auth_router.py =====
+#
+# ✅ Фаза 3: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy.orm import Session
+from sqlalchemy import select, delete as sa_delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models, schemas
 from app.auth_service import create_auth_session
 from app.config import get_settings
-from app.database import get_db_sync
+from app.database import get_db
 
 router = APIRouter(prefix="/dev/auth", tags=["dev-auth"])
 
@@ -17,18 +22,22 @@ def _ensure_dev_mode():
 
 
 @router.post("/login-as", response_model=schemas.AuthLoginResponse)
-def dev_login_as(
+async def dev_login_as(
     payload: schemas.DevLoginRequest,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
 ):
     settings = _ensure_dev_mode()
     if settings.dev_telegram_ids and payload.telegram_id not in settings.dev_telegram_ids:
         raise HTTPException(status_code=403, detail="telegram_id is not in DEV_TELEGRAM_IDS")
 
-    user = db.query(models.User).filter(models.User.telegram_id == payload.telegram_id).first()
-    access_token, refresh_token, _ = create_auth_session(
+    result = await db.execute(
+        select(models.User).where(models.User.telegram_id == payload.telegram_id)
+    )
+    user = result.scalar_one_or_none()
+
+    access_token, refresh_token, _ = await create_auth_session(
         db=db,
         telegram_id=payload.telegram_id,
         user_id=user.id if user else None,
@@ -54,19 +63,25 @@ def dev_login_as(
 
 
 @router.post("/reset-user")
-def dev_reset_user(
+async def dev_reset_user(
     payload: schemas.DevResetRequest,
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
 ):
     settings = _ensure_dev_mode()
     if settings.dev_telegram_ids and payload.telegram_id not in settings.dev_telegram_ids:
         raise HTTPException(status_code=403, detail="telegram_id is not in DEV_TELEGRAM_IDS")
 
-    user = db.query(models.User).filter(models.User.telegram_id == payload.telegram_id).first()
+    result = await db.execute(
+        select(models.User).where(models.User.telegram_id == payload.telegram_id)
+    )
+    user = result.scalar_one_or_none()
     if user:
-        db.delete(user)
+        await db.delete(user)
 
-    db.query(models.AuthSession).filter(models.AuthSession.telegram_id == payload.telegram_id).delete()
-    db.commit()
+    await db.execute(
+        sa_delete(models.AuthSession).where(
+            models.AuthSession.telegram_id == payload.telegram_id
+        )
+    )
+    await db.commit()
     return {"success": True}
-

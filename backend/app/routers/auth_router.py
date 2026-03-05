@@ -1,13 +1,14 @@
 # ===== FILE: backend/app/routers/auth_router.py =====
 #
-# ✅ Фаза 2: get_db → get_db_sync (DEPRECATED, async в Фазе 3.2)
+# ✅ Фаза 3.2: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
 
 from collections import defaultdict, deque
-from datetime import datetime, timezone
+import time
 from typing import Deque, Dict
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update as sa_update
 
 from app import crud, models, schemas
 from app.auth_service import (
@@ -17,15 +18,16 @@ from app.auth_service import (
     revoke_auth_session,
     verify_telegram_auth,
 )
-from app.database import get_db_sync
+from app.database import get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# NOTE: _rate_buckets остаётся in-memory до Фазы 4.2 (Redis)
 _rate_buckets: Dict[str, Deque[float]] = defaultdict(deque)
 
 
 def _check_rate_limit(request: Request, key: str, limit: int = 20, window_sec: int = 60) -> None:
-    now = datetime.now(timezone.utc).timestamp()
+    now = time.time()
     ip = request.client.host if request.client else "unknown"
     bucket_key = f"{key}:{ip}"
     bucket = _rate_buckets[bucket_key]
@@ -38,11 +40,11 @@ def _check_rate_limit(request: Request, key: str, limit: int = 20, window_sec: i
 
 
 @router.post("/telegram/login", response_model=schemas.AuthLoginResponse)
-def telegram_login(
+async def telegram_login(
     payload: schemas.TelegramAuth,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
 ):
     _check_rate_limit(request, "auth_login")
     auth_data = verify_telegram_auth(payload.init_data)
@@ -61,8 +63,8 @@ def telegram_login(
     if not isinstance(telegram_id, int):
         raise HTTPException(status_code=401, detail="Invalid Telegram user id")
 
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    access_token, refresh_token, _ = create_auth_session(
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    access_token, refresh_token, _ = await create_auth_session(
         db=db,
         telegram_id=telegram_id,
         user_id=user.id if user else None,
@@ -92,12 +94,12 @@ def telegram_login(
 
 
 @router.post("/register", response_model=schemas.UserResponse)
-def register_user(
+async def register_user(
     user_data: schemas.UserRegister,
     identity=Depends(require_identity),
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
 ):
-    existing_user = crud.get_user_by_telegram_id(db, identity.telegram_id)
+    existing_user = await crud.get_user_by_telegram_id(db, identity.telegram_id)
     if existing_user:
         raise HTTPException(status_code=409, detail="User already exists")
 
@@ -105,29 +107,33 @@ def register_user(
         telegram_id=identity.telegram_id,
         **user_data.model_dump(),
     )
-    user = crud.create_user(db, create_payload)
+    user = await crud.create_user(db, create_payload)
 
-    db.query(models.AuthSession).filter(
-        models.AuthSession.telegram_id == identity.telegram_id,
-        models.AuthSession.revoked_at.is_(None),
-    ).update({"user_id": user.id})
-    db.commit()
+    await db.execute(
+        sa_update(models.AuthSession)
+        .where(
+            models.AuthSession.telegram_id == identity.telegram_id,
+            models.AuthSession.revoked_at.is_(None),
+        )
+        .values(user_id=user.id)
+    )
+    await db.commit()
 
     return user
 
 
 @router.post("/refresh", response_model=schemas.Token)
-def refresh_token(
+async def refresh_token(
     request: Request,
     response: Response,
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
 ):
     _check_rate_limit(request, "auth_refresh")
     refresh_token_cookie = request.cookies.get("refresh_token")
     if not refresh_token_cookie:
         raise HTTPException(status_code=401, detail="Refresh token missing")
 
-    access_token, new_refresh_token, _ = refresh_auth_session(db, refresh_token_cookie)
+    access_token, new_refresh_token, _ = await refresh_auth_session(db, refresh_token_cookie)
 
     from app.config import get_settings
 
@@ -146,12 +152,12 @@ def refresh_token(
 
 
 @router.post("/logout")
-def logout(
+async def logout(
     request: Request,
     response: Response,
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
 ):
     refresh_token_cookie = request.cookies.get("refresh_token")
-    revoke_auth_session(db, refresh_token_cookie)
+    await revoke_auth_session(db, refresh_token_cookie)
     response.delete_cookie("refresh_token", path="/auth")
     return {"success": True}

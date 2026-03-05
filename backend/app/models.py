@@ -58,9 +58,9 @@ class User(Base):
     dating_profile = relationship("DatingProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
     # Метаданные
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    last_active_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+    last_active_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     last_profile_edit = Column(DateTime, nullable=True)
     
     # Отношения
@@ -120,6 +120,13 @@ class User(Base):
         back_populates='user',
         cascade='all, delete-orphan'
     )
+    notification_settings = relationship(
+        'NotificationSettings',
+        back_populates='user',
+        uselist=False,
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
 
 
 class AuthSession(Base):
@@ -132,7 +139,7 @@ class AuthSession(Base):
     user_agent = Column(String(500), nullable=True)
     ip = Column(String(64), nullable=True)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     expires_at = Column(DateTime, nullable=False, index=True)
     revoked_at = Column(DateTime, nullable=True, index=True)
 
@@ -190,8 +197,8 @@ class Post(Base):
     comments_count = Column(Integer, default=0)
     views_count = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
     # Отношения
     author = relationship('User', foreign_keys=[author_id], back_populates='posts')
@@ -224,7 +231,7 @@ class Poll(Base):
     closes_at = Column(DateTime, nullable=True)
     total_votes = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
     
     # Relationships
     post = relationship("Post", back_populates="poll")
@@ -240,7 +247,7 @@ class PollVote(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     option_indices = Column(JSONB, nullable=False)  # ✅ JSONB: [0, 2]
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
     
     # Relationships
     poll = relationship("Poll", back_populates="votes")
@@ -258,7 +265,7 @@ class PostLike(Base):
     id = Column(Integer, primary_key=True, index=True)
     post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     
     __table_args__ = (
         UniqueConstraint('post_id', 'user_id', name='unique_post_like'),
@@ -304,8 +311,8 @@ class Request(Base):
     responses_count = Column(Integer, default=0)
     views_count = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
     # Отношения
     author = relationship('User', foreign_keys=[author_id], back_populates='requests')
@@ -329,7 +336,7 @@ class RequestResponse(Base):
     message = Column(String(500), nullable=True)
     telegram_contact = Column(String(255), nullable=True)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     
     # Отношения
     request = relationship('Request', back_populates='responses')
@@ -362,8 +369,8 @@ class Comment(Base):
     # ЛАЙКИ
     likes_count = Column(Integer, default=0)
     
-    updated_at = Column(DateTime, nullable=True, onupdate=lambda: datetime.now(timezone.utc))
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, nullable=True, onupdate=lambda: datetime.utcnow())
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     
     # Отношения
     post = relationship('Post', back_populates='comments')
@@ -382,7 +389,7 @@ class CommentLike(Base):
     id = Column(Integer, primary_key=True, index=True)
     comment_id = Column(Integer, ForeignKey('comments.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     
     __table_args__ = (
         UniqueConstraint('comment_id', 'user_id', name='unique_comment_like'),
@@ -401,7 +408,7 @@ class Match(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_a_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     user_b_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    matched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    matched_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     
     # Отношения
     user_a = relationship('User', foreign_keys=[user_a_id])
@@ -460,8 +467,8 @@ class MarketItem(Base):
     views_count = Column(Integer, default=0)
     favorites_count = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
     # Отношения
     seller = relationship(
@@ -485,7 +492,7 @@ class MarketFavorite(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     
     user = relationship('User', back_populates='market_favorites')
     item = relationship('MarketItem', back_populates='favorites')
@@ -516,8 +523,8 @@ class DatingProfile(Base):
     
     is_active = Column(Boolean, default=True)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
     user = relationship("User", back_populates="dating_profile")
 
@@ -529,7 +536,7 @@ class DatingLike(Base):
     who_liked_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     whom_liked_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     is_like = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
     matched_at = Column(DateTime, nullable=True)
 
     # ✅ Фаза 1.2: Составной индекс + UniqueConstraint (из Фазы 0.4)
@@ -576,7 +583,7 @@ class ModerationLog(Base):
     reason = Column(String(500), nullable=True)
     university = Column(String(255), nullable=True)  # вуз в момент действия (для аналитики)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     
     # Отношения
     moderator = relationship('User', foreign_keys=[moderator_id])
@@ -618,7 +625,7 @@ class Report(Base):
     # Вуз автора контента (для скоупинга амбассадоров)
     university = Column(String(255), nullable=True)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     
     # Отношения
     reporter = relationship('User', foreign_keys=[reporter_id])
@@ -648,7 +655,7 @@ class Appeal(Base):
     reviewed_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     reviewer_note = Column(String(500), nullable=True)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
     reviewed_at = Column(DateTime, nullable=True)
     
     # Отношения
@@ -671,7 +678,7 @@ class PostView(Base):
     id = Column(Integer, primary_key=True, index=True)
     post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    viewed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    viewed_at = Column(DateTime, default=lambda: datetime.utcnow())
     
     __table_args__ = (
         UniqueConstraint('post_id', 'user_id', name='unique_post_view'),
@@ -688,7 +695,7 @@ class MarketItemView(Base):
     id = Column(Integer, primary_key=True, index=True)
     item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    viewed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    viewed_at = Column(DateTime, default=lambda: datetime.utcnow())
     
     __table_args__ = (
         UniqueConstraint('item_id', 'user_id', name='unique_market_view'),
@@ -725,7 +732,7 @@ class AdPost(Base):
     target_city = Column(String(255), nullable=True)
     
     # Расписание и лимиты
-    starts_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    starts_at = Column(DateTime, nullable=False, default=lambda: datetime.utcnow())
     ends_at = Column(DateTime, nullable=True)
     impression_limit = Column(Integer, nullable=True)
     daily_impression_cap = Column(Integer, nullable=True)
@@ -751,8 +758,8 @@ class AdPost(Base):
     unique_views_count = Column(Integer, default=0)
     clicks_count = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
     # Отношения
     post = relationship('Post', backref='ad_data')
@@ -774,7 +781,7 @@ class AdImpression(Base):
     id = Column(Integer, primary_key=True, index=True)
     ad_post_id = Column(Integer, ForeignKey('ad_posts.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    viewed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    viewed_at = Column(DateTime, default=lambda: datetime.utcnow())
     
     ad_post = relationship('AdPost', back_populates='impressions')
     
@@ -791,7 +798,7 @@ class AdClick(Base):
     id = Column(Integer, primary_key=True, index=True)
     ad_post_id = Column(Integer, ForeignKey('ad_posts.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    clicked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    clicked_at = Column(DateTime, default=lambda: datetime.utcnow())
     
     ad_post = relationship('AdPost', back_populates='clicks')
     
@@ -822,11 +829,11 @@ class NotificationSettings(Base):
     digest_frequency = Column(String(20), default='weekly')
     mute_all = Column(Boolean, default=False)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(),
+                        onupdate=lambda: datetime.utcnow())
 
-    user = relationship('User', backref='notification_settings')
+    user = relationship('User', back_populates='notification_settings')
 
 
 class Notification(Base):
@@ -843,7 +850,7 @@ class Notification(Base):
     sent_at = Column(DateTime, nullable=True)
     error = Column(String(500), nullable=True)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
 
     recipient = relationship('User', foreign_keys=[recipient_id])
 
@@ -871,7 +878,7 @@ class Followup(Base):
     answer = Column(String(30), nullable=True)
     answered_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
 
     user = relationship('User', foreign_keys=[user_id])
 

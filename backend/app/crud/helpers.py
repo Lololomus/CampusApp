@@ -3,8 +3,9 @@
 #
 # ✅ Фаза 1.4: sanitize_json_field теперь возвращает list/dict (не строку)
 #    для совместимости с JSONB-колонками.
+# ✅ Фаза 3: Без изменений — чистый Python, нет DB-вызовов.
 
-from typing import Any, Optional, Union, List
+from typing import Any, Optional, Union
 import json
 
 

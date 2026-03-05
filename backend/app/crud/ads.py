@@ -2,9 +2,12 @@
 # Ads CRUD: рекламные посты, показы, клики, статистика
 #
 # ✅ Фаза 0.6: Счётчики → SQL expressions (race condition fix)
+# ✅ Фаза 3.8: async/await + select() + AsyncSession
+# ✅ Фаза 3.8: joinedload → selectinload
 
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_, update as sa_update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select, func, or_, update as sa_update
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
@@ -14,17 +17,14 @@ from app.crud.helpers import sanitize_json_field
 
 # ===== СОЗДАНИЕ И УПРАВЛЕНИЕ =====
 
-def create_ad_post(
-    db: Session,
+async def create_ad_post(
+    db: AsyncSession,
     ad_data: schemas.AdPostCreate,
     creator_id: int,
     creator_role: str,
     creator_university: str
 ) -> models.AdPost:
-    """
-    Создать рекламный пост.
-    Амбассадор → pending_review, суперадмин → сразу active.
-    """
+    """Создать рекламный пост."""
     db_post = models.Post(
         author_id=creator_id,
         category='ad',
@@ -38,7 +38,7 @@ def create_ad_post(
         views_count=0,
     )
     db.add(db_post)
-    db.flush()
+    await db.flush()
 
     initial_status = 'active' if creator_role == 'superadmin' else 'pending_review'
     target_uni = ad_data.target_university or creator_university
@@ -51,7 +51,7 @@ def create_ad_post(
         scope=ad_data.scope,
         target_university=target_uni if ad_data.scope in ('university', 'city') else None,
         target_city=ad_data.target_city if ad_data.scope == 'city' else None,
-        starts_at=ad_data.starts_at or datetime.now(timezone.utc),
+        starts_at=ad_data.starts_at or datetime.utcnow(),
         ends_at=ad_data.ends_at,
         impression_limit=ad_data.impression_limit,
         daily_impression_cap=ad_data.daily_impression_cap,
@@ -61,13 +61,13 @@ def create_ad_post(
         cta_url=ad_data.cta_url,
     )
     db.add(db_ad)
-    db.commit()
-    db.refresh(db_ad)
+    await db.commit()
+    await db.refresh(db_ad)
     return db_ad
 
 
-def get_ad_posts(
-    db: Session,
+async def get_ad_posts(
+    db: AsyncSession,
     status: Optional[str] = None,
     scope: Optional[str] = None,
     creator_id: Optional[int] = None,
@@ -75,39 +75,53 @@ def get_ad_posts(
     limit: int = 20,
 ) -> dict:
     """Получить список рекламных постов с фильтрацией (для админки)"""
-    query = db.query(models.AdPost).options(
-        joinedload(models.AdPost.creator),
-        joinedload(models.AdPost.post),
+    query = (
+        select(models.AdPost)
+        .options(
+            selectinload(models.AdPost.creator),
+            selectinload(models.AdPost.post),
+        )
     )
 
     if status:
-        query = query.filter(models.AdPost.status == status)
+        query = query.where(models.AdPost.status == status)
     if scope:
-        query = query.filter(models.AdPost.scope == scope)
+        query = query.where(models.AdPost.scope == scope)
     if creator_id:
-        query = query.filter(models.AdPost.created_by == creator_id)
+        query = query.where(models.AdPost.created_by == creator_id)
 
-    total = query.count()
-    items = query.order_by(models.AdPost.created_at.desc()).offset(skip).limit(limit).all()
+    total = await db.scalar(
+        select(func.count()).select_from(query.subquery())
+    )
+
+    result = await db.execute(
+        query.order_by(models.AdPost.created_at.desc()).offset(skip).limit(limit)
+    )
+    items = result.scalars().all()
 
     return {
         'items': items,
-        'total': total,
-        'has_more': skip + limit < total,
+        'total': total or 0,
+        'has_more': skip + limit < (total or 0),
     }
 
 
-def get_ad_post(db: Session, ad_id: int) -> Optional[models.AdPost]:
+async def get_ad_post(db: AsyncSession, ad_id: int) -> Optional[models.AdPost]:
     """Получить рекламный пост по ID"""
-    return db.query(models.AdPost).options(
-        joinedload(models.AdPost.creator),
-        joinedload(models.AdPost.post),
-    ).filter(models.AdPost.id == ad_id).first()
+    result = await db.execute(
+        select(models.AdPost)
+        .options(
+            selectinload(models.AdPost.creator),
+            selectinload(models.AdPost.post),
+        )
+        .where(models.AdPost.id == ad_id)
+    )
+    return result.scalar_one_or_none()
 
 
-def update_ad_post(db: Session, ad_id: int, update_data: schemas.AdPostUpdate) -> Optional[models.AdPost]:
+async def update_ad_post(db: AsyncSession, ad_id: int, update_data: schemas.AdPostUpdate) -> Optional[models.AdPost]:
     """Обновить рекламный пост"""
-    db_ad = db.query(models.AdPost).filter(models.AdPost.id == ad_id).first()
+    db_ad = await db.get(models.AdPost, ad_id)
     if not db_ad:
         return None
 
@@ -120,7 +134,7 @@ def update_ad_post(db: Session, ad_id: int, update_data: schemas.AdPostUpdate) -
         post_fields['body'] = data.pop('body')
 
     if post_fields:
-        post = db.query(models.Post).filter(models.Post.id == db_ad.post_id).first()
+        post = await db.get(models.Post, db_ad.post_id)
         if post:
             for k, v in post_fields.items():
                 setattr(post, k, v)
@@ -128,22 +142,25 @@ def update_ad_post(db: Session, ad_id: int, update_data: schemas.AdPostUpdate) -
     for key, value in data.items():
         setattr(db_ad, key, value)
 
-    db_ad.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(db_ad)
+    db_ad.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(db_ad)
     return db_ad
 
 
-def approve_ad_post(db: Session, ad_id: int, reviewer_id: int) -> Optional[models.AdPost]:
+async def approve_ad_post(db: AsyncSession, ad_id: int, reviewer_id: int) -> Optional[models.AdPost]:
     """Одобрить рекламный пост"""
-    db_ad = db.query(models.AdPost).filter(
-        models.AdPost.id == ad_id,
-        models.AdPost.status == 'pending_review',
-    ).first()
+    result = await db.execute(
+        select(models.AdPost).where(
+            models.AdPost.id == ad_id,
+            models.AdPost.status == 'pending_review',
+        )
+    )
+    db_ad = result.scalar_one_or_none()
     if not db_ad:
         return None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     db_ad.reviewed_by = reviewer_id
     db_ad.reviewed_at = now
 
@@ -152,138 +169,156 @@ def approve_ad_post(db: Session, ad_id: int, reviewer_id: int) -> Optional[model
     else:
         db_ad.status = 'approved'
 
-    db.commit()
-    db.refresh(db_ad)
+    await db.commit()
+    await db.refresh(db_ad)
     return db_ad
 
 
-def reject_ad_post(db: Session, ad_id: int, reviewer_id: int, reason: Optional[str] = None) -> Optional[models.AdPost]:
+async def reject_ad_post(db: AsyncSession, ad_id: int, reviewer_id: int, reason: Optional[str] = None) -> Optional[models.AdPost]:
     """Отклонить рекламный пост"""
-    db_ad = db.query(models.AdPost).filter(
-        models.AdPost.id == ad_id,
-        models.AdPost.status == 'pending_review',
-    ).first()
+    result = await db.execute(
+        select(models.AdPost).where(
+            models.AdPost.id == ad_id,
+            models.AdPost.status == 'pending_review',
+        )
+    )
+    db_ad = result.scalar_one_or_none()
     if not db_ad:
         return None
 
     db_ad.status = 'rejected'
     db_ad.reviewed_by = reviewer_id
-    db_ad.reviewed_at = datetime.now(timezone.utc)
+    db_ad.reviewed_at = datetime.utcnow()
     db_ad.reject_reason = reason
 
-    db.commit()
-    db.refresh(db_ad)
+    await db.commit()
+    await db.refresh(db_ad)
     return db_ad
 
 
-def pause_ad_post(db: Session, ad_id: int) -> Optional[models.AdPost]:
+async def pause_ad_post(db: AsyncSession, ad_id: int) -> Optional[models.AdPost]:
     """Поставить на паузу"""
-    db_ad = db.query(models.AdPost).filter(
-        models.AdPost.id == ad_id,
-        models.AdPost.status == 'active',
-    ).first()
+    result = await db.execute(
+        select(models.AdPost).where(
+            models.AdPost.id == ad_id,
+            models.AdPost.status == 'active',
+        )
+    )
+    db_ad = result.scalar_one_or_none()
     if not db_ad:
         return None
     db_ad.status = 'paused'
-    db.commit()
-    db.refresh(db_ad)
+    await db.commit()
+    await db.refresh(db_ad)
     return db_ad
 
 
-def resume_ad_post(db: Session, ad_id: int) -> Optional[models.AdPost]:
+async def resume_ad_post(db: AsyncSession, ad_id: int) -> Optional[models.AdPost]:
     """Снять с паузы"""
-    db_ad = db.query(models.AdPost).filter(
-        models.AdPost.id == ad_id,
-        models.AdPost.status == 'paused',
-    ).first()
+    result = await db.execute(
+        select(models.AdPost).where(
+            models.AdPost.id == ad_id,
+            models.AdPost.status == 'paused',
+        )
+    )
+    db_ad = result.scalar_one_or_none()
     if not db_ad:
         return None
     db_ad.status = 'active'
-    db.commit()
-    db.refresh(db_ad)
+    await db.commit()
+    await db.refresh(db_ad)
     return db_ad
 
 
-def delete_ad_post(db: Session, ad_id: int) -> bool:
+async def delete_ad_post(db: AsyncSession, ad_id: int) -> bool:
     """Удалить рекламный пост вместе с базовым постом"""
-    db_ad = db.query(models.AdPost).filter(models.AdPost.id == ad_id).first()
+    db_ad = await db.get(models.AdPost, ad_id)
     if not db_ad:
         return False
 
-    db_post = db.query(models.Post).filter(models.Post.id == db_ad.post_id).first()
+    db_post = await db.get(models.Post, db_ad.post_id)
     if db_post:
-        db.delete(db_post)
+        await db.delete(db_post)  # CASCADE удалит и ad_post
 
-    db.commit()
+    await db.commit()
     return True
 
 
 # ===== ПОКАЗЫ И КЛИКИ =====
 
-def get_active_ads_for_user(
-    db: Session,
+async def get_active_ads_for_user(
+    db: AsyncSession,
     user_university: str,
     user_city: Optional[str] = None,
     limit: int = 3,
     exclude_seen_by_user_id: Optional[int] = None,
 ) -> List[models.AdPost]:
     """Выбрать активные рекламные посты для подмешивания в ленту."""
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
-    query = db.query(models.AdPost).options(
-        joinedload(models.AdPost.post).joinedload(models.Post.author),
-    ).filter(
-        models.AdPost.status == 'active',
-        models.AdPost.starts_at <= now,
-        or_(models.AdPost.ends_at == None, models.AdPost.ends_at > now),
-        or_(
-            models.AdPost.impression_limit == None,
-            models.AdPost.impressions_count < models.AdPost.impression_limit,
-        ),
+    query = (
+        select(models.AdPost)
+        .options(
+            selectinload(models.AdPost.post).selectinload(models.Post.author),
+        )
+        .where(
+            models.AdPost.status == 'active',
+            models.AdPost.starts_at <= now,
+            or_(models.AdPost.ends_at == None, models.AdPost.ends_at > now),
+            or_(
+                models.AdPost.impression_limit == None,
+                models.AdPost.impressions_count < models.AdPost.impression_limit,
+            ),
+        )
     )
 
     # Фильтр по scope
     scope_filter = [models.AdPost.scope == 'all']
     scope_filter.append(
-        models.AdPost.scope == 'university',
-    )
-    scope_filter[-1] = (
         (models.AdPost.scope == 'university') & (models.AdPost.target_university == user_university)
     )
     if user_city:
         scope_filter.append(
             (models.AdPost.scope == 'city') & (models.AdPost.target_city == user_city)
         )
-    query = query.filter(or_(*scope_filter))
+    query = query.where(or_(*scope_filter))
 
     # Дедупликация: не показывать уже виденные сегодня
     if exclude_seen_by_user_id:
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        seen_today = db.query(models.AdImpression.ad_post_id).filter(
-            models.AdImpression.user_id == exclude_seen_by_user_id,
-            models.AdImpression.viewed_at >= today_start,
-        ).subquery()
-        query = query.filter(~models.AdPost.id.in_(seen_today))
+        seen_today = (
+            select(models.AdImpression.ad_post_id)
+            .where(
+                models.AdImpression.user_id == exclude_seen_by_user_id,
+                models.AdImpression.viewed_at >= today_start,
+            )
+            .scalar_subquery()
+        )
+        query = query.where(~models.AdPost.id.in_(seen_today))
 
-    ads = query.order_by(models.AdPost.priority.desc(), func.random()).limit(limit).all()
-    return ads
+    result = await db.execute(
+        query.order_by(models.AdPost.priority.desc(), func.random()).limit(limit)
+    )
+    return result.scalars().all()
 
 
-def track_ad_impression(db: Session, ad_post_id: int, user_id: int) -> bool:
+async def track_ad_impression(db: AsyncSession, ad_post_id: int, user_id: int) -> bool:
     """Зафиксировать показ рекламного поста (✅ атомарные счётчики)"""
-    db_ad = db.query(models.AdPost).filter(models.AdPost.id == ad_post_id).first()
+    db_ad = await db.get(models.AdPost, ad_post_id)
     if not db_ad:
         return False
 
     # Проверяем daily cap
     if db_ad.daily_impression_cap:
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_count = db.query(func.count(models.AdImpression.id)).filter(
-            models.AdImpression.ad_post_id == ad_post_id,
-            models.AdImpression.viewed_at >= today_start,
-        ).scalar()
-        if today_count >= db_ad.daily_impression_cap:
+        today_count = await db.scalar(
+            select(func.count(models.AdImpression.id)).where(
+                models.AdImpression.ad_post_id == ad_post_id,
+                models.AdImpression.viewed_at >= today_start,
+            )
+        )
+        if (today_count or 0) >= db_ad.daily_impression_cap:
             return False
 
     impression = models.AdImpression(
@@ -293,11 +328,13 @@ def track_ad_impression(db: Session, ad_post_id: int, user_id: int) -> bool:
     db.add(impression)
 
     # Проверяем уникальность ДО инкремента
-    existing = db.query(models.AdImpression).filter(
-        models.AdImpression.ad_post_id == ad_post_id,
-        models.AdImpression.user_id == user_id,
-    ).count()
-    is_new_unique = existing == 0
+    existing_count = await db.scalar(
+        select(func.count(models.AdImpression.id)).where(
+            models.AdImpression.ad_post_id == ad_post_id,
+            models.AdImpression.user_id == user_id,
+        )
+    )
+    is_new_unique = (existing_count or 0) == 0
 
     # Атомарные счётчики через SQL expression
     update_values = {
@@ -306,7 +343,7 @@ def track_ad_impression(db: Session, ad_post_id: int, user_id: int) -> bool:
     if is_new_unique:
         update_values['unique_views_count'] = models.AdPost.unique_views_count + 1
 
-    db.execute(
+    await db.execute(
         sa_update(models.AdPost)
         .where(models.AdPost.id == ad_post_id)
         .values(**update_values)
@@ -314,19 +351,19 @@ def track_ad_impression(db: Session, ad_post_id: int, user_id: int) -> bool:
 
     # Автозавершение при достижении лимита
     if db_ad.impression_limit and (db_ad.impressions_count + 1) >= db_ad.impression_limit:
-        db.execute(
+        await db.execute(
             sa_update(models.AdPost)
             .where(models.AdPost.id == ad_post_id)
             .values(status='completed')
         )
 
-    db.commit()
+    await db.commit()
     return True
 
 
-def track_ad_click(db: Session, ad_post_id: int, user_id: int) -> bool:
+async def track_ad_click(db: AsyncSession, ad_post_id: int, user_id: int) -> bool:
     """Зафиксировать клик по CTA (✅ атомарный счётчик)"""
-    db_ad = db.query(models.AdPost).filter(models.AdPost.id == ad_post_id).first()
+    db_ad = await db.get(models.AdPost, ad_post_id)
     if not db_ad:
         return False
 
@@ -336,43 +373,49 @@ def track_ad_click(db: Session, ad_post_id: int, user_id: int) -> bool:
     )
     db.add(click)
 
-    db.execute(
+    await db.execute(
         sa_update(models.AdPost)
         .where(models.AdPost.id == ad_post_id)
         .values(clicks_count=models.AdPost.clicks_count + 1)
     )
 
-    db.commit()
+    await db.commit()
     return True
 
 
 # ===== СТАТИСТИКА =====
 
-def get_ad_stats(db: Session, ad_id: int) -> Optional[dict]:
+async def get_ad_stats(db: AsyncSession, ad_id: int) -> Optional[dict]:
     """Детальная статистика по рекламному посту"""
-    db_ad = db.query(models.AdPost).filter(models.AdPost.id == ad_id).first()
+    db_ad = await db.get(models.AdPost, ad_id)
     if not db_ad:
         return None
 
     ctr = (db_ad.clicks_count / db_ad.impressions_count * 100) if db_ad.impressions_count > 0 else 0.0
 
-    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
 
-    impressions_by_day = db.query(
-        func.date(models.AdImpression.viewed_at).label('day'),
-        func.count(models.AdImpression.id).label('count'),
-    ).filter(
-        models.AdImpression.ad_post_id == ad_id,
-        models.AdImpression.viewed_at >= thirty_days_ago,
-    ).group_by(func.date(models.AdImpression.viewed_at)).all()
+    imp_result = await db.execute(
+        select(
+            func.date(models.AdImpression.viewed_at).label('day'),
+            func.count(models.AdImpression.id).label('count'),
+        ).where(
+            models.AdImpression.ad_post_id == ad_id,
+            models.AdImpression.viewed_at >= thirty_days_ago,
+        ).group_by(func.date(models.AdImpression.viewed_at))
+    )
+    impressions_by_day = imp_result.all()
 
-    clicks_by_day = db.query(
-        func.date(models.AdClick.clicked_at).label('day'),
-        func.count(models.AdClick.id).label('count'),
-    ).filter(
-        models.AdClick.ad_post_id == ad_id,
-        models.AdClick.clicked_at >= thirty_days_ago,
-    ).group_by(func.date(models.AdClick.clicked_at)).all()
+    click_result = await db.execute(
+        select(
+            func.date(models.AdClick.clicked_at).label('day'),
+            func.count(models.AdClick.id).label('count'),
+        ).where(
+            models.AdClick.ad_post_id == ad_id,
+            models.AdClick.clicked_at >= thirty_days_ago,
+        ).group_by(func.date(models.AdClick.clicked_at))
+    )
+    clicks_by_day = click_result.all()
 
     return {
         'ad_post_id': ad_id,
@@ -385,17 +428,25 @@ def get_ad_stats(db: Session, ad_id: int) -> Optional[dict]:
     }
 
 
-def get_ad_overview_stats(db: Session) -> dict:
+async def get_ad_overview_stats(db: AsyncSession) -> dict:
     """Сводная статистика рекламной системы"""
-    total_active = db.query(func.count(models.AdPost.id)).filter(models.AdPost.status == 'active').scalar()
-    total_pending = db.query(func.count(models.AdPost.id)).filter(models.AdPost.status == 'pending_review').scalar()
-    total_impressions = db.query(func.sum(models.AdPost.impressions_count)).scalar() or 0
-    total_clicks = db.query(func.sum(models.AdPost.clicks_count)).scalar() or 0
+    total_active = await db.scalar(
+        select(func.count(models.AdPost.id)).where(models.AdPost.status == 'active')
+    )
+    total_pending = await db.scalar(
+        select(func.count(models.AdPost.id)).where(models.AdPost.status == 'pending_review')
+    )
+    total_impressions = await db.scalar(
+        select(func.sum(models.AdPost.impressions_count))
+    ) or 0
+    total_clicks = await db.scalar(
+        select(func.sum(models.AdPost.clicks_count))
+    ) or 0
     avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
 
     return {
-        'total_active': total_active,
-        'total_pending': total_pending,
+        'total_active': total_active or 0,
+        'total_pending': total_pending or 0,
         'total_impressions': total_impressions,
         'total_clicks': total_clicks,
         'avg_ctr': round(avg_ctr, 2),

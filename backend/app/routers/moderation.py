@@ -1,12 +1,21 @@
 # ===== 📄 ФАЙЛ: backend/app/routers/moderation.py =====
+#
+# ✅ Фаза 3: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
+#    - legacy_query_api() → select() + await db.execute()
+#    - joinedload → selectinload
+#    - legacy_query_api(Model).get(id) → await db.get(Model, id)
+#
+# ⚠️ NOTE: Этот роутер всё ещё использует telegram_id=Query(...)
+#    вместо require_user. Это будет исправлено отдельно (Фаза 0.2 follow-up).
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_, and_, desc
+from sqlalchemy import select, func, or_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
-from app.database import get_db_sync
+from app.database import get_db
 from app import models, schemas
 from app.services import notification_service as notif
 
@@ -18,33 +27,29 @@ router = APIRouter(tags=["moderation"])
 # ========================================
 
 
-def get_user_or_404(db: Session, telegram_id: int) -> models.User:
-    """Получить юзера или 404"""
-    user = db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
+async def get_user_or_404(db: AsyncSession, telegram_id: int) -> models.User:
+    result = await db.execute(
+        select(models.User).where(models.User.telegram_id == telegram_id)
+    )
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
 
 def require_moderator(user: models.User) -> models.User:
-    """Проверка что юзер — амбассадор или суперадмин"""
     if user.role not in ('ambassador', 'superadmin'):
         raise HTTPException(status_code=403, detail="Недостаточно прав. Требуется роль модератора.")
     return user
 
 
 def require_superadmin(user: models.User) -> models.User:
-    """Проверка что юзер — суперадмин"""
     if user.role != 'superadmin':
         raise HTTPException(status_code=403, detail="Требуется роль суперадмина.")
     return user
 
 
 def check_scope(moderator: models.User, target_university: str):
-    """
-    Проверка скоупа амбассадора: может модерировать только свой вуз.
-    Суперадмин — без ограничений.
-    """
     if moderator.role == 'superadmin':
         return
     if moderator.university != target_university:
@@ -54,9 +59,8 @@ def check_scope(moderator: models.User, target_university: str):
         )
 
 
-def check_target_not_moderator(db: Session, target_user_id: int):
-    """Нельзя банить/удалять контент другого модератора или суперадмина"""
-    target_user = db.query(models.User).filter(models.User.id == target_user_id).first()
+async def check_target_not_moderator(db: AsyncSession, target_user_id: int):
+    target_user = await db.get(models.User, target_user_id)
     if target_user and target_user.role in ('ambassador', 'superadmin'):
         raise HTTPException(
             status_code=403,
@@ -64,17 +68,16 @@ def check_target_not_moderator(db: Session, target_user_id: int):
         )
 
 
-def log_action(
-    db: Session,
+async def log_action(
+    db: AsyncSession,
     moderator_id: int,
     action: str,
     target_type: str,
     target_id: int,
     target_user_id: int = None,
     reason: str = None,
-    university: str = None
+    university: str = None,
 ):
-    """Запись действия в лог модерации"""
     log = models.ModerationLog(
         moderator_id=moderator_id,
         action=action,
@@ -82,24 +85,26 @@ def log_action(
         target_id=target_id,
         target_user_id=target_user_id,
         reason=reason,
-        university=university
+        university=university,
     )
     db.add(log)
-    db.flush()
+    await db.flush()
     return log
 
 
-def auto_expire_shadow_bans(db: Session):
-    """Автоснятие истёкших банов (вызывается при проверке)"""
-    now = datetime.now(timezone.utc)
-    expired = db.query(models.User).filter(
-        or_(
-            models.User.is_shadow_banned_posts == True,
-            models.User.is_shadow_banned_comments == True
-        ),
-        models.User.shadow_ban_expires_at.isnot(None),
-        models.User.shadow_ban_expires_at <= now
-    ).all()
+async def auto_expire_shadow_bans(db: AsyncSession):
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(models.User).where(
+            or_(
+                models.User.is_shadow_banned_posts == True,
+                models.User.is_shadow_banned_comments == True,
+            ),
+            models.User.shadow_ban_expires_at.isnot(None),
+            models.User.shadow_ban_expires_at <= now,
+        )
+    )
+    expired = result.scalars().all()
 
     for user in expired:
         user.is_shadow_banned_posts = False
@@ -108,7 +113,7 @@ def auto_expire_shadow_bans(db: Session):
         user.shadow_ban_reason = None
 
     if expired:
-        db.commit()
+        await db.commit()
 
     return len(expired)
 
@@ -119,18 +124,18 @@ def auto_expire_shadow_bans(db: Session):
 
 
 @router.delete("/moderation/posts/{post_id}")
-def moderate_delete_post(
+async def moderate_delete_post(
     post_id: int,
     action: schemas.ModerationAction = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Мягкое удаление поста (амбассадор своего вуза / суперадмин)"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
 
-    post = db.query(models.Post).options(
-        joinedload(models.Post.author)
-    ).filter(models.Post.id == post_id).first()
+    result = await db.execute(
+        select(models.Post).options(selectinload(models.Post.author)).where(models.Post.id == post_id)
+    )
+    post = result.scalar_one_or_none()
 
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
@@ -138,37 +143,37 @@ def moderate_delete_post(
         raise HTTPException(status_code=400, detail="Пост уже удалён")
 
     check_scope(moderator, post.author.university)
-    check_target_not_moderator(db, post.author_id)
+    await check_target_not_moderator(db, post.author_id)
 
     post.is_deleted = True
     post.deleted_by = moderator.id
     post.deleted_reason = action.reason
-    post.deleted_at = datetime.now(timezone.utc)
+    post.deleted_at = datetime.utcnow()
 
-    log = log_action(
+    log = await log_action(
         db, moderator.id, 'delete_post', 'post', post.id,
         target_user_id=post.author_id,
         reason=action.reason,
-        university=post.author.university
+        university=post.author.university,
     )
 
-    db.commit()
+    await db.commit()
     return {"success": True, "moderation_log_id": log.id}
 
 
 @router.delete("/moderation/comments/{comment_id}")
-def moderate_delete_comment(
+async def moderate_delete_comment(
     comment_id: int,
     action: schemas.ModerationAction = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Мягкое удаление комментария"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
 
-    comment = db.query(models.Comment).options(
-        joinedload(models.Comment.author)
-    ).filter(models.Comment.id == comment_id).first()
+    result = await db.execute(
+        select(models.Comment).options(selectinload(models.Comment.author)).where(models.Comment.id == comment_id)
+    )
+    comment = result.scalar_one_or_none()
 
     if not comment:
         raise HTTPException(status_code=404, detail="Комментарий не найден")
@@ -176,42 +181,41 @@ def moderate_delete_comment(
         raise HTTPException(status_code=400, detail="Комментарий уже удалён")
 
     check_scope(moderator, comment.author.university)
-    check_target_not_moderator(db, comment.author_id)
+    await check_target_not_moderator(db, comment.author_id)
 
     comment.is_deleted = True
     comment.body = "Удалён модератором"
     comment.deleted_by = moderator.id
     comment.deleted_reason = action.reason
 
-    # Уменьшаем счётчик комментов у поста
-    post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
+    post = await db.get(models.Post, comment.post_id)
     if post:
         post.comments_count = max(0, post.comments_count - 1)
 
-    log = log_action(
+    log = await log_action(
         db, moderator.id, 'delete_comment', 'comment', comment.id,
         target_user_id=comment.author_id,
         reason=action.reason,
-        university=comment.author.university
+        university=comment.author.university,
     )
 
-    db.commit()
+    await db.commit()
     return {"success": True, "moderation_log_id": log.id}
 
 
 @router.delete("/moderation/requests/{request_id}")
-def moderate_delete_request(
+async def moderate_delete_request(
     request_id: int,
     action: schemas.ModerationAction = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Мягкое удаление запроса"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
 
-    request = db.query(models.Request).options(
-        joinedload(models.Request.author)
-    ).filter(models.Request.id == request_id).first()
+    result = await db.execute(
+        select(models.Request).options(selectinload(models.Request.author)).where(models.Request.id == request_id)
+    )
+    request = result.scalar_one_or_none()
 
     if not request:
         raise HTTPException(status_code=404, detail="Запрос не найден")
@@ -219,37 +223,37 @@ def moderate_delete_request(
         raise HTTPException(status_code=400, detail="Запрос уже удалён")
 
     check_scope(moderator, request.author.university)
-    check_target_not_moderator(db, request.author_id)
+    await check_target_not_moderator(db, request.author_id)
 
     request.is_deleted = True
     request.deleted_by = moderator.id
     request.deleted_reason = action.reason
-    request.deleted_at = datetime.now(timezone.utc)
+    request.deleted_at = datetime.utcnow()
 
-    log = log_action(
+    log = await log_action(
         db, moderator.id, 'delete_request', 'request', request.id,
         target_user_id=request.author_id,
         reason=action.reason,
-        university=request.author.university
+        university=request.author.university,
     )
 
-    db.commit()
+    await db.commit()
     return {"success": True, "moderation_log_id": log.id}
 
 
 @router.delete("/moderation/market/{item_id}")
-def moderate_delete_market_item(
+async def moderate_delete_market_item(
     item_id: int,
     action: schemas.ModerationAction = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Мягкое удаление товара"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
 
-    item = db.query(models.MarketItem).options(
-        joinedload(models.MarketItem.seller)
-    ).filter(models.MarketItem.id == item_id).first()
+    result = await db.execute(
+        select(models.MarketItem).options(selectinload(models.MarketItem.seller)).where(models.MarketItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
 
     if not item:
         raise HTTPException(status_code=404, detail="Товар не найден")
@@ -257,21 +261,21 @@ def moderate_delete_market_item(
         raise HTTPException(status_code=400, detail="Товар уже удалён")
 
     check_scope(moderator, item.university)
-    check_target_not_moderator(db, item.seller_id)
+    await check_target_not_moderator(db, item.seller_id)
 
     item.is_deleted = True
     item.deleted_by = moderator.id
     item.deleted_reason = action.reason
-    item.deleted_at = datetime.now(timezone.utc)
+    item.deleted_at = datetime.utcnow()
 
-    log = log_action(
+    log = await log_action(
         db, moderator.id, 'delete_market_item', 'market_item', item.id,
         target_user_id=item.seller_id,
         reason=action.reason,
-        university=item.university
+        university=item.university,
     )
 
-    db.commit()
+    await db.commit()
     return {"success": True, "moderation_log_id": log.id}
 
 
@@ -281,18 +285,21 @@ def moderate_delete_market_item(
 
 
 @router.post("/moderation/posts/{post_id}/pin")
-def toggle_pin_post(
+async def toggle_pin_post(
     post_id: int,
     telegram_id: int = Query(...),
     action: schemas.PinPostAction = Body(default=None),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Закрепить/открепить пост (макс. 3 на вуз)"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
 
-    post = db.query(models.Post).options(
-        joinedload(models.Post.author)
-    ).filter(models.Post.id == post_id, models.Post.is_deleted == False).first()
+    result = await db.execute(
+        select(models.Post).options(selectinload(models.Post.author)).where(
+            models.Post.id == post_id,
+            models.Post.is_deleted == False,
+        )
+    )
+    post = result.scalar_one_or_none()
 
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
@@ -300,48 +307,48 @@ def toggle_pin_post(
     check_scope(moderator, post.author.university)
 
     if post.is_important:
-        # Открепляем
         post.is_important = False
         post.pinned_by = None
         post.pinned_at = None
 
-        log_action(
+        await log_action(
             db, moderator.id, 'unpin_post', 'post', post.id,
             target_user_id=post.author_id,
             reason=action.reason if action else None,
-            university=post.author.university
+            university=post.author.university,
         )
 
-        db.commit()
+        await db.commit()
         return {"success": True, "pinned": False}
     else:
-        # Проверяем лимит (макс 3 закреплённых на вуз)
-        pinned_count = db.query(func.count(models.Post.id)).join(
-            models.User, models.Post.author_id == models.User.id
-        ).filter(
-            models.Post.is_important == True,
-            models.Post.is_deleted == False,
-            models.User.university == post.author.university
-        ).scalar()
+        pinned_count = await db.scalar(
+            select(func.count(models.Post.id))
+            .join(models.User, models.Post.author_id == models.User.id)
+            .where(
+                models.Post.is_important == True,
+                models.Post.is_deleted == False,
+                models.User.university == post.author.university,
+            )
+        )
 
         if pinned_count >= 3:
             raise HTTPException(
                 status_code=400,
-                detail="Максимум 3 закреплённых поста на университет"
+                detail="Максимум 3 закреплённых поста на университет",
             )
 
         post.is_important = True
         post.pinned_by = moderator.id
-        post.pinned_at = datetime.now(timezone.utc)
+        post.pinned_at = datetime.utcnow()
 
-        log_action(
+        await log_action(
             db, moderator.id, 'pin_post', 'post', post.id,
             target_user_id=post.author_id,
             reason=action.reason if action else None,
-            university=post.author.university
+            university=post.author.university,
         )
 
-        db.commit()
+        await db.commit()
         return {"success": True, "pinned": True}
 
 
@@ -351,60 +358,57 @@ def toggle_pin_post(
 
 
 @router.post("/moderation/ban")
-def shadow_ban_user(
+async def shadow_ban_user(
     data: schemas.ShadowBanCreate = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Теневой бан пользователя"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
 
-    target = db.query(models.User).filter(models.User.id == data.user_id).first()
+    target = await db.get(models.User, data.user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     check_scope(moderator, target.university)
-    check_target_not_moderator(db, target.id)
+    await check_target_not_moderator(db, target.id)
 
-    # Применяем бан
     target.is_shadow_banned_posts = data.ban_posts
     target.is_shadow_banned_comments = data.ban_comments
     target.shadow_ban_reason = data.reason
 
     if data.duration_days:
-        target.shadow_ban_expires_at = datetime.now(timezone.utc) + timedelta(days=data.duration_days)
+        target.shadow_ban_expires_at = datetime.utcnow() + timedelta(days=data.duration_days)
     else:
-        target.shadow_ban_expires_at = None  # перманентный
+        target.shadow_ban_expires_at = None
 
-    log_action(
+    await log_action(
         db, moderator.id, 'shadow_ban', 'user', target.id,
         target_user_id=target.id,
         reason=f"[posts={data.ban_posts}, comments={data.ban_comments}, days={data.duration_days}] {data.reason}",
-        university=target.university
+        university=target.university,
     )
 
-    db.commit()
+    await db.commit()
     return {
         "success": True,
         "ban": {
             "user_id": target.id,
             "posts": target.is_shadow_banned_posts,
             "comments": target.is_shadow_banned_comments,
-            "expires_at": str(target.shadow_ban_expires_at) if target.shadow_ban_expires_at else "permanent"
-        }
+            "expires_at": str(target.shadow_ban_expires_at) if target.shadow_ban_expires_at else "permanent",
+        },
     }
 
 
 @router.delete("/moderation/ban/{user_id}")
-def shadow_unban_user(
+async def shadow_unban_user(
     user_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Снять теневой бан"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
 
-    target = db.query(models.User).filter(models.User.id == user_id).first()
+    target = await db.get(models.User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -415,13 +419,13 @@ def shadow_unban_user(
     target.shadow_ban_expires_at = None
     target.shadow_ban_reason = None
 
-    log_action(
+    await log_action(
         db, moderator.id, 'shadow_unban', 'user', target.id,
         target_user_id=target.id,
-        university=target.university
+        university=target.university,
     )
 
-    db.commit()
+    await db.commit()
     return {"success": True}
 
 
@@ -431,35 +435,33 @@ def shadow_unban_user(
 
 
 @router.post("/reports")
-def create_report(
+async def create_report(
     data: schemas.ReportCreate = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Создать жалобу на контент или пользователя (любой пользователь)"""
-    reporter = get_user_or_404(db, telegram_id)
+    reporter = await get_user_or_404(db, telegram_id)
 
-    # Проверка дубликата (один юзер — одна жалоба на один объект)
-    existing = db.query(models.Report).filter(
-        models.Report.reporter_id == reporter.id,
-        models.Report.target_type == data.target_type,
-        models.Report.target_id == data.target_id,
-        models.Report.status == 'pending'
-    ).first()
-
-    if existing:
+    existing_res = await db.execute(
+        select(models.Report).where(
+            models.Report.reporter_id == reporter.id,
+            models.Report.target_type == data.target_type,
+            models.Report.target_id == data.target_id,
+            models.Report.status == 'pending',
+        )
+    )
+    if existing_res.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Вы уже отправили жалобу на этот объект")
 
     if data.target_type == 'user':
-        target_user = db.query(models.User).filter(models.User.id == data.target_id).first()
+        target_user = await db.get(models.User, data.target_id)
         if not target_user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         if target_user.id == reporter.id:
             raise HTTPException(status_code=400, detail="Нельзя отправить жалобу на самого себя")
         content_university = target_user.university
     else:
-        # Определяем вуз автора контента (для скоупинга)
-        content_university = _get_content_university(db, data.target_type, data.target_id)
+        content_university = await _get_content_university(db, data.target_type, data.target_id)
         if content_university is None:
             raise HTTPException(status_code=404, detail="Контент не найден")
 
@@ -472,71 +474,83 @@ def create_report(
         source_type=data.source_type,
         source_id=data.source_id,
         status='pending',
-        university=content_university
+        university=content_university,
     )
 
     db.add(report)
-    notif.notify_admin_report(db, report)
-    db.commit()
-    db.refresh(report)
+    await notif.notify_admin_report(db, report)
+    await db.commit()
+    await db.refresh(report)
 
     return {"success": True, "report_id": report.id}
 
 
-def _get_content_university(db: Session, target_type: str, target_id: int) -> Optional[str]:
-    """Определить университет автора контента"""
+async def _get_content_university(db: AsyncSession, target_type: str, target_id: int) -> Optional[str]:
     if target_type == 'post':
-        obj = db.query(models.Post).options(joinedload(models.Post.author)).filter(models.Post.id == target_id).first()
+        result = await db.execute(
+            select(models.Post).options(selectinload(models.Post.author)).where(models.Post.id == target_id)
+        )
+        obj = result.scalar_one_or_none()
         return obj.author.university if obj and obj.author else None
     elif target_type == 'comment':
-        obj = db.query(models.Comment).options(joinedload(models.Comment.author)).filter(models.Comment.id == target_id).first()
+        result = await db.execute(
+            select(models.Comment).options(selectinload(models.Comment.author)).where(models.Comment.id == target_id)
+        )
+        obj = result.scalar_one_or_none()
         return obj.author.university if obj and obj.author else None
     elif target_type == 'request':
-        obj = db.query(models.Request).options(joinedload(models.Request.author)).filter(models.Request.id == target_id).first()
+        result = await db.execute(
+            select(models.Request).options(selectinload(models.Request.author)).where(models.Request.id == target_id)
+        )
+        obj = result.scalar_one_or_none()
         return obj.author.university if obj and obj.author else None
     elif target_type == 'market_item':
-        obj = db.query(models.MarketItem).filter(models.MarketItem.id == target_id).first()
+        obj = await db.get(models.MarketItem, target_id)
         return obj.university if obj else None
     elif target_type == 'dating_profile':
-        obj = db.query(models.DatingProfile).options(joinedload(models.DatingProfile.user)).filter(models.DatingProfile.id == target_id).first()
+        result = await db.execute(
+            select(models.DatingProfile).options(selectinload(models.DatingProfile.user)).where(models.DatingProfile.id == target_id)
+        )
+        obj = result.scalar_one_or_none()
         return obj.user.university if obj and obj.user else None
     elif target_type == 'user':
-        obj = db.query(models.User).filter(models.User.id == target_id).first()
+        obj = await db.get(models.User, target_id)
         return obj.university if obj else None
     return None
 
 
 @router.get("/reports")
-def get_reports(
+async def get_reports(
     telegram_id: int = Query(...),
     status: str = Query('pending'),
     target_type: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Список жалоб (амбассадор видит свой вуз, суперадмин — все)"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
     normalized_status = 'reviewed' if status == 'resolved' else status
 
-    query = db.query(models.Report).options(
-        joinedload(models.Report.reporter)
+    filters = []
+    if normalized_status and normalized_status != 'all':
+        filters.append(models.Report.status == normalized_status)
+    if target_type:
+        filters.append(models.Report.target_type == target_type)
+    if moderator.role == 'ambassador':
+        filters.append(models.Report.university == moderator.university)
+
+    total = await db.scalar(
+        select(func.count(models.Report.id)).where(*filters)
     )
 
-    # Фильтр по статусу
-    if normalized_status and normalized_status != 'all':
-        query = query.filter(models.Report.status == normalized_status)
-
-    # Фильтр по типу контента
-    if target_type:
-        query = query.filter(models.Report.target_type == target_type)
-
-    # Скоуп амбассадора
-    if moderator.role == 'ambassador':
-        query = query.filter(models.Report.university == moderator.university)
-
-    total = query.count()
-    reports = query.order_by(models.Report.created_at.desc()).offset(offset).limit(limit).all()
+    result = await db.execute(
+        select(models.Report)
+        .options(selectinload(models.Report.reporter))
+        .where(*filters)
+        .order_by(models.Report.created_at.desc())
+        .offset(offset).limit(limit)
+    )
+    reports = result.scalars().all()
 
     items = []
     for r in reports:
@@ -554,49 +568,44 @@ def get_reports(
             "university": r.university,
             "moderator_note": r.moderator_note,
             "created_at": r.created_at,
-            "reviewed_at": r.reviewed_at
+            "reviewed_at": r.reviewed_at,
         })
 
     return {"items": items, "total": total, "has_more": offset + limit < total}
 
 
 @router.patch("/reports/{report_id}")
-def review_report(
+async def review_report(
     report_id: int,
     status: str = Query(..., pattern="^(reviewed|dismissed|resolved)$"),
     moderator_note: Optional[str] = Query(None),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Обработать жалобу"""
-    moderator = require_moderator(get_user_or_404(db, telegram_id))
-    # TODO(remove-resolved-alias): удалить alias после полной синхронизации клиентов.
+    moderator = require_moderator(await get_user_or_404(db, telegram_id))
     normalized_status = 'reviewed' if status == 'resolved' else status
 
-    report = db.query(models.Report).filter(models.Report.id == report_id).first()
+    report = await db.get(models.Report, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Жалоба не найдена")
-
     if report.status != 'pending':
         raise HTTPException(status_code=400, detail="Жалоба уже обработана")
-
-    # Скоуп
     if moderator.role == 'ambassador' and report.university != moderator.university:
         raise HTTPException(status_code=403, detail="Нет доступа к жалобам другого вуза")
 
     report.status = normalized_status
     report.reviewed_by = moderator.id
-    report.reviewed_at = datetime.now(timezone.utc)
+    report.reviewed_at = datetime.utcnow()
     report.moderator_note = moderator_note
 
     action_name = 'resolve_report' if normalized_status == 'reviewed' else 'dismiss_report'
-    log_action(
+    await log_action(
         db, moderator.id, action_name, 'report', report.id,
         reason=moderator_note,
-        university=report.university
+        university=report.university,
     )
 
-    db.commit()
+    await db.commit()
     return {"success": True}
 
 
@@ -606,69 +615,70 @@ def review_report(
 
 
 @router.post("/appeals")
-def create_appeal(
+async def create_appeal(
     data: schemas.AppealCreate = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Обжаловать действие модерации"""
-    user = get_user_or_404(db, telegram_id)
+    user = await get_user_or_404(db, telegram_id)
 
-    # Проверяем что лог существует и касается этого юзера
-    mod_log = db.query(models.ModerationLog).filter(
-        models.ModerationLog.id == data.moderation_log_id
-    ).first()
-
+    mod_log = await db.get(models.ModerationLog, data.moderation_log_id)
     if not mod_log:
         raise HTTPException(status_code=404, detail="Действие модерации не найдено")
-
     if mod_log.target_user_id != user.id:
         raise HTTPException(status_code=403, detail="Вы можете обжаловать только действия над вашим контентом")
 
-    # Проверка дубликата
-    existing = db.query(models.Appeal).filter(
-        models.Appeal.user_id == user.id,
-        models.Appeal.moderation_log_id == data.moderation_log_id
-    ).first()
-
-    if existing:
+    existing_res = await db.execute(
+        select(models.Appeal).where(
+            models.Appeal.user_id == user.id,
+            models.Appeal.moderation_log_id == data.moderation_log_id,
+        )
+    )
+    if existing_res.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Вы уже подали апелляцию на это действие")
 
     appeal = models.Appeal(
         user_id=user.id,
         moderation_log_id=data.moderation_log_id,
         message=data.message,
-        status='pending'
+        status='pending',
     )
-
     db.add(appeal)
-    db.commit()
-    db.refresh(appeal)
+    await db.commit()
+    await db.refresh(appeal)
 
     return {"success": True, "appeal_id": appeal.id}
 
 
 @router.get("/appeals")
-def get_appeals(
+async def get_appeals(
     telegram_id: int = Query(...),
     status: str = Query('pending'),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Список обжалований (только суперадмин)"""
-    admin = require_superadmin(get_user_or_404(db, telegram_id))
+    require_superadmin(await get_user_or_404(db, telegram_id))
 
-    query = db.query(models.Appeal).options(
-        joinedload(models.Appeal.user),
-        joinedload(models.Appeal.moderation_log)
+    filters = []
+    if status and status != 'all':
+        filters.append(models.Appeal.status == status)
+
+    total = await db.scalar(
+        select(func.count(models.Appeal.id)).where(*filters)
     )
 
-    if status and status != 'all':
-        query = query.filter(models.Appeal.status == status)
-
-    total = query.count()
-    appeals = query.order_by(models.Appeal.created_at.desc()).offset(offset).limit(limit).all()
+    result = await db.execute(
+        select(models.Appeal)
+        .options(
+            selectinload(models.Appeal.user),
+            selectinload(models.Appeal.moderation_log),
+        )
+        .where(*filters)
+        .order_by(models.Appeal.created_at.desc())
+        .offset(offset).limit(limit)
+    )
+    appeals = result.scalars().all()
 
     items = []
     for a in appeals:
@@ -681,26 +691,28 @@ def get_appeals(
             "status": a.status,
             "reviewer_note": a.reviewer_note,
             "created_at": a.created_at,
-            "reviewed_at": a.reviewed_at
+            "reviewed_at": a.reviewed_at,
         })
 
     return {"items": items, "total": total, "has_more": offset + limit < total}
 
 
 @router.patch("/appeals/{appeal_id}")
-def review_appeal(
+async def review_appeal(
     appeal_id: int,
     status: str = Query(..., pattern="^(approved|rejected)$"),
     reviewer_note: Optional[str] = Query(None),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Рассмотреть обжалование (суперадмин). Approved = откат действия."""
-    admin = require_superadmin(get_user_or_404(db, telegram_id))
+    admin = require_superadmin(await get_user_or_404(db, telegram_id))
 
-    appeal = db.query(models.Appeal).options(
-        joinedload(models.Appeal.moderation_log)
-    ).filter(models.Appeal.id == appeal_id).first()
+    result = await db.execute(
+        select(models.Appeal)
+        .options(selectinload(models.Appeal.moderation_log))
+        .where(models.Appeal.id == appeal_id)
+    )
+    appeal = result.scalar_one_or_none()
 
     if not appeal:
         raise HTTPException(status_code=404, detail="Апелляция не найдена")
@@ -709,78 +721,75 @@ def review_appeal(
 
     appeal.status = status
     appeal.reviewed_by = admin.id
-    appeal.reviewed_at = datetime.now(timezone.utc)
+    appeal.reviewed_at = datetime.utcnow()
     appeal.reviewer_note = reviewer_note
 
-    # Если одобрено — откатываем действие
     if status == 'approved':
-        _rollback_moderation(db, appeal.moderation_log, admin.id)
+        await _rollback_moderation(db, appeal.moderation_log, admin.id)
 
-    log_action(
+    await log_action(
         db, admin.id,
         'approve_appeal' if status == 'approved' else 'reject_appeal',
         'appeal', appeal.id,
         target_user_id=appeal.user_id,
-        reason=reviewer_note
+        reason=reviewer_note,
     )
 
-    db.commit()
+    await db.commit()
     return {"success": True}
 
 
-def _rollback_moderation(db: Session, mod_log: models.ModerationLog, admin_id: int):
-    """Откат действия модерации (восстановление контента / снятие бана)"""
+async def _rollback_moderation(db: AsyncSession, mod_log: models.ModerationLog, admin_id: int):
     if not mod_log:
         return
 
     if mod_log.action == 'delete_post':
-        post = db.query(models.Post).filter(models.Post.id == mod_log.target_id).first()
+        post = await db.get(models.Post, mod_log.target_id)
         if post:
             post.is_deleted = False
             post.deleted_by = None
             post.deleted_reason = None
             post.deleted_at = None
-            log_action(db, admin_id, 'restore_post', 'post', post.id, target_user_id=mod_log.target_user_id)
+            await log_action(db, admin_id, 'restore_post', 'post', post.id, target_user_id=mod_log.target_user_id)
 
     elif mod_log.action == 'delete_comment':
-        comment = db.query(models.Comment).filter(models.Comment.id == mod_log.target_id).first()
+        comment = await db.get(models.Comment, mod_log.target_id)
         if comment:
             comment.is_deleted = False
             comment.deleted_by = None
             comment.deleted_reason = None
-            comment.body = "[Восстановлен модератором]"  # оригинал утерян при soft delete
-            # Восстанавливаем счётчик
-            post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
+            comment.body = "[Восстановлен модератором]"
+            post = await db.get(models.Post, comment.post_id)
             if post:
                 post.comments_count += 1
-            log_action(db, admin_id, 'restore_comment', 'comment', comment.id, target_user_id=mod_log.target_user_id)
+            await log_action(db, admin_id, 'restore_comment', 'comment', comment.id, target_user_id=mod_log.target_user_id)
 
     elif mod_log.action == 'delete_request':
-        request = db.query(models.Request).filter(models.Request.id == mod_log.target_id).first()
+        request = await db.get(models.Request, mod_log.target_id)
         if request:
             request.is_deleted = False
             request.deleted_by = None
             request.deleted_reason = None
             request.deleted_at = None
-            log_action(db, admin_id, 'restore_request', 'request', request.id, target_user_id=mod_log.target_user_id)
+            await log_action(db, admin_id, 'restore_request', 'request', request.id, target_user_id=mod_log.target_user_id)
 
     elif mod_log.action == 'delete_market_item':
-        item = db.query(models.MarketItem).filter(models.MarketItem.id == mod_log.target_id).first()
+        item = await db.get(models.MarketItem, mod_log.target_id)
         if item:
             item.is_deleted = False
             item.deleted_by = None
             item.deleted_reason = None
             item.deleted_at = None
-            log_action(db, admin_id, 'restore_market_item', 'market_item', item.id, target_user_id=mod_log.target_user_id)
+            await log_action(db, admin_id, 'restore_market_item', 'market_item', item.id, target_user_id=mod_log.target_user_id)
 
     elif mod_log.action == 'shadow_ban':
-        target = db.query(models.User).filter(models.User.id == mod_log.target_id).first()
+        target = await db.get(models.User, mod_log.target_id)
         if target:
             target.is_shadow_banned_posts = False
             target.is_shadow_banned_comments = False
             target.shadow_ban_expires_at = None
             target.shadow_ban_reason = None
-            log_action(db, admin_id, 'shadow_unban', 'user', target.id, target_user_id=target.id)
+            await log_action(db, admin_id, 'shadow_unban', 'user', target.id, target_user_id=target.id)
 
 
 # ========================================
@@ -789,25 +798,27 @@ def _rollback_moderation(db: Session, mod_log: models.ModerationLog, admin_id: i
 
 
 @router.get("/admin/ambassadors")
-def list_ambassadors(
+async def list_ambassadors(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Список всех амбассадоров (суперадмин)"""
-    admin = require_superadmin(get_user_or_404(db, telegram_id))
+    require_superadmin(await get_user_or_404(db, telegram_id))
 
-    ambassadors = db.query(models.User).filter(
-        models.User.role == 'ambassador'
-    ).order_by(models.User.university, models.User.name).all()
+    result = await db.execute(
+        select(models.User)
+        .where(models.User.role == 'ambassador')
+        .order_by(models.User.university, models.User.name)
+    )
+    ambassadors = result.scalars().all()
 
-    result = []
+    items = []
     for amb in ambassadors:
-        # Считаем действия за всё время
-        actions_count = db.query(func.count(models.ModerationLog.id)).filter(
-            models.ModerationLog.moderator_id == amb.id
-        ).scalar()
-
-        result.append({
+        actions_count = await db.scalar(
+            select(func.count(models.ModerationLog.id)).where(
+                models.ModerationLog.moderator_id == amb.id
+            )
+        )
+        items.append({
             "id": amb.id,
             "telegram_id": amb.telegram_id,
             "name": amb.name,
@@ -816,22 +827,24 @@ def list_ambassadors(
             "institute": amb.institute,
             "role": amb.role,
             "actions_count": actions_count,
-            "assigned_at": amb.updated_at
+            "assigned_at": amb.updated_at,
         })
 
-    return {"ambassadors": result, "total": len(result)}
+    return {"ambassadors": items, "total": len(items)}
 
 
 @router.post("/admin/ambassadors")
-def assign_ambassador(
+async def assign_ambassador(
     data: schemas.AssignAmbassadorRequest = Body(...),
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Назначить амбассадора (суперадмин)"""
-    admin = require_superadmin(get_user_or_404(db, telegram_id))
+    admin = require_superadmin(await get_user_or_404(db, telegram_id))
 
-    target = db.query(models.User).filter(models.User.telegram_id == data.telegram_id).first()
+    result = await db.execute(
+        select(models.User).where(models.User.telegram_id == data.telegram_id)
+    )
+    target = result.scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail=f"Пользователь с telegram_id={data.telegram_id} не найден")
 
@@ -840,44 +853,42 @@ def assign_ambassador(
     if target.role == 'superadmin':
         raise HTTPException(status_code=400, detail="Нельзя понизить суперадмина до амбассадора")
 
-    # Если указан вуз — проверяем совпадение (безопасность)
     if data.university and data.university != target.university:
         raise HTTPException(
             status_code=400,
-            detail=f"Университет пользователя ({target.university}) не совпадает с указанным ({data.university})"
+            detail=f"Университет пользователя ({target.university}) не совпадает с указанным ({data.university})",
         )
 
     target.role = 'ambassador'
 
-    log_action(
+    await log_action(
         db, admin.id, 'assign_ambassador', 'user', target.id,
         target_user_id=target.id,
         reason=f"Назначен амбассадором {target.university}",
-        university=target.university
+        university=target.university,
     )
 
-    db.commit()
+    await db.commit()
     return {
         "success": True,
         "ambassador": {
             "id": target.id,
             "name": target.name,
             "university": target.university,
-            "telegram_id": target.telegram_id
-        }
+            "telegram_id": target.telegram_id,
+        },
     }
 
 
 @router.delete("/admin/ambassadors/{user_id}")
-def remove_ambassador(
+async def remove_ambassador(
     user_id: int,
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Снять роль амбассадора (суперадмин)"""
-    admin = require_superadmin(get_user_or_404(db, telegram_id))
+    admin = require_superadmin(await get_user_or_404(db, telegram_id))
 
-    target = db.query(models.User).filter(models.User.id == user_id).first()
+    target = await db.get(models.User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     if target.role != 'ambassador':
@@ -885,14 +896,14 @@ def remove_ambassador(
 
     target.role = 'user'
 
-    log_action(
+    await log_action(
         db, admin.id, 'remove_ambassador', 'user', target.id,
         target_user_id=target.id,
         reason=f"Снят с роли амбассадора {target.university}",
-        university=target.university
+        university=target.university,
     )
 
-    db.commit()
+    await db.commit()
     return {"success": True}
 
 
@@ -902,37 +913,43 @@ def remove_ambassador(
 
 
 @router.get("/admin/logs")
-def get_moderation_logs(
+async def get_moderation_logs(
     telegram_id: int = Query(...),
     moderator_id: Optional[int] = Query(None),
     action: Optional[str] = Query(None),
     university: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Лог модерации (суперадмин — все, амбассадор — свои действия)"""
-    user = require_moderator(get_user_or_404(db, telegram_id))
+    user = require_moderator(await get_user_or_404(db, telegram_id))
 
-    query = db.query(models.ModerationLog).options(
-        joinedload(models.ModerationLog.moderator),
-        joinedload(models.ModerationLog.target_user)
-    )
-
-    # Амбассадор видит только свои логи
+    filters = []
     if user.role == 'ambassador':
-        query = query.filter(models.ModerationLog.moderator_id == user.id)
-    else:
-        if moderator_id:
-            query = query.filter(models.ModerationLog.moderator_id == moderator_id)
+        filters.append(models.ModerationLog.moderator_id == user.id)
+    elif moderator_id:
+        filters.append(models.ModerationLog.moderator_id == moderator_id)
 
     if action:
-        query = query.filter(models.ModerationLog.action == action)
+        filters.append(models.ModerationLog.action == action)
     if university:
-        query = query.filter(models.ModerationLog.university == university)
+        filters.append(models.ModerationLog.university == university)
 
-    total = query.count()
-    logs = query.order_by(models.ModerationLog.created_at.desc()).offset(offset).limit(limit).all()
+    total = await db.scalar(
+        select(func.count(models.ModerationLog.id)).where(*filters)
+    )
+
+    result = await db.execute(
+        select(models.ModerationLog)
+        .options(
+            selectinload(models.ModerationLog.moderator),
+            selectinload(models.ModerationLog.target_user),
+        )
+        .where(*filters)
+        .order_by(models.ModerationLog.created_at.desc())
+        .offset(offset).limit(limit)
+    )
+    logs = result.scalars().all()
 
     items = []
     for log in logs:
@@ -945,7 +962,7 @@ def get_moderation_logs(
             "target_user": schemas.UserShort.model_validate(log.target_user) if log.target_user else None,
             "reason": log.reason,
             "university": log.university,
-            "created_at": log.created_at
+            "created_at": log.created_at,
         })
 
     return {"items": items, "total": total, "has_more": offset + limit < total}
@@ -957,43 +974,41 @@ def get_moderation_logs(
 
 
 @router.get("/admin/stats")
-def get_admin_stats(
+async def get_admin_stats(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Общая статистика приложения (суперадмин)"""
-    admin = require_superadmin(get_user_or_404(db, telegram_id))
+    require_superadmin(await get_user_or_404(db, telegram_id))
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     day_ago = now - timedelta(days=1)
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
 
-    # Пользователи
-    total_users = db.query(func.count(models.User.id)).scalar()
-    dau = db.query(func.count(models.User.id)).filter(models.User.last_active_at >= day_ago).scalar()
-    wau = db.query(func.count(models.User.id)).filter(models.User.last_active_at >= week_ago).scalar()
-    mau = db.query(func.count(models.User.id)).filter(models.User.last_active_at >= month_ago).scalar()
+    total_users = await db.scalar(select(func.count(models.User.id)))
+    dau = await db.scalar(select(func.count(models.User.id)).where(models.User.last_active_at >= day_ago))
+    wau = await db.scalar(select(func.count(models.User.id)).where(models.User.last_active_at >= week_ago))
+    mau = await db.scalar(select(func.count(models.User.id)).where(models.User.last_active_at >= month_ago))
 
-    # Контент
-    total_posts = db.query(func.count(models.Post.id)).filter(models.Post.is_deleted == False).scalar()
-    total_comments = db.query(func.count(models.Comment.id)).filter(models.Comment.is_deleted == False).scalar()
-    total_requests = db.query(func.count(models.Request.id)).filter(models.Request.is_deleted == False).scalar()
-    total_market = db.query(func.count(models.MarketItem.id)).filter(models.MarketItem.is_deleted == False).scalar()
+    total_posts = await db.scalar(select(func.count(models.Post.id)).where(models.Post.is_deleted == False))
+    total_comments = await db.scalar(select(func.count(models.Comment.id)).where(models.Comment.is_deleted == False))
+    total_requests = await db.scalar(select(func.count(models.Request.id)).where(models.Request.is_deleted == False))
+    total_market = await db.scalar(select(func.count(models.MarketItem.id)).where(models.MarketItem.is_deleted == False))
 
-    # Модерация
-    pending_reports = db.query(func.count(models.Report.id)).filter(models.Report.status == 'pending').scalar()
-    pending_appeals = db.query(func.count(models.Appeal.id)).filter(models.Appeal.status == 'pending').scalar()
-    ambassadors_count = db.query(func.count(models.User.id)).filter(models.User.role == 'ambassador').scalar()
-    actions_today = db.query(func.count(models.ModerationLog.id)).filter(
-        models.ModerationLog.created_at >= day_ago
-    ).scalar()
+    pending_reports = await db.scalar(select(func.count(models.Report.id)).where(models.Report.status == 'pending'))
+    pending_appeals = await db.scalar(select(func.count(models.Appeal.id)).where(models.Appeal.status == 'pending'))
+    ambassadors_count = await db.scalar(select(func.count(models.User.id)).where(models.User.role == 'ambassador'))
+    actions_today = await db.scalar(
+        select(func.count(models.ModerationLog.id)).where(models.ModerationLog.created_at >= day_ago)
+    )
 
-    # Топ вузов по пользователям
-    top_unis = db.query(
-        models.User.university,
-        func.count(models.User.id).label('count')
-    ).group_by(models.User.university).order_by(desc('count')).limit(10).all()
+    top_unis_result = await db.execute(
+        select(models.User.university, func.count(models.User.id).label('count'))
+        .group_by(models.User.university)
+        .order_by(desc('count'))
+        .limit(10)
+    )
+    top_unis = top_unis_result.all()
 
     return {
         "total_users": total_users,
@@ -1010,7 +1025,7 @@ def get_admin_stats(
         "moderation_actions_today": actions_today,
         "top_universities": [
             {"university": uni, "users_count": cnt} for uni, cnt in top_unis
-        ]
+        ],
     }
 
 
@@ -1020,30 +1035,28 @@ def get_admin_stats(
 
 
 @router.get("/moderation/my-role")
-def get_my_moderation_role(
+async def get_my_moderation_role(
     telegram_id: int = Query(...),
-    db: Session = Depends(get_db_sync)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Получить свою роль и возможности (для UI)"""
-    user = get_user_or_404(db, telegram_id)
+    user = await get_user_or_404(db, telegram_id)
 
-    # Автоснятие истёкших банов
-    auto_expire_shadow_bans(db)
+    await auto_expire_shadow_bans(db)
 
     result = {
         "role": user.role,
         "university": user.university,
         "can_moderate": user.role in ('ambassador', 'superadmin'),
         "can_admin": user.role == 'superadmin',
-        "scope": "all" if user.role == 'superadmin' else user.university if user.role == 'ambassador' else None
+        "scope": "all" if user.role == 'superadmin' else user.university if user.role == 'ambassador' else None,
     }
 
-    # Для модераторов — счётчик pending жалоб
     if user.role in ('ambassador', 'superadmin'):
-        reports_query = db.query(func.count(models.Report.id)).filter(models.Report.status == 'pending')
+        filters = [models.Report.status == 'pending']
         if user.role == 'ambassador':
-            reports_query = reports_query.filter(models.Report.university == user.university)
-        result["pending_reports"] = reports_query.scalar()
+            filters.append(models.Report.university == user.university)
+        result["pending_reports"] = await db.scalar(
+            select(func.count(models.Report.id)).where(*filters)
+        )
 
     return result
-

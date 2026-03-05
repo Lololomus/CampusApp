@@ -1,23 +1,29 @@
 # ===== FILE: backend/app/auth_service.py =====
 #
-# ✅ Фаза 2: get_db → get_db_sync (DEPRECATED, будет async в Фазе 3.2)
+# ✅ Фаза 3: Полный перевод на async
+#    - Session → AsyncSession
+#    - legacy_query_api() → select() + await db.execute()
+#    - db.commit() → await db.commit()
+#    - db.refresh() → await db.refresh()
+#    - require_user → async def + Depends(get_db)
 
 import hashlib
 import hmac
 import secrets
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qsl
 
 import jwt
 from fastapi import Depends, Header, HTTPException, Request
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models
 from app.config import get_settings
-from app.database import get_db_sync
+from app.database import get_db
 
 
 @dataclass
@@ -29,8 +35,11 @@ class AuthIdentity:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    # DB columns are TIMESTAMP WITHOUT TIME ZONE, so we persist naive UTC.
+    return datetime.utcnow()
 
+
+# ===== TELEGRAM AUTH (чистый Python, без DB — async не нужен) =====
 
 def parse_telegram_init_data(init_data: str) -> Dict[str, str]:
     if not init_data:
@@ -82,16 +91,18 @@ def verify_telegram_auth(init_data: str) -> Dict[str, str]:
     return data_copy
 
 
+# ===== JWT (чистый Python, без DB) =====
+
 def _encode_access_token(identity: AuthIdentity) -> str:
     settings = get_settings()
-    now = _utcnow()
+    now_ts = int(time.time())
     payload = {
         "sub": str(identity.user_id) if identity.user_id is not None else "",
         "tgid": identity.telegram_id,
         "role": identity.role,
         "sid": identity.session_id,
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=settings.access_ttl_min)).timestamp()),
+        "iat": now_ts,
+        "exp": now_ts + settings.access_ttl_min * 60,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_alg)
 
@@ -108,8 +119,10 @@ def _hash_refresh_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
-def create_auth_session(
-    db: Session,
+# ===== SESSION MANAGEMENT (async) =====
+
+async def create_auth_session(
+    db: AsyncSession,
     telegram_id: int,
     user_id: Optional[int],
     user_agent: Optional[str],
@@ -128,12 +141,15 @@ def create_auth_session(
         expires_at=_utcnow() + timedelta(days=settings.refresh_ttl_days),
     )
     db.add(session)
-    db.commit()
-    db.refresh(session)
+    await db.commit()
+    await db.refresh(session)
 
     user_role = "user"
     if user_id is not None:
-        user = db.query(models.User).filter(models.User.id == user_id).first()
+        result = await db.execute(
+            select(models.User).where(models.User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
         user_role = user.role if user else "user"
 
     identity = AuthIdentity(
@@ -146,16 +162,19 @@ def create_auth_session(
     return access_token, raw_refresh, session
 
 
-def refresh_auth_session(
-    db: Session,
+async def refresh_auth_session(
+    db: AsyncSession,
     raw_refresh_token: str,
 ) -> tuple[str, str, models.AuthSession]:
     refresh_hash = _hash_refresh_token(raw_refresh_token)
-    session = (
-        db.query(models.AuthSession)
-        .filter(models.AuthSession.refresh_hash == refresh_hash)
-        .first()
+
+    result = await db.execute(
+        select(models.AuthSession).where(
+            models.AuthSession.refresh_hash == refresh_hash
+        )
     )
+    session = result.scalar_one_or_none()
+
     if not session:
         raise HTTPException(status_code=401, detail="Refresh token not found")
 
@@ -164,9 +183,9 @@ def refresh_auth_session(
         raise HTTPException(status_code=401, detail="Refresh token expired")
 
     session.revoked_at = now
-    db.commit()
+    await db.commit()
 
-    return create_auth_session(
+    return await create_auth_session(
         db=db,
         telegram_id=session.telegram_id,
         user_id=session.user_id,
@@ -175,20 +194,25 @@ def refresh_auth_session(
     )
 
 
-def revoke_auth_session(db: Session, raw_refresh_token: Optional[str]) -> None:
+async def revoke_auth_session(db: AsyncSession, raw_refresh_token: Optional[str]) -> None:
     if not raw_refresh_token:
         return
 
     refresh_hash = _hash_refresh_token(raw_refresh_token)
-    session = (
-        db.query(models.AuthSession)
-        .filter(models.AuthSession.refresh_hash == refresh_hash)
-        .first()
+
+    result = await db.execute(
+        select(models.AuthSession).where(
+            models.AuthSession.refresh_hash == refresh_hash
+        )
     )
+    session = result.scalar_one_or_none()
+
     if session and session.revoked_at is None:
         session.revoked_at = _utcnow()
-        db.commit()
+        await db.commit()
 
+
+# ===== IDENTITY EXTRACTION (чистый Python, без DB) =====
 
 def get_identity_from_request(request: Request) -> AuthIdentity:
     payload = getattr(request.state, "auth_payload", None)
@@ -211,27 +235,43 @@ def get_identity_from_request(request: Request) -> AuthIdentity:
     )
 
 
+# ===== FASTAPI DEPENDENCIES =====
+
 def require_identity(request: Request) -> AuthIdentity:
+    """Не async — чистый Python, без DB."""
     return get_identity_from_request(request)
 
 
-def require_user(
+async def require_user(
     request: Request,
-    db: Session = Depends(get_db_sync),       # DEPRECATED — async в Фазе 3.2
+    db: AsyncSession = Depends(get_db),
 ) -> models.User:
+    """✅ Async: select() + await db.execute()"""
     identity = get_identity_from_request(request)
-    user = db.query(models.User).filter(models.User.telegram_id == identity.telegram_id).first()
+
+    result = await db.execute(
+        select(models.User).where(models.User.telegram_id == identity.telegram_id)
+    )
+    user = result.scalar_one_or_none()
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
 
-def get_current_user(db: Session, telegram_id: int) -> models.User:
-    user = db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
+async def get_current_user(db: AsyncSession, telegram_id: int) -> models.User:
+    """✅ Async"""
+    result = await db.execute(
+        select(models.User).where(models.User.telegram_id == telegram_id)
+    )
+    user = result.scalar_one_or_none()
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+
+# ===== HEADER UTILS (чистый Python) =====
 
 def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     if not authorization:

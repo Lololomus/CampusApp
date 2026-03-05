@@ -3,9 +3,12 @@
 #
 # ✅ Фаза 1.4: Убраны json.loads()/json.dumps() — JSONB-колонки возвращают
 #    нативные list/dict.
+# ✅ Фаза 3.5: async/await + select() + AsyncSession
+# ✅ Фаза 3.5: joinedload → selectinload
 
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_, case, update as sa_update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select, func, or_, case, update as sa_update
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
 
@@ -17,21 +20,23 @@ from app.services import notification_service as notif
 
 # ===== СОЗДАНИЕ И ПОЛУЧЕНИЕ =====
 
-def create_request(
-    db: Session,
+async def create_request(
+    db: AsyncSession,
     request: schemas.RequestCreate,
     author_id: int,
     images_meta: Optional[List[dict]] = None,
 ) -> models.Request:
     """Создать запрос помощи."""
-    active_count = db.query(models.Request).filter(
-        models.Request.author_id == author_id,
-        models.Request.category == request.category,
-        models.Request.status == 'active',
-        models.Request.expires_at > datetime.now(timezone.utc)
-    ).count()
+    active_count = await db.scalar(
+        select(func.count(models.Request.id)).where(
+            models.Request.author_id == author_id,
+            models.Request.category == request.category,
+            models.Request.status == 'active',
+            models.Request.expires_at > datetime.utcnow()
+        )
+    )
 
-    if active_count >= 3:
+    if (active_count or 0) >= 3:
         raise ValueError(f"Максимум 3 активных запроса в категории {request.category}")
 
     # Fallback на base64
@@ -47,19 +52,19 @@ def create_request(
         category=request.category,
         title=request.title,
         body=request.body,
-        tags=sanitize_json_field(request.tags),              # ✅ JSONB: list
+        tags=sanitize_json_field(request.tags),
         expires_at=request.expires_at,
         max_responses=request.max_responses,
         status='active',
         reward_type=request.reward_type,
         reward_value=request.reward_value,
-        images=sanitize_json_field(saved_images_meta)        # ✅ JSONB: list
+        images=sanitize_json_field(saved_images_meta)
     )
 
     try:
         db.add(db_request)
-        db.commit()
-        db.refresh(db_request)
+        await db.commit()
+        await db.refresh(db_request)
         return db_request
     except Exception as e:
         if saved_images_meta:
@@ -67,8 +72,8 @@ def create_request(
         raise e
 
 
-def get_requests_feed(
-    db: Session,
+async def get_requests_feed(
+    db: AsyncSession,
     category: Optional[str] = None,
     limit: int = 20,
     offset: int = 0,
@@ -83,38 +88,42 @@ def get_requests_feed(
     sort: str = 'newest',
 ) -> Dict:
     """Лента запросов с фильтрацией"""
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     urgent_threshold = now + timedelta(hours=24)
 
-    query = db.query(models.Request).options(
-        joinedload(models.Request.author)
+    query = (
+        select(models.Request)
+        .options(
+            selectinload(models.Request.author),
+            selectinload(models.Request.responses),
+        )
+        .where(models.Request.is_deleted == False)
     )
-    query = query.filter(models.Request.is_deleted == False)
 
     # Фильтр по статусу
     if status == 'active':
-        query = query.filter(
+        query = query.where(
             models.Request.status == 'active',
             models.Request.expires_at > now
         )
 
     # Фильтр по категории
     if category and category != 'all':
-        query = query.filter(models.Request.category == category)
+        query = query.where(models.Request.category == category)
 
     # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ (4 уровня) ===
     _joined_user = False
     if campus_id:
-        query = query.join(models.User).filter(models.User.campus_id == campus_id)
+        query = query.join(models.User).where(models.User.campus_id == campus_id)
         _joined_user = True
     elif university and university != 'all':
         if hasattr(models.Request, 'university'):
-            query = query.filter(models.Request.university == university)
+            query = query.where(models.Request.university == university)
         else:
-            query = query.join(models.User).filter(models.User.university == university)
+            query = query.join(models.User).where(models.User.university == university)
             _joined_user = True
     elif city:
-        query = query.join(models.User).filter(
+        query = query.join(models.User).where(
             or_(
                 models.User.city == city,
                 models.User.custom_city.ilike(f'%{city}%')
@@ -125,20 +134,20 @@ def get_requests_feed(
     # Фильтр по институту
     if institute and institute != 'all':
         if hasattr(models.Request, 'institute'):
-            query = query.filter(models.Request.institute == institute)
+            query = query.where(models.Request.institute == institute)
         else:
             if not _joined_user:
                 query = query.join(models.User)
-            query = query.filter(models.User.institute == institute)
+            query = query.where(models.User.institute == institute)
 
     # Фильтр по наличию вознаграждения
     if has_reward == 'with':
-        query = query.filter(
+        query = query.where(
             models.Request.reward_type.isnot(None),
             models.Request.reward_type != ''
         )
     elif has_reward == 'without':
-        query = query.filter(
+        query = query.where(
             or_(
                 models.Request.reward_type.is_(None),
                 models.Request.reward_type == ''
@@ -147,18 +156,21 @@ def get_requests_feed(
 
     # Фильтр по срочности
     if urgency == 'soon':
-        query = query.filter(
+        query = query.where(
             models.Request.expires_at > now,
             models.Request.expires_at <= urgent_threshold
         )
     elif urgency == 'later':
-        query = query.filter(models.Request.expires_at > urgent_threshold)
+        query = query.where(models.Request.expires_at > urgent_threshold)
 
-    total = query.count()
+    # Total count (subquery)
+    total = await db.scalar(
+        select(func.count()).select_from(query.subquery())
+    )
 
     # Сортировка
     if sort == 'expires_soon':
-        query = query.filter(models.Request.expires_at > now).order_by(
+        query = query.where(models.Request.expires_at > now).order_by(
             models.Request.expires_at.asc()
         )
     elif sort == 'most_responses':
@@ -179,11 +191,11 @@ def get_requests_feed(
             models.Request.created_at.desc()
         )
 
-    requests = query.offset(offset).limit(limit).all()
+    result = await db.execute(query.offset(offset).limit(limit))
+    requests = result.scalars().all()
 
-    result = []
+    items = []
     for req in requests:
-        # ✅ JSONB: req.tags уже list, req.images уже list
         tags = req.tags or []
         images = get_image_urls(req.images) if req.images else []
 
@@ -205,33 +217,37 @@ def get_requests_feed(
             'reward_value': req.reward_value,
             'images': images
         }
-        result.append(req_dict)
+        items.append(req_dict)
 
     return {
-        'items': result,
-        'total': total,
-        'has_more': offset + limit < total
+        'items': items,
+        'total': total or 0,
+        'has_more': offset + limit < (total or 0)
     }
 
 
-def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[int] = None) -> Optional[Dict]:
-    request = db.query(models.Request).options(
-        joinedload(models.Request.author),
-        joinedload(models.Request.responses)
-    ).filter(models.Request.id == request_id).first()
+async def get_request_by_id(db: AsyncSession, request_id: int, current_user_id: Optional[int] = None) -> Optional[Dict]:
+    result = await db.execute(
+        select(models.Request)
+        .options(
+            selectinload(models.Request.author),
+            selectinload(models.Request.responses),
+        )
+        .where(models.Request.id == request_id)
+    )
+    request = result.scalar_one_or_none()
 
     if not request:
         return None
 
-    db.execute(
+    await db.execute(
         sa_update(models.Request)
         .where(models.Request.id == request_id)
         .values(views_count=models.Request.views_count + 1)
     )
-    db.commit()
-    db.refresh(request)
+    await db.commit()
+    await db.refresh(request)
 
-    # ✅ JSONB: request.tags уже list, request.images уже list
     tags = request.tags or []
     images = get_image_urls(request.images) if request.images else []
 
@@ -257,11 +273,14 @@ def get_request_by_id(db: Session, request_id: int, current_user_id: Optional[in
 
 # ===== ОБНОВЛЕНИЕ И УДАЛЕНИЕ =====
 
-def update_request(db: Session, request_id: int, user_id: int, data: schemas.RequestUpdate) -> Optional[models.Request]:
-    request = db.query(models.Request).filter(
-        models.Request.id == request_id,
-        models.Request.author_id == user_id
-    ).first()
+async def update_request(db: AsyncSession, request_id: int, user_id: int, data: schemas.RequestUpdate) -> Optional[models.Request]:
+    result = await db.execute(
+        select(models.Request).where(
+            models.Request.id == request_id,
+            models.Request.author_id == user_id
+        )
+    )
+    request = result.scalar_one_or_none()
 
     if not request:
         raise ValueError("Запрос не найден или нет прав")
@@ -269,68 +288,76 @@ def update_request(db: Session, request_id: int, user_id: int, data: schemas.Req
     update_data = data.model_dump(exclude_unset=True)
 
     if 'tags' in update_data:
-        update_data['tags'] = sanitize_json_field(update_data['tags'])  # ✅ JSONB: list
+        update_data['tags'] = sanitize_json_field(update_data['tags'])
 
     for key, value in update_data.items():
         setattr(request, key, value)
 
-    request.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(request)
+    request.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(request)
     return request
 
 
-def delete_request(db: Session, request_id: int, user_id: int) -> bool:
-    request = db.query(models.Request).filter(
-        models.Request.id == request_id,
-        models.Request.author_id == user_id
-    ).first()
+async def delete_request(db: AsyncSession, request_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        select(models.Request).where(
+            models.Request.id == request_id,
+            models.Request.author_id == user_id
+        )
+    )
+    request = result.scalar_one_or_none()
 
     if not request:
         raise ValueError("Request not found or no permissions")
 
-    # ✅ JSONB: request.images уже list, не нужен json.loads()
     if request.images:
         try:
             delete_images(request.images)
         except Exception:
             pass
 
-    db.delete(request)
-    db.commit()
+    await db.delete(request)
+    await db.commit()
     return True
 
-def get_my_requests(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.Request]:
-    return db.query(models.Request).options(
-        joinedload(models.Request.responses)
-    ).filter(
-        models.Request.author_id == user_id
-    ).order_by(models.Request.created_at.desc()).limit(limit).offset(offset).all()
+
+async def get_my_requests(db: AsyncSession, user_id: int, limit: int = 20, offset: int = 0) -> List[models.Request]:
+    result = await db.execute(
+        select(models.Request)
+        .options(selectinload(models.Request.responses))
+        .where(models.Request.author_id == user_id)
+        .order_by(models.Request.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return result.scalars().all()
 
 
 # ===== ОТКЛИКИ =====
 
-def create_response(db: Session, request_id: int, user_id: int, data: schemas.ResponseCreate) -> models.RequestResponse:
-    request = db.query(models.Request).filter(models.Request.id == request_id).first()
+async def create_response(db: AsyncSession, request_id: int, user_id: int, data: schemas.ResponseCreate) -> models.RequestResponse:
+    request = await db.get(models.Request, request_id)
     if not request:
         raise ValueError("Запрос не найден")
 
-    if request.status != 'active' or request.expires_at < datetime.now(timezone.utc):
+    if request.status != 'active' or request.expires_at < datetime.utcnow():
         raise ValueError("Запрос закрыт или истёк")
 
     if request.author_id == user_id:
         raise ValueError("Нельзя откликнуться на свой запрос")
 
-    existing = db.query(models.RequestResponse).filter(
-        models.RequestResponse.request_id == request_id,
-        models.RequestResponse.user_id == user_id
-    ).first()
-
-    if existing:
+    existing_result = await db.execute(
+        select(models.RequestResponse).where(
+            models.RequestResponse.request_id == request_id,
+            models.RequestResponse.user_id == user_id
+        )
+    )
+    if existing_result.scalar_one_or_none():
         raise ValueError("Вы уже откликнулись на этот запрос")
 
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    telegram = data.telegram_contact or user.username
+    user = await db.get(models.User, user_id)
+    telegram = data.telegram_contact or (user.username if user else None)
 
     response = models.RequestResponse(
         request_id=request_id,
@@ -340,80 +367,87 @@ def create_response(db: Session, request_id: int, user_id: int, data: schemas.Re
     )
     db.add(response)
 
-    db.execute(
+    await db.execute(
         sa_update(models.Request)
         .where(models.Request.id == request_id)
         .values(responses_count=models.Request.responses_count + 1)
     )
 
-    notif.notify_request_response(db, request, user)
+    await notif.notify_request_response(db, request, user)
 
-    db.commit()
-    db.refresh(response)
+    await db.commit()
+    await db.refresh(response)
     return response
 
 
-def get_request_responses(db: Session, request_id: int, user_id: int) -> List[models.RequestResponse]:
-    request = db.query(models.Request).filter(
-        models.Request.id == request_id,
-        models.Request.author_id == user_id
-    ).first()
-
-    if not request:
+async def get_request_responses(db: AsyncSession, request_id: int, user_id: int) -> List[models.RequestResponse]:
+    result = await db.execute(
+        select(models.Request).where(
+            models.Request.id == request_id,
+            models.Request.author_id == user_id
+        )
+    )
+    if not result.scalar_one_or_none():
         raise ValueError("Запрос не найден или нет прав")
 
-    return db.query(models.RequestResponse).options(
-        joinedload(models.RequestResponse.author)
-    ).filter(
-        models.RequestResponse.request_id == request_id
-    ).order_by(models.RequestResponse.created_at.desc()).all()
+    resp_result = await db.execute(
+        select(models.RequestResponse)
+        .options(selectinload(models.RequestResponse.author))
+        .where(models.RequestResponse.request_id == request_id)
+        .order_by(models.RequestResponse.created_at.desc())
+    )
+    return resp_result.scalars().all()
 
 
-def delete_response(db: Session, response_id: int, user_id: int) -> bool:
-    response = db.query(models.RequestResponse).filter(
-        models.RequestResponse.id == response_id,
-        models.RequestResponse.user_id == user_id
-    ).first()
+async def delete_response(db: AsyncSession, response_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        select(models.RequestResponse).where(
+            models.RequestResponse.id == response_id,
+            models.RequestResponse.user_id == user_id
+        )
+    )
+    response = result.scalar_one_or_none()
 
     if not response:
         raise ValueError("Отклик не найден или нет прав")
 
-    request = db.query(models.Request).filter(models.Request.id == response.request_id).first()
+    request = await db.get(models.Request, response.request_id)
     if request:
-        db.execute(
+        await db.execute(
             sa_update(models.Request)
             .where(models.Request.id == request.id)
             .values(responses_count=func.greatest(models.Request.responses_count - 1, 0))
         )
 
-    db.delete(response)
-    db.commit()
+    await db.delete(response)
+    await db.commit()
     return True
 
 
 # ===== АВТОИСТЕЧЕНИЕ =====
 
-def auto_expire_requests(db: Session):
-    expired = db.query(models.Request).filter(
-        models.Request.status == 'active',
-        models.Request.expires_at <= datetime.now(timezone.utc)
-    ).all()
+async def auto_expire_requests(db: AsyncSession) -> int:
+    """Bulk expire — один UPDATE вместо цикла (Фаза 4 preview)."""
+    result = await db.execute(
+        sa_update(models.Request)
+        .where(
+            models.Request.status == 'active',
+            models.Request.expires_at <= datetime.utcnow()
+        )
+        .values(status='expired')
+    )
+    await db.commit()
+    return result.rowcount
 
-    for request in expired:
-        request.status = 'expired'
 
-    db.commit()
-    return len(expired)
-
-
-def get_responses_count(db: Session, user_id: int, category: Optional[str] = None) -> int:
-    query = db.query(func.sum(models.Request.responses_count)).filter(
+async def get_responses_count(db: AsyncSession, user_id: int, category: Optional[str] = None) -> int:
+    query = select(func.sum(models.Request.responses_count)).where(
         models.Request.author_id == user_id,
         models.Request.status == 'active'
     )
 
     if category:
-        query = query.filter(models.Request.category == category)
+        query = query.where(models.Request.category == category)
 
-    result = query.scalar()
+    result = await db.scalar(query)
     return result if result else 0

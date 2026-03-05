@@ -2,9 +2,12 @@
 # Dating CRUD: анкеты, лента с scoring, лайки, матчи, настройки
 #
 # ✅ Фаза 1.4: Убраны json.loads() — JSONB-колонки возвращают нативные list/dict.
+# ✅ Фаза 3.7: async/await + select() + AsyncSession
+# ✅ Фаза 3.7: legacy_query_api(Model).get(id) → await db.get(Model, id)
 
-from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
@@ -17,23 +20,26 @@ from app.services import notification_service as notif
 
 # ===== ПРОФИЛЬ =====
 
-def get_dating_profile(db: Session, user_id: int) -> Optional[models.DatingProfile]:
+async def get_dating_profile(db: AsyncSession, user_id: int) -> Optional[models.DatingProfile]:
     """Получить анкету пользователя"""
-    return db.query(models.DatingProfile).filter(models.DatingProfile.user_id == user_id).first()
+    result = await db.execute(
+        select(models.DatingProfile).where(models.DatingProfile.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
 
 
-def update_dating_profile_activity(db: Session, user_id: int, is_active: bool):
+async def update_dating_profile_activity(db: AsyncSession, user_id: int, is_active: bool):
     """Скрыть/показать анкету"""
-    profile = get_dating_profile(db, user_id)
+    profile = await get_dating_profile(db, user_id)
     if profile:
         profile.is_active = is_active
-        db.commit()
+        await db.commit()
 
 
 # ===== ЛЕНТА =====
 
-def get_dating_feed(
-    db: Session,
+async def get_dating_feed(
+    db: AsyncSession,
     current_user_id: int,
     limit: int = 10,
     offset: int = 0,
@@ -54,39 +60,43 @@ def get_dating_feed(
         INACTIVE_HARD_CUTOFF_DAYS
     )
 
-    me_user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    me_user = await db.get(models.User, current_user_id)
     if not me_user:
         return []
-    me_profile = db.query(models.DatingProfile).filter(
-        models.DatingProfile.user_id == current_user_id
-    ).first()
+
+    me_profile = await get_dating_profile(db, current_user_id)
 
     # ID тех, кого я уже лайкнул/скипнул
-    already_acted_ids = db.query(models.DatingLike.whom_liked_id).filter(
-        models.DatingLike.who_liked_id == current_user_id
-    ).subquery()
+    already_acted_ids = (
+        select(models.DatingLike.whom_liked_id)
+        .where(models.DatingLike.who_liked_id == current_user_id)
+        .scalar_subquery()
+    )
 
-    active_cutoff = datetime.now(timezone.utc) - timedelta(days=INACTIVE_HARD_CUTOFF_DAYS)
+    active_cutoff = datetime.utcnow() - timedelta(days=INACTIVE_HARD_CUTOFF_DAYS)
 
     # === ШАГ 1: SQL "Грубое сито" ===
     def _build_base_query(filter_university: bool = True):
-        q = db.query(models.DatingProfile).join(
-            models.User, models.DatingProfile.user_id == models.User.id
-        ).filter(
-            models.DatingProfile.user_id != current_user_id,
-            models.DatingProfile.is_active == True,
-            models.User.id.notin_(already_acted_ids),
-            models.User.last_active_at >= active_cutoff,
+        q = (
+            select(models.DatingProfile)
+            .options(selectinload(models.DatingProfile.user))
+            .join(models.User, models.DatingProfile.user_id == models.User.id)
+            .where(
+                models.DatingProfile.user_id != current_user_id,
+                models.DatingProfile.is_active == True,
+                models.User.id.notin_(already_acted_ids),
+                models.User.last_active_at >= active_cutoff,
+            )
         )
 
         # Гендерный фильтр (мой looking_for → их gender)
         if looking_for and looking_for != 'all':
-            q = q.filter(models.DatingProfile.gender == looking_for)
+            q = q.where(models.DatingProfile.gender == looking_for)
 
         # Двусторонний фильтр (их looking_for → мой gender)
         if me_profile and me_profile.gender:
             my_gender = me_profile.gender
-            q = q.filter(
+            q = q.where(
                 or_(
                     models.DatingProfile.looking_for == my_gender,
                     models.DatingProfile.looking_for == 'all',
@@ -95,32 +105,40 @@ def get_dating_feed(
             )
 
         if filter_university and me_user.university:
-            q = q.filter(models.User.university == me_user.university)
+            q = q.where(models.User.university == me_user.university)
 
         return q
 
     # Первый проход — мой вуз
-    candidates = _build_base_query(filter_university=True).limit(SCORING_POOL_SIZE).all()
+    result = await db.execute(
+        _build_base_query(filter_university=True).limit(SCORING_POOL_SIZE)
+    )
+    candidates = result.scalars().all()
 
     # Fallback — если мало кандидатов, расширяем
     if len(candidates) < MIN_CANDIDATES_BEFORE_FALLBACK:
-        candidates = _build_base_query(filter_university=False).limit(SCORING_POOL_SIZE).all()
+        result = await db.execute(
+            _build_base_query(filter_university=False).limit(SCORING_POOL_SIZE)
+        )
+        candidates = result.scalars().all()
 
     if not candidates:
         return []
 
     # === ШАГ 2: Входящие лайки (кто лайкнул меня) ===
-    incoming_likes_rows = db.query(models.DatingLike.who_liked_id).filter(
-        models.DatingLike.whom_liked_id == current_user_id,
-        models.DatingLike.is_like == True
-    ).all()
-    incoming_like_ids = {row[0] for row in incoming_likes_rows}
+    incoming_result = await db.execute(
+        select(models.DatingLike.who_liked_id).where(
+            models.DatingLike.whom_liked_id == current_user_id,
+            models.DatingLike.is_like == True
+        )
+    )
+    incoming_like_ids = {row[0] for row in incoming_result.all()}
 
-    # === ШАГ 3: Python Scoring ===
+    # === ШАГ 3: Python Scoring (чистый Python, без DB) ===
     scored_candidates = []
     for profile in candidates:
-        user = profile.user
-        result = calculate_score(
+        user = profile.user  # ✅ selectinload загрузил user
+        result_score = calculate_score(
             me_user=me_user,
             me_profile=me_profile,
             candidate_user=user,
@@ -133,7 +151,6 @@ def get_dating_feed(
         if not photos and user.avatar:
             photos = [{"url": user.avatar, "w": 500, "h": 500}]
 
-        # ✅ JSONB: user.interests и profile.goals уже list
         interests = user.interests or []
         goals = profile.goals or []
 
@@ -150,14 +167,14 @@ def get_dating_feed(
             "goals": goals,
             "interests": interests,
             "looking_for": profile.looking_for,
-            "match_reason": get_match_reason_label(result["match_reason"]),
-            "common_interests": result["breakdown"].get("common_interests", []),
+            "match_reason": get_match_reason_label(result_score["match_reason"]),
+            "common_interests": result_score["breakdown"].get("common_interests", []),
         }
 
         if debug:
-            candidate_data["_debug_score"] = result["breakdown"]
+            candidate_data["_debug_score"] = result_score["breakdown"]
 
-        candidate_data["_sort_score"] = result["score"]
+        candidate_data["_sort_score"] = result_score["score"]
         scored_candidates.append(candidate_data)
 
     # === ШАГ 4: Сортировка и пагинация ===
@@ -175,32 +192,37 @@ def get_dating_feed(
 
 # ===== ЛАЙКИ И МАТЧИ =====
 
-def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
+async def create_like(db: AsyncSession, liker_id: int, liked_id: int) -> dict:
     if liker_id == liked_id:
         return {"success": False, "error": "Нельзя лайкнуть себя"}
 
-    existing = db.query(models.DatingLike).filter(
-        models.DatingLike.who_liked_id == liker_id,
-        models.DatingLike.whom_liked_id == liked_id
-    ).first()
-
-    if existing:
+    existing_result = await db.execute(
+        select(models.DatingLike).where(
+            models.DatingLike.who_liked_id == liker_id,
+            models.DatingLike.whom_liked_id == liked_id
+        )
+    )
+    if existing_result.scalar_one_or_none():
         return {"success": True, "is_match": False, "already_liked": True}
 
     new_like = models.DatingLike(who_liked_id=liker_id, whom_liked_id=liked_id, is_like=True)
     db.add(new_like)
     try:
-        notif.notify_dating_like(db, liked_id)
-        db.commit()
+        await notif.notify_dating_like(db, liked_id)
+        await db.commit()
     except IntegrityError:
-        db.rollback()
+        await db.rollback()
         return {"success": True, "is_match": False, "already_liked": True}
 
-    reverse_like = db.query(models.DatingLike).filter(
-        models.DatingLike.who_liked_id == liked_id,
-        models.DatingLike.whom_liked_id == liker_id,
-        models.DatingLike.is_like == True
-    ).first()
+    # Проверяем обратный лайк
+    reverse_result = await db.execute(
+        select(models.DatingLike).where(
+            models.DatingLike.who_liked_id == liked_id,
+            models.DatingLike.whom_liked_id == liker_id,
+            models.DatingLike.is_like == True
+        )
+    )
+    reverse_like = reverse_result.scalar_one_or_none()
 
     is_match = False
     match_obj = None
@@ -211,24 +233,27 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
         user_a = min(liker_id, liked_id)
         user_b = max(liker_id, liked_id)
 
-        existing_match = db.query(models.Match).filter(
-            models.Match.user_a_id == user_a,
-            models.Match.user_b_id == user_b
-        ).first()
+        existing_match_result = await db.execute(
+            select(models.Match).where(
+                models.Match.user_a_id == user_a,
+                models.Match.user_b_id == user_b
+            )
+        )
 
-        if not existing_match:
+        if not existing_match_result.scalar_one_or_none():
             match_obj = models.Match(user_a_id=user_a, user_b_id=user_b)
             db.add(match_obj)
 
-            liker_user = db.query(models.User).get(liker_id)
-            liked_user = db.query(models.User).get(liked_id)
+            # ✅ legacy_query_api(Model).get(id) → await db.get(Model, id)
+            liker_user = await db.get(models.User, liker_id)
+            liked_user = await db.get(models.User, liked_id)
             if liker_user and liked_user:
-                notif.notify_match(db, liker_user, liked_user)
+                await notif.notify_match(db, liker_user, liked_user)
 
-            db.commit()
-            db.refresh(match_obj)
+            await db.commit()
+            await db.refresh(match_obj)
 
-        matched_user = db.query(models.User).filter(models.User.id == liked_id).first()
+        matched_user = await db.get(models.User, liked_id)
 
     return {
         "success": True,
@@ -238,18 +263,21 @@ def create_like(db: Session, liker_id: int, liked_id: int) -> dict:
     }
 
 
-def create_dislike(db: Session, disliker_id: int, disliked_id: int) -> dict:
+async def create_dislike(db: AsyncSession, disliker_id: int, disliked_id: int) -> dict:
     if disliker_id == disliked_id:
         return {"success": False, "error": "Нельзя дизлайкнуть себя"}
 
-    existing = db.query(models.DatingLike).filter(
-        models.DatingLike.who_liked_id == disliker_id,
-        models.DatingLike.whom_liked_id == disliked_id
-    ).first()
+    existing_result = await db.execute(
+        select(models.DatingLike).where(
+            models.DatingLike.who_liked_id == disliker_id,
+            models.DatingLike.whom_liked_id == disliked_id
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
 
     if existing:
         existing.is_like = False
-        db.commit()
+        await db.commit()
         return {"success": True, "updated": True}
 
     new_dislike = models.DatingLike(
@@ -258,51 +286,67 @@ def create_dislike(db: Session, disliker_id: int, disliked_id: int) -> dict:
         is_like=False
     )
     db.add(new_dislike)
-    db.commit()
+    await db.commit()
 
     return {"success": True, "updated": False}
 
 
-def get_who_liked_me(db: Session, user_id: int, limit: int = 20, offset: int = 0) -> List[models.User]:
-    my_likes = db.query(models.DatingLike.whom_liked_id).filter(
-        models.DatingLike.who_liked_id == user_id
-    ).subquery()
+async def get_who_liked_me(db: AsyncSession, user_id: int, limit: int = 20, offset: int = 0) -> List[models.User]:
+    my_likes_subq = (
+        select(models.DatingLike.whom_liked_id)
+        .where(models.DatingLike.who_liked_id == user_id)
+        .scalar_subquery()
+    )
 
-    users = db.query(models.User).join(
-        models.DatingLike, models.DatingLike.who_liked_id == models.User.id
-    ).filter(
-        models.DatingLike.whom_liked_id == user_id,
-        models.DatingLike.is_like == True,
-        models.User.id.notin_(my_likes)
-    ).order_by(
-        models.DatingLike.created_at.desc()
-    ).offset(offset).limit(limit).all()
-
-    return users
+    result = await db.execute(
+        select(models.User)
+        .join(models.DatingLike, models.DatingLike.who_liked_id == models.User.id)
+        .where(
+            models.DatingLike.whom_liked_id == user_id,
+            models.DatingLike.is_like == True,
+            models.User.id.notin_(my_likes_subq)
+        )
+        .order_by(models.DatingLike.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
 
 
 # ===== СТАТИСТИКА И НАСТРОЙКИ =====
 
-def get_dating_stats(db: Session, user_id: int) -> dict:
-    my_likes = db.query(models.DatingLike.whom_liked_id).filter(
-        models.DatingLike.who_liked_id == user_id
-    ).subquery()
+async def get_dating_stats(db: AsyncSession, user_id: int) -> dict:
+    my_likes_subq = (
+        select(models.DatingLike.whom_liked_id)
+        .where(models.DatingLike.who_liked_id == user_id)
+        .scalar_subquery()
+    )
 
-    likes_count = db.query(func.count(models.DatingLike.id)).filter(
-        models.DatingLike.whom_liked_id == user_id,
-        models.DatingLike.is_like == True,
-        models.DatingLike.who_liked_id.notin_(my_likes)
-    ).scalar()
+    likes_count = await db.scalar(
+        select(func.count(models.DatingLike.id)).where(
+            models.DatingLike.whom_liked_id == user_id,
+            models.DatingLike.is_like == True,
+            models.DatingLike.who_liked_id.notin_(my_likes_subq)
+        )
+    )
 
-    matches_count = db.query(func.count(models.Match.id)).filter(
-        or_(models.Match.user_a_id == user_id, models.Match.user_b_id == user_id)
-    ).scalar()
+    matches_count = await db.scalar(
+        select(func.count(models.Match.id)).where(
+            or_(models.Match.user_a_id == user_id, models.Match.user_b_id == user_id)
+        )
+    )
 
-    return {"likes_count": likes_count, "matches_count": matches_count}
+    return {"likes_count": likes_count or 0, "matches_count": matches_count or 0}
 
 
-def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optional[models.User]:
-    user = db.query(models.User).filter(models.User.id == user_id).first()
+async def update_dating_settings(db: AsyncSession, user_id: int, settings: dict) -> Optional[models.User]:
+    # ✅ selectinload для dating_profile — нужен для user.dating_profile ниже
+    result = await db.execute(
+        select(models.User)
+        .options(selectinload(models.User.dating_profile))
+        .where(models.User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
     if not user:
         return None
 
@@ -318,10 +362,10 @@ def update_dating_settings(db: Session, user_id: int, settings: dict) -> Optiona
     if 'interests' in settings:
         val = settings['interests']
         if isinstance(val, list):
-            user.interests = val               # ✅ JSONB: list напрямую
+            user.interests = val
         else:
             user.interests = val
 
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
