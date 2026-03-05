@@ -3,7 +3,7 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import theme from '../../theme';
-import { hapticFeedback, isTelegramSDKAvailable } from '../../utils/telegram';
+import { hapticFeedback } from '../../utils/telegram';
 
 function DrilldownHeader({
   title,
@@ -12,8 +12,8 @@ function DrilldownHeader({
   showBack = true,
   showLocalBackInTelegram = false,
 }) {
-  const isTelegram = isTelegramSDKAvailable();
-  const shouldRenderBack = showBack && (showLocalBackInTelegram || !isTelegram);
+  const isDev = import.meta.env.DEV;
+  const shouldRenderBack = showBack && (isDev || showLocalBackInTelegram);
 
   const handleBackClick = () => {
     hapticFeedback('light');

@@ -3,9 +3,28 @@
 # ✅ Фаза 1.4: Убраны parse_json / parse_interests / parse_tags / parse_images
 #    валидаторы — JSONB возвращает нативные list/dict, парсеры не нужны.
 
+import json
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 from typing import Optional, List, Union, Dict, Any
+
+
+def _coerce_json_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else []
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+    return []
 
 # ===== USER SCHEMAS =====
 
@@ -97,7 +116,7 @@ class UserResponse(BaseModel):
     @field_validator('interests', mode='before')
     @classmethod
     def coerce_interests(cls, v):
-        return v if isinstance(v, list) else (v or [])
+        return _coerce_json_list(v)
 
     class Config:
         from_attributes = True
@@ -140,7 +159,7 @@ class UserPublic(BaseModel):
     @field_validator('interests', mode='before')
     @classmethod
     def coerce_interests(cls, v):
-        return v if isinstance(v, list) else (v or [])
+        return _coerce_json_list(v)
     
     class Config:
         from_attributes = True
@@ -791,7 +810,7 @@ class DatingProfile(BaseModel):
     @field_validator('interests', 'common_interests', mode='before')
     @classmethod
     def coerce_list(cls, v):
-        return v if isinstance(v, list) else (v or [])
+        return _coerce_json_list(v)
 
     class Config:
         from_attributes = True
