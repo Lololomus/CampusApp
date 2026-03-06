@@ -48,6 +48,9 @@ class Settings(BaseModel):
     dev_telegram_ids: Set[int] = Field(default_factory=set)
     sql_echo: bool = Field(default=True)
 
+    # --- Redis ---
+    redis_url: str = Field(default="redis://localhost:6379/0")
+
     @property
     def is_prod(self) -> bool:
         return self.app_env.lower() in PROD_ENV_VALUES
@@ -87,6 +90,10 @@ def get_settings() -> Settings:
     else:
         sql_echo = sql_echo_raw.strip().lower() in {"1", "true", "yes", "on"}
 
+    dev_auth_enabled = os.getenv("DEV_AUTH_ENABLED", "false").lower() == "true"
+    if is_prod_env and dev_auth_enabled:
+        raise RuntimeError("DEV_AUTH_ENABLED must be false when APP_ENV is production")
+
     return Settings(
         app_env=app_env,
         database_url=os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/campus_app_dev"),
@@ -106,7 +113,8 @@ def get_settings() -> Settings:
         cookie_secure=os.getenv("COOKIE_SECURE", "false").lower() == "true",
         cookie_samesite=os.getenv("COOKIE_SAMESITE", "lax"),
         
-        dev_auth_enabled=os.getenv("DEV_AUTH_ENABLED", "false").lower() == "true",
+        dev_auth_enabled=dev_auth_enabled,
         dev_telegram_ids=dev_ids_set,
         sql_echo=sql_echo,
+        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
     )

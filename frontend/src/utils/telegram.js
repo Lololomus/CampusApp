@@ -162,7 +162,17 @@ export function getTelegramWebApp() {
 
 export function isTelegramSDKAvailable() {
   const tg = getTelegramWebApp();
-  return Boolean(tg && typeof tg.ready === 'function');
+  if (!tg || typeof tg.ready !== 'function') return false;
+
+  // In обычном браузере telegram-web-app.js может быть загружен,
+  // но без реального Mini App-контекста (кнопки не отрисуются нативно).
+  const hasInitData =
+    typeof tg.initData === 'string' && tg.initData.trim().length > 0;
+  const hasUser = Boolean(tg.initDataUnsafe?.user?.id);
+  const launchParams = `${window?.location?.search || ''}${window?.location?.hash || ''}`;
+  const hasTelegramLaunchParams = /tgWebApp/i.test(launchParams);
+
+  return hasInitData || hasUser || hasTelegramLaunchParams;
 }
 
 export function setVerticalSwipesEnabled(enabled = true) {

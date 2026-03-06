@@ -5,6 +5,7 @@
 #    нативные list/dict. sanitize_json_field() тоже возвращает list/dict.
 # ✅ Фаза 3.4: async/await + select() + AsyncSession
 # ✅ Фаза 3.4: joinedload → selectinload
+# ✅ Фаза 5.2: image merge → helpers.merge_images()
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, update as sa_update
@@ -15,7 +16,7 @@ import logging
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
-from app.utils import delete_images, get_storage_key, process_base64_images
+from app.utils import delete_images, process_base64_images
 from app.services import notification_service as notif
 
 logger = logging.getLogger(__name__)
@@ -246,40 +247,14 @@ async def update_post(
     files_to_delete: List[str] = []
 
     if new_images_meta is not None or keep_filenames is not None:
-        # ✅ JSONB: db_post.images уже list
-        raw_old_images = db_post.images or []
-
-        old_images_map: Dict[str, dict] = {}
-        for item in raw_old_images:
-            if isinstance(item, str):
-                key = get_storage_key(item, kind="images")
-                if key:
-                    old_images_map[key] = {"url": key, "w": 1000, "h": 1000}
-            elif isinstance(item, dict):
-                key = get_storage_key(item.get("url", ""), kind="images")
-                if key:
-                    normalized_item = dict(item)
-                    normalized_item["url"] = key
-                    normalized_item.setdefault("w", 1000)
-                    normalized_item.setdefault("h", 1000)
-                    old_images_map[key] = normalized_item
-
-        final_images_meta: List[dict] = []
-
-        if keep_filenames:
-            for fname in keep_filenames:
-                key = get_storage_key(fname, kind="images")
-                if key and key in old_images_map:
-                    final_images_meta.append(old_images_map[key])
-
-        if new_images_meta:
-            final_images_meta.extend(new_images_meta)
-
-        kept_urls = {get_storage_key(img.get("url", ""), kind="images") for img in final_images_meta}
-        kept_urls.discard("")
-        files_to_delete = [url for url in old_images_map if url not in kept_urls]
-
-        update_data["images"] = sanitize_json_field(final_images_meta)
+        # ✅ Фаза 5.2: единый merge_images()
+        from app.crud.helpers import merge_images
+        final_images, files_to_delete = merge_images(
+            old_images=db_post.images,
+            new_images_meta=new_images_meta,
+            keep_filenames=keep_filenames,
+        )
+        update_data["images"] = sanitize_json_field(final_images)
 
     for key, value in update_data.items():
         setattr(db_post, key, value)

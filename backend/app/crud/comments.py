@@ -4,6 +4,7 @@
 # ✅ Фаза 3.3: async/await + select() + AsyncSession
 # ✅ Фаза 3.3: legacy_query_api(Model).get(id) → await db.get(Model, id)
 # ✅ Фаза 3.3: joinedload → selectinload (MissingGreenlet prevention)
+# ✅ Фаза 4.1: get_post_comments — batch-запрос лайков вместо N+1
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func, update as sa_update
@@ -89,10 +90,18 @@ async def get_post_comments(db: AsyncSession, post_id: int, user_id: Optional[in
     result = await db.execute(query)
     comments = result.scalars().all()
 
-    # NOTE: N+1 здесь — Фаза 4.1 заменит на batch-запрос лайков
-    if user_id:
+    # ✅ Фаза 4.1: batch-запрос лайков вместо N+1
+    if user_id and comments:
+        comment_ids = [c.id for c in comments]
+        liked_result = await db.execute(
+            select(models.CommentLike.comment_id).where(
+                models.CommentLike.comment_id.in_(comment_ids),
+                models.CommentLike.user_id == user_id
+            )
+        )
+        liked_ids = {row[0] for row in liked_result.all()}
         for comment in comments:
-            comment.is_liked = await is_comment_liked_by_user(db, comment.id, user_id)
+            comment.is_liked = comment.id in liked_ids
     else:
         for comment in comments:
             comment.is_liked = False

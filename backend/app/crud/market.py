@@ -5,6 +5,8 @@
 #    нативные list/dict.
 # ✅ Фаза 3.6: async/await + select() + AsyncSession
 # ✅ Фаза 3.6: joinedload → selectinload
+# ✅ Фаза 4.4: delete_market_item → soft delete
+# ✅ Фаза 5.2: image merge → helpers.merge_images()
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,7 +18,7 @@ import logging
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
 from app.crud.users import get_user_by_id
-from app.utils import delete_images, get_storage_key, process_base64_images
+from app.utils import delete_images, process_base64_images
 
 logger = logging.getLogger(__name__)
 
@@ -103,41 +105,15 @@ async def update_market_item(
     files_to_delete: List[str] = []
 
     if new_images_meta is not None or keep_filenames is not None:
-        raw_old_images = db_item.images or []
-        old_images_map: Dict[str, dict] = {}
-        for img in raw_old_images:
-            if isinstance(img, str):
-                key = get_storage_key(img, kind="images")
-                if key:
-                    old_images_map[key] = {"url": key, "w": 1000, "h": 1000}
-            elif isinstance(img, dict):
-                key = get_storage_key(img.get("url", ""), kind="images")
-                if key:
-                    normalized_img = dict(img)
-                    normalized_img["url"] = key
-                    normalized_img.setdefault("w", 1000)
-                    normalized_img.setdefault("h", 1000)
-                    old_images_map[key] = normalized_img
-
-        final_images_meta: List[dict] = []
-
-        if keep_filenames:
-            for fname in keep_filenames:
-                key = get_storage_key(fname, kind="images")
-                if key and key in old_images_map:
-                    final_images_meta.append(old_images_map[key])
-
-        if new_images_meta:
-            final_images_meta.extend(new_images_meta)
-
-        if not final_images_meta:
-            raise ValueError("At least one image is required")
-
-        kept_urls = {get_storage_key(img.get("url", ""), kind="images") for img in final_images_meta}
-        kept_urls.discard("")
-        files_to_delete = [url for url in old_images_map if url not in kept_urls]
-
-        update_data["images"] = final_images_meta
+        # ✅ Фаза 5.2: единый merge_images()
+        from app.crud.helpers import merge_images
+        final_images, files_to_delete = merge_images(
+            old_images=db_item.images,
+            new_images_meta=new_images_meta,
+            keep_filenames=keep_filenames,
+            require_at_least_one=True,
+        )
+        update_data["images"] = final_images
 
     update_data = {k: v for k, v in update_data.items() if v is not None}
 
@@ -162,7 +138,7 @@ async def update_market_item(
 
 
 async def delete_market_item(db: AsyncSession, item_id: int, seller_id: int) -> bool:
-    """Удаление товара (только продавец)"""
+    """Мягкое удаление товара (✅ Фаза 4.4: soft delete)"""
     result = await db.execute(
         select(models.MarketItem).where(
             models.MarketItem.id == item_id,
@@ -174,13 +150,10 @@ async def delete_market_item(db: AsyncSession, item_id: int, seller_id: int) -> 
     if not db_item:
         return False
 
-    if db_item.images:
-        try:
-            delete_images(db_item.images)
-        except Exception as e:
-            logger.warning("Ошибка удаления изображений товара %s: %s", item_id, e)
+    db_item.is_deleted = True
+    db_item.deleted_at = datetime.utcnow()
+    db_item.status = 'sold'  # снимаем с витрины
 
-    await db.delete(db_item)
     await db.commit()
     return True
 

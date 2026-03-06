@@ -4,6 +4,7 @@
 # ✅ Фаза 1.4: Убраны json.loads() — JSONB-колонки возвращают нативные list/dict.
 # ✅ Фаза 3.7: async/await + select() + AsyncSession
 # ✅ Фаза 3.7: legacy_query_api(Model).get(id) → await db.get(Model, id)
+# ✅ Фаза 5.6: create_like — один commit на лайк + матч + уведомления
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -193,6 +194,7 @@ async def get_dating_feed(
 # ===== ЛАЙКИ И МАТЧИ =====
 
 async def create_like(db: AsyncSession, liker_id: int, liked_id: int) -> dict:
+    """✅ Фаза 5.6: один await db.commit() на лайк + матч + уведомления"""
     if liker_id == liked_id:
         return {"success": False, "error": "Нельзя лайкнуть себя"}
 
@@ -207,12 +209,15 @@ async def create_like(db: AsyncSession, liker_id: int, liked_id: int) -> dict:
 
     new_like = models.DatingLike(who_liked_id=liker_id, whom_liked_id=liked_id, is_like=True)
     db.add(new_like)
+
     try:
-        await notif.notify_dating_like(db, liked_id)
-        await db.commit()
+        await db.flush()  # получаем ID, но НЕ коммитим
     except IntegrityError:
         await db.rollback()
         return {"success": True, "is_match": False, "already_liked": True}
+
+    # Уведомление о лайке
+    await notif.notify_dating_like(db, liked_id)
 
     # Проверяем обратный лайк
     reverse_result = await db.execute(
@@ -244,16 +249,18 @@ async def create_like(db: AsyncSession, liker_id: int, liked_id: int) -> dict:
             match_obj = models.Match(user_a_id=user_a, user_b_id=user_b)
             db.add(match_obj)
 
-            # ✅ legacy_query_api(Model).get(id) → await db.get(Model, id)
             liker_user = await db.get(models.User, liker_id)
             liked_user = await db.get(models.User, liked_id)
             if liker_user and liked_user:
                 await notif.notify_match(db, liker_user, liked_user)
 
-            await db.commit()
-            await db.refresh(match_obj)
-
         matched_user = await db.get(models.User, liked_id)
+
+    # Единый коммит: лайк + (матч + уведомления)
+    await db.commit()
+
+    if match_obj:
+        await db.refresh(match_obj)
 
     return {
         "success": True,

@@ -1,5 +1,4 @@
 services:
-  # === БАЗА ДАННЫХ ===
   postgres:
     image: postgres:15-alpine
     container_name: campus_postgres
@@ -15,27 +14,41 @@ services:
     networks:
       - campus_network
 
-  # === BACKEND ===
+  redis:
+    image: redis:7-alpine
+    container_name: campus_redis
+    restart: always
+    command: redis-server --appendonly yes
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - campus_network
+
   backend:
     build: ./backend
     container_name: campus_backend
     restart: always
     depends_on:
       - postgres
+      - redis
     env_file:
       - .env
     environment:
-      # Переопределяем хост БД для Докера
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      # CORS разрешаем для всех внутри контейнера
+      REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     volumes:
-      # Общая папка для картинок
       - campus_uploads:/app/uploads
     networks:
       - campus_network
 
-  # === FRONTEND (NGINX) ===
   frontend:
     build:
       context: ./frontend
@@ -43,13 +56,12 @@ services:
     container_name: campus_frontend
     restart: always
     ports:
-      - "80:80" # Сайт будет доступен просто по IP или localhost
+      - "80:80"
     depends_on:
       - backend
     networks:
       - campus_network
 
-  # === TELEGRAM BOT ===
   bot:
     build: ./bot
     container_name: campus_bot
@@ -57,19 +69,20 @@ services:
     depends_on:
       - backend
       - postgres
+      - redis
     env_file:
       - .env
     environment:
-      # Бот тоже должен знать, где база
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      # Если бот стучится к бэку по HTTP, используем имя сервиса:
+      REDIS_URL: redis://redis:6379/0
       API_BASE_URL: http://backend:8000
     networks:
       - campus_network
 
 volumes:
   postgres_data:
-  campus_uploads: # Чтобы аватарки жили вечно
+  redis_data:
+  campus_uploads:
 
 networks:
   campus_network:

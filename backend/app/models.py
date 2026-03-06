@@ -786,6 +786,7 @@ class AdImpression(Base):
     ad_post = relationship('AdPost', back_populates='impressions')
     
     __table_args__ = (
+        UniqueConstraint('ad_post_id', 'user_id', name='unique_ad_impression'),
         Index('ix_ad_imp_ad_user', 'ad_post_id', 'user_id'),
         Index('ix_ad_imp_date', 'ad_post_id', 'viewed_at'),
     )

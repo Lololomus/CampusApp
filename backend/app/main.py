@@ -20,6 +20,7 @@ from app.utils import (
 )
 from app.auth_service import decode_authorization_header
 from app.config import get_settings
+from app.rate_limiter import close_redis
 from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
 from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
     logger.info("База данных инициализирована")
     yield
     await engine.dispose()
+    await close_redis()
     
     logger.info("Engines disposed")
 
@@ -55,7 +57,7 @@ app.include_router(moderation.router)
 app.include_router(ads.router)
 app.include_router(notifications.router)
 app.include_router(auth_router.router)
-if settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
+if not settings.is_prod and settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
     app.include_router(dev_auth_router.router)
 
 # ===== CORS =====
@@ -529,7 +531,7 @@ async def create_post_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    return get_post_endpoint(post.id, telegram_id, db)
+    return await get_post_endpoint(post.id, telegram_id, db)
 
 @app.get("/posts/{post_id}", response_model=schemas.PostResponse)
 async def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
@@ -715,7 +717,7 @@ async def update_post_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    return get_post_endpoint(updated_post.id, telegram_id, db)
+    return await get_post_endpoint(updated_post.id, telegram_id, db)
 
 @app.post("/posts/{post_id}/like")
 async def toggle_post_like_endpoint(

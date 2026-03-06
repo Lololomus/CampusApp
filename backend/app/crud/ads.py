@@ -4,6 +4,7 @@
 # ✅ Фаза 0.6: Счётчики → SQL expressions (race condition fix)
 # ✅ Фаза 3.8: async/await + select() + AsyncSession
 # ✅ Фаза 3.8: joinedload → selectinload
+# ✅ Фаза 4.3: track_ad_impression → INSERT ON CONFLICT (атомарная дедупликация)
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -303,7 +304,9 @@ async def get_active_ads_for_user(
 
 
 async def track_ad_impression(db: AsyncSession, ad_post_id: int, user_id: int) -> bool:
-    """Зафиксировать показ рекламного поста (✅ атомарные счётчики)"""
+    """Зафиксировать показ рекламного поста (✅ Фаза 4.3: INSERT ON CONFLICT + атомарные счётчики)"""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     db_ad = await db.get(models.AdPost, ad_post_id)
     if not db_ad:
         return False
@@ -321,20 +324,15 @@ async def track_ad_impression(db: AsyncSession, ad_post_id: int, user_id: int) -
         if (today_count or 0) >= db_ad.daily_impression_cap:
             return False
 
-    impression = models.AdImpression(
-        ad_post_id=ad_post_id,
-        user_id=user_id,
+    # INSERT ON CONFLICT: атомарная вставка, без race condition
+    stmt = (
+        pg_insert(models.AdImpression)
+        .values(ad_post_id=ad_post_id, user_id=user_id)
+        .on_conflict_do_nothing(constraint='unique_ad_impression')
+        .returning(models.AdImpression.id)
     )
-    db.add(impression)
-
-    # Проверяем уникальность ДО инкремента
-    existing_count = await db.scalar(
-        select(func.count(models.AdImpression.id)).where(
-            models.AdImpression.ad_post_id == ad_post_id,
-            models.AdImpression.user_id == user_id,
-        )
-    )
-    is_new_unique = (existing_count or 0) == 0
+    result = await db.execute(stmt)
+    is_new_unique = result.scalar_one_or_none() is not None
 
     # Атомарные счётчики через SQL expression
     update_values = {

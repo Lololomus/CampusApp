@@ -2,15 +2,19 @@
 #
 # ✅ Фаза 1.4: Убраны parse_json / parse_interests / parse_tags / parse_images
 #    валидаторы — JSONB возвращает нативные list/dict, парсеры не нужны.
+# ✅ Фаза 5.1: Единые _coerce_json_list / _coerce_json_dict_or_none
+# ✅ Фаза 5.3: MarketSeller, ResponseAuthor → UserShort
+# ✅ Фаза 5.5: class Config → model_config = ConfigDict(from_attributes=True)
 
 import json
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from datetime import datetime
 from typing import Optional, List, Union, Dict, Any
 
 
 def _coerce_json_list(value):
+    """Единый coerce для JSONB list-полей. None/str → list."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -25,6 +29,24 @@ def _coerce_json_list(value):
         except (TypeError, ValueError, json.JSONDecodeError):
             return []
     return []
+
+
+def _coerce_json_dict_or_none(value):
+    """Единый coerce для JSONB dict-полей. None/пусто → None, str → dict."""
+    if value is None or value == '' or value == []:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+    return None
 
 # ===== USER SCHEMAS =====
 
@@ -111,15 +133,13 @@ class UserResponse(BaseModel):
     updated_at: Optional[datetime] = None
     last_profile_edit: Optional[datetime] = None
 
-    # ✅ JSONB: interests приходит как list из БД, парсер не нужен.
-    #    Оставляем минимальный fallback на случай None.
+    # ✅ Фаза 5.1: единый coerce
     @field_validator('interests', mode='before')
     @classmethod
     def coerce_interests(cls, v):
         return _coerce_json_list(v)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserShort(BaseModel):
     """Краткие данные пользователя"""
@@ -137,8 +157,7 @@ class UserShort(BaseModel):
     show_profile: bool = True
     show_telegram_id: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserPublic(BaseModel):
     """Публичные данные пользователя (для dating)"""
@@ -161,8 +180,7 @@ class UserPublic(BaseModel):
     def coerce_interests(cls, v):
         return _coerce_json_list(v)
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ===== POLL SCHEMAS =====
 
@@ -218,8 +236,7 @@ class PollResponse(BaseModel):
     is_closed: bool
     user_votes: List[int]
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ===== POST SCHEMAS =====
 
@@ -384,15 +401,11 @@ class PostResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
-    # ✅ JSONB: tags/images приходят как list из БД. Минимальный coerce для None.
+    # ✅ Фаза 5.1: единый coerce
     @field_validator('tags', 'images', mode='before')
     @classmethod
     def coerce_list_fields(cls, v):
-        if v is None:
-            return []
-        if isinstance(v, list):
-            return v
-        return v
+        return _coerce_json_list(v)
 
 class PostsFeedResponse(BaseModel):
     """Лента постов"""
@@ -431,8 +444,7 @@ class CommentResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CommentsFeedResponse(BaseModel):
     """Лента комментариев"""
@@ -477,21 +489,6 @@ class RequestUpdate(BaseModel):
     reward_type: Optional[str] = None
     reward_value: Optional[str] = None
 
-# class RequestAuthor(BaseModel):
-#     """Автор запроса"""
-#     id: int
-#     name: str
-#     course: Optional[int] = None
-#     university: str
-#     institute: str
-#     username: Optional[str] = None
-#     avatar: Optional[str] = None
-#     show_profile: bool = True
-#     show_telegram_id: bool = False
-    
-#     class Config:
-#         from_attributes = True
-
 class RequestResponse(BaseModel):
     """Ответ с данными запроса"""
     id: int
@@ -504,7 +501,6 @@ class RequestResponse(BaseModel):
     views_count: int = 0
     responses_count: int = 0
     created_at: datetime
-    # author: RequestAuthor
     author: UserShort
     is_author: bool = False
     has_responded: bool = False
@@ -513,18 +509,13 @@ class RequestResponse(BaseModel):
     images: List[ImageMeta] = []
     is_deleted: bool = False
     
-    # ✅ JSONB: tags/images приходят как list из БД
+    # ✅ Фаза 5.1: единый coerce
     @field_validator('tags', 'images', mode='before')
     @classmethod
     def coerce_list_fields(cls, v):
-        if v is None:
-            return []
-        if isinstance(v, list):
-            return v
-        return v
+        return _coerce_json_list(v)
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class RequestsFeedResponse(BaseModel):
     """Лента запросов"""
@@ -539,14 +530,8 @@ class ResponseCreate(BaseModel):
     message: Optional[str] = Field(None, max_length=500)
     telegram_contact: Optional[str] = None
 
-class ResponseAuthor(BaseModel):
-    """Автор отклика"""
-    id: int
-    name: str
-    username: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+# ✅ Фаза 5.3: ResponseAuthor удалён → используется UserShort
+# (см. ResponseItem.author ниже)
 
 class ResponseItem(BaseModel):
     """Отклик на запрос"""
@@ -554,10 +539,9 @@ class ResponseItem(BaseModel):
     message: Optional[str] = None
     telegram_contact: Optional[str] = None
     created_at: datetime
-    author: ResponseAuthor
+    author: UserShort                                         # ✅ Фаза 5.3: ResponseAuthor → UserShort
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ===== REPORT SCHEMAS =====
 
@@ -604,8 +588,7 @@ class ReportResponse(BaseModel):
     created_at: datetime
     reviewed_at: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ReportReviewAction(BaseModel):
     """Действие по жалобе"""
@@ -637,8 +620,7 @@ class AppealResponse(BaseModel):
     created_at: datetime
     reviewed_at: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AppealsFeedResponse(BaseModel):
     """Лента обжалований"""
@@ -675,8 +657,7 @@ class ShadowBanResponse(BaseModel):
     shadow_ban_expires_at: Optional[datetime] = None
     shadow_ban_reason: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ModerationLogResponse(BaseModel):
     """Запись лога модерации"""
@@ -690,8 +671,7 @@ class ModerationLogResponse(BaseModel):
     university: Optional[str] = None
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ModerationLogsFeedResponse(BaseModel):
     """Лента логов модерации"""
@@ -722,8 +702,7 @@ class AmbassadorInfo(BaseModel):
     actions_count: int = 0
     assigned_at: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AdminStatsResponse(BaseModel):
     """Статистика для суперадмина"""
@@ -787,8 +766,7 @@ class MatchResponse(BaseModel):
     matched_at: datetime
     matched_user: UserShort
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class DatingProfile(BaseModel):
     id: int
@@ -806,14 +784,13 @@ class DatingProfile(BaseModel):
     match_reason: Optional[str] = None
     common_interests: List[str] = []
 
-    # ✅ JSONB: минимальный coerce для None
+    # ✅ Фаза 5.1: единый coerce
     @field_validator('interests', 'common_interests', mode='before')
     @classmethod
     def coerce_list(cls, v):
         return _coerce_json_list(v)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class DatingFeedResponse(BaseModel):
     """Лента профилей"""
@@ -834,20 +811,8 @@ class DatingStatsResponse(BaseModel):
 
 # ===== MARKET SCHEMAS =====
 
-class MarketSeller(BaseModel):
-    """Продавец товара"""
-    id: int
-    name: str
-    username: Optional[str] = None
-    university: str
-    institute: Optional[str] = None          # ✅ Фаза 1.3: nullable
-    course: Optional[int] = None
-    avatar: Optional[str] = None
-    show_profile: bool = True
-    show_telegram_id: bool = False
-    
-    class Config:
-        from_attributes = True
+# ✅ Фаза 5.3: MarketSeller удалён → используется UserShort
+# (см. MarketItemResponse.seller ниже)
 
 class MarketItemCreate(BaseModel):
     """Создание товара"""
@@ -900,7 +865,7 @@ class MarketItemResponse(BaseModel):
     """Ответ с данными товара"""
     id: int
     seller_id: int
-    seller: MarketSeller
+    seller: UserShort                                        # ✅ Фаза 5.3: MarketSeller → UserShort
     category: str
     title: str
     description: str
@@ -919,18 +884,13 @@ class MarketItemResponse(BaseModel):
     is_favorited: bool = False
     is_deleted: bool = False
     
-    # ✅ JSONB: images приходят как list из БД
+    # ✅ Фаза 5.1: единый coerce
     @field_validator('images', mode='before')
     @classmethod
     def coerce_images(cls, v):
-        if v is None:
-            return []
-        if isinstance(v, list):
-            return v
-        return v
+        return _coerce_json_list(v)
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MarketFeedResponse(BaseModel):
     """Лента товаров"""
@@ -953,11 +913,11 @@ class DatingProfileCreate(BaseModel):
     prompt_question: Optional[str] = Field(None, max_length=100)
     prompt_answer: Optional[str] = Field(None, max_length=100)
 
-    # ✅ JSONB: goals может прийти как list напрямую, парсер не нужен
+    # ✅ Фаза 5.1: единый coerce
     @field_validator('goals', mode='before')
     @classmethod
     def coerce_goals(cls, v):
-        return v if isinstance(v, list) else (v or [])
+        return _coerce_json_list(v)
 
 # Схема для ответа (полная анкета)
 class DatingProfileResponse(BaseModel):
@@ -978,27 +938,18 @@ class DatingProfileResponse(BaseModel):
     institute: Optional[str] = None
     course: Optional[int] = None
 
-    # ✅ JSONB: все поля приходят как нативные типы из БД
+    # ✅ Фаза 5.1: единые coerce
     @field_validator('photos', 'goals', 'lifestyle', mode='before')
     @classmethod
     def coerce_list(cls, v):
-        if v is None:
-            return []
-        if isinstance(v, list):
-            return v
-        return []
+        return _coerce_json_list(v)
 
     @field_validator('prompts', mode='before')
     @classmethod
     def coerce_prompts(cls, v):
-        if v is None or v == '' or v == []:
-            return None
-        if isinstance(v, dict):
-            return v
-        return None
+        return _coerce_json_dict_or_none(v)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===== AD SCHEMAS =====
@@ -1086,8 +1037,7 @@ class AdPostResponse(BaseModel):
     post_body: Optional[str] = None
     post_images: List[ImageMeta] = []
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AdPostFeedResponse(BaseModel):
     items: List[AdPostResponse]
@@ -1139,8 +1089,7 @@ class NotificationSettingsResponse(BaseModel):
     digest_frequency: str = 'weekly'
     mute_all: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class NotificationResponse(BaseModel):
@@ -1159,8 +1108,7 @@ class NotificationResponse(BaseModel):
             return json.loads(v)
         return v
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FollowupAnswer(BaseModel):

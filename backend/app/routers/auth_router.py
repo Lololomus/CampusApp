@@ -1,10 +1,7 @@
 # ===== FILE: backend/app/routers/auth_router.py =====
 #
 # ✅ Фаза 3.2: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
-
-from collections import defaultdict, deque
-import time
-from typing import Deque, Dict
+# ✅ Фаза 4.2: _rate_buckets (in-memory) → Redis rate limiter
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,24 +16,9 @@ from app.auth_service import (
     verify_telegram_auth,
 )
 from app.database import get_db
+from app.rate_limiter import check_rate_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# NOTE: _rate_buckets остаётся in-memory до Фазы 4.2 (Redis)
-_rate_buckets: Dict[str, Deque[float]] = defaultdict(deque)
-
-
-def _check_rate_limit(request: Request, key: str, limit: int = 20, window_sec: int = 60) -> None:
-    now = time.time()
-    ip = request.client.host if request.client else "unknown"
-    bucket_key = f"{key}:{ip}"
-    bucket = _rate_buckets[bucket_key]
-
-    while bucket and now - bucket[0] > window_sec:
-        bucket.popleft()
-    if len(bucket) >= limit:
-        raise HTTPException(status_code=429, detail="Too many requests")
-    bucket.append(now)
 
 
 @router.post("/telegram/login", response_model=schemas.AuthLoginResponse)
@@ -46,7 +28,7 @@ async def telegram_login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    _check_rate_limit(request, "auth_login")
+    await check_rate_limit(request, "auth_login")
     auth_data = verify_telegram_auth(payload.init_data)
     user_data_raw = auth_data.get("user")
     if not user_data_raw:
@@ -128,7 +110,7 @@ async def refresh_token(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    _check_rate_limit(request, "auth_refresh")
+    await check_rate_limit(request, "auth_refresh")
     refresh_token_cookie = request.cookies.get("refresh_token")
     if not refresh_token_cookie:
         raise HTTPException(status_code=401, detail="Refresh token missing")

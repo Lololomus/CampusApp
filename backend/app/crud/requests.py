@@ -300,6 +300,7 @@ async def update_request(db: AsyncSession, request_id: int, user_id: int, data: 
 
 
 async def delete_request(db: AsyncSession, request_id: int, user_id: int) -> bool:
+    """Мягкое удаление запроса (✅ Фаза 4.4: soft delete)"""
     result = await db.execute(
         select(models.Request).where(
             models.Request.id == request_id,
@@ -311,13 +312,10 @@ async def delete_request(db: AsyncSession, request_id: int, user_id: int) -> boo
     if not request:
         raise ValueError("Request not found or no permissions")
 
-    if request.images:
-        try:
-            delete_images(request.images)
-        except Exception:
-            pass
+    request.is_deleted = True
+    request.deleted_at = datetime.utcnow()
+    request.status = 'closed'
 
-    await db.delete(request)
     await db.commit()
     return True
 

@@ -16,7 +16,7 @@ router = APIRouter(prefix="/dev/auth", tags=["dev-auth"])
 
 def _ensure_dev_mode():
     settings = get_settings()
-    if settings.app_env.lower() != "dev" or not settings.dev_auth_enabled:
+    if settings.is_prod or settings.app_env.lower() != "dev" or not settings.dev_auth_enabled:
         raise HTTPException(status_code=404, detail="Not found")
     return settings
 
