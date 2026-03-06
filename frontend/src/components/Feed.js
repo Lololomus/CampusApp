@@ -394,12 +394,20 @@ function Feed() {
     };
   }, [feedSubTab, hasMorePosts, loading, loadPosts, lastVisiblePostId]);
 
-  const postCardWrapperStyle = useMemo(() => ({ marginBottom: 16 }), []);
+  const postCardWrapperStyle = useMemo(() => ({ marginBottom: 0 }), []);
 
   return (
     <div style={styles.container}>
       
-      <AppHeader 
+      {/* Blur-градиенты шапки */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 72, background: 'rgba(0,0,0,0.28)', backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', zIndex: 50, pointerEvents: 'none' }} />
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 128, background: 'rgba(0,0,0,0.10)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.34) 42%, rgba(0,0,0,0.08) 78%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.34) 42%, rgba(0,0,0,0.08) 78%, rgba(0,0,0,0) 100%)', zIndex: 51, pointerEvents: 'none' }} />
+
+      {/* Blur-градиенты таббара */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 60, background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', zIndex: 50, pointerEvents: 'none' }} />
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 106, background: 'rgba(0,0,0,0.20)', backdropFilter: 'blur(9px)', WebkitBackdropFilter: 'blur(9px)', maskImage: 'linear-gradient(to top, rgba(0,0,0,0.94) 0%, rgba(0,0,0,0.60) 42%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to top, rgba(0,0,0,0.94) 0%, rgba(0,0,0,0.60) 42%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0) 100%)', zIndex: 51, pointerEvents: 'none' }} />
+
+      <AppHeader
         title={getDynamicTitle()}
         showSearch={true}
         searchValue={searchQuery}
@@ -410,37 +418,35 @@ function Feed() {
         onCategoryChange={handleCategoryChange}
         showFilters={true}
         onFiltersClick={handleFiltersClick}
-        activeFiltersCount={countActiveFilters} // ✅ БЕЗ ()
+        activeFiltersCount={countActiveFilters}
+        premium
       >
-        <div style={styles.tabsWrapper}>
-          <div style={styles.tabsContainer}>
-            <div 
-              style={{
-                ...styles.activeIndicator,
-                transform: `translateX(${feedSubTab === 'posts' ? '0%' : '100%'})`,
-              }} 
-            />
-            
-            <button 
-              onClick={() => handleTabSwitch('posts')}
-              style={{
-                ...styles.tabButton,
-                color: feedSubTab === 'posts' ? '#fff' : theme.colors.textSecondary,
-              }}
-            >
-              Посты
-            </button>
-
-            <button 
-              onClick={() => handleTabSwitch('requests')}
-              style={{
-                ...styles.tabButton,
-                color: feedSubTab === 'requests' ? '#fff' : theme.colors.textSecondary,
-              }}
-            >
-              Запросы
-            </button>
-          </div>
+        {/* Premium pill-switcher: только кнопки, обёртка — в AppHeader */}
+        <div style={{ position: 'relative', width: '100%', display: 'flex' }}>
+          <div
+            style={{
+              ...styles.activeIndicator,
+              transform: `translateX(${feedSubTab === 'posts' ? '0' : '100%'})`,
+            }}
+          />
+          <button
+            onClick={() => handleTabSwitch('posts')}
+            style={{
+              ...styles.tabButton,
+              color: feedSubTab === 'posts' ? '#000' : '#FFF',
+            }}
+          >
+            Посты
+          </button>
+          <button
+            onClick={() => handleTabSwitch('requests')}
+            style={{
+              ...styles.tabButton,
+              color: feedSubTab === 'requests' ? '#000' : '#FFF',
+            }}
+          >
+            Запросы
+          </button>
         </div>
       </AppHeader>
 
@@ -515,34 +521,20 @@ function Feed() {
 const styles = {
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: theme.colors.premium.bg,
     minHeight: '100vh',
-  },
-
-  tabsWrapper: {
-    padding: '0 12px 12px 12px',
-  },
-
-  tabsContainer: {
-    position: 'relative',
-    display: 'flex',
-    backgroundColor: theme.colors.bg,
-    borderRadius: theme.radius.lg,
-    padding: '4px',
-    height: 44,
-    border: `1px solid ${theme.colors.border}`,
   },
 
   activeIndicator: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 4,
-    width: 'calc(50% - 4px)',
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.radius.md,
-    boxShadow: '0 2px 8px rgba(135, 116, 225, 0.3)',
-    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: '50%',
+    backgroundColor: theme.colors.premium.primary,
+    borderRadius: 15,
+    boxShadow: `0 2px 10px ${theme.colors.premium.primary}30`,
+    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
     zIndex: 1,
   },
 
@@ -552,10 +544,10 @@ const styles = {
     zIndex: 2,
     background: 'transparent',
     border: 'none',
-    fontSize: 15,
-    fontWeight: 600,
+    fontSize: 14,
+    fontWeight: 700,
     cursor: 'pointer',
-    transition: 'color 0.2s ease',
+    transition: 'color 0.3s',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -563,11 +555,11 @@ const styles = {
 
   content: {
     display: 'block',
-    paddingTop: 'calc(var(--header-padding, 104px) + 16px)', 
-    paddingLeft: '12px',
-    paddingRight: '12px',
-    paddingBottom: 100, 
-    transition: 'padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    // Фиксированный paddingTop — не зависит от --header-padding, устраняет дёрганье при анимации шапки
+    paddingTop: 'calc(var(--screen-top-offset, 0px) + 192px)',
+    paddingLeft: '0px',
+    paddingRight: '0px',
+    paddingBottom: 120,
   },
 
   empty: {

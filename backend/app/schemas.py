@@ -9,7 +9,7 @@
 import json
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Union, Dict, Any
 
 
@@ -47,6 +47,15 @@ def _coerce_json_dict_or_none(value):
         except (TypeError, ValueError, json.JSONDecodeError):
             return None
     return None
+
+
+def _to_naive_utc(dt_value: Optional[datetime]) -> Optional[datetime]:
+    """Convert aware datetime to naive UTC for DB TIMESTAMP columns."""
+    if dt_value is None:
+        return None
+    if dt_value.tzinfo is None or dt_value.tzinfo.utcoffset(dt_value) is None:
+        return dt_value
+    return dt_value.astimezone(timezone.utc).replace(tzinfo=None)
 
 # ===== USER SCHEMAS =====
 
@@ -210,6 +219,11 @@ class PollCreate(BaseModel):
             raise ValueError('Для quiz обязателен correct_option')
         return v
 
+    @field_validator('closes_at', mode='after')
+    @classmethod
+    def normalize_closes_at(cls, v):
+        return _to_naive_utc(v)
+
 class PollVoteCreate(BaseModel):
     """Голосование в опросе"""
     option_indices: List[int]
@@ -308,6 +322,11 @@ class PostCreate(BaseModel):
             raise ValueError('Для категории Опросы обязательно создать опрос')
         return v
 
+    @field_validator('event_date', mode='after')
+    @classmethod
+    def normalize_event_date(cls, v):
+        return _to_naive_utc(v)
+
 class PostUpdate(BaseModel):
     """Схема для обновления поста"""
     title: Optional[str] = None
@@ -336,6 +355,11 @@ class PostUpdate(BaseModel):
         if v is not None and len(v) > 3:
             raise ValueError('Максимум 3 изображения на пост')
         return v
+
+    @field_validator('event_date', mode='after')
+    @classmethod
+    def normalize_event_date(cls, v):
+        return _to_naive_utc(v)
 
 class PostResponse(BaseModel):
     """Ответ с данными поста"""
@@ -479,6 +503,11 @@ class RequestCreate(BaseModel):
         if len(v) > 3:
             raise ValueError('Максимум 3 изображения')
         return v
+
+    @field_validator('expires_at', mode='after')
+    @classmethod
+    def normalize_expires_at(cls, v):
+        return _to_naive_utc(v)
 
 class RequestUpdate(BaseModel):
     """Обновление запроса"""

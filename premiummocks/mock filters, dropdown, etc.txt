@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA Filters</title>
+
+    <style>
+      :root {
+        --safe-area-bottom: env(safe-area-inset-bottom, 20px);
+        --primary: #D4FF00;
+        --card: #1C1C1E;
+        --border: rgba(255, 255, 255, 0.08);
+      }
+      html, body { 
+        height: 100%; margin: 0; background: #050505; 
+        color: #FFFFFF; font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.1s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.96); opacity: 0.8; }
+      
+      /* Hover эффект для троеточия */
+      .dropdown-item { background: transparent; transition: background-color 0.15s; }
+      @media (hover: hover) {
+        .dropdown-item:hover { background-color: rgba(255, 255, 255, 0.1) !important; }
+      }
+      .dropdown-item:active { background-color: rgba(255, 255, 255, 0.15) !important; }
+
+      /* Анимации */
+      @keyframes slideUpSheet {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes toastSlideIn {
+        from { transform: translateY(100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      @keyframes dropdownFade {
+        from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      @keyframes scaleIn {
+        from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+        to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      }
+      
+      input[type=number]::-webkit-inner-spin-button, 
+      input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+      /* Стили для кастомного Dual Range Slider (Маркет) */
+      .dual-range { position: relative; width: 100%; height: 24px; }
+      .dual-range input[type="range"] {
+        position: absolute; width: 100%; height: 4px; top: 10px;
+        appearance: none; background: transparent; pointer-events: none; z-index: 3;
+      }
+      .dual-range input[type="range"]::-webkit-slider-thumb {
+        appearance: none; pointer-events: auto; width: 24px; height: 24px;
+        border-radius: 50%; background: #FFFFFF; border: 2px solid #000;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: grab;
+      }
+      .dual-range input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.1); }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useCallback, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        Check, X, SlidersHorizontal, ChevronRight, 
+        DollarSign, MessageSquare, CheckCircle2,
+        AlertTriangle, Info, MoreVertical, Edit2, Share2, Trash2
+      } from 'lucide-react';
+
+      // === ТЕМА ===
+      const theme = {
+        bg: '#050505', 
+        primary: '#D4FF00', 
+        card: '#1C1C1E', 
+        border: 'rgba(255, 255, 255, 0.08)',
+        text: '#FFFFFF',
+        textSecondary: '#8E8E93',
+        error: '#FF453A',
+        success: '#32D74B',
+        info: '#0A84FF',
+        radius: { md: '10px', lg: '12px', xl: '20px', full: '9999px' }
+      };
+
+      // ==========================================
+      // 1. TOAST (Центрирован внутри фрейма)
+      // ==========================================
+      const ToastContainer = ({ toasts, removeToast }) => {
+        return (
+          <div style={{ 
+            position: 'absolute', bottom: '80px', left: '16px', right: '16px', 
+            zIndex: 9999, display: 'flex', flexDirection: 'column', 
+            gap: '8px', pointerEvents: 'none', alignItems: 'center'
+          }}>
+            {toasts.map((toast) => (
+              <ToastItem key={toast.id} toast={toast} onRemove={() => removeToast(toast.id)} />
+            ))}
+          </div>
+        );
+      };
+
+      const ToastItem = ({ toast, onRemove }) => {
+        const [progress, setProgress] = useState(100);
+        const duration = 3000;
+
+        useEffect(() => {
+          const startTime = Date.now();
+          const timer = setInterval(() => {
+            const passed = Date.now() - startTime;
+            const remaining = Math.max(0, 100 - (passed / duration) * 100);
+            setProgress(remaining);
+            if (passed >= duration) {
+              clearInterval(timer);
+              onRemove();
+            }
+          }, 16);
+          return () => clearInterval(timer);
+        }, []);
+
+        const config = {
+          success: { icon: CheckCircle2, color: theme.success, bg: 'rgba(50, 215, 75, 0.15)' },
+          error: { icon: AlertTriangle, color: theme.error, bg: 'rgba(255, 69, 58, 0.15)' },
+          info: { icon: Info, color: theme.info, bg: 'rgba(10, 132, 255, 0.15)' }
+        }[toast.type] || { icon: Info, color: theme.info, bg: 'rgba(10, 132, 255, 0.15)' };
+
+        const Icon = config.icon;
+
+        return (
+          <div style={{
+            background: theme.card, width: '100%', maxWidth: '340px',
+            border: `1px solid ${config.bg}`, borderRadius: theme.radius.md,
+            padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', position: 'relative', overflow: 'hidden',
+            animation: 'toastSlideIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+            pointerEvents: 'auto'
+          }}>
+            <Icon size={20} color={config.color} strokeWidth={2.5} />
+            <span style={{ fontSize: '14px', fontWeight: 600, color: '#FFF', flex: 1 }}>{toast.message}</span>
+            <div onClick={onRemove} style={{ padding: '4px', cursor: 'pointer', opacity: 0.5 }}><X size={16} /></div>
+            <div style={{ position: 'absolute', bottom: 0, left: 0, height: '3px', background: config.color, width: `${progress}%`, transition: 'width 16ms linear' }} />
+          </div>
+        );
+      };
+
+      // ==========================================
+      // 2. DROPDOWN MENU (Троеточие)
+      // ==========================================
+      const DropdownMenu = ({ isOpen, onClose, actions }) => {
+        if (!isOpen) return null;
+        return (
+          <>
+            <div style={{ position: 'absolute', inset: -2000, zIndex: 998 }} onClick={(e) => { e.stopPropagation(); onClose(); }} />
+            <div style={{
+              position: 'absolute', top: '100%', right: '0', marginTop: '8px',
+              width: '200px', background: theme.card, border: `1px solid ${theme.border}`,
+              borderRadius: theme.radius.md, padding: '4px', zIndex: 999,
+              boxShadow: '0 10px 30px rgba(0,0,0,0.5)', transformOrigin: 'top right',
+              animation: 'dropdownFade 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
+            }}>
+              {actions.map((action, idx) => {
+                const Icon = action.icon;
+                const accent = action.danger ? theme.error : (action.accent || theme.text);
+                return (
+                  <div key={idx} onClick={(e) => { e.stopPropagation(); action.onClick(); onClose(); }} 
+                    className="dropdown-item"
+                    style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '12px', borderRadius: '6px', cursor: 'pointer', color: accent }}>
+                    <Icon size={18} strokeWidth={2} />
+                    <span style={{ fontSize: '14px', fontWeight: 500 }}>{action.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        );
+      };
+
+      // ==========================================
+      // 3. CONFIRMATION DIALOG 
+      // ==========================================
+      const ConfirmDialog = ({ isOpen, onClose, title, message, onConfirm, confirmText = "Подтвердить", isDanger = false }) => {
+        if (!isOpen) return null;
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 2000 }}>
+            <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', animation: 'fadeIn 0.2s' }} />
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+              width: 'calc(100% - 48px)', maxWidth: '300px', background: theme.card,
+              borderRadius: theme.radius.xl, border: `1px solid ${theme.border}`, padding: '20px',
+              textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+              animation: 'scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
+            }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700 }}>{title}</h3>
+              <p style={{ margin: '0 0 20px', fontSize: '14px', color: theme.textSecondary, lineHeight: 1.4 }}>{message}</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button onClick={onClose} className="spring-btn" style={{ padding: '10px', borderRadius: theme.radius.md, background: 'rgba(255,255,255,0.08)', border: 'none', color: '#FFF', fontSize: '14px', fontWeight: 600 }}>Отмена</button>
+                <button onClick={() => { onConfirm(); onClose(); }} className="spring-btn" style={{ padding: '10px', borderRadius: theme.radius.md, background: isDanger ? theme.error : theme.primary, border: 'none', color: isDanger ? '#FFF' : '#000', fontSize: '14px', fontWeight: 600 }}>{confirmText}</button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // ==========================================
+      // КОМПОНЕНТ: БАЗОВАЯ ШТОРКА
+      // ==========================================
+      const BottomSheet = ({ isOpen, onClose, children }) => {
+        if (!isOpen) return null;
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+            <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', animation: 'fadeIn 0.2s forwards' }} />
+            <div style={{ 
+              background: theme.card, borderTopLeftRadius: theme.radius.xl, borderTopRightRadius: theme.radius.xl,
+              borderTop: `1px solid ${theme.border}`, paddingBottom: 'env(safe-area-inset-bottom, 20px)',
+              position: 'relative', animation: 'slideUpSheet 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+              display: 'flex', flexDirection: 'column', maxHeight: '90%'
+            }}>
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
+                <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.2)', borderRadius: 2 }} />
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto' }} className="hide-scroll">
+                {children}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // ==========================================
+      // КОМПОНЕНТ: ФИЛЬТРЫ
+      // ==========================================
+      const FiltersModal = ({ isOpen, onClose, mode }) => {
+        const accent = theme.primary; 
+
+        // -- Стейты (Сброс при переключении mode)
+        const [location, setLocation] = useState('all');
+        const [sort, setSort] = useState('newest');
+        
+        // Посты
+        const [activeTags, setActiveTags] = useState([]);
+        const [dateRange, setDateRange] = useState('all');
+        
+        // Запросы
+        const [urgency, setUrgency] = useState('all');
+        const [status, setStatus] = useState('active');
+        const [reward, setReward] = useState('all');
+        
+        // Маркет
+        const [condition, setCondition] = useState([]);
+        const [priceRange, setPriceRange] = useState([0, 15000]);
+        const MAX_PRICE = 15000;
+
+        const toggleCondition = (val) => setCondition(p => p.includes(val) ? p.filter(x => x !== val) : [...p, val]);
+        const toggleTag = (t) => setActiveTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+
+        const SectionHeader = ({ title }) => (
+          <div style={{ fontSize: '13px', fontWeight: 600, color: theme.textSecondary, marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {title}
+          </div>
+        );
+
+        // -- ДАННЫЕ ОПЦИЙ --
+        const titles = { 'posts': 'Фильтры постов', 'requests': 'Фильтры запросов', 'market': 'Фильтры маркета' };
+        
+        const POST_TAGS = [
+          { id: 'помощь', label: 'Помощь', emoji: '🤝' }, { id: 'срочно', label: 'Срочно', emoji: '⚡' }, 
+          { id: 'конспекты', label: 'Конспекты', emoji: '📝' }, { id: 'экзамены', label: 'Экзамены', emoji: '📚' },
+          { id: 'учеба', label: 'Учеба', emoji: '🎓' }, { id: 'курсовая', label: 'Курсач', emoji: '📄' },
+          { id: 'общага', label: 'Общага', emoji: '🏠' }, { id: 'мероприятие', label: 'Ивенты', emoji: '🎉' }
+        ];
+
+        const HISTOGRAM_DATA = [10, 25, 40, 80, 100, 75, 50, 30, 45, 60, 85, 40, 20, 5];
+
+        // -- Хендлеры ползунка --
+        const handleMinChange = (e) => {
+          const val = Math.min(Number(e.target.value), priceRange[1] - 500);
+          setPriceRange([val, priceRange[1]]);
+        };
+        const handleMaxChange = (e) => {
+          const val = Math.max(Number(e.target.value), priceRange[0] + 500);
+          setPriceRange([priceRange[0], val]);
+        };
+
+        return (
+          <BottomSheet isOpen={isOpen} onClose={onClose}>
+            {/* Хедер */}
+            <div style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>{titles[mode]}</h2>
+              <div onClick={onClose} className="spring-btn" style={{ width: 28, height: 28, borderRadius: '14px', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} color={theme.textSecondary} /></div>
+            </div>
+
+            {/* Контент */}
+            <div style={{ padding: '8px 16px 90px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* === ЛОКАЦИЯ (Общая) === */}
+              <div>
+                <SectionHeader title="Локация" />
+                <div className="hide-scroll" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                  {[ { id: 'all', label: 'Все вузы' }, { id: 'my_campus', label: 'ВШЭ Покровка' }, { id: 'my_city', label: 'Москва' }].map(opt => (
+                    <div key={opt.id} onClick={() => setLocation(opt.id)} className="spring-btn" style={{ 
+                      padding: '10px 16px', borderRadius: theme.radius.full, whiteSpace: 'nowrap',
+                      background: location === opt.id ? 'rgba(212, 255, 0, 0.1)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${location === opt.id ? accent : 'transparent'}`, 
+                      color: location === opt.id ? accent : theme.text, fontSize: '14px', fontWeight: 500
+                    }}>
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* === ФИЛЬТРЫ МАРКЕТА === */}
+              {mode === 'market' && (
+                <>
+                  <div>
+                    <SectionHeader title="Цена (₽)" />
+                    
+                    {/* Гистограмма */}
+                    <div style={{ display: 'flex', alignItems: 'flex-end', height: '48px', gap: '2px', padding: '0 8px', marginBottom: '8px' }}>
+                      {HISTOGRAM_DATA.map((h, i) => {
+                        const columnMin = (i / HISTOGRAM_DATA.length) * MAX_PRICE;
+                        const columnMax = ((i + 1) / HISTOGRAM_DATA.length) * MAX_PRICE;
+                        const isActive = (columnMax > priceRange[0]) && (columnMin < priceRange[1]);
+                        return (
+                          <div key={i} style={{ 
+                            flex: 1, height: `${h}%`, 
+                            background: isActive ? accent : 'rgba(255,255,255,0.15)', 
+                            borderRadius: '2px 2px 0 0', opacity: isActive ? 1 : 0.6,
+                            transition: 'background 0.2s, opacity 0.2s'
+                          }} />
+                        );
+                      })}
+                    </div>
+
+                    {/* DUAL RANGE SLIDER */}
+                    <div className="dual-range" style={{ marginBottom: '20px', padding: '0 8px' }}>
+                      <div style={{ position: 'absolute', top: '10px', left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', zIndex: 1 }} />
+                      <div style={{ 
+                        position: 'absolute', top: '10px', height: '4px', background: accent, borderRadius: '2px', zIndex: 2,
+                        left: `${(priceRange[0] / MAX_PRICE) * 100}%`, right: `${100 - (priceRange[1] / MAX_PRICE) * 100}%`
+                      }} />
+                      <input type="range" min="0" max={MAX_PRICE} step="100" value={priceRange[0]} onChange={handleMinChange} />
+                      <input type="range" min="0" max={MAX_PRICE} step="100" value={priceRange[1]} onChange={handleMaxChange} />
+                    </div>
+
+                    {/* Инпуты От / До (Исправлен minWidth: 0, чтобы не вылезали) */}
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+                      <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: theme.textSecondary, fontSize: '14px' }}>От</span>
+                        <input type="number" value={priceRange[0]} onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])} 
+                          style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: `1px solid ${theme.border}`, borderRadius: theme.radius.md, padding: '12px 12px 12px 36px', color: '#FFF', fontSize: '15px', fontWeight: 500 }} />
+                      </div>
+                      <span style={{ color: theme.textSecondary }}>—</span>
+                      <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: theme.textSecondary, fontSize: '14px' }}>До</span>
+                        <input type="number" value={priceRange[1]} onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])} 
+                          style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: `1px solid ${theme.border}`, borderRadius: theme.radius.md, padding: '12px 12px 12px 36px', color: '#FFF', fontSize: '15px', fontWeight: 500 }} />
+                      </div>
+                    </div>
+
+                    {/* Быстрые чипы цены */}
+                    <div className="hide-scroll" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                      {[ { l: 'Бесплатно', min: 0, max: 0 }, { l: 'До 500₽', min: 0, max: 500 }, { l: '500-2000₽', min: 500, max: 2000 }, { l: '2000-5000₽', min: 2000, max: 5000 }].map(chip => {
+                        const isActive = (priceRange[0] === chip.min && priceRange[1] === chip.max);
+                        return (
+                          <div key={chip.l} onClick={() => setPriceRange([chip.min, chip.max])} className="spring-btn" style={{ 
+                            padding: '8px 14px', borderRadius: theme.radius.full, 
+                            background: isActive ? 'rgba(212,255,0,0.1)' : 'rgba(255,255,255,0.05)',
+                            border: `1px solid ${isActive ? accent : 'transparent'}`,
+                            color: isActive ? accent : '#FFF',
+                            fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap' 
+                          }}>
+                            {chip.l}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <SectionHeader title="Состояние" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      {[ { id: 'new', label: 'Новое', icon: '✨' }, { id: 'like_new', label: 'Как новое', icon: '⭐' }, { id: 'good', label: 'Хорошее', icon: '👍' }, { id: 'fair', label: 'Удовл.', icon: '👌' }].map(opt => {
+                        const isActive = condition.includes(opt.id);
+                        return (
+                          <div key={opt.id} onClick={() => toggleCondition(opt.id)} className="spring-btn" style={{ 
+                            position: 'relative', padding: '12px', borderRadius: theme.radius.md, 
+                            background: isActive ? 'rgba(212,255,0,0.05)' : 'rgba(255,255,255,0.03)', 
+                            border: `1px solid ${isActive ? accent : theme.border}`, 
+                            display: 'flex', alignItems: 'center', gap: '10px'
+                          }}>
+                            <span style={{ fontSize: '18px' }}>{opt.icon}</span>
+                            <span style={{ fontSize: '14px', fontWeight: 500, color: isActive ? accent : theme.text }}>{opt.label}</span>
+                            
+                            {/* Аккуратная иконка вместо колхозного эмодзи */}
+                            {isActive && <div style={{ position: 'absolute', top: '8px', right: '8px', color: accent }}><Check size={16} strokeWidth={3} /></div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* === ФИЛЬТРЫ ПОСТОВ === */}
+              {mode === 'posts' && (
+                <>
+                  <div>
+                    <SectionHeader title="Теги" />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {POST_TAGS.map(tag => {
+                        const isActive = activeTags.includes(tag.id);
+                        return (
+                          <div key={tag.id} onClick={() => toggleTag(tag.id)} className="spring-btn" style={{ 
+                            padding: '8px 14px', borderRadius: theme.radius.full, 
+                            background: isActive ? 'rgba(212, 255, 0, 0.1)' : 'rgba(255,255,255,0.05)', 
+                            color: isActive ? accent : '#FFF', 
+                            border: `1px solid ${isActive ? accent : 'transparent'}`, 
+                            fontSize: '13px', fontWeight: 500
+                          }}>
+                            {tag.emoji} {tag.label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <SectionHeader title="Дата публикации" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      {[ { id: 'all', label: 'За всё время' }, { id: 'today', label: 'Сегодня' }, { id: 'week', label: 'За неделю' }, { id: 'month', label: 'За месяц' }].map(opt => (
+                         <div key={opt.id} onClick={() => setDateRange(opt.id)} className="spring-btn" style={{ 
+                            padding: '10px', borderRadius: theme.radius.md, textAlign: 'center', fontSize: '13px', fontWeight: 500,
+                            background: dateRange === opt.id ? 'rgba(212,255,0,0.1)' : 'rgba(255,255,255,0.05)',
+                            border: `1px solid ${dateRange === opt.id ? accent : 'transparent'}`, 
+                            color: dateRange === opt.id ? accent : theme.text 
+                          }}>{opt.label}</div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* === ФИЛЬТРЫ ЗАПРОСОВ === */}
+              {mode === 'requests' && (
+                <>
+                  <div>
+                    <SectionHeader title="Срочность" />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {[ { id: 'all', label: 'Все' }, { id: 'soon', label: 'Срочно (<24ч)' }, { id: 'later', label: 'Не горит' }].map(opt => (
+                        <div key={opt.id} onClick={() => setUrgency(opt.id)} className="spring-btn" style={{ 
+                          flex: 1, padding: '10px 4px', borderRadius: theme.radius.md, textAlign: 'center', fontSize: '13px', fontWeight: 500,
+                          background: urgency === opt.id ? 'rgba(212,255,0,0.1)' : 'rgba(255,255,255,0.05)',
+                          border: `1px solid ${urgency === opt.id ? accent : 'transparent'}`, 
+                          color: urgency === opt.id ? accent : theme.text 
+                        }}>{opt.label}</div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <SectionHeader title="Вознаграждение" />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {[ { id: 'all', label: 'Любое' }, { id: 'with', label: 'С наградой 💰' }, { id: 'without', label: 'Без награды 🎁' }].map(opt => (
+                        <div key={opt.id} onClick={() => setReward(opt.id)} className="spring-btn" style={{ 
+                          flex: 1, padding: '10px 4px', borderRadius: theme.radius.md, textAlign: 'center', fontSize: '13px', fontWeight: 500,
+                          background: reward === opt.id ? 'rgba(212,255,0,0.1)' : 'rgba(255,255,255,0.05)',
+                          border: `1px solid ${reward === opt.id ? accent : 'transparent'}`, 
+                          color: reward === opt.id ? accent : theme.text 
+                        }}>{opt.label}</div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <SectionHeader title="Статус" />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {[ { id: 'active', label: 'Активные ✅' }, { id: 'all', label: 'Все запросы 📋' }].map(opt => (
+                        <div key={opt.id} onClick={() => setStatus(opt.id)} className="spring-btn" style={{ 
+                          flex: 1, padding: '10px 4px', borderRadius: theme.radius.md, textAlign: 'center', fontSize: '13px', fontWeight: 500,
+                          background: status === opt.id ? 'rgba(212,255,0,0.1)' : 'rgba(255,255,255,0.05)',
+                          border: `1px solid ${status === opt.id ? accent : 'transparent'}`, 
+                          color: status === opt.id ? accent : theme.text 
+                        }}>{opt.label}</div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* === СОРТИРОВКА (Общая для всех) === */}
+              <div>
+                <SectionHeader title="Сортировка" />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  {[ 
+                    { id: 'newest', label: 'Новые', icon: '🆕' }, 
+                    { id: 'popular', label: mode === 'market' ? 'Дешевле' : (mode === 'requests' ? 'Горят' : 'Топ'), icon: mode === 'market' ? '📉' : (mode === 'requests' ? '⏰' : '🔥') }, 
+                    { id: 'discussed', label: mode === 'market' ? 'Дороже' : (mode === 'requests' ? 'Популярные' : 'Актив'), icon: mode === 'market' ? '📈' : (mode === 'requests' ? '💬' : '💬') }
+                  ].map(opt => (
+                    <div key={opt.id} onClick={() => setSort(opt.id)} className="spring-btn" style={{ 
+                      padding: '12px 6px', borderRadius: theme.radius.md, 
+                      background: sort === opt.id ? 'rgba(212,255,0,0.05)' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${sort === opt.id ? accent : theme.border}`, 
+                      color: sort === opt.id ? accent : theme.textSecondary, 
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' 
+                    }}>
+                      <span style={{ fontSize: '20px', opacity: sort === opt.id ? 1 : 0.7 }}>{opt.icon}</span>
+                      <span style={{ fontSize: '12px', fontWeight: 500, textAlign: 'center' }}>{opt.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Фиксированный Футер с кнопками */}
+            <div style={{ 
+              position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 16px', 
+              background: theme.card, borderTop: `1px solid ${theme.border}`, display: 'flex', gap: '10px',
+              paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 20px))'
+            }}>
+              <button className="spring-btn" style={{ flex: 1, padding: '14px', borderRadius: theme.radius.md, background: 'rgba(255,255,255,0.05)', border: 'none', color: '#FFF', fontSize: '15px', fontWeight: 600 }}>Сбросить</button>
+              <button onClick={onClose} className="spring-btn" style={{ flex: 2, padding: '14px', borderRadius: theme.radius.md, background: accent, border: 'none', color: '#000', fontSize: '15px', fontWeight: 700 }}>Применить (12)</button>
+            </div>
+          </BottomSheet>
+        );
+      };
+
+      // ==========================================
+      // MAIN APP (Playground)
+      // ==========================================
+      function App() {
+        const [filterMode, setFilterMode] = useState('requests'); // Открываем запросы для теста чипов
+        const [showDropdown, setShowDropdown] = useState(false);
+        const [toasts, setToasts] = useState([]);
+        const [showDialog, setShowDialog] = useState(false);
+
+        const addToast = (type, message) => {
+          const id = Date.now();
+          setToasts(prev => [...prev, { id, type, message }]);
+        };
+
+        const postActions = [
+          { icon: Edit2, label: 'Редактировать', accent: theme.info, onClick: () => addToast('info', 'Режим редактирования') },
+          { icon: Share2, label: 'Поделиться', onClick: () => addToast('success', 'Ссылка скопирована') },
+          { icon: Trash2, label: 'Удалить', danger: true, onClick: () => setShowDialog(true) },
+        ];
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: '#050505', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+            
+            <header style={{ paddingTop: '60px', paddingBottom: '16px', paddingLeft: '20px', paddingRight: '20px', borderBottom: `1px solid ${theme.border}` }}>
+              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: '#FFF' }}>UI Kit</h1>
+              <p style={{ margin: '4px 0 0', color: theme.textSecondary, fontSize: '14px' }}>Исправленный дизайн</p>
+            </header>
+
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <button onClick={() => setFilterMode('requests')} className="spring-btn" style={{ padding: '16px', borderRadius: theme.radius.md, background: theme.card, border: `1px solid ${theme.border}`, color: theme.text, fontSize: '15px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <MessageSquare size={20} color={theme.primary} /> Фильтры Запросов
+              </button>
+              <button onClick={() => setFilterMode('posts')} className="spring-btn" style={{ padding: '16px', borderRadius: theme.radius.md, background: theme.card, border: `1px solid ${theme.border}`, color: theme.text, fontSize: '15px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <SlidersHorizontal size={20} color={theme.primary} /> Фильтры Постов
+              </button>
+              <button onClick={() => setFilterMode('market')} className="spring-btn" style={{ padding: '16px', borderRadius: theme.radius.md, background: theme.card, border: `1px solid ${theme.border}`, color: theme.text, fontSize: '15px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <DollarSign size={20} color={theme.primary} /> Фильтры Маркета
+              </button>
+
+              {/* Тест Тостов и Дропдауна */}
+              <div style={{ marginTop: '20px', background: theme.card, borderRadius: theme.radius.lg, padding: '16px', border: `1px solid ${theme.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #7A5CFF, #4DA6FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>А</div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '15px' }}>Алексей Иванов</div>
+                      <div style={{ color: theme.textSecondary, fontSize: '13px', marginTop: '2px' }}>ВШЭ • Только что</div>
+                    </div>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <div onClick={() => setShowDropdown(!showDropdown)} className="spring-btn" style={{ padding: '4px', margin: '-4px', color: theme.textSecondary }}>
+                      <MoreVertical size={20} />
+                    </div>
+                    <DropdownMenu isOpen={showDropdown} onClose={() => setShowDropdown(false)} actions={postActions} />
+                  </div>
+                </div>
+                <p style={{ margin: '12px 0 0', fontSize: '14px', lineHeight: 1.4, color: '#EAEAEA' }}>
+                  Для теста Dropdown-меню и Тостов (центрированы снизу).
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '16px' }}>
+                  <button onClick={() => addToast('success', 'Успех')} className="spring-btn" style={{ padding: '8px', borderRadius: '8px', border: '1px solid #333', background: 'transparent', color: '#FFF' }}>Toast Успех</button>
+                  <button onClick={() => addToast('error', 'Ошибка')} className="spring-btn" style={{ padding: '8px', borderRadius: '8px', border: '1px solid #333', background: 'transparent', color: '#FFF' }}>Toast Ошибка</button>
+                </div>
+              </div>
+
+            </div>
+
+            <FiltersModal isOpen={!!filterMode} onClose={() => setFilterMode(null)} mode={filterMode} />
+            <ToastContainer toasts={toasts} removeToast={(id) => setToasts(p => p.filter(t => t.id !== id))} />
+            <ConfirmDialog isOpen={showDialog} onClose={() => setShowDialog(false)} title="Удалить пост?" message="Восстановить будет невозможно." confirmText="Удалить" isDanger={true} onConfirm={() => addToast('success', 'Пост удален')} />
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

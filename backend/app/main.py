@@ -23,12 +23,40 @@ from app.config import get_settings
 from app.rate_limiter import close_redis
 from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
+from pydantic import ValidationError
 from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router
 import os
 import logging
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_json_list_form_field(raw_value: Optional[str], field_name: str) -> List:
+    """Parse JSON list from multipart form field and return 422 on invalid input."""
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=422,
+            detail=[{
+                "loc": ["body", field_name],
+                "msg": f"{field_name} must be a valid JSON array",
+                "type": "value_error.jsondecode",
+            }],
+        )
+    if not isinstance(parsed, list):
+        raise HTTPException(
+            status_code=422,
+            detail=[{
+                "loc": ["body", field_name],
+                "msg": f"{field_name} must be an array",
+                "type": "type_error.list",
+            }],
+        )
+    return parsed
 
 
 @asynccontextmanager
@@ -475,7 +503,7 @@ async def create_post_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    tags_list = json.loads(tags) if tags else []
+    tags_list = _parse_json_list_form_field(tags, "tags")
     
     # ФИЛЬТРУЕМ ПУСТЫЕ ФАЙЛЫ (ЭТО КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ!)
     valid_images = [
@@ -496,24 +524,27 @@ async def create_post_endpoint(
     if len(valid_images) > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
     
-    post_data = schemas.PostCreate(
-        category=category,
-        title=title,
-        body=body,
-        tags=tags_list,
-        is_anonymous=is_anonymous,
-        lost_or_found=lost_or_found,
-        item_description=item_description,
-        location=location,
-        reward_type=reward_type,
-        reward_value=reward_value,
-        event_name=event_name,
-        event_date=event_date,
-        event_location=event_location,
-        event_contact=event_contact,
-        is_important=is_important,
-        images=[]
-    )
+    try:
+        post_data = schemas.PostCreate(
+            category=category,
+            title=title,
+            body=body,
+            tags=tags_list,
+            is_anonymous=is_anonymous,
+            lost_or_found=lost_or_found,
+            item_description=item_description,
+            location=location,
+            reward_type=reward_type,
+            reward_value=reward_value,
+            event_name=event_name,
+            event_date=event_date,
+            event_location=event_location,
+            event_contact=event_contact,
+            is_important=is_important,
+            images=[]
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
     
     try:
         # valid_images ВМЕСТО images
@@ -676,7 +707,7 @@ async def update_post_endpoint(
     if post.author_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    tags_list = json.loads(tags) if tags else None
+    tags_list = _parse_json_list_form_field(tags, "tags") if tags is not None else None
     try:
         keep_images_list = parse_keep_file_list(keep_images, kind="images")
     except ValueError as e:
@@ -690,22 +721,25 @@ async def update_post_endpoint(
     if post.category == "confessions" and (len(valid_new_images) > 0 or len(keep_images_list) > 0):
         raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
     
-    post_update = schemas.PostUpdate(
-        title=title,
-        body=body,
-        tags=tags_list,
-        lost_or_found=lost_or_found,
-        item_description=item_description,
-        location=location,
-        reward_type=reward_type,
-        reward_value=reward_value,
-        event_name=event_name,
-        event_date=event_date,
-        event_location=event_location,
-        event_contact=event_contact,
-        is_important=is_important,
-        images=None
-    )
+    try:
+        post_update = schemas.PostUpdate(
+            title=title,
+            body=body,
+            tags=tags_list,
+            lost_or_found=lost_or_found,
+            item_description=item_description,
+            location=location,
+            reward_type=reward_type,
+            reward_value=reward_value,
+            event_name=event_name,
+            event_date=event_date,
+            event_location=event_location,
+            event_contact=event_contact,
+            is_important=is_important,
+            images=None
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
     
     try:
         new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
@@ -938,23 +972,26 @@ async def create_request_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    tags_list = json.loads(tags) if tags else []
+    tags_list = _parse_json_list_form_field(tags, "tags")
     valid_images = [img for img in images if img.filename and len(img.filename) > 0]
 
     if len(valid_images) > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
     
-    request_data = schemas.RequestCreate(
-        category=category,
-        title=title,
-        body=body,
-        tags=tags_list,
-        expires_at=expires_at,
-        max_responses=max_responses,
-        reward_type=reward_type,
-        reward_value=reward_value,
-        images=[]
-    )
+    try:
+        request_data = schemas.RequestCreate(
+            category=category,
+            title=title,
+            body=body,
+            tags=tags_list,
+            expires_at=expires_at,
+            max_responses=max_responses,
+            reward_type=reward_type,
+            reward_value=reward_value,
+            images=[]
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
     
     try:
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
@@ -1434,7 +1471,7 @@ async def get_market_feed_endpoint(
     for item in feed_data['items']:
         images = get_image_urls(item.images) if item.images else []
         
-        seller_data = schemas.MarketSeller(
+        seller_data = schemas.UserShort(
             id=item.seller.id,
             name=item.seller.name,
             username=item.seller.username,
@@ -1495,7 +1532,7 @@ async def get_market_favorites_endpoint(
     for item in items:
         images = get_image_urls(item.images) if item.images else []
         
-        seller_data = schemas.MarketSeller(
+        seller_data = schemas.UserShort(
             id=item.seller.id,
             name=item.seller.name,
             username=item.seller.username,
@@ -1552,7 +1589,7 @@ async def get_my_market_items_endpoint(
     for item in items:
         images = get_image_urls(item.images) if item.images else []
         
-        seller_data = schemas.MarketSeller(
+        seller_data = schemas.UserShort(
             id=user.id,
             name=user.name,
             username=user.username,
@@ -1602,7 +1639,7 @@ async def get_market_item_endpoint(
     
     images = get_image_urls(item.images) if item.images else []
     
-    seller_data = schemas.MarketSeller(
+    seller_data = schemas.UserShort(
         id=item.seller.id,
         name=item.seller.name,
         username=item.seller.username,
@@ -1681,7 +1718,7 @@ async def create_market_item_endpoint(
     
     images_urls = get_image_urls(item.images) if item.images else []
     
-    seller_data = schemas.MarketSeller(
+    seller_data = schemas.UserShort(
         id=user.id,
         name=user.name,
         username=user.username,
@@ -1771,7 +1808,7 @@ async def update_market_item_endpoint(
     
     images_urls = get_image_urls(updated_item.images) if updated_item.images else []
     
-    seller_data = schemas.MarketSeller(
+    seller_data = schemas.UserShort(
         id=user.id,
         name=user.name,
         username=user.username,

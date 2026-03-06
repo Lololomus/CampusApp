@@ -3,7 +3,25 @@
 export const theme = {
   // ========== COLORS ==========
   colors: {
-    // Основные (Main App)
+    // #New Premium palette
+    premium: {
+      bg: '#000000',
+      primary: '#D4FF00',
+      primaryText: '#000000',
+      surfaceElevated: '#1C1C1E',
+      surfaceHover: '#2C2C2E',
+      border: 'rgba(255, 255, 255, 0.08)',
+      textMuted: '#888888',
+      textBody: '#D1D1D1',
+      tagColors: {
+        news:        { color: '#4DA6FF', bg: 'rgba(77, 166, 255, 0.15)' },
+        events:      { color: '#D4FF00', bg: 'rgba(212, 255, 0, 0.15)' },
+        confessions: { color: '#FF4D4D', bg: 'rgba(255, 77, 77, 0.15)' },
+        lostFound:   { color: '#A78BFA', bg: 'rgba(167, 139, 250, 0.15)' },
+      },
+    },
+
+    // #Legacy style — Основные (Main App)
     primary: '#8774e1',
     primaryHover: '#7664d0',
     primaryLight: 'rgba(135, 116, 225, 0.1)',

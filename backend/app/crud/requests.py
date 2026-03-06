@@ -47,13 +47,17 @@ async def create_request(
         except Exception as e:
             raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
 
+    expires_at = request.expires_at
+    if expires_at.tzinfo is not None and expires_at.tzinfo.utcoffset(expires_at) is not None:
+        expires_at = expires_at.astimezone(timezone.utc).replace(tzinfo=None)
+
     db_request = models.Request(
         author_id=author_id,
         category=request.category,
         title=request.title,
         body=request.body,
         tags=sanitize_json_field(request.tags),
-        expires_at=request.expires_at,
+        expires_at=expires_at,
         max_responses=request.max_responses,
         status='active',
         reward_type=request.reward_type,

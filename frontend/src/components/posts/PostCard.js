@@ -23,6 +23,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
+  const [isBodyExpanded, setIsBodyExpanded] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
@@ -121,14 +122,15 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const eventDate = useMemo(() => parseApiDate(post.event_date), [post.event_date]);
 
   const catInfo = useMemo(() => {
-    if (isAd) return { label: 'Реклама', color: theme.colors.textTertiary, bg: '#F3F4F6' };
+    const tc = theme.colors.premium.tagColors;
+    if (isAd) return { label: 'Реклама', color: theme.colors.textTertiary, bg: 'rgba(150,150,150,0.15)' };
     switch(post.category) {
-      case 'news': return { label: 'Новости', color: theme.colors.news };
-      case 'events': return { label: 'Событие', color: theme.colors.events };
-      case 'confessions': return { label: 'Подслушано', color: theme.colors.confessions };
-      case 'lost_found': return { label: 'Бюро', color: theme.colors.lostFound };
-      case 'polls': return { label: 'Опрос', color: theme.colors.primary };
-      default: return { label: 'Пост', color: theme.colors.textSecondary };
+      case 'news':        return { label: 'Новости',     ...tc.news };
+      case 'events':      return { label: 'Событие',     ...tc.events };
+      case 'confessions': return { label: 'Подслушано',  ...tc.confessions };
+      case 'lost_found':  return { label: 'Бюро',        ...tc.lostFound };
+      case 'polls':       return { label: 'Опрос',       color: theme.colors.premium.primary, bg: 'rgba(212,255,0,0.15)' };
+      default:            return { label: 'Пост',        color: theme.colors.textSecondary, bg: 'transparent' };
     }
   }, [post.category, isAd]);
 
@@ -300,95 +302,105 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       `}</style>
 
       <div style={styles.card} onClick={handleCardClick}>
-        
-        {/* === HEADER === */}
+
+        {/* === HEADER + BODY (в одной flex-строке с аватаром) === */}
         <div style={styles.header}>
-          <div style={styles.authorRow}>
-            {/* Аватар */}
-            {isAd ? (
-              // Реклама - старая логика
-              <div style={{
-                ...styles.avatar,
-                background: '#EEF2FF'
-              }}>
-                {headerInfo.avatarUrl ? (
-                  <img
-                    src={headerInfo.avatarUrl}
-                    alt=""
-                    style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <Megaphone size={18} color={theme.colors.primary} />
+          {/* Аватар */}
+          {isAd ? (
+            <div style={{ ...styles.avatar, background: '#EEF2FF' }}>
+              {headerInfo.avatarUrl ? (
+                <img
+                  src={headerInfo.avatarUrl}
+                  alt=""
+                  style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <Megaphone size={18} color={theme.colors.primary} />
+              )}
+            </div>
+          ) : (
+            <Avatar
+              ref={avatarRef}
+              user={headerInfo.author}
+              size={44}
+              onClick={() => !post.is_anonymous && post.author?.show_profile && setProfileOpen(true)}
+              showProfile={post.author?.show_profile}
+              isAnonymous={post.is_anonymous}
+            />
+          )}
+
+          {/* Info-колонка */}
+          <div style={styles.authorInfo}>
+            {/* Строка: имя/мета слева, бейдж+меню справа */}
+            <div style={styles.nameRow}>
+              <div style={styles.nameMetaBlock}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={styles.authorName}>{headerInfo.name}</span>
+                  {post.is_important && !isAd && <span style={styles.pinned}>📌</span>}
+                </div>
+                {headerInfo.subtitle && (
+                  <span style={styles.authorMeta}>{headerInfo.subtitle}</span>
                 )}
               </div>
-            ) : (
-              // Обычный пост - новый Avatar компонент
-              <Avatar 
-                ref={avatarRef}
-                user={headerInfo.author}
-                size={40}
-                onClick={() => !post.is_anonymous && post.author?.show_profile && setProfileOpen(true)}
-                showProfile={post.author?.show_profile}
-                isAnonymous={post.is_anonymous}
-              />
-            )}
 
-            <div style={styles.authorInfo}>
-              <div style={styles.nameRow}>
-                <span style={styles.authorName}>
-                  {headerInfo.name}
-                </span>
-                {post.is_important && !isAd && <span style={styles.pinned}>📌</span>}
+              <div style={styles.headerRight}>
+                {isAd && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                    color: '#888', background: '#F0F0F0', padding: '3px 6px', borderRadius: 4,
+                  }}>
+                    Реклама
+                  </span>
+                )}
+                {!isAd && (
+                  <span style={{ ...styles.categoryBadge, color: catInfo.color, background: catInfo.bg }}>
+                    {catInfo.label}
+                  </span>
+                )}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <button
+                    ref={menuButtonRef}
+                    style={styles.menuButton}
+                    onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); hapticFeedback('light'); }}
+                  >
+                    <MoreVertical size={20} />
+                  </button>
+                  <DropdownMenu
+                    isOpen={menuOpen}
+                    onClose={() => setMenuOpen(false)}
+                    anchorRef={menuButtonRef}
+                    items={menuItems}
+                  />
+                </div>
               </div>
-              {headerInfo.subtitle && <span style={styles.authorMeta}>{headerInfo.subtitle}</span>}
             </div>
-          </div>
 
-          <div style={styles.headerRight}>
-            {isAd && (
-               <span style={{
-                 fontSize: 10, fontWeight: 700, textTransform: 'uppercase', 
-                 color: '#888', background: '#F0F0F0', padding: '3px 6px', borderRadius: 4, marginRight: 4
-               }}>
-                 Реклама
-               </span>
-            )}
-            
-            {!isAd && (
-              <span style={{...styles.categoryText, color: catInfo.color}}>
-                {catInfo.label}
-              </span>
+            {/* Заголовок (если есть) */}
+            {post.title && post.category !== 'polls' && (
+              <h3 style={styles.title}>{post.title}</h3>
             )}
 
-            <div style={{position: 'relative', display: 'flex', alignItems: 'center'}}>
-              <button
-                ref={menuButtonRef}
-                style={styles.menuButton}
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); hapticFeedback('light'); }}
-              >
-                <MoreVertical size={20} />
-              </button>
-              <DropdownMenu
-                isOpen={menuOpen}
-                onClose={() => setMenuOpen(false)}
-                anchorRef={menuButtonRef}
-                items={menuItems}
-              />
-            </div>
+            {/* Текст поста — внутри info-колонки (как в моке) */}
+            {post.body && (
+              <div style={{ marginTop: 4 }}>
+                <p style={{
+                  ...styles.body,
+                  WebkitLineClamp: isBodyExpanded ? 'unset' : 4,
+                  overflow: isBodyExpanded ? 'visible' : 'hidden',
+                }}>{post.body}</p>
+                {!isBodyExpanded && post.body.length > 150 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setIsBodyExpanded(true); }}
+                    style={styles.expandButton}
+                  >
+                    Показать всё
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* === CONTENT === */}
-        <div style={styles.content}>
-          {post.title && post.category !== 'polls' && (
-            <h3 style={styles.title}>{post.title}</h3>
-          )}
-
-          {post.body && (
-            <p style={styles.body}>{post.body}</p>
-          )}
         </div>
 
         {post.poll && (
@@ -469,43 +481,40 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
             </div>
 
             <div style={styles.footerRight}>
-              <div style={styles.statItem}>
-                <Eye size={20} color={theme.colors.textTertiary} strokeWidth={2} />
-                <span style={styles.statText}>{post.views_count || 0}</span>
+              {/* Views — read-only pill */}
+              <div style={styles.metricPillReadOnly}>
+                <Eye size={16} strokeWidth={2.5} />
+                <span>{post.views_count || 0}</span>
               </div>
 
+              {/* Comments — interactive pill */}
               <button
-                style={styles.footerAction}
+                style={styles.metricPill}
                 onClick={(e) => {
                   e.stopPropagation();
                   if(onClick) onClick(post.id);
                 }}
               >
-                <MessageCircle size={20} color={theme.colors.textSecondary} strokeWidth={2} />
-                <span style={{...styles.statText, color: theme.colors.textSecondary}}>
-                  {post.comments_count || 0}
-                </span>
+                <MessageCircle size={16} strokeWidth={2.5} />
+                <span>{post.comments_count || 0}</span>
               </button>
 
+              {/* Likes — interactive pill */}
               <button
                 style={{
-                  ...styles.footerAction,
-                  animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none'
+                  ...styles.metricPill,
+                  animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
+                  color: isLiked ? theme.colors.accent : '#888888',
+                  borderColor: isLiked ? theme.colors.accent : '#222',
                 }}
                 onClick={handleLike}
               >
                 <Heart
-                  size={20}
+                  size={16}
                   fill={isLiked ? theme.colors.accent : 'none'}
-                  color={isLiked ? theme.colors.accent : theme.colors.textSecondary}
-                  strokeWidth={isLiked ? 0 : 2}
+                  strokeWidth={isLiked ? 0 : 2.5}
                 />
-                <span style={{
-                  ...styles.statText,
-                  color: isLiked ? theme.colors.accent : theme.colors.textSecondary
-                }}>
-                  {localLikesCount}
-                </span>
+                <span>{localLikesCount}</span>
               </button>
             </div>
           </div>
@@ -568,32 +577,21 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
 
 const styles = {
   card: {
-    backgroundColor: theme.colors.bgSecondary,
-    borderRadius: theme.radius.lg,
-    marginBottom: 8,
-    border: `1px solid ${theme.colors.border}`,
-    overflow: 'hidden',
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
+    padding: '20px 0 12px',
     position: 'relative',
     cursor: 'pointer',
-    transition: 'transform 0.1s ease-out',
     WebkitTapHighlightColor: 'transparent',
   },
   header: {
-    padding: '12px 16px 2px',
     display: 'flex',
-    justifyContent: 'space-between',
+    gap: 12,
+    padding: '0 16px',
     alignItems: 'flex-start',
   },
-  authorRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    minWidth: 0,
-  },
   avatar: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: theme.radius.full,
     display: 'flex',
     alignItems: 'center',
@@ -605,45 +603,53 @@ const styles = {
     overflow: 'hidden',
   },
   authorInfo: {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
+    flex: 1,
     minWidth: 0,
   },
   nameRow: {
     display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  nameMetaBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   authorName: {
-    fontSize: 15,
-    fontWeight: theme.fontWeight.bold,
+    fontSize: 16,
+    fontWeight: 700,
     color: theme.colors.text,
+    lineHeight: 1.2,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    display: 'block',
   },
   pinned: { fontSize: 12 },
   authorMeta: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
+    fontSize: 13,
+    color: theme.colors.premium.textMuted,
     marginTop: 2,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    display: 'block',
   },
   headerRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    gap: 6,
     flexShrink: 0,
-    paddingLeft: theme.spacing.sm,
+    paddingLeft: 8,
   },
-  categoryText: {
-    fontSize: 12,
-    fontWeight: theme.fontWeight.semibold,
+  categoryBadge: {
+    fontSize: 11,
+    fontWeight: 800,
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
+    padding: '4px 10px',
+    borderRadius: 10,
   },
   menuButton: {
     padding: 6,
@@ -657,23 +663,31 @@ const styles = {
     borderRadius: theme.radius.full,
   },
   content: {
-    padding: '1px 16px 1px',
+    padding: '0 16px',
   },
   title: {
     fontSize: 17,
     fontWeight: theme.fontWeight.bold,
-    marginBottom: 6,
+    margin: '4px 0 2px',
     lineHeight: 1.3,
     color: theme.colors.text,
   },
   body: {
     fontSize: 15,
-    lineHeight: 1.5,
-    color: theme.colors.textSecondary,
+    lineHeight: 1.45,
+    color: theme.colors.premium.textBody,
     display: '-webkit-box',
-    WebkitLineClamp: 4,
     WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
+    margin: 0,
+  },
+  expandButton: {
+    background: 'none',
+    border: 'none',
+    color: theme.colors.premium.primary,
+    fontSize: 14,
+    fontWeight: 600,
+    padding: '6px 0',
+    cursor: 'pointer',
   },
   pollWrapper: { margin: `0 16px 12px` },
   specialBlock: {
@@ -694,14 +708,13 @@ const styles = {
     fontWeight: theme.fontWeight.medium,
   },
   imageContainer: {
-    width: '100%',
     position: 'relative',
     backgroundColor: theme.colors.bg,
-    marginBottom: 10,
-    margin: '0 16px 10px',
+    margin: '12px 16px 10px',
     width: 'calc(100% - 32px)',
-    borderRadius: '8px',
+    borderRadius: 16,
     overflow: 'hidden',
+    border: `1px solid ${theme.colors.premium.border}`,
   },
   image: { width: '100%', height: '100%', objectFit: 'cover' },
   imageCounter: {
@@ -746,35 +759,37 @@ const styles = {
   },
   footer: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '6px 16px',
-    backgroundColor: theme.colors.bgSecondary,
-    minHeight: 40,
+    marginTop: 16,
+    padding: '0 16px',
+    minHeight: 36,
   },
   footerLeft: {
     display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0,
   },
   dateText: {
-    fontSize: 12, color: theme.colors.textTertiary, fontWeight: theme.fontWeight.medium,
+    fontSize: 13, color: '#666666', fontWeight: 600,
   },
   editedLabel: {
-    fontSize: 11, color: theme.colors.textTertiary, opacity: 0.7, fontStyle: 'italic',
+    fontSize: 11, color: '#666666', opacity: 0.7, fontStyle: 'italic',
   },
   footerRight: {
-    display: 'flex', alignItems: 'center', gap: 14,
+    display: 'flex', alignItems: 'center', gap: 8,
   },
-  statItem: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.xs,
-    color: theme.colors.textTertiary,
+  metricPill: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    padding: '6px 12px', borderRadius: 20,
+    background: '#161618', border: '1px solid #222',
+    color: '#888888', cursor: 'pointer',
+    fontWeight: 600, fontSize: 13,
+    transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
   },
-  footerAction: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.xs,
-    background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
-    color: theme.colors.textTertiary,
-  },
-  statText: {
-    fontSize: 14, fontWeight: theme.fontWeight.medium,
-    color: theme.colors.textTertiary,
-    minWidth: 14, textAlign: 'center', lineHeight: 1,
+  metricPillReadOnly: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    padding: '6px 4px 6px 0',
+    background: 'transparent', border: 'none',
+    color: '#666666',
+    fontWeight: 600, fontSize: 13,
+    pointerEvents: 'none',
   },
   ctaButton: {
     width: '100%',
