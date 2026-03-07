@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight, Calendar, ExternalLink, Megaphone } from 'lucide-react';
+import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight, Calendar, ExternalLink, Megaphone, Link, Edit2, Trash2, Flag } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { likePost, deletePost, trackAdImpression, trackAdClick } from '../../api';
@@ -120,6 +120,65 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   }, [post.created_at, post.updated_at, isAd]);
 
   const eventDate = useMemo(() => parseApiDate(post.event_date), [post.event_date]);
+
+  const specialMetaItems = useMemo(() => {
+    if (isAd) return [];
+
+    const items = [];
+
+    if (eventDate) {
+      items.push({
+        key: 'event-date',
+        icon: <Calendar size={14} />,
+        text: `${eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в ${eventDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`,
+      });
+    }
+
+    const specialLocation =
+      post.category === 'events'
+        ? (post.event_location || post.location)
+        : post.location;
+
+    if (specialLocation) {
+      items.push({
+        key: 'location',
+        icon: <MapPin size={14} />,
+        text: specialLocation,
+      });
+    }
+
+    if (post.lost_or_found) {
+      const lostFoundLabel = post.lost_or_found === 'lost' ? 'Потерял' : 'Нашел';
+      const lostFoundText = post.item_description
+        ? `${lostFoundLabel}: ${post.item_description}`
+        : lostFoundLabel;
+
+      items.push({
+        key: 'lost-found',
+        icon: <span>{post.lost_or_found === 'lost' ? '🔍' : '🎁'}</span>,
+        text: lostFoundText,
+        style: post.lost_or_found === 'lost'
+          ? {
+              color: theme.colors.error,
+              background: `${theme.colors.error}15`,
+            }
+          : {
+              color: theme.colors.success,
+              background: `${theme.colors.success}15`,
+            },
+      });
+    }
+
+    return items;
+  }, [
+    isAd,
+    eventDate,
+    post.category,
+    post.event_location,
+    post.location,
+    post.lost_or_found,
+    post.item_description,
+  ]);
 
   const catInfo = useMemo(() => {
     const tc = theme.colors.premium.tagColors;
@@ -266,25 +325,25 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const menuItems = [
     ...(actionSet.canCopyLink ? [{
       label: 'Скопировать ссылку',
-      icon: '🔗',
+      icon: <Link size={18} />,
       onClick: handleCopyLink,
       actionType: MENU_ACTIONS.COPY
     }] : []),
     ...(actionSet.canEdit ? [{
       label: 'Редактировать',
-      icon: '✏️',
+      icon: <Edit2 size={18} />,
       onClick: handleEdit,
       actionType: MENU_ACTIONS.EDIT
     }] : []),
     ...(actionSet.canDelete ? [{
       label: 'Удалить',
-      icon: '🗑️',
+      icon: <Trash2 size={18} />,
       onClick: handleDelete,
       actionType: MENU_ACTIONS.DELETE
     }] : []),
     ...(actionSet.canReportContent ? [{
       label: 'Пожаловаться',
-      icon: '🚩',
+      icon: <Flag size={18} />,
       onClick: () => { setMenuOpen(false); setShowReportModal(true); },
       actionType: MENU_ACTIONS.REPORT
     }] : []),
@@ -400,6 +459,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
                 )}
               </div>
             )}
+
+            {specialMetaItems.length > 0 && (
+              <div style={styles.specialBlock}>
+                {specialMetaItems.map((meta) => (
+                  <div key={meta.key} style={{ ...styles.specialItem, ...(meta.style || {}) }}>
+                    {meta.icon}
+                    <span>{meta.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -408,26 +478,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
             <PollWidget poll={post.poll} postId={post.id} />
           </div>
         )}
-
-        {(eventDate || post.lost_or_found || post.location) && !isAd && (
-          <div style={styles.specialBlock}>
-            {eventDate && (
-              <div style={styles.specialItem}>
-                <Calendar size={14} />
-                <span>
-                  {eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в {eventDate.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
-                </span>
-              </div>
-            )}
-            {post.location && (
-              <div style={styles.specialItem}>
-                <MapPin size={14} />
-                <span>{post.location}</span>
-              </div>
-            )}
-          </div>
-        )}
-
         {images.length > 0 && (
           <div style={{...styles.imageContainer, aspectRatio: `${safeRatio}`}} onClick={handleImageClick}>
             <img
@@ -691,7 +741,7 @@ const styles = {
   },
   pollWrapper: { margin: `0 16px 12px` },
   specialBlock: {
-    margin: `0 16px 12px`,
+    marginTop: 12,
     display: 'flex',
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
@@ -811,3 +861,4 @@ const styles = {
 };
 
 export default PostCard;
+

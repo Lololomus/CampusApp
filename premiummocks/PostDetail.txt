@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus - Post Detail (Deep Threads & TMA Header)</title>
+
+    <style>
+      :root {
+        /* Имитация iOS Safe Area для десктопа (в реальном аппе сработает env) */
+        --safe-area-top: env(safe-area-inset-top, 44px);
+        --safe-area-bottom: env(safe-area-inset-bottom, 34px);
+        --primary: #D4FF00;
+        --like-accent: #FF3B30;
+        --bg: #000000;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text-main: #FFFFFF;
+        --text-muted: #8E8E93;
+        --text-body: #EAEAEA;
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: var(--bg); 
+        color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; background: #050505; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.92); opacity: 0.8; }
+
+      /* Пилюли метрик */
+      .metric-pill {
+        display: flex; align-items: center; gap: 6px; 
+        padding: 6px 12px; border-radius: 20px; 
+        background: var(--surface); border: 1px solid var(--border); 
+        color: var(--text-muted); cursor: pointer; font-weight: 600; fontSize: 13px;
+      }
+      .metric-pill.read-only {
+        background: transparent; border: none; padding-left: 0; padding-right: 4px; pointer-events: none;
+      }
+
+      /* Кнопки действий в комментах (Ответить, Лайк) - исправлены, чтобы не выглядели как "печать" */
+      .comment-action {
+        display: flex; align-items: center; gap: 4px; 
+        color: var(--text-muted); font-size: 13px; font-weight: 600;
+        background: none; border: none; padding: 0;
+        transition: opacity 0.2s; cursor: pointer;
+      }
+      .comment-action:active { opacity: 0.5; }
+      
+      /* Инпут в подвале */
+      .input-wrapper {
+        flex: 1; height: 44px; background: var(--surface-elevated); 
+        border-radius: 22px; border: 1px solid var(--border); 
+        display: flex; align-items: center; padding: 0 16px; gap: 8px;
+        transition: border-color 0.2s;
+      }
+      .input-wrapper:focus-within { border-color: rgba(212, 255, 0, 0.4); }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        Heart, Eye, MessageCircle, Send, MoreVertical, MoreHorizontal, 
+        Paperclip, ChevronLeft, CornerDownRight, Flag, Reply 
+      } from 'lucide-react';
+
+      // === КОМПОНЕНТ: DROPDOWN MENU ===
+      const DropdownMenu = ({ isOpen, onClose, actions }) => {
+        if (!isOpen) return null;
+        return (
+          <>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={(e) => { e.stopPropagation(); onClose(); }} />
+            <div style={{
+              position: 'absolute', top: '100%', right: '0', marginTop: '4px',
+              width: '160px', background: 'var(--surface-elevated)', border: '1px solid var(--border)',
+              borderRadius: '12px', padding: '4px', zIndex: 999,
+              boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            }}>
+              {actions.map((action, idx) => (
+                <div key={idx} onClick={(e) => { e.stopPropagation(); action.onClick(); onClose(); }}
+                  style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '8px', cursor: 'pointer', color: action.danger ? 'var(--like-accent)' : '#FFF', fontSize: '14px', fontWeight: 500 }}>
+                  {action.icon} {action.label}
+                </div>
+              ))}
+            </div>
+          </>
+        );
+      };
+
+      // === КОМПОНЕНТ: СВАЙП-КАРУСЕЛЬ ===
+      const SwipeCarousel = ({ photos }) => {
+        const [currentIndex, setCurrentIndex] = useState(0);
+        const scrollRef = useRef(null);
+
+        const handleScroll = (e) => {
+          if (!scrollRef.current) return;
+          const scrollLeft = e.target.scrollLeft;
+          const width = e.target.clientWidth;
+          const newIndex = Math.round(scrollLeft / width);
+          if (newIndex !== currentIndex) setCurrentIndex(newIndex);
+        };
+
+        if (!photos || photos.length === 0) return null;
+
+        return (
+          <div style={{ margin: '16px 0', position: 'relative' }}>
+            <div 
+              ref={scrollRef} onScroll={handleScroll} className="hide-scroll"
+              style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', gap: '8px', borderRadius: '16px', scrollBehavior: 'smooth' }}
+            >
+              {photos.map((url, i) => (
+                <div key={i} style={{ flex: '0 0 100%', scrollSnapAlign: 'center', position: 'relative', aspectRatio: '4/3' }}>
+                  <img src={url} alt={`Photo ${i}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px', border: '1px solid var(--border)' }} />
+                </div>
+              ))}
+            </div>
+            {photos.length > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '12px' }}>
+                {photos.map((_, i) => (
+                  <div key={i} style={{ 
+                    width: i === currentIndex ? '16px' : '6px', height: '6px', borderRadius: '3px', 
+                    background: i === currentIndex ? 'var(--primary)' : 'rgba(255,255,255,0.2)', transition: 'all 0.3s ease'
+                  }} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // === МОК ДАННЫЕ ===
+      const MOCK_POST = {
+        author: 'Артем Лебедев', avatar: 'А', meta: 'ФКН • 3 курс', time: 'Сегодня в 14:20', tag: 'ИНСАЙД',
+        title: 'Зацените новый коворкинг на Покровке',
+        body: 'Наконец-то открыли ту самую зону на 4 этаже. Розеток куча, пуфики удобные, а самое главное — работает отличная вентиляция. Приходите занимать места, пока перваки не пронюхали! 👇',
+        photos: [
+          'https://images.unsplash.com/photo-1527192491265-7e15c55b1ed2?auto=format&fit=crop&q=80&w=800', 
+          'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=600'
+        ],
+        views: '1.2k', comments: 4, likes: 124, isLiked: false
+      };
+
+      const MOCK_COMMENTS = [
+        { id: 1, author: 'Катя Иванова', avatar: 'К', text: 'Ого, а там пускают с едой? Хочу с кофе завалиться.', time: '14:25', likes: 12, replies: [
+          { id: 2, author: 'Артем Лебедев', avatar: 'А', text: 'Официально нет, но если аккуратно, то всем пофиг. Главное стаканы не оставляй.', time: '14:28', likes: 4, isOp: true, replies: [
+            { id: 3, author: 'Катя Иванова', avatar: 'К', text: 'Поняла, спасибо! Буду как ниндзя 🥷', time: '14:30', likes: 1, replies: [
+              { id: 5, author: 'Аноним', avatar: '?', color: '#8b5cf6', text: 'Там еще и камеры висят, так что поосторожнее с этим)', time: '14:35', likes: 0, replies: [] }
+            ] }
+          ]}
+        ]},
+        { id: 4, author: 'Аноним', avatar: '?', color: '#FF4D4D', text: 'А вот такой вид из окна там. Интернет, кстати, летает (speedtest выдал 250мбит).', time: '14:50', likes: 25, 
+          attachment: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=300',
+          replies: [] 
+        }
+      ];
+
+      function App() {
+        const [isLiked, setIsLiked] = useState(MOCK_POST.isLiked);
+        const [likesCount, setLikesCount] = useState(MOCK_POST.likes);
+        const [commentText, setCommentText] = useState('');
+        
+        const [menuOpen, setMenuOpen] = useState(null);
+        const [attachedImage, setAttachedImage] = useState(null);
+
+        // --- СТЕЙТ ТОЛЬКО ДЛЯ АНИМАЦИИ ШАПКИ ---
+        const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+        const lastScrollY = useRef(0);
+        const textareaRef = useRef(null);
+
+        // Обработчик скролла (скрываем только верх)
+        const handleMainScroll = (e) => {
+          const currentScrollY = e.target.scrollTop;
+          
+          if (currentScrollY <= 0) {
+            setIsHeaderHidden(false);
+            lastScrollY.current = currentScrollY;
+            return;
+          }
+
+          if (currentScrollY > lastScrollY.current && currentScrollY > 60) {
+            if (!isHeaderHidden) setIsHeaderHidden(true);
+          } else if (currentScrollY < lastScrollY.current - 5) {
+            if (isHeaderHidden) setIsHeaderHidden(false);
+          }
+          lastScrollY.current = currentScrollY;
+        };
+
+        const handleLike = () => {
+          setIsLiked(!isLiked);
+          setLikesCount(prev => isLiked ? prev - 1 : prev + 1);
+        };
+
+        const renderComment = (comment, depth = 0) => (
+          <div key={comment.id} style={{ position: 'relative', marginBottom: '16px' }}>
+            
+            {comment.replies && comment.replies.length > 0 && (
+              <div style={{
+                position: 'absolute', left: '17.5px', top: '36px', bottom: '-16px', width: '2px',
+                background: 'var(--border)', zIndex: 0
+              }} />
+            )}
+
+            <div style={{ display: 'flex', position: 'relative', zIndex: 1 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: comment.color || 'linear-gradient(135deg, #7A5CFF, #4DA6FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 800, color: '#FFF', flexShrink: 0 }}>
+                {comment.avatar}
+              </div>
+              
+              <div style={{ flex: 1, paddingLeft: '10px', minWidth: 0 }}>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-main)' }}>{comment.author}</span>
+                    {comment.isOp && <span style={{ background: 'rgba(255,255,255,0.1)', color: '#FFF', padding: '2px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>АВТОР</span>}
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>• {comment.time}</span>
+                  </div>
+                  
+                  <div style={{ position: 'relative' }}>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === comment.id ? null : comment.id); }}
+                      className="spring-btn" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: '0 4px', margin: '-4px' }}>
+                      <MoreHorizontal size={18} />
+                    </button>
+                    <DropdownMenu 
+                      isOpen={menuOpen === comment.id} 
+                      onClose={() => setMenuOpen(null)}
+                      actions={[
+                        { label: 'Ответить', icon: <Reply size={16}/>, onClick: () => console.log('Reply') },
+                        { label: 'Пожаловаться', icon: <Flag size={16}/>, danger: true, onClick: () => alert('Жалоба отправлена') }
+                      ]}
+                    />
+                  </div>
+                </div>
+                
+                <p style={{ margin: '4px 0 8px', fontSize: '14px', color: 'var(--text-body)', lineHeight: 1.45 }}>{comment.text}</p>
+                
+                {comment.attachment && (
+                  <div style={{ marginBottom: '8px' }}>
+                    <img src={comment.attachment} alt="Attachment" style={{ width: '160px', height: '120px', objectFit: 'cover', borderRadius: '12px', border: '1px solid var(--border)' }} />
+                  </div>
+                )}
+                
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  <button className="comment-action">
+                    Ответить
+                  </button>
+                  <button className="comment-action" style={{ color: comment.likes > 20 ? 'var(--like-accent)' : 'var(--text-muted)' }}>
+                    <Heart size={14} fill={comment.likes > 20 ? 'var(--like-accent)' : 'none'} strokeWidth={comment.likes > 20 ? 0 : 2} /> {comment.likes}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {comment.replies && comment.replies.length > 0 && (
+              <div style={{ marginLeft: '28px', marginTop: '16px', position: 'relative', zIndex: 1 }}>
+                {comment.replies.map(reply => renderComment(reply, depth + 1))}
+              </div>
+            )}
+          </div>
+        );
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: 'var(--bg)', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            {/* АНИМИРОВАННЫЙ ВЕРХ (ЛЕТАЕТ) */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, pointerEvents: 'none',
+              transform: isHeaderHidden ? 'translateY(-100%)' : 'translateY(0)',
+              transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+            }}>
+              <div style={{ 
+                height: '88px', pointerEvents: 'auto',
+                background: 'var(--bg)',
+                display: 'flex', alignItems: 'flex-end', padding: '0 8px 10px',
+                borderBottom: '1px solid rgba(255,255,255,0.05)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <button className="spring-btn" style={{ background: 'none', border: 'none', color: '#FFF', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '16px' }}>
+                    <ChevronLeft size={28} style={{ marginLeft: '-8px' }}/> Назад
+                  </button>
+                  <span style={{ fontWeight: 600, fontSize: '15px', color: '#FFF' }}>Campus.</span>
+                  <button className="spring-btn" style={{ background: 'none', border: 'none', color: '#FFF', display: 'flex', padding: '4px' }}>
+                    <MoreHorizontal size={24} />
+                  </button>
+                </div>
+              </div>
+              <div style={{ 
+                height: '20px', 
+                background: 'linear-gradient(to bottom, var(--bg) 0%, rgba(0,0,0,0) 100%)'
+              }} />
+            </div>
+
+            {/* ОСНОВНОЙ КОНТЕНТ */}
+            <div className="hide-scroll" onScroll={handleMainScroll} style={{ flex: 1, overflowY: 'auto', paddingTop: '100px', paddingBottom: '140px' }}>
+              <div style={{ padding: '0 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #7A5CFF, #4DA6FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: 800, color: '#FFF' }}>
+                      {MOCK_POST.avatar}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text-main)', lineHeight: 1.2 }}>{MOCK_POST.author}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '2px' }}>{MOCK_POST.meta}</span>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ background: 'rgba(212, 255, 0, 0.12)', color: 'var(--primary)', padding: '6px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px' }}>
+                      {MOCK_POST.tag}
+                    </div>
+                    <button className="spring-btn" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', display: 'flex', padding: '4px' }}>
+                      <MoreVertical size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                <h2 style={{ margin: '0 0 10px', fontSize: '20px', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1.3 }}>{MOCK_POST.title}</h2>
+                <p style={{ margin: 0, fontSize: '15px', color: 'var(--text-body)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                  {MOCK_POST.body}
+                </p>
+
+                <SwipeCarousel photos={MOCK_POST.photos} />
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600 }}>{MOCK_POST.time}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="metric-pill read-only">
+                      <Eye size={16} strokeWidth={2.5} /> <span>{MOCK_POST.views}</span>
+                    </div>
+                    <button className="metric-pill spring-btn">
+                      <MessageCircle size={16} strokeWidth={2.5} /> <span>{MOCK_POST.comments}</span>
+                    </button>
+                    <button 
+                      onClick={handleLike} className="metric-pill spring-btn" 
+                      style={{ borderColor: isLiked ? 'rgba(255, 59, 48, 0.3)' : 'var(--border)', background: isLiked ? 'rgba(255, 59, 48, 0.1)' : 'var(--surface)' }}
+                    >
+                      <Heart size={16} fill={isLiked ? 'var(--like-accent)' : 'none'} color={isLiked ? 'var(--like-accent)' : 'var(--text-muted)'} strokeWidth={isLiked ? 0 : 2.5} /> 
+                      <span style={{ color: isLiked ? 'var(--like-accent)' : 'var(--text-muted)' }}>{likesCount}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: '24px 16px' }}>
+                <h3 style={{ margin: '0 0 24px', fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>Комментарии ({MOCK_COMMENTS.length + 3})</h3>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {MOCK_COMMENTS.map(c => renderComment(c, 0))}
+                </div>
+              </div>
+            </div>
+
+            {/* FLOATING PILL (НЕ ПРОПАДАЕТ, ОПТИМИЗИРОВАННЫЙ БЛЮР) */}
+            <div style={{ 
+              position: 'absolute', 
+              bottom: 'calc(env(safe-area-inset-bottom, 34px) + 12px)', 
+              left: '12px', right: '12px', 
+              zIndex: 100,
+              background: 'rgba(28, 28, 30, 0.85)', /* Чуть плотнее, чтобы снизить нагрузку на блюр */
+              backdropFilter: 'blur(16px)', /* Снизили радиус до 16px для производительности */
+              WebkitBackdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '24px',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+              display: 'flex', flexDirection: 'column', 
+              overflow: 'hidden',
+              transform: 'translateZ(0)', /* Аппаратное ускорение на мобилках */
+              willChange: 'transform' /* Подсказка браузеру для плавной работы */
+            }}>
+              
+              {/* Превью прикрепленного фото (появляется внутри капсулы) */}
+              {attachedImage && (
+                <div style={{ padding: '12px 16px 4px', display: 'flex', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ position: 'relative' }}>
+                    <img src={attachedImage} alt="preview" style={{ width: '60px', height: '60px', borderRadius: '12px', objectFit: 'cover' }} />
+                    <button 
+                      onClick={() => setAttachedImage(null)} 
+                      style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#333', color: '#FFF', border: '2px solid var(--surface-elevated)', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', cursor: 'pointer', paddingBottom: '2px' }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ padding: '6px 6px 6px 12px', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                <button 
+                  onClick={() => setAttachedImage('https://images.unsplash.com/photo-1527192491265-7e15c55b1ed2?auto=format&fit=crop&q=80&w=100')}
+                  style={{ 
+                    width: '36px', height: '36px', borderRadius: '18px', flexShrink: 0, 
+                    background: 'none', border: 'none', 
+                    color: attachedImage ? 'var(--primary)' : 'var(--text-muted)', 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                    cursor: 'pointer', marginBottom: '4px'
+                  }}>
+                  <Paperclip size={20} />
+                </button>
+                
+                {/* Умная Textarea с авто-расширением */}
+                <textarea 
+                  ref={textareaRef}
+                  rows={1}
+                  placeholder="Написать комментарий..." 
+                  value={commentText} 
+                  onChange={(e) => {
+                    setCommentText(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
+                  }}
+                  style={{ 
+                    flex: 1, background: 'transparent', border: 'none', color: '#FFF', 
+                    fontSize: '15px', outline: 'none', resize: 'none',
+                    minHeight: '22px', maxHeight: '100px', padding: '11px 0',
+                    lineHeight: '1.4', fontFamily: 'inherit'
+                  }}
+                />
+                
+                {/* Кнопка отправки с пружинной анимацией */}
+                <button 
+                  style={{ 
+                    width: '36px', height: '36px', borderRadius: '18px', flexShrink: 0, 
+                    cursor: (commentText.trim() || attachedImage) ? 'pointer' : 'default',
+                    background: (commentText.trim() || attachedImage) ? 'var(--primary)' : 'transparent', 
+                    color: (commentText.trim() || attachedImage) ? 'var(--bg)' : 'var(--text-muted)',
+                    border: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                    transition: 'all 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
+                    transform: (commentText.trim() || attachedImage) ? 'scale(1)' : 'scale(0.8)',
+                    opacity: (commentText.trim() || attachedImage) ? 1 : 0.5,
+                    marginBottom: '4px'
+                  }}
+                >
+                  <Send size={16} style={{ marginLeft: (commentText.trim() || attachedImage) ? '2px' : '0', transition: 'margin 0.2s' }} />
+                </button>
+              </div>
+            </div>
+
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

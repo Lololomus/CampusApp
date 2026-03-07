@@ -27,7 +27,7 @@ function ConfirmationDialog({
 
   const confirmColors = {
     danger: theme.colors.error,
-    primary: theme.colors.primary,
+    primary: '#D4FF00',
     success: theme.colors.success,
   };
 
@@ -69,6 +69,7 @@ function ConfirmationDialog({
             style={{
               ...styles.confirmButton,
               background: confirmColors[confirmType] || confirmColors.danger,
+              color: confirmType === 'primary' ? '#000' : '#fff',
             }}
           >
             {confirmText}

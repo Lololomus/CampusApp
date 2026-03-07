@@ -16,7 +16,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    margin: '8px 4px 14px',
+    margin: '4px 4px',
   },
   line: {
     flex: 1,

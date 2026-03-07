@@ -70,9 +70,9 @@ function Feed() {
       const cat = postCategories.find(c => c.id === activeCategory);
       return cat ? cat.label : 'Посты';
     } else {
-      if (requestsCategory === 'all') return 'Запросы';
+      if (requestsCategory === 'all') return 'Помощь';
       const cat = requestCategories.find(c => c.id === requestsCategory);
-      return cat ? cat.label : 'Запросы';
+      return cat ? cat.label : 'Помощь';
     }
   };
 
@@ -445,7 +445,7 @@ function Feed() {
               color: feedSubTab === 'requests' ? '#000' : '#FFF',
             }}
           >
-            Запросы
+            Помощь
           </button>
         </div>
       </AppHeader>

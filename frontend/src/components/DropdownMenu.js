@@ -9,12 +9,8 @@ const SAFE_MARGIN = 8;
 
 
 export const ACTION_COLORS = {
-  edit: '#10b981',
-  copy: '#8b5cf6',
-  delete: '#ef4444',
-  report: '#f59e0b',
-  share: '#3b82f6',
-  default: theme.colors.text,
+  delete: '#FF453A',
+  default: '#FFFFFF',
 };
 
 
@@ -323,22 +319,10 @@ function MenuItem({
       disabled={disabled}
       style={{
         ...styles.menuItem,
-        borderLeft: `4px solid ${accentColor}`,
-        paddingTop: '14px',
-        paddingRight: '16px',
-        paddingBottom: '14px',
-        paddingLeft: '12px',
-        color: disabled 
-          ? theme.colors.textDisabled 
-          : theme.colors.text,
+        color: disabled ? theme.colors.textDisabled : accentColor,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
-        background: isHighlighted 
-          ? `linear-gradient(90deg, ${accentColor}18 0%, transparent 100%)`
-          : 'transparent',
-        boxShadow: isHighlighted 
-          ? `0 0 0 3px ${accentColor}40, 0 0 24px ${accentColor}50`
-          : 'none',
+        background: isHighlighted ? 'rgba(255,255,255,0.08)' : 'transparent',
         transform: isHighlighted ? 'scale(0.98)' : 'scale(1)',
       }}
       onClick={handleClick}
@@ -347,14 +331,7 @@ function MenuItem({
       onTouchStart={() => !disabled && setIsPressed(true)}
       onTouchEnd={() => setIsPressed(false)}
     >
-      <span 
-        style={{
-          ...styles.menuIcon,
-          color: accentColor,
-          transform: isHighlighted ? 'scale(1.15)' : 'scale(1)',
-          transition: 'all 0.2s ease',
-        }}
-      >
+      <span style={{ ...styles.menuIcon, color: accentColor }}>
         {icon}
       </span>
       <span style={styles.menuLabel}>{label}</span>
@@ -367,10 +344,8 @@ const styles = {
   backdrop: {
     position: 'fixed',
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    backdropFilter: 'blur(2px)',
-    WebkitBackdropFilter: 'blur(2px)',
-    zIndex: 10000, // ✅ УВЕЛИЧЕНО: было 9998, теперь выше SwipeableModal (9999)
+    backgroundColor: 'transparent',
+    zIndex: 10000,
     transition: 'opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
   },
   
@@ -396,22 +371,23 @@ const styles = {
   menuItem: {
     position: 'relative',
     width: '100%',
-    minHeight: 52,
+    minHeight: 44,
     background: 'transparent',
     border: 'none',
-    borderRadius: theme.radius.lg,
+    borderRadius: 6,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
     textAlign: 'left',
     cursor: 'pointer',
-    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
     display: 'flex',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
+    padding: '10px 12px',
     WebkitTapHighlightColor: 'transparent',
     userSelect: 'none',
     outline: 'none',
-    marginBottom: 4,
+    marginBottom: 2,
     overflow: 'hidden',
   },
   

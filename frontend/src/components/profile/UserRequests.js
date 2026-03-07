@@ -178,8 +178,13 @@ function UserRequests() {
       {/* Requests List */}
       <div style={styles.content}>
         {filteredRequests.length > 0 ? (
-          requestRows.map((row) => (
-            row.type === 'divider' ? (
+          requestRows.map((row, rowIndex) => {
+            const isAfterDivider =
+              row.type === 'item' &&
+              rowIndex > 0 &&
+              requestRows[rowIndex - 1].type === 'divider';
+
+            return row.type === 'divider' ? (
               <FeedDateDivider key={row.key} label={row.label} />
             ) : (
               <div
@@ -194,10 +199,11 @@ function UserRequests() {
                   onClick={handleOpenRequest}
                   onEdit={handleEditRequest}
                   onDelete={handleDeleteRequest}
+                  compactTop={isAfterDivider}
                 />
               </div>
-            )
-          ))
+            );
+          })
         ) : (
           <div style={styles.empty}>
             <div style={styles.emptyEmoji}>⚡</div>

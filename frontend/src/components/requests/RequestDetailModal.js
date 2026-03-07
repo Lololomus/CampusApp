@@ -1,27 +1,69 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/requests/RequestDetailModal.js =====
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Clock, Calendar, User, MoreVertical, Gift } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  Calendar,
+  Clock,
+  Flag,
+  Gift,
+  Link,
+  Lock,
+  MessageSquare,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  User,
+  Zap,
+} from 'lucide-react';
 import { useStore } from '../../store';
-import { getRequestById, respondToRequest, updateRequest, getRequestResponses } from '../../api';
+import {
+  getRequestById,
+  getRequestResponses,
+  respondToRequest,
+  updateRequest,
+} from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import { REWARD_TYPE_LABELS, REWARD_TYPE_ICONS } from '../../types';
-import SwipeableModal from '../shared/SwipeableModal';
+import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS } from '../../types';
 import DropdownMenu from '../DropdownMenu';
 import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { toast } from '../shared/Toast';
-import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
+import { getEntityActionSet, isEntityOwner } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate } from '../../utils/datetime';
+import { useSwipe } from '../../hooks/useSwipe';
+import { MENU_ACTIONS } from '../../constants/contentConstants';
+import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 
+const CATEGORY_CONFIG = {
+  study: {
+    label: '📚 УЧЁБА',
+    color: '#4DA6FF',
+    bg: 'rgba(77, 166, 255, 0.15)',
+  },
+  help: {
+    label: '🤝 ПОМОЩЬ',
+    color: '#FF9F0A',
+    bg: 'rgba(255, 159, 10, 0.15)',
+  },
+  hangout: {
+    label: '🎉 ДВИЖ',
+    color: '#D4FF00',
+    bg: 'rgba(212, 255, 0, 0.15)',
+  },
+};
 
 function RequestDetailModal({ onClose, onEdit, onDelete }) {
-  const { currentRequest, setCurrentRequest, user, updateRequest: updateStoreRequest } = useStore();
-  
-  const [request, setRequest] = useState(null);
+  const {
+    currentRequest,
+    setCurrentRequest,
+    user,
+    updateRequest: updateStoreRequest,
+  } = useStore();
+
+  const [request, setRequest] = useState(currentRequest || null);
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState(false);
@@ -33,132 +75,200 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
-  
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [descriptionScrollState, setDescriptionScrollState] = useState({
+    isTop: true,
+    isBottom: false,
+  });
+
   const menuButtonRef = useRef(null);
   const authorAvatarRef = useRef(null);
+  const sheetRef = useRef(null);
+  const descriptionRef = useRef(null);
+  const scrollTouchStateRef = useRef({ startY: 0, shouldSwipe: false });
 
-
-  const CATEGORIES = {
-    study: {
-      label: 'Учёба',
-      icon: '📚',
-      color: '#3b82f6',
-      gradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
-    },
-    help: {
-      label: 'Помощь',
-      icon: '🤝',
-      color: '#10b981',
-      gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-    },
-    hangout: {
-      label: 'Движ',
-      icon: '🎉',
-      color: '#f59e0b',
-      gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
-    }
-  };
-
-
-  const categoryConfig = CATEGORIES[request?.category] || CATEGORIES.study;
-
+  const safeRequest = request || currentRequest;
+  const categoryConfig = CATEGORY_CONFIG[safeRequest?.category] || CATEGORY_CONFIG.study;
 
   const images = useMemo(() => {
-    if (!request?.images) return [];
-    if (Array.isArray(request.images)) return request.images;
-    try { 
-      return JSON.parse(request.images); 
-    } catch { 
-      return []; 
+    if (!safeRequest?.images) return [];
+    if (Array.isArray(safeRequest.images)) return safeRequest.images;
+    try {
+      return JSON.parse(safeRequest.images);
+    } catch {
+      return [];
     }
-  }, [request?.images]);
-
+  }, [safeRequest?.images]);
 
   const getImageUrl = (img) => {
     if (!img) return '';
-    const filename = (typeof img === 'object') ? img.url : img;
+    const filename = typeof img === 'object' ? img.url : img;
     return resolveImageUrl(filename, 'images');
   };
 
-
-  const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
-  const isOwner = useMemo(() => isEntityOwner('request', request, user), [request, user]);
+  const viewerPhotos = useMemo(() => images.map((img) => getImageUrl(img)), [images]);
+  const isOwner = useMemo(() => isEntityOwner('request', safeRequest, user), [safeRequest, user]);
   const actionSet = useMemo(
     () => getEntityActionSet('request', isOwner, { shareEnabled: false }),
     [isOwner]
   );
-
 
   useEffect(() => {
     if (!currentRequest) {
       onClose();
       return;
     }
-
+    setRequest(currentRequest);
     loadRequestData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRequest]);
 
+  useEffect(() => {
+    setDescriptionExpanded(false);
+    setDescriptionScrollState({ isTop: true, isBottom: false });
+    if (descriptionRef.current) descriptionRef.current.scrollTop = 0;
+  }, [safeRequest?.id]);
+
+  useEffect(() => {
+    if (!descriptionExpanded) return;
+    const timer = setTimeout(() => {
+      updateDescriptionScrollState();
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [descriptionExpanded]);
+
+  const swipeHandlers = useSwipe({
+    elementRef: sheetRef,
+    onSwipeDown: () => handleClose(),
+    isModal: true,
+    threshold: 110,
+  });
+
+  const handleScrollAreaTouchStart = (e) => {
+    e.stopPropagation();
+    const atTop = e.currentTarget.scrollTop <= 0;
+    scrollTouchStateRef.current.startY = e.touches?.[0]?.clientY || 0;
+    scrollTouchStateRef.current.shouldSwipe = atTop;
+    if (atTop) {
+      swipeHandlers.onTouchStart(e);
+    }
+  };
+
+  const handleScrollAreaTouchMove = (e) => {
+    e.stopPropagation();
+    if (!scrollTouchStateRef.current.shouldSwipe) return;
+
+    const currentY = e.touches?.[0]?.clientY || 0;
+    const deltaY = currentY - scrollTouchStateRef.current.startY;
+
+    // Swipe-to-close only for downward gesture from top of scroll.
+    if (deltaY <= 0) return;
+
+    e.preventDefault();
+    swipeHandlers.onTouchMove(e);
+  };
+
+  const handleScrollAreaTouchEnd = (e) => {
+    e.stopPropagation();
+    if (!scrollTouchStateRef.current.shouldSwipe) return;
+    swipeHandlers.onTouchEnd(e);
+    scrollTouchStateRef.current.shouldSwipe = false;
+  };
 
   const loadRequestData = async () => {
+    if (!currentRequest?.id) return;
+
     try {
       setLoading(true);
-
       const data = await getRequestById(currentRequest.id);
       setRequest(data);
 
       if (isEntityOwner('request', data, user)) {
         const responsesData = await getRequestResponses(currentRequest.id);
         setResponses(responsesData || []);
+      } else {
+        setResponses([]);
       }
-
     } catch (error) {
-      console.error('❌ Ошибка загрузки запроса:', error);
+      console.error('Request detail load error:', error);
+      toast.error('Не удалось загрузить запрос');
     } finally {
       setLoading(false);
     }
   };
 
-
-  const getTimeRemaining = () => {
-    if (!request?.expires_at) return null;
-
-    const now = new Date();
-    const expiresAt = parseApiDate(request.expires_at);
-    if (!expiresAt) return null;
-    const diffMs = expiresAt - now;
-
-    if (diffMs <= 0) {
-      return { text: 'Истёк', color: '#666', pulse: false, expired: true };
+  const timeState = useMemo(() => {
+    if (!safeRequest) {
+      return {
+        isClosed: false,
+        isExpired: false,
+        text: '—',
+        color: '#888888',
+        bg: '#2C2C2E',
+        urgent: false,
+        burning: false,
+      };
     }
 
+    const now = new Date();
+    const expiresAt = parseApiDate(safeRequest.expires_at);
+    const isClosed = safeRequest.status === 'closed';
+    const isExpired = !isClosed && (!expiresAt || expiresAt <= now || safeRequest.status === 'expired');
+
+    if (isClosed) {
+      return {
+        isClosed: true,
+        isExpired: false,
+        text: 'Закрыт',
+        color: '#888888',
+        bg: '#2C2C2E',
+        urgent: false,
+        burning: false,
+      };
+    }
+
+    if (isExpired) {
+      return {
+        isClosed: false,
+        isExpired: true,
+        text: 'Истёк',
+        color: '#888888',
+        bg: '#2C2C2E',
+        urgent: false,
+        burning: false,
+      };
+    }
+
+    const diffMs = Math.max(0, expiresAt - now);
     const minutes = Math.floor(diffMs / 60000);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
     let text = '';
-    let color = 'rgba(255,255,255,0.9)';
-    let pulse = false;
+    if (days > 0) text = `${days}д ${hours % 24}ч`;
+    else if (hours > 0) text = `${hours}ч ${minutes % 60}м`;
+    else text = `${minutes}м`;
 
-    if (days > 0) {
-      text = `${days}д ${hours % 24}ч`;
-      color = 'rgba(255,255,255,0.9)';
-    } else if (hours >= 3) {
-      text = `${hours}ч ${minutes % 60}м`;
-      color = 'rgba(255,255,255,0.9)';
-    } else if (hours >= 1) {
-      text = `${hours}ч ${minutes % 60}м`;
-      color = '#f59e0b';
-    } else {
-      text = `${minutes}м`;
-      color = '#ef4444';
-      pulse = true;
-    }
+    const urgent = diffMs <= 3 * 60 * 60 * 1000;
+    const burning = diffMs <= 60 * 60 * 1000;
 
-    return { text, color, pulse, expired: false };
-  };
+    return {
+      isClosed: false,
+      isExpired: false,
+      text: `Осталось ${text}`,
+      color: urgent ? '#FF453A' : '#888888',
+      bg: urgent ? 'rgba(255, 69, 58, 0.15)' : '#2C2C2E',
+      urgent,
+      burning,
+    };
+  }, [safeRequest]);
 
-
-  const timeRemaining = getTimeRemaining();
+  const rewardText = useMemo(() => {
+    if (!safeRequest?.reward_type || safeRequest.reward_type === 'none') return null;
+    const icon = REWARD_TYPE_ICONS[safeRequest.reward_type] || '🎁';
+    const label = REWARD_TYPE_LABELS[safeRequest.reward_type] || 'Награда';
+    return safeRequest.reward_value ? `${icon} ${safeRequest.reward_value}` : `${icon} ${label}`;
+  }, [safeRequest?.reward_type, safeRequest?.reward_value]);
 
   const formatRuDateTime = (value) => {
     const parsed = parseApiDate(value);
@@ -167,55 +277,47 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
       day: 'numeric',
       month: 'long',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
-
-  const getDatesInfo = () => {
-    if (!request) return null;
-
-    const createdDate = parseApiDate(request.created_at);
-    const expiresDate = parseApiDate(request.expires_at);
+  const datesInfo = useMemo(() => {
+    if (!safeRequest) return null;
+    const createdDate = parseApiDate(safeRequest.created_at);
+    const expiresDate = parseApiDate(safeRequest.expires_at);
     if (!createdDate || !expiresDate) return null;
+
     const now = new Date();
+    const diffHours = Math.floor((expiresDate - now) / 3600000);
+    const isExpired = expiresDate <= now || safeRequest.status === 'expired';
 
-    const createdStr = formatRuDateTime(createdDate);
-    const expiresStr = formatRuDateTime(expiresDate);
-
-    const isExpired = expiresDate < now;
-    const diffMs = expiresDate - now;
-    const hours = Math.floor(diffMs / 3600000);
-
-    let deadlineColor = theme.colors.textSecondary;
-    if (isExpired) {
-      deadlineColor = '#666';
-    } else if (hours < 3) {
-      deadlineColor = '#ef4444';
-    } else if (hours < 24) {
-      deadlineColor = '#f59e0b';
-    }
+    let deadlineColor = '#D1D1D1';
+    if (isExpired || safeRequest.status === 'closed') deadlineColor = '#888888';
+    else if (diffHours < 3) deadlineColor = '#FF453A';
+    else if (diffHours < 24) deadlineColor = '#FF9F0A';
 
     return {
-      created: createdStr,
-      deadline: expiresStr,
+      created: formatRuDateTime(createdDate),
+      deadline: formatRuDateTime(expiresDate),
+      isExpired,
       deadlineColor,
-      isExpired
     };
+  }, [safeRequest]);
+
+  const updateDescriptionScrollState = () => {
+    if (!descriptionRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = descriptionRef.current;
+    setDescriptionScrollState({
+      isTop: scrollTop <= 1,
+      isBottom: scrollTop + clientHeight >= scrollHeight - 1,
+    });
   };
-
-
-  const datesInfo = getDatesInfo();
-
-
   const handleClose = () => {
     if (isPhotoViewerJustClosed || isDropdownJustClosed) return;
-    
     hapticFeedback('light');
     setCurrentRequest(null);
     onClose();
   };
-
 
   const handleImageClick = (e, index) => {
     e.stopPropagation();
@@ -224,363 +326,379 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
     setIsPhotoViewerOpen(true);
   };
 
-
   const handleRespond = async () => {
-    if (!request || isOwner || request.has_responded || datesInfo?.isExpired) {
+    if (!safeRequest || isOwner || safeRequest.has_responded || datesInfo?.isExpired || safeRequest.status !== 'active') {
       return;
     }
 
     try {
       setResponding(true);
       hapticFeedback('medium');
-
-      await respondToRequest(request.id, {});
+      await respondToRequest(safeRequest.id);
 
       const updatedRequest = {
-        ...request,
+        ...safeRequest,
         has_responded: true,
-        responses_count: (request.responses_count || 0) + 1
+        responses_count: (safeRequest.responses_count || 0) + 1,
       };
-
       setRequest(updatedRequest);
-      updateStoreRequest(request.id, {
+      updateStoreRequest(safeRequest.id, {
         has_responded: true,
-        responses_count: updatedRequest.responses_count
+        responses_count: updatedRequest.responses_count,
       });
 
       hapticFeedback('success');
-      alert('✅ Отклик отправлен! Автор запроса сможет написать вам в Telegram.');
-
+      toast.success('Отклик отправлен');
     } catch (error) {
-      console.error('❌ Ошибка отклика:', error);
+      console.error('Request respond error:', error);
       hapticFeedback('error');
-      alert('❌ ' + (error.message || 'Не удалось отправить отклик'));
+      toast.error(error?.message || 'Не удалось отправить отклик');
     } finally {
       setResponding(false);
     }
   };
 
-
   const handleCloseRequest = async () => {
-    if (!request || !isOwner) return;
-
-    if (!window.confirm('Закрыть запрос? Его больше нельзя будет открыть.')) {
-      return;
-    }
+    if (!safeRequest || !isOwner) return;
+    if (!window.confirm('Закрыть запрос? Его больше нельзя будет открыть.')) return;
 
     try {
       hapticFeedback('medium');
-      await updateRequest(request.id, { status: 'closed' });
+      await updateRequest(safeRequest.id, { status: 'closed' });
+      setRequest((prev) => (prev ? { ...prev, status: 'closed' } : prev));
+      updateStoreRequest(safeRequest.id, { status: 'closed' });
       hapticFeedback('success');
-      handleClose();
+      toast.success('Запрос закрыт');
     } catch (error) {
-      console.error('❌ Ошибка закрытия:', error);
+      console.error('Request close error:', error);
       hapticFeedback('error');
-      alert('❌ ' + (error.message || 'Не удалось закрыть запрос'));
+      toast.error(error?.message || 'Не удалось закрыть запрос');
     }
   };
 
-
   const openTelegramChat = (username) => {
     if (!username) return;
-    
     hapticFeedback('light');
     const cleanUsername = username.replace('@', '');
     window.open(`https://t.me/${cleanUsername}`, '_blank');
   };
 
   const handleCopyLink = async () => {
-    if (!request) return;
+    if (!safeRequest) return;
     hapticFeedback('light');
-    const link = `campusapp://request/${request.id}`;
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(`campusapp://request/${safeRequest.id}`);
       toast.success('Ссылка скопирована');
       setMenuOpen(false);
       setIsDropdownJustClosed(true);
-      setTimeout(() => setIsDropdownJustClosed(false), 300);
+      setTimeout(() => setIsDropdownJustClosed(false), 250);
     } catch (error) {
       console.error('Copy request link error:', error);
       toast.error('Не удалось скопировать ссылку');
     }
   };
 
-
   const menuItems = [
-    ...(actionSet.canCopyLink ? [{
-      label: 'Скопировать ссылку',
-      icon: '🔗',
-      actionType: 'copy',
-      onClick: handleCopyLink
-    }] : []),
-    ...(actionSet.canEdit ? [{
-        label: 'Редактировать',
-        icon: '✏️',
-        actionType: 'edit',
-        onClick: () => {
-          hapticFeedback('light');
-          setMenuOpen(false);
-          setIsDropdownJustClosed(true);
-          setTimeout(() => setIsDropdownJustClosed(false), 300);
-          if (onEdit) onEdit(request);
-        }
-      }] : []),
-    ...(actionSet.canDelete ? [{
-        label: 'Удалить',
-        icon: '🗑️',
-        actionType: 'delete',
-        onClick: () => {
-          hapticFeedback('medium');
-          setMenuOpen(false);
-          setIsDropdownJustClosed(true);
-          setTimeout(() => setIsDropdownJustClosed(false), 300);
-          if (onDelete) onDelete(request);
-        }
-      }] : []),
-    ...(actionSet.canReportContent ? [{
-      label: 'Пожаловаться',
-      icon: '🚩',
-      actionType: 'report',
-      onClick: () => {
-        hapticFeedback('light');
-        setMenuOpen(false);
-        setIsDropdownJustClosed(true);
-        setTimeout(() => setIsDropdownJustClosed(false), 300);
-        setShowReportModal(true);
-      }
-    }] : [])
+    ...(actionSet.canCopyLink
+      ? [{
+          label: 'Скопировать ссылку',
+          icon: <Link size={18} />,
+          actionType: MENU_ACTIONS.COPY,
+          onClick: handleCopyLink,
+        }]
+      : []),
+    ...(actionSet.canEdit
+      ? [{
+          label: 'Редактировать',
+          icon: <Pencil size={18} />,
+          actionType: MENU_ACTIONS.EDIT,
+          onClick: () => {
+            hapticFeedback('light');
+            setMenuOpen(false);
+            setIsDropdownJustClosed(true);
+            setTimeout(() => setIsDropdownJustClosed(false), 250);
+            if (onEdit && safeRequest) onEdit(safeRequest);
+          },
+        }]
+      : []),
+    ...(actionSet.canDelete
+      ? [{
+          label: 'Удалить',
+          icon: <Trash2 size={18} />,
+          actionType: MENU_ACTIONS.DELETE,
+          onClick: () => {
+            hapticFeedback('medium');
+            setMenuOpen(false);
+            setIsDropdownJustClosed(true);
+            setTimeout(() => setIsDropdownJustClosed(false), 250);
+            if (onDelete && safeRequest) onDelete(safeRequest);
+          },
+        }]
+      : []),
+    ...(actionSet.canReportContent
+      ? [{
+          label: 'Пожаловаться',
+          icon: <Flag size={18} />,
+          actionType: MENU_ACTIONS.REPORT,
+          onClick: () => {
+            hapticFeedback('light');
+            setMenuOpen(false);
+            setIsDropdownJustClosed(true);
+            setTimeout(() => setIsDropdownJustClosed(false), 250);
+            setShowReportModal(true);
+          },
+        }]
+      : []),
   ];
 
+  if (!safeRequest) return null;
 
-  if (!request) {
-    return null;
-  }
-
-
+  const descriptionLong = (safeRequest.body || '').length > 150;
+  const descriptionTopFadeVisible = descriptionExpanded && !descriptionScrollState.isTop;
+  const descriptionBottomFadeVisible = !descriptionExpanded || !descriptionScrollState.isBottom;
   const photoGridColumns = images.length <= 3 ? 3 : 2;
 
-
-  // Custom Header Component
-  const customHeader = (
-    <div style={{ ...styles.header, background: categoryConfig.gradient }}>
-      <div style={styles.categoryLabel}>
-        <span style={styles.categoryIcon}>{categoryConfig.icon}</span>
-        <span style={styles.categoryText}>{categoryConfig.label}</span>
-      </div>
-      
-      <div style={styles.headerRight}>
-        {timeRemaining && (
-          <div style={{
-            ...styles.timer,
-            color: timeRemaining.color,
-            animation: timeRemaining.pulse ? 'pulse 2s ease-in-out infinite' : 'none'
-          }}>
-            <Clock size={14} style={{ marginRight: 4 }} />
-            {timeRemaining.text}
-          </div>
-        )}
-
-        <button
-          ref={menuButtonRef}
-          style={styles.menuButton}
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen(!menuOpen);
-            hapticFeedback('light');
-          }}
-        >
-          <MoreVertical size={18} />
-        </button>
-      </div>
-    </div>
-  );
-
-
-  return (
+  return createPortal(
     <>
       <style>{keyframesStyles}</style>
 
-      <SwipeableModal
-        isOpen={true}
-        onClose={handleClose}
-        title={customHeader}
-      >
-        <div style={styles.content}>
-          <h1 style={styles.title}>{request.title}</h1>
+      <div style={styles.overlay} onClick={handleClose}>
+        <div style={styles.backdrop} />
 
-          <div style={styles.authorBlock}>
-            <Avatar 
-              ref={authorAvatarRef}
-              user={request.author}
-              size={48}
-              onClick={() => request.author?.show_profile && setProfileOpen(true)}
-              showProfile={request.author?.show_profile}
-            />
-            <div style={styles.authorInfo}>
-              <div style={styles.authorName}>{request.author?.username || request.author?.name || 'Аноним'}</div>
-              <div style={styles.authorDetails}>
-                {[
-                  request.author?.course && `${request.author.course} курс`,
-                  request.author?.university,
-                  request.author?.institute
-                ].filter(Boolean).join(' • ')}
+        <div
+          ref={sheetRef}
+          {...swipeHandlers}
+          style={styles.sheet}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={styles.dragWrap}>
+            <div style={styles.dragHandle} />
+          </div>
+
+          <div
+            style={styles.scrollArea}
+            onTouchStart={handleScrollAreaTouchStart}
+            onTouchMove={handleScrollAreaTouchMove}
+            onTouchEnd={handleScrollAreaTouchEnd}
+            onTouchCancel={handleScrollAreaTouchEnd}
+          >
+            {loading && !request ? <div style={styles.loading}>Загрузка...</div> : null}
+
+            <h1 style={styles.title}>{safeRequest.title}</h1>
+
+            <div style={styles.chipsRow}>
+              <div style={{ ...styles.chip, color: categoryConfig.color, background: categoryConfig.bg }}>
+                {categoryConfig.label}
+              </div>
+              {rewardText && (
+                <div style={{ ...styles.chip, color: '#32D74B', background: 'rgba(50, 215, 75, 0.12)' }}>
+                  <Gift size={14} />
+                  {rewardText}
+                </div>
+              )}
+              <div style={{ ...styles.chip, color: timeState.color, background: timeState.bg }}>
+                {timeState.burning ? (
+                  <span className="burning-dot" />
+                ) : timeState.urgent ? (
+                  <Zap size={14} strokeWidth={2.8} />
+                ) : (
+                  <Clock size={14} />
+                )}
+                {timeState.text}
               </div>
             </div>
-            {isOwner && (
-              <div style={styles.authorBadge}>Вы</div>
+
+            <div style={styles.authorRow}>
+              <div style={styles.authorLeft}>
+                <Avatar
+                  ref={authorAvatarRef}
+                  user={safeRequest.author}
+                  size={48}
+                  onClick={() => safeRequest.author?.show_profile && setProfileOpen(true)}
+                  showProfile={safeRequest.author?.show_profile}
+                />
+                <div style={styles.authorInfo}>
+                  <div style={styles.authorNameWrap}>
+                    <span style={styles.authorName}>
+                      {safeRequest.author?.username || safeRequest.author?.name || 'Аноним'}
+                    </span>
+                    {isOwner && <span style={styles.ownerBadge}>ЭТО ВЫ</span>}
+                  </div>
+                  <div style={styles.authorMeta}>
+                    {[
+                      safeRequest.author?.course && `${safeRequest.author.course} курс`,
+                      safeRequest.author?.university,
+                      safeRequest.author?.institute,
+                    ].filter(Boolean).join(' • ')}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                ref={menuButtonRef}
+                style={styles.menuButton}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  hapticFeedback('light');
+                  setMenuOpen((prev) => !prev);
+                }}
+              >
+                <MoreVertical size={20} />
+              </button>
+            </div>
+
+            <div style={styles.section}>
+              <h4 style={styles.sectionTitle}>ОПИСАНИЕ</h4>
+              <div style={styles.descriptionWrap}>
+                {descriptionLong && (
+                  <div style={{ ...styles.descriptionTopFade, opacity: descriptionTopFadeVisible ? 1 : 0 }} />
+                )}
+                <div
+                  ref={descriptionRef}
+                  onScroll={updateDescriptionScrollState}
+                  style={{
+                    ...styles.description,
+                    maxHeight: descriptionExpanded ? 220 : 96,
+                    overflowY: descriptionExpanded ? 'auto' : 'hidden',
+                  }}
+                >
+                  {safeRequest.body}
+                </div>
+                {descriptionLong && (
+                  <div
+                    style={{
+                      ...styles.descriptionBottomFade,
+                      opacity: descriptionBottomFadeVisible ? 1 : 0,
+                    }}
+                  />
+                )}
+              </div>
+              {descriptionLong && !descriptionExpanded && (
+                <button type="button" onClick={() => setDescriptionExpanded(true)} style={styles.expandButton}>
+                  Показать ещё
+                </button>
+              )}
+            </div>
+            {images.length > 0 && (
+              <div style={styles.section}>
+                <h4 style={styles.sectionTitle}>ФОТО ({images.length})</h4>
+                <div style={{ ...styles.imagesGrid, gridTemplateColumns: `repeat(${photoGridColumns}, 1fr)` }}>
+                  {images.map((img, index) => (
+                    <button
+                      key={`${safeRequest.id}-image-${index}`}
+                      type="button"
+                      style={styles.imageButton}
+                      onClick={(e) => handleImageClick(e, index)}
+                    >
+                      <img src={getImageUrl(img)} alt="" style={styles.image} loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {safeRequest.tags && safeRequest.tags.length > 0 && (
+              <div style={styles.tags}>
+                {safeRequest.tags.map((tag, index) => (
+                  <span key={`${tag}-${index}`} style={styles.tag}>
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {datesInfo && (
+              <div style={styles.infoBlock}>
+                <div style={styles.infoRow}>
+                  <Calendar size={16} />
+                  <span>Создано: {datesInfo.created}</span>
+                </div>
+                <div style={styles.infoRow}>
+                  <Clock size={16} />
+                  <span>
+                    Актуально до:{' '}
+                    <span style={{ color: datesInfo.deadlineColor, fontWeight: 700 }}>
+                      {datesInfo.deadline}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {isOwner && responses.length > 0 && (
+              <div style={styles.section}>
+                <h4 style={styles.sectionTitle}>ОТКЛИКИ ({responses.length})</h4>
+                <div style={styles.responsesList}>
+                  {responses.map((response) => (
+                    <div key={response.id} style={styles.responseCard}>
+                      <div style={styles.responseHeader}>
+                        <div style={styles.responseAvatar}>
+                          {response.author?.name?.[0]?.toUpperCase() || 'A'}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={styles.responseName}>{response.author?.name || 'Аноним'}</div>
+                          <div style={styles.responseTime}>{formatRuDateTime(response.created_at)}</div>
+                        </div>
+                      </div>
+                      {response.message && (
+                        <div style={styles.responseMessage}>{response.message}</div>
+                      )}
+                      {response.telegram_contact && (
+                        <button
+                          type="button"
+                          onClick={() => openTelegramChat(response.telegram_contact)}
+                          style={styles.telegramButton}
+                        >
+                          <User size={16} />
+                          Написать в Telegram
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
-          {request.reward_type && request.reward_type !== 'none' && (
-            <div style={styles.rewardBlock}>
-              <Gift size={20} style={{ flexShrink: 0, color: '#FFD700' }} />
-              <div style={styles.rewardInfo}>
-                <div style={styles.rewardLabel}>
-                  {REWARD_TYPE_ICONS[request.reward_type] || '🎁'} {REWARD_TYPE_LABELS[request.reward_type] || 'Награда'}
-                </div>
-                {request.reward_value && (
-                  <div style={styles.rewardValue}>{request.reward_value}</div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>Описание</h3>
-            <p style={styles.body}>{request.body}</p>
-          </div>
-
-          {images.length > 0 && (
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>Фотографии ({images.length})</h3>
-              <div style={{
-                ...styles.imagesGrid,
-                gridTemplateColumns: `repeat(${photoGridColumns}, 1fr)`
-              }}>
-                {images.map((img, idx) => (
-                  <div 
-                    key={idx} 
-                    style={styles.imageItem}
-                    onClick={(e) => handleImageClick(e, idx)}
-                  >
-                    <img 
-                      src={getImageUrl(img)} 
-                      alt="" 
-                      style={styles.image}
-                      loading="lazy"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {request.tags && request.tags.length > 0 && (
-            <div style={styles.tags}>
-              {request.tags.map((tag, idx) => (
-                <span key={idx} style={styles.tag}>
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {datesInfo && (
-            <div style={styles.infoBlock}>
-              <div style={styles.infoItem}>
-                <Calendar size={16} color={theme.colors.textSecondary} />
-                <span>Создано: {datesInfo.created}</span>
-              </div>
-              <div style={styles.infoItem}>
-                <Clock size={16} color={datesInfo.deadlineColor} />
-                <span style={{ color: datesInfo.deadlineColor }}>
-                  Актуально до: {datesInfo.deadline}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {isOwner && responses.length > 0 && (
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>
-                Отклики ({responses.length})
-              </h3>
-
-              <div style={styles.responsesList}>
-                {responses.map((response) => (
-                  <div key={response.id} style={styles.responseCard}>
-                    <div style={styles.responseHeader}>
-                      <div style={styles.responseAvatar}>
-                        {response.author?.name?.[0]?.toUpperCase() || 'A'}
-                      </div>
-                      <div style={styles.responseInfo}>
-                        <div style={styles.responseName}>
-                          {response.author?.name || 'Аноним'}
-                        </div>
-                        <div style={styles.responseTime}>
-                          {formatRuDateTime(response.created_at)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {response.message && (
-                      <div style={styles.responseMessage}>
-                        {response.message}
-                      </div>
-                    )}
-
-                    {response.telegram_contact && (
-                      <button
-                        onClick={() => openTelegramChat(response.telegram_contact)}
-                        style={styles.telegramButton}
-                      >
-                        <User size={16} />
-                        Написать в Telegram
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Bottom Bar */}
-          <div style={styles.bottomBar}>
+          <div style={styles.stickyFooter}>
             {isOwner ? (
               <button
+                type="button"
                 onClick={handleCloseRequest}
-                style={styles.closeRequestButton}
-                disabled={request.status === 'closed'}
+                style={styles.ownerFooterButton}
+                disabled={safeRequest.status === 'closed'}
               >
-                {request.status === 'closed' ? '✓ Запрос закрыт' : 'Закрыть запрос'}
+                {safeRequest.status === 'closed' ? 'Запрос закрыт' : 'Закрыть таску (Решено)'}
               </button>
-            ) : request.has_responded ? (
-              <button style={styles.respondedButton} disabled>
-                ✓ Вы откликнулись
+            ) : safeRequest.has_responded ? (
+              <button type="button" style={styles.disabledFooterButton} disabled>
+                Вы уже откликнулись
               </button>
-            ) : datesInfo?.isExpired ? (
-              <button style={styles.expiredButton} disabled>
-                Запрос истёк
+            ) : datesInfo?.isExpired || safeRequest.status !== 'active' ? (
+              <button type="button" style={styles.disabledFooterButton} disabled>
+                <Lock size={18} /> Запрос недоступен
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleRespond}
-                style={styles.respondButton}
+                style={styles.primaryFooterButton}
                 disabled={responding}
               >
-                {responding ? 'Отправка...' : 'Откликнуться →'}
+                <MessageSquare size={20} strokeWidth={2.4} />
+                {responding ? 'Отправка...' : 'Откликнуться'}
               </button>
             )}
           </div>
         </div>
-      </SwipeableModal>
+      </div>
 
       <DropdownMenu
         isOpen={menuOpen}
         onClose={() => {
           setMenuOpen(false);
           setIsDropdownJustClosed(true);
-          setTimeout(() => setIsDropdownJustClosed(false), 300);
+          setTimeout(() => setIsDropdownJustClosed(false), 250);
         }}
         anchorRef={menuButtonRef}
         items={menuItems}
@@ -593,19 +711,19 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
           onClose={() => {
             setIsPhotoViewerOpen(false);
             setIsPhotoViewerJustClosed(true);
-            setTimeout(() => setIsPhotoViewerJustClosed(false), 100);
+            setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
           }}
         />
       )}
-      
-      {request?.author && (
+
+      {safeRequest.author && (
         <ProfileMiniCard
           isOpen={profileOpen}
           onClose={() => setProfileOpen(false)}
-          user={request.author}
+          user={safeRequest.author}
           anchorRef={authorAvatarRef}
           onReportUser={() => {
-            const targetUserId = request.author?.id || request.author_id;
+            const targetUserId = safeRequest.author?.id || safeRequest.author_id;
             if (!targetUserId || isOwner) return;
             setShowUserReportModal(true);
           }}
@@ -616,365 +734,394 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         targetType="request"
-        targetId={request.id}
+        targetId={safeRequest.id}
       />
       <ReportModal
         isOpen={showUserReportModal}
         onClose={() => setShowUserReportModal(false)}
         targetType="user"
-        targetId={request.author?.id || request.author_id}
+        targetId={safeRequest.author?.id || safeRequest.author_id}
         sourceType="request"
-        sourceId={request.id}
+        sourceId={safeRequest.id}
       />
-    </>
+    </>,
+    document.body
   );
 }
 
-
-// ===== СТИЛИ =====
 const styles = {
-  header: {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 9999,
     display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    position: 'absolute',
+    inset: 0,
+    zIndex: Z_MODAL_REQUEST_DETAIL,
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(4px)',
+    WebkitBackdropFilter: 'blur(4px)',
+    animation: 'requestModalFadeIn 0.2s ease forwards',
+  },
+  sheet: {
+    position: 'relative',
+    zIndex: Z_MODAL_REQUEST_DETAIL + 1,
+    background: '#1C1C1E',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTop: `1px solid ${theme.colors.premium.border}`,
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    animation: 'requestModalSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+    transform: 'translate3d(0, 0, 0)',
+  },
+  dragWrap: {
+    display: 'flex',
+    justifyContent: 'center',
+    padding: '10px 0 4px',
+    flexShrink: 0,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 3,
+    background: 'rgba(255,255,255,0.2)',
+  },
+  scrollArea: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '12px 20px 24px',
+  },
+  loading: {
+    color: '#888888',
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  title: {
+    margin: '0 0 16px',
+    color: '#FFFFFF',
+    fontSize: 24,
+    lineHeight: 1.2,
+    fontWeight: 800,
+  },
+  chipsRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 24,
+  },
+  chip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 12px',
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  authorRow: {
+    display: 'flex',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
-    color: '#fff',
-    marginLeft: `-${theme.spacing.xl}px`,
-    marginRight: `-${theme.spacing.xl}px`,
-    marginTop: 0,
-    marginBottom: theme.spacing.xl,
+    gap: 10,
+    paddingBottom: 16,
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
+    marginBottom: 16,
   },
-
-  categoryLabel: {
+  authorLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.sm
+    gap: 12,
+    minWidth: 0,
   },
-
-  categoryIcon: {
-    fontSize: theme.fontSize.xl
-  },
-
-  categoryText: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold
-  },
-
-  headerRight: {
+  authorInfo: { minWidth: 0 },
+  authorNameWrap: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.xs
+    gap: 8,
   },
-
-  timer: {
-    display: 'flex',
-    alignItems: 'center',
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    padding: `${theme.spacing.xs}px ${theme.spacing.md}px`,
-    background: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: theme.radius.md
+  authorName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
-
+  ownerBadge: {
+    border: '1px solid #D4FF00',
+    color: '#D4FF00',
+    borderRadius: 6,
+    padding: '2px 6px',
+    fontSize: 10,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  authorMeta: {
+    marginTop: 4,
+    color: '#888888',
+    fontSize: 13,
+    lineHeight: 1.2,
+  },
   menuButton: {
-    background: 'rgba(0, 0, 0, 0.2)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     border: 'none',
-    borderRadius: theme.radius.sm,
-    width: 32,
-    height: 32,
+    background: '#2C2C2E',
+    color: '#FFFFFF',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    color: '#fff',
-    padding: 0
+    flexShrink: 0,
   },
-
-  content: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.lg,
-  },
-
-  title: {
-    fontSize: theme.fontSize.xxl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
-    lineHeight: 1.3,
-    margin: 0,
-  },
-
-  authorBlock: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    padding: theme.spacing.lg,
-    background: theme.colors.card,
-    borderRadius: theme.radius.lg,
-  },
-
-  authorInfo: {
-    flex: 1
-  },
-
-  authorName: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-    marginBottom: 4
-  },
-
-  authorDetails: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textTertiary
-  },
-
-  authorBadge: {
-    padding: `${theme.spacing.xs}px ${theme.spacing.md}px`,
-    background: theme.colors.primary,
-    color: '#fff',
-    borderRadius: theme.radius.md,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold
-  },
-
-  rewardBlock: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    padding: theme.spacing.lg,
-    background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%)',
-    border: '2px solid rgba(255, 215, 0, 0.3)',
-    borderRadius: theme.radius.lg,
-  },
-
-  rewardInfo: {
-    flex: 1
-  },
-
-  rewardLabel: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: '#FFD700',
-    marginBottom: 4
-  },
-
-  rewardValue: {
-    fontSize: theme.fontSize.base,
-    color: '#FFA500',
-    fontWeight: theme.fontWeight.medium
-  },
-
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.md,
-  },
-
+  section: { marginBottom: 24 },
   sectionTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-    margin: 0,
+    margin: '0 0 8px',
+    color: '#888888',
+    fontSize: 13,
+    fontWeight: 600,
+    letterSpacing: '0.5px',
+    textTransform: 'uppercase',
   },
-
-  body: {
-    fontSize: theme.fontSize.lg,
-    color: theme.colors.text,
-    lineHeight: 1.6,
+  descriptionWrap: { position: 'relative' },
+  description: {
+    margin: 0,
+    color: '#EAEAEA',
+    fontSize: 15,
+    lineHeight: 1.45,
     whiteSpace: 'pre-wrap',
-    margin: 0,
+    transition: 'max-height 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
   },
-
-  imagesGrid: {
-    display: 'grid',
-    gap: theme.spacing.sm
-  },
-
-  imageItem: {
-    position: 'relative',
-    paddingTop: '100%',
-    background: theme.colors.bgSecondary,
-    borderRadius: theme.radius.md,
-    overflow: 'hidden',
-    cursor: 'pointer'
-  },
-
-  image: {
+  descriptionTopFade: {
     position: 'absolute',
     top: 0,
     left: 0,
+    right: 0,
+    height: 24,
+    background: 'linear-gradient(to top, transparent, #1C1C1E)',
+    pointerEvents: 'none',
+    zIndex: 2,
+    transition: 'opacity 0.25s ease',
+  },
+  descriptionBottomFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 42,
+    background: 'linear-gradient(to bottom, rgba(28,28,30,0), #1C1C1E 70%)',
+    pointerEvents: 'none',
+    zIndex: 2,
+    transition: 'opacity 0.25s ease',
+  },
+  expandButton: {
+    marginTop: 10,
+    border: 'none',
+    background: 'transparent',
+    color: '#D4FF00',
+    fontSize: 14,
+    fontWeight: 700,
+    padding: 0,
+    cursor: 'pointer',
+  },
+  imagesGrid: {
+    display: 'grid',
+    gap: 8,
+  },
+  imageButton: {
+    position: 'relative',
+    width: '100%',
+    paddingTop: '100%',
+    border: 'none',
+    borderRadius: 12,
+    overflow: 'hidden',
+    background: '#2C2C2E',
+    cursor: 'pointer',
+  },
+  image: {
+    position: 'absolute',
+    inset: 0,
     width: '100%',
     height: '100%',
-    objectFit: 'cover'
+    objectFit: 'cover',
   },
-
   tags: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: theme.spacing.sm,
+    gap: 8,
+    marginBottom: 24,
   },
-
   tag: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.primary,
-    background: 'rgba(135, 116, 225, 0.1)',
-    padding: `${theme.spacing.xs}px ${theme.spacing.md}px`,
-    borderRadius: theme.radius.md
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: '#2C2C2E',
+    color: '#BDBDBD',
+    fontSize: 12,
+    fontWeight: 600,
   },
-
   infoBlock: {
-    padding: theme.spacing.lg,
-    background: theme.colors.card,
-    borderRadius: theme.radius.lg,
+    background: '#2C2C2E',
+    borderRadius: 12,
+    border: `1px solid ${theme.colors.premium.border}`,
+    padding: 12,
+    marginBottom: 24,
+    display: 'grid',
+    gap: 10,
   },
-
-  infoItem: {
+  infoRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.sm,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.sm
+    gap: 8,
+    color: '#CFCFCF',
+    fontSize: 14,
+    lineHeight: 1.35,
   },
-
   responsesList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.md
+    display: 'grid',
+    gap: 12,
   },
-
   responseCard: {
-    padding: theme.spacing.lg,
-    background: theme.colors.card,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
+    background: '#2C2C2E',
+    borderRadius: 12,
+    border: `1px solid ${theme.colors.premium.border}`,
+    padding: 12,
   },
-
   responseHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.md
+    gap: 10,
   },
-
   responseAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.full,
-    background: theme.colors.primary,
-    color: '#fff',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    background: 'rgba(255,255,255,0.08)',
+    color: '#FFFFFF',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    flexShrink: 0
+    fontSize: 14,
+    fontWeight: 700,
+    flexShrink: 0,
   },
-
-  responseInfo: {
-    flex: 1
-  },
-
   responseName: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.text,
-    marginBottom: 2
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 700,
+    lineHeight: 1.2,
   },
-
   responseTime: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textTertiary
+    marginTop: 2,
+    color: '#888888',
+    fontSize: 12,
+    lineHeight: 1.2,
   },
-
   responseMessage: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    lineHeight: 1.5,
-    marginBottom: theme.spacing.md
+    marginTop: 10,
+    color: '#D4D4D4',
+    fontSize: 14,
+    lineHeight: 1.4,
+    whiteSpace: 'pre-wrap',
   },
-
   telegramButton: {
-    display: 'flex',
+    marginTop: 12,
+    width: '100%',
+    minHeight: 42,
+    borderRadius: 10,
+    border: 'none',
+    background: '#1C1C1E',
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 700,
+    display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: theme.spacing.xs,
-    width: '100%',
-    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-    background: '#0088cc',
-    color: '#fff',
-    border: 'none',
-    borderRadius: theme.radius.md,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer'
-  },
-
-  bottomBar: {
-    marginTop: theme.spacing.lg,
-    paddingTop: theme.spacing.lg,
-    borderTop: `1px solid ${theme.colors.border}`,
-  },
-
-  respondButton: {
-    width: '100%',
-    padding: theme.spacing.lg,
-    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, #b19ef5 100%)`,
-    color: '#fff',
-    border: 'none',
-    borderRadius: theme.radius.lg,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
+    gap: 8,
     cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(135, 116, 225, 0.4)'
   },
-
-  respondedButton: {
-    width: '100%',
-    padding: theme.spacing.lg,
-    background: '#10b981',
-    color: '#fff',
-    border: 'none',
-    borderRadius: theme.radius.lg,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'not-allowed',
-    opacity: 0.7
+  stickyFooter: {
+    borderTop: `1px solid ${theme.colors.premium.border}`,
+    background: '#1C1C1E',
+    padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
+    flexShrink: 0,
   },
-
-  expiredButton: {
+  primaryFooterButton: {
     width: '100%',
-    padding: theme.spacing.lg,
-    background: '#666',
-    color: '#fff',
+    minHeight: 48,
     border: 'none',
-    borderRadius: theme.radius.lg,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'not-allowed',
-    opacity: 0.5
+    borderRadius: 14,
+    background: '#D4FF00',
+    color: '#101010',
+    fontSize: 16,
+    fontWeight: 800,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    cursor: 'pointer',
   },
-
-  closeRequestButton: {
+  disabledFooterButton: {
     width: '100%',
-    padding: theme.spacing.lg,
-    background: '#ef4444',
-    color: '#fff',
+    minHeight: 48,
     border: 'none',
-    borderRadius: theme.radius.lg,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer'
-  }
+    borderRadius: 14,
+    background: '#2C2C2E',
+    color: '#666666',
+    fontSize: 15,
+    fontWeight: 700,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    cursor: 'default',
+  },
+  ownerFooterButton: {
+    width: '100%',
+    minHeight: 48,
+    borderRadius: 14,
+    border: 'none',
+    background: '#2C2C2E',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
 };
 
 const keyframesStyles = `
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+  @keyframes requestModalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes requestModalSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  @keyframes pulseGlow {
+    0% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.8); }
+    50% { box-shadow: 0 0 0 10px rgba(255, 69, 58, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0); }
+  }
+
+  .burning-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #FF453A;
+    display: inline-block;
+    flex-shrink: 0;
+    animation: pulseGlow 1.2s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 `;
 

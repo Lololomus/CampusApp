@@ -251,8 +251,13 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
           </>
         ) : filteredRequests.length > 0 ? (
           <>
-            {requestRows.map((row) => (
-              row.type === 'divider' ? (
+            {requestRows.map((row, rowIndex) => {
+              const isAfterDivider =
+                row.type === 'item' &&
+                rowIndex > 0 &&
+                requestRows[rowIndex - 1].type === 'divider';
+
+              return row.type === 'divider' ? (
                 <FeedDateDivider key={row.key} label={row.label} />
               ) : (
                 <div
@@ -265,10 +270,11 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     currentUserId={user?.id}
+                    compactTop={isAfterDivider}
                   />
                 </div>
-              )
-            ))}
+              );
+            })}
 
             {loading && hasMore && <RequestCardSkeleton />}
           </>
@@ -352,7 +358,8 @@ const styles = {
 
   feed: {
     flex: 1,
-    display: 'block', 
+    display: 'block',
+    paddingBottom: theme.spacing.sm,
   },
 
   emptyState: {

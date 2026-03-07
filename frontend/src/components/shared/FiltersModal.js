@@ -284,11 +284,16 @@ const FiltersModal = ({ onClose, onApply }) => {
       <div style={styles.container}>
         {/* Локация */}
         <Section title="📍 ЛОКАЦИЯ">
-          <RadioGroup
-            options={locationOptions}
-            value={localFilters.location}
-            onChange={handleLocationChange}
-          />
+          <div style={styles.chipGroup}>
+            {locationOptions.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                selected={localFilters.location === option.value}
+                onClick={() => handleLocationChange(option.value)}
+              />
+            ))}
+          </div>
         </Section>
 
         {/* ===== ФИЛЬТРЫ ДЛЯ ПОСТОВ ===== */}
@@ -400,7 +405,7 @@ const FiltersModal = ({ onClose, onApply }) => {
             Сбросить
           </button>
           <button onClick={handleApply} style={styles.applyButton}>
-            Применить
+            Применить{activeCount > 0 ? ` (${activeCount})` : ''}
           </button>
         </div>
       </div>
@@ -415,23 +420,6 @@ const Section = ({ title, children }) => (
   <div style={styles.section}>
     <div style={styles.sectionTitle}>{title}</div>
     {children}
-  </div>
-);
-
-const RadioGroup = ({ options, value, onChange }) => (
-  <div style={styles.radioGroup}>
-    {options.map((option) => (
-      <button
-        key={option.value}
-        style={{
-          ...styles.radioButton,
-          ...(value === option.value ? styles.radioButtonActive : {}),
-        }}
-        onClick={() => onChange(option.value)}
-      >
-        {option.label}
-      </button>
-    ))}
   </div>
 );
 
@@ -502,33 +490,7 @@ const styles = {
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.textSecondary,
     letterSpacing: '0.5px',
-  },
-
-  radioGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.sm,
-  },
-
-  radioButton: {
-    background: theme.colors.card,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    cursor: 'pointer',
-    transition: theme.transitions.fast,
-    textAlign: 'left',
-  },
-
-  radioButtonActive: {
-    background: theme.colors.card,
-    borderColor: theme.colors.primary,
-    color: theme.colors.primary,
+    textTransform: 'uppercase',
   },
 
   chipGroup: {
@@ -552,9 +514,9 @@ const styles = {
   },
 
   chipActive: {
-    background: theme.colors.primary,
-    borderColor: theme.colors.primary,
-    color: '#fff',
+    background: 'rgba(212,255,0,0.1)',
+    borderColor: '#D4FF00',
+    color: '#D4FF00',
   },
 
   sortingGrid: {
@@ -582,9 +544,9 @@ const styles = {
   },
 
   sortButtonActive: {
-    background: theme.colors.card,
-    borderColor: theme.colors.primary,
-    color: theme.colors.primary,
+    background: 'rgba(212,255,0,0.05)',
+    borderColor: '#D4FF00',
+    color: '#D4FF00',
   },
 
   sortIcon: {
@@ -627,14 +589,14 @@ const styles = {
 
   applyButton: {
     flex: 2,
-    background: theme.colors.primary,
+    background: '#D4FF00',
     borderWidth: 0,
     borderStyle: 'none',
     borderRadius: theme.radius.md,
     padding: theme.spacing.lg,
-    color: '#fff',
+    color: '#000000',
     fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
+    fontWeight: 700,
     cursor: 'pointer',
     transition: theme.transitions.normal,
   },

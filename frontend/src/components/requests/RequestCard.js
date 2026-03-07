@@ -1,11 +1,22 @@
-// ===== RequestCard.js =====
-
-import React, { useState, useMemo, useRef } from 'react';
-import { Clock, Gift, Image as ImageIcon, MoreVertical } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import {
+  ChevronRight,
+  Clock,
+  Flag,
+  Gift,
+  Image as ImageIcon,
+  Link,
+  Lock,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Users,
+  Zap,
+} from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import { REWARD_TYPE_LABELS, REWARD_TYPE_ICONS } from '../../types';
+import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS } from '../../types';
 import DropdownMenu from '../DropdownMenu';
 import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
@@ -13,11 +24,29 @@ import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
 import { toast } from '../shared/Toast';
-import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
+import { getEntityActionSet, isEntityOwner } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate } from '../../utils/datetime';
 
-function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
+const CATEGORY_CONFIG = {
+  study: {
+    label: '📚 УЧЁБА',
+    color: '#4DA6FF',
+    bg: 'rgba(77, 166, 255, 0.15)',
+  },
+  help: {
+    label: '🤝 ПОМОЩЬ',
+    color: '#FF9F0A',
+    bg: 'rgba(255, 159, 10, 0.15)',
+  },
+  hangout: {
+    label: '🎉 ДВИЖ',
+    color: '#D4FF00',
+    bg: 'rgba(212, 255, 0, 0.15)',
+  },
+};
+
+function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compactTop = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -25,33 +54,12 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const avatarRef = useRef(null);
-  
+
   const menuButtonRef = useRef(null);
+  const avatarRef = useRef(null);
 
-  // ===== КАТЕГОРИИ (цвета и иконки) =====
-  const CATEGORIES = {
-    study: {
-      label: 'Учёба',
-      icon: '📚',
-      color: '#3b82f6',
-      gradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
-    },
-    help: {
-      label: 'Помощь',
-      icon: '🤝',
-      color: '#10b981',
-      gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-    },
-    hangout: {
-      label: 'Движ',
-      icon: '🎉',
-      color: '#f59e0b',
-      gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
-    }
-  };
+  const categoryConfig = CATEGORY_CONFIG[request.category] || CATEGORY_CONFIG.study;
 
-  const categoryConfig = CATEGORIES[request.category] || CATEGORIES.study;
   const isAuthor = useMemo(
     () => isEntityOwner('request', request, { id: currentUserId }),
     [request, currentUserId]
@@ -61,92 +69,185 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
     [isAuthor]
   );
 
-  // ===== MODERATION HOOK =====
   const { moderationMenuItems, moderationModals } = useModerationActions({
     targetType: 'request',
     targetId: request.id,
     targetUserId: request.author?.id,
-    onDeleted: () => { if (onDelete) onDelete(request); },
+    onDeleted: () => {
+      if (onDelete) onDelete(request);
+    },
   });
 
-  // ===== ПАРСИНГ ИЗОБРАЖЕНИЙ =====
   const images = useMemo(() => {
     if (!request.images) return [];
     if (Array.isArray(request.images)) return request.images;
-    try { 
-      return JSON.parse(request.images); 
-    } catch { 
-      return []; 
+    try {
+      return JSON.parse(request.images);
+    } catch {
+      return [];
     }
   }, [request.images]);
 
   const getImageUrl = (img) => {
     if (!img) return '';
-    const filename = (typeof img === 'object') ? img.url : img;
+    const filename = typeof img === 'object' ? img.url : img;
     return resolveImageUrl(filename, 'images');
   };
 
-  const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
+  const viewerPhotos = useMemo(
+    () => images.map((img) => getImageUrl(img)),
+    [images]
+  );
 
-  // ===== ТАЙМЕР =====
-  const getTimeRemaining = () => {
+  const authorName = request.author?.username || request.author?.name || 'Аноним';
+  const authorMeta = [
+    request.author?.course && `${request.author.course} курс`,
+    request.author?.university,
+    request.author?.institute,
+  ].filter(Boolean).join(' • ');
+
+  const statusInfo = useMemo(() => {
     const now = new Date();
     const expiresAt = parseApiDate(request.expires_at);
-    if (!expiresAt) return { text: 'Истёк', color: '#666', pulse: false };
-    const diffMs = expiresAt - now;
+    const isClosed = request.status === 'closed';
+    const isExpired = !isClosed && (!expiresAt || expiresAt <= now || request.status === 'expired');
+    const isUnavailable = !isClosed && !isExpired && request.status !== 'active';
 
-    if (diffMs <= 0) return { text: 'Истёк', color: '#666', pulse: false };
+    if (isClosed) {
+      return {
+        isClosed: true,
+        isExpired: false,
+        isUnavailable: false,
+        text: 'Закрыт',
+        color: '#888888',
+        bg: '#2C2C2E',
+        urgent: false,
+        burning: false,
+      };
+    }
 
+    if (isExpired) {
+      return {
+        isClosed: false,
+        isExpired: true,
+        isUnavailable: false,
+        text: 'Истёк',
+        color: '#888888',
+        bg: '#2C2C2E',
+        urgent: false,
+        burning: false,
+      };
+    }
+    if (isUnavailable) {
+      return {
+        isClosed: false,
+        isExpired: false,
+        isUnavailable: true,
+        text: 'Недоступен',
+        color: '#888888',
+        bg: '#2C2C2E',
+        urgent: false,
+        burning: false,
+      };
+    }
+
+    const diffMs = Math.max(0, expiresAt - now);
     const minutes = Math.floor(diffMs / 60000);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
     let text = '';
-    let color = 'rgba(255,255,255,0.6)';
-    let pulse = false;
+    if (days > 0) text = `${days}д ${hours % 24}ч`;
+    else if (hours > 0) text = `${hours}ч ${minutes % 60}м`;
+    else text = `${minutes}м`;
 
-    if (days > 0) {
-      text = `${days}д`;
-      color = 'rgba(255,255,255,0.6)';
-    } else if (hours >= 3) {
-      text = `${hours}ч`;
-      color = '#fff';
-    } else if (hours >= 1) {
-      text = `${hours}ч ${minutes % 60}м`;
-      color = '#f59e0b';
-    } else {
-      text = `${minutes}м`;
-      color = '#ef4444';
-      pulse = true;
+    const urgent = diffMs <= 3 * 60 * 60 * 1000;
+    const burning = diffMs <= 60 * 60 * 1000;
+
+    return {
+      isClosed: false,
+      isExpired: false,
+      isUnavailable: false,
+      text: `Осталось ${text}`,
+      color: urgent ? '#FF453A' : '#888888',
+      bg: urgent ? 'rgba(255, 69, 58, 0.15)' : '#2C2C2E',
+      urgent,
+      burning,
+    };
+  }, [request.expires_at, request.status]);
+
+  const rewardText = useMemo(() => {
+    if (!request.reward_type || request.reward_type === 'none') return null;
+    const icon = REWARD_TYPE_ICONS[request.reward_type] || '🎁';
+    const label = REWARD_TYPE_LABELS[request.reward_type] || 'Награда';
+    if (request.reward_value) return `${icon} ${request.reward_value}`;
+    return `${icon} ${label}`;
+  }, [request.reward_type, request.reward_value]);
+
+  const footerMeta = useMemo(() => {
+    if (statusInfo.isClosed) return { text: 'Запрос закрыт', color: '#888888' };
+    if (statusInfo.isExpired) return { text: 'Срок истёк', color: '#888888' };
+    if (statusInfo.isUnavailable) return { text: 'Запрос недоступен', color: '#888888' };
+
+    const responses = request.responses_count || 0;
+    if (responses > 0) {
+      return {
+        text: `${responses} откликнулись`,
+        color: '#D1D1D1',
+        withIcon: true,
+      };
     }
 
-    return { text, color, pulse };
-  };
+    return { text: 'Пока нет откликов', color: '#666666' };
+  }, [request.responses_count, statusInfo.isClosed, statusInfo.isExpired, statusInfo.isUnavailable]);
 
-  const timeRemaining = getTimeRemaining();
-
-  // ===== ОБРЕЗКА ТЕКСТА =====
-  const truncateText = (text, maxLength = 100) => {
-    if (!text) return '';
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '...';
-  };
-
-  // ===== КЛИК =====
-  const handleClick = (e) => {
-    if (isPhotoViewerJustClosed) {
-      return;
+  const ctaState = useMemo(() => {
+    if (isAuthor) {
+      return {
+        text: 'Моя таска',
+        disabled: true,
+        style: styles.myTaskButton,
+        icon: null,
+      };
     }
-    
-    if (e.target.closest('.dropdown-menu-trigger') || e.target.closest('.dropdown-menu-content')) {
-      return;
+    if (statusInfo.isClosed || statusInfo.isExpired || statusInfo.isUnavailable) {
+      return {
+        text: statusInfo.isClosed ? 'Закрыт' : statusInfo.isExpired ? 'Истёк' : 'Недоступен',
+        disabled: true,
+        style: styles.lockedButton,
+        icon: <Lock size={14} />,
+      };
     }
-    
+    if (request.has_responded) {
+      return {
+        text: 'Откликнулись',
+        disabled: true,
+        style: styles.respondedButton,
+        icon: null,
+      };
+    }
+    return {
+      text: 'Помочь',
+      disabled: false,
+      style: styles.helpButton,
+      icon: <ChevronRight size={14} />,
+    };
+  }, [isAuthor, request.has_responded, statusInfo]);
+
+  const handleCardClick = (e) => {
+    if (isPhotoViewerJustClosed) return;
+    if (e.target.closest('.dropdown-menu-trigger') || e.target.closest('.dropdown-menu-content')) return;
     hapticFeedback('light');
     if (onClick) onClick(request);
   };
 
-  // ===== КЛИК НА ФОТО =====
+  const openCardFromCTA = (e) => {
+    e.stopPropagation();
+    if (ctaState.disabled) return;
+    hapticFeedback('light');
+    if (onClick) onClick(request);
+  };
+
   const handleImageClick = (e, index) => {
     e.stopPropagation();
     hapticFeedback('light');
@@ -154,261 +255,221 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
     setIsPhotoViewerOpen(true);
   };
 
-  // ===== АВТОР =====
-  const authorName = request.author?.username || request.author?.name || 'Аноним';
-  const authorInitial = authorName[0]?.toUpperCase() || 'A';
-  const authorInfo = [
-    request.author?.course && `${request.author.course} курс`,
-    request.author?.university,
-    request.author?.institute
-  ].filter(Boolean).join(' • ');
-
-  // ===== НАГРАДА (RENDER HELPER) =====
-  const renderRewardBadge = () => {
-    if (!request.reward_type || request.reward_type === 'none') return null;
-
-    const icon = REWARD_TYPE_ICONS[request.reward_type] || '🎁';
-    const label = REWARD_TYPE_LABELS[request.reward_type] || 'Награда';
-    const value = request.reward_value;
-
-    return (
-      <div style={styles.rewardBadge} className="reward-badge">
-        <Gift size={16} style={{ flexShrink: 0 }} />
-        <span style={styles.rewardText}>
-          {icon} {label}
-          {value && <span style={styles.rewardValue}> · {value}</span>}
-        </span>
-      </div>
-    );
-  };
-
-  // ===== ИЗОБРАЖЕНИЯ (RENDER HELPER) =====
-  const renderImagePreview = () => {
-    if (!images || images.length === 0) return null;
-
-    const displayImages = images.slice(0, 3);
-    const remaining = images.length - 3;
-
-    return (
-      <div style={styles.imagePreviewContainer}>
-        <div style={styles.imageGrid}>
-          {displayImages.map((img, idx) => (
-            <div 
-              key={idx} 
-              style={styles.imagePreviewItem}
-              className="image-preview-item"
-              onClick={(e) => handleImageClick(e, idx)}
-            >
-              <img 
-                src={getImageUrl(img)} 
-                alt="" 
-                style={styles.previewImage}
-                loading="lazy"
-              />
-            </div>
-          ))}
-          {remaining > 0 && (
-            <div 
-              style={styles.imagePreviewItem} 
-              className="image-preview-item"
-              onClick={(e) => handleImageClick(e, 3)}
-            >
-              <div style={styles.imageOverlay}>
-                <ImageIcon size={16} />
-                <span style={styles.remainingCount}>+{remaining}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // ===== МЕНЮ ДЕЙСТВИЙ =====
   const menuItems = [
-    ...(actionSet.canCopyLink ? [{
-      label: 'Скопировать ссылку',
-      icon: '🔗',
-      actionType: MENU_ACTIONS.COPY,
-      onClick: async () => {
-        setMenuOpen(false);
-        const link = `campusapp://request/${request.id}`;
-        try {
-          await navigator.clipboard.writeText(link);
-          toast.success('Ссылка скопирована');
-          hapticFeedback('success');
-        } catch (error) {
-          console.error('Copy request link error:', error);
-          toast.error('Не удалось скопировать ссылку');
-          hapticFeedback('error');
-        }
-      }
-    }] : []),
-    ...(actionSet.canEdit ? [{
-        label: 'Редактировать',
-        icon: '✏️',
-        actionType: MENU_ACTIONS.EDIT,
-        onClick: () => {
-          hapticFeedback('light');
-          setMenuOpen(false);
-          if (onEdit) onEdit(request);
-        }
-      }] : []),
-    ...(actionSet.canDelete ? [{
-        label: 'Удалить',
-        icon: '🗑️',
-        actionType: MENU_ACTIONS.DELETE,
-        onClick: () => {
-          hapticFeedback('medium');
-          setMenuOpen(false);
-          if (onDelete) onDelete(request);
-        }
-      }] : []),
-    ...(actionSet.canReportContent ? [{
-        label: 'Пожаловаться',
-        icon: '🚩',
-        actionType: MENU_ACTIONS.REPORT,
-        onClick: () => {
-          hapticFeedback('light');
-          setMenuOpen(false);
-          setShowReportModal(true);
-        }
-      }] : []),
-    // ✅ Модерация
+    ...(actionSet.canCopyLink
+      ? [{
+          label: 'Скопировать ссылку',
+          icon: <Link size={18} />,
+          actionType: MENU_ACTIONS.COPY,
+          onClick: async () => {
+            setMenuOpen(false);
+            const link = `campusapp://request/${request.id}`;
+            try {
+              await navigator.clipboard.writeText(link);
+              toast.success('Ссылка скопирована');
+              hapticFeedback('success');
+            } catch (error) {
+              console.error('Copy request link error:', error);
+              toast.error('Не удалось скопировать ссылку');
+              hapticFeedback('error');
+            }
+          },
+        }]
+      : []),
+    ...(actionSet.canEdit
+      ? [{
+          label: 'Редактировать',
+          icon: <Pencil size={18} />,
+          actionType: MENU_ACTIONS.EDIT,
+          onClick: () => {
+            hapticFeedback('light');
+            setMenuOpen(false);
+            if (onEdit) onEdit(request);
+          },
+        }]
+      : []),
+    ...(actionSet.canDelete
+      ? [{
+          label: 'Удалить',
+          icon: <Trash2 size={18} />,
+          actionType: MENU_ACTIONS.DELETE,
+          onClick: () => {
+            hapticFeedback('medium');
+            setMenuOpen(false);
+            if (onDelete) onDelete(request);
+          },
+        }]
+      : []),
+    ...(actionSet.canReportContent
+      ? [{
+          label: 'Пожаловаться',
+          icon: <Flag size={18} />,
+          actionType: MENU_ACTIONS.REPORT,
+          onClick: () => {
+            hapticFeedback('light');
+            setMenuOpen(false);
+            setShowReportModal(true);
+          },
+        }]
+      : []),
     ...moderationMenuItems,
   ];
+
+  const previewImages = images.slice(0, 3);
+  const remainingImages = images.length - 3;
+
+  const cardStyle = compactTop ? { ...styles.card, paddingTop: 16 } : styles.card;
 
   return (
     <>
       <style>{keyframesStyles}</style>
-      <div 
-        style={styles.card} 
-        onClick={handleClick}
-        className="request-card"
-      >
-        {/* ХЕДЕР КАТЕГОРИИ */}
-        <div style={{
-          ...styles.header,
-          background: categoryConfig.gradient
-        }}>
-          <div style={styles.categoryLabel}>
-            <span style={styles.categoryIcon}>{categoryConfig.icon}</span>
-            <span style={styles.categoryText}>{categoryConfig.label}</span>
-          </div>
-          
-          <div style={styles.headerRight}>
-            <div style={{
-              ...styles.timer,
-              color: timeRemaining.color,
-              animation: timeRemaining.pulse ? 'pulse 2s ease-in-out infinite' : 'none'
-            }}>
-              <Clock size={14} style={{ marginRight: 4 }} />
-              {timeRemaining.text}
-            </div>
 
-            {/* ТРОЕТОЧИЕ МЕНЮ */}
-            <div style={{position: 'relative', display: 'flex', alignItems: 'center'}}>
-              <button
-                ref={menuButtonRef}
-                style={styles.menuButton}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(!menuOpen);
-                  hapticFeedback('light');
-                }}
-                className="dropdown-menu-trigger"
-              >
-                <MoreVertical size={18} />
-              </button>
-              <DropdownMenu
-                isOpen={menuOpen}
-                onClose={() => setMenuOpen(false)}
-                anchorRef={menuButtonRef}
-                items={menuItems}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* НАГРАДА */}
-        {renderRewardBadge()}
-
-        {/* ЗАГОЛОВОК */}
-        <div style={styles.title}>
-          {request.title}
-        </div>
-
-        {/* ПРЕВЬЮ ОПИСАНИЯ */}
-        <div style={styles.body}>
-          {truncateText(request.body, 100)}
-        </div>
-
-        {/* ИЗОБРАЖЕНИЯ */}
-        {renderImagePreview()}
-
-        {/* БЛОК АВТОРА */}
-        <div style={styles.authorBlock}>
-          <div 
+      <div style={cardStyle} onClick={handleCardClick} className="request-card-spring">
+        <div style={styles.mainRow}>
+          <div
             onClick={(e) => {
-              if (request.author?.show_profile) {
-                e.stopPropagation();
-                setProfileOpen(true);
-              }
+              if (!request.author?.show_profile) return;
+              e.stopPropagation();
+              setProfileOpen(true);
             }}
             style={{ cursor: request.author?.show_profile ? 'pointer' : 'default' }}
           >
-            {/* Передаем объект user целиком, как в PostCard */}
-            <Avatar 
+            <Avatar
               ref={avatarRef}
-              user={request.author} 
-              size={40}
-              isAnonymous={false} // Запросы обычно не анонимны, или добавь проверку
+              user={request.author}
+              size={44}
+              isAnonymous={false}
             />
           </div>
 
-          {/* Информация об авторе (тоже кликабельная) */}
-          <div 
-            style={{...styles.authorInfo, cursor: request.author?.show_profile ? 'pointer' : 'default'}}
-            onClick={(e) => {
-              if (request.author?.show_profile) {
-                e.stopPropagation();
-                setProfileOpen(true);
-              }
-            }}
-          >
-            <div style={styles.authorName}>{authorName}</div>
-            {authorInfo && (
-              <div style={styles.authorDetails}>{authorInfo}</div>
-            )}
+          <div style={styles.mainContent}>
+            <div style={styles.topRow}>
+              <div style={styles.authorBlock}>
+                <div style={styles.authorNameRow}>
+                  <span style={styles.authorName}>{authorName}</span>
+                  {isAuthor && <span style={styles.ownerBadge}>ВЫ</span>}
+                </div>
+                {authorMeta && <span style={styles.authorMeta}>{authorMeta}</span>}
+              </div>
+
+              <div style={styles.rightActions}>
+                <span
+                  style={{
+                    ...styles.categoryBadge,
+                    color: categoryConfig.color,
+                    background: categoryConfig.bg,
+                  }}
+                >
+                  {categoryConfig.label}
+                </span>
+
+                <div style={{ position: 'relative' }}>
+                  <button
+                    ref={menuButtonRef}
+                    style={styles.menuButton}
+                    className="dropdown-menu-trigger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      hapticFeedback('light');
+                      setMenuOpen((prev) => !prev);
+                    }}
+                  >
+                    <MoreVertical size={20} />
+                  </button>
+                  <DropdownMenu
+                    isOpen={menuOpen}
+                    onClose={() => setMenuOpen(false)}
+                    anchorRef={menuButtonRef}
+                    items={menuItems}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <h3 style={styles.title}>{request.title}</h3>
+            <p style={styles.body}>{request.body}</p>
+
+            <div style={styles.chipsRow}>
+              {rewardText && (
+                <div style={styles.rewardChip}>
+                  <Gift size={14} />
+                  <span>{rewardText}</span>
+                </div>
+              )}
+              <div
+                style={{
+                  ...styles.timeChip,
+                  color: statusInfo.color,
+                  background: statusInfo.bg,
+                }}
+              >
+                {statusInfo.burning ? (
+                  <span className="burning-dot" />
+                ) : statusInfo.urgent ? (
+                  <Zap size={14} strokeWidth={2.8} />
+                ) : (
+                  <Clock size={14} />
+                )}
+                <span>{statusInfo.text}</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ФУТЕР: ТОЛЬКО ТЕГИ */}
-        <div style={styles.footer}>
-          <div style={styles.tags}>
-            {request.tags && request.tags.slice(0, 3).map((tag, idx) => (
-              <span key={idx} style={styles.tag}>
-                #{tag}
-              </span>
-            ))}
+        {previewImages.length > 0 && (
+          <div style={styles.imagesWrap}>
+            <div style={styles.imagesGrid}>
+              {previewImages.map((img, index) => (
+                <button
+                  key={`${request.id}-img-${index}`}
+                  type="button"
+                  onClick={(e) => handleImageClick(e, index)}
+                  style={styles.imageButton}
+                >
+                  <img src={getImageUrl(img)} alt="" style={styles.image} loading="lazy" />
+                </button>
+              ))}
+              {remainingImages > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => handleImageClick(e, 3)}
+                  style={styles.imageButton}
+                >
+                  <div style={styles.imageOverlay}>
+                    <ImageIcon size={16} />
+                    <span>+{remainingImages}</span>
+                  </div>
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-
-        {/* PHOTOVIEWER */}
-        {isPhotoViewerOpen && (
-          <PhotoViewer
-            photos={viewerPhotos}
-            initialIndex={currentImageIndex}
-            onClose={() => {
-              setIsPhotoViewerOpen(false);
-              setIsPhotoViewerJustClosed(true);
-              setTimeout(() => setIsPhotoViewerJustClosed(false), 100);
-            }}
-          />
         )}
+
+        <div style={styles.footer}>
+          <div style={styles.footerMeta}>
+            {footerMeta.withIcon ? <Users size={16} /> : null}
+            <span style={{ color: footerMeta.color }}>{footerMeta.text}</span>
+          </div>
+
+          <button type="button" onClick={openCardFromCTA} style={{ ...styles.ctaBase, ...ctaState.style }}>
+            {ctaState.icon}
+            <span>{ctaState.text}</span>
+          </button>
+        </div>
       </div>
 
-      {/* Модалка жалобы */}
+      {isPhotoViewerOpen && (
+        <PhotoViewer
+          photos={viewerPhotos}
+          initialIndex={currentImageIndex}
+          onClose={() => {
+            setIsPhotoViewerOpen(false);
+            setIsPhotoViewerJustClosed(true);
+            setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
+          }}
+        />
+      )}
+
       <ReportModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
@@ -424,10 +485,8 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
         sourceId={request.id}
       />
 
-      {/* Модалки модерации */}
       {moderationModals}
-      
-      {/* Мини-карточка профиля */}
+
       {request.author && (
         <ProfileMiniCard
           isOpen={profileOpen}
@@ -441,158 +500,167 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId }) {
           }}
         />
       )}
-    </>  
+    </>
   );
 }
 
-// ===== СТИЛИ =====
 const styles = {
   card: {
-    background: theme.colors.card,
-    borderRadius: theme.radius.lg,
-    overflow: 'hidden',
+    padding: '24px 0 16px',
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
     cursor: 'pointer',
-    marginBottom: theme.spacing.md,
-    transition: 'transform 0.1s ease-out',
-    border: `1px solid ${theme.colors.border}`,
-    position: 'relative',
-    WebkitTapHighlightColor: 'transparent'
+    WebkitTapHighlightColor: 'transparent',
   },
-
-  header: {
+  mainRow: {
+    display: 'flex',
+    gap: 12,
+    padding: '0 16px',
+  },
+  mainContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  topRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-    color: '#fff'
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 8,
   },
-
-  categoryLabel: {
+  authorBlock: {
+    minWidth: 0,
+    flex: 1,
+  },
+  authorNameRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.xs,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold
+    gap: 6,
   },
-
-  categoryIcon: {
-    fontSize: theme.fontSize.md
+  authorName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 700,
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
+    overflow: 'hidden',
   },
-
-  categoryText: {
-    fontSize: theme.fontSize.sm
+  ownerBadge: {
+    padding: '2px 6px',
+    borderRadius: 6,
+    border: `1px solid ${theme.colors.premium.border}`,
+    background: '#2C2C2E',
+    fontSize: 10,
+    fontWeight: 700,
+    color: '#FFFFFF',
+    flexShrink: 0,
   },
-
-  headerRight: {
+  authorMeta: {
+    color: '#888888',
+    fontSize: 13,
+    marginTop: 2,
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
+    overflow: 'hidden',
+    display: 'block',
+  },
+  rightActions: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing.xs
+    gap: 6,
+    paddingLeft: 6,
+    flexShrink: 0,
   },
-
-  timer: {
-    display: 'flex',
-    alignItems: 'center',
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
-    background: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: theme.radius.sm
+  categoryBadge: {
+    padding: '4px 10px',
+    borderRadius: 10,
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: '0.5px',
+    whiteSpace: 'nowrap',
   },
-
   menuButton: {
-    background: 'rgba(0, 0, 0, 0.2)',
-    border: 'none',
-    borderRadius: theme.radius.sm,
     width: 28,
     height: 28,
+    borderRadius: 14,
+    border: 'none',
+    background: '#2C2C2E',
+    color: '#FFFFFF',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    color: '#fff',
-    transition: 'all 0.2s ease',
-    padding: 0
+    padding: 0,
   },
-
-  rewardBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%)',
-    borderBottom: `2px solid rgba(255, 215, 0, 0.3)`,
-    animation: 'fadeInSlide 0.4s ease-out',
-    fontSize: theme.fontSize.base,
-    color: '#FFD700',
-    fontWeight: theme.fontWeight.semibold
-  },
-
-  rewardText: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6
-  },
-
-  rewardValue: {
-    color: '#FFA500',
-    fontWeight: theme.fontWeight.bold
-  },
-
   title: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-    padding: `${theme.spacing.lg}px ${theme.spacing.lg}px ${theme.spacing.sm}px`,
-    lineHeight: 1.4,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical'
+    margin: '0 0 6px',
+    fontSize: 16,
+    lineHeight: 1.3,
+    fontWeight: 700,
+    color: '#FFFFFF',
   },
-
   body: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    padding: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`,
-    lineHeight: 1.5,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    margin: 0,
+    color: '#D1D1D1',
+    fontSize: 15,
+    lineHeight: 1.45,
     display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
     WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical'
+    overflow: 'hidden',
   },
-
-  imagePreviewContainer: {
-    padding: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`
+  chipsRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
   },
-
-  imageGrid: {
+  rewardChip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '4px 10px',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#32D74B',
+    background: 'rgba(50, 215, 75, 0.12)',
+  },
+  timeChip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '4px 10px',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 700,
+  },
+  imagesWrap: {
+    marginTop: 12,
+    padding: '0 16px',
+  },
+  imagesGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: theme.spacing.xs,
-    borderRadius: theme.radius.md,
-    overflow: 'hidden'
+    gap: 8,
   },
-
-  imagePreviewItem: {
+  imageButton: {
     position: 'relative',
-    paddingTop: '75%',
-    background: theme.colors.bgSecondary,
-    borderRadius: theme.radius.sm,
+    width: '100%',
+    paddingTop: '100%',
+    border: 'none',
+    borderRadius: 10,
     overflow: 'hidden',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    background: '#1C1C1E',
   },
-
-  previewImage: {
+  image: {
     position: 'absolute',
-    top: 0,
-    left: 0,
+    inset: 0,
     width: '100%',
     height: '100%',
-    objectFit: 'cover'
+    objectFit: 'cover',
   },
-
   imageOverlay: {
     position: 'absolute',
     inset: 0,
@@ -600,124 +668,90 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'rgba(0, 0, 0, 0.6)',
-    color: '#fff',
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    gap: theme.spacing.xs
+    gap: 4,
+    color: '#FFFFFF',
+    background: 'rgba(0,0,0,0.55)',
+    fontSize: 13,
+    fontWeight: 700,
   },
-
-  remainingCount: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.bold
-  },
-
-  authorBlock: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    padding: theme.spacing.md,
-    background: '#252525',
-    borderTop: `1px solid ${theme.colors.border}`,
-    borderBottom: `1px solid ${theme.colors.border}`
-  },
-
-  authorAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.full,
-    background: theme.colors.primary,
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    flexShrink: 0
-  },
-
-  authorInfo: {
-    flex: 1,
-    overflow: 'hidden'
-  },
-
-  authorName: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.text,
-    marginBottom: 2
-  },
-
-  authorDetails: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textTertiary,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis'
-  },
-
   footer: {
+    marginTop: 16,
+    padding: '0 16px',
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: `${theme.spacing.sm}px ${theme.spacing.md}px ${theme.spacing.md}px`
+    justifyContent: 'space-between',
+    gap: 10,
   },
-
-  tags: {
+  footerMeta: {
     display: 'flex',
-    gap: theme.spacing.xs,
-    flex: 1,
-    overflow: 'hidden',
-    flexWrap: 'wrap'
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#888888',
+    minWidth: 0,
   },
-
-  tag: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.primary,
-    background: 'rgba(135, 116, 225, 0.1)',
-    padding: `2px ${theme.spacing.sm}px`,
-    borderRadius: theme.radius.sm,
-    whiteSpace: 'nowrap'
-  }
+  ctaBase: {
+    border: 'none',
+    borderRadius: 14,
+    padding: '6px 14px',
+    fontSize: 13,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    whiteSpace: 'nowrap',
+  },
+  helpButton: {
+    background: '#2C2C2E',
+    color: '#FFFFFF',
+    cursor: 'pointer',
+  },
+  myTaskButton: {
+    background: 'transparent',
+    border: `1px solid ${theme.colors.premium.border}`,
+    color: '#FFFFFF',
+    cursor: 'default',
+    pointerEvents: 'none',
+  },
+  lockedButton: {
+    background: '#2C2C2E',
+    color: '#666666',
+    cursor: 'default',
+    pointerEvents: 'none',
+  },
+  respondedButton: {
+    background: '#2C2C2E',
+    color: '#B0B0B0',
+    cursor: 'default',
+    pointerEvents: 'none',
+  },
 };
 
-// ===== АНИМАЦИИ =====
 const keyframesStyles = `
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+  .request-card-spring {
+    transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s;
   }
 
-  @keyframes fadeInSlide {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .request-card:active {
+  .request-card-spring:active {
     transform: scale(0.98);
+    opacity: 0.9;
   }
 
-  .reward-badge {
-    position: relative;
+  @keyframes pulseGlow {
+    0% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.8); }
+    50% { box-shadow: 0 0 0 10px rgba(255, 69, 58, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0); }
   }
 
-  .reward-badge::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 165, 0, 0.15) 100%);
-    animation: shimmer 3s ease-in-out infinite;
-  }
-
-  @keyframes shimmer {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 0.7; }
+  .burning-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #FF453A;
+    display: inline-block;
+    flex-shrink: 0;
+    animation: pulseGlow 1.2s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 `;
 

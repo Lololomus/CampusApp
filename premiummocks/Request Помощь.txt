@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA - Help Feed</title>
+
+    <style>
+      :root {
+        --safe-area-bottom: env(safe-area-inset-bottom, 20px);
+      }
+      html, body { 
+        height: 100%; margin: 0; background: #000000; 
+        color: #FFFFFF; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; background: #050505; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.94); opacity: 0.8; }
+      
+      /* Анимации для модалки и FOMO */
+      @keyframes slideUpSheet {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes pulseGlow {
+        0% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.8); }
+        50% { box-shadow: 0 0 0 10px rgba(255, 69, 58, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0); }
+      }
+      .burning-dot {
+        width: 10px; height: 10px; border-radius: 50%; background: #FF453A;
+        animation: pulseGlow 1.2s infinite cubic-bezier(0.2, 0.8, 0.2, 1); flex-shrink: 0;
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        Search, Home, ShoppingBag, Plus, Heart, User, 
+        Clock, Calendar, Users, Zap, MoreVertical, X,
+        ChevronRight, MessageSquare, ShieldCheck, Lock
+      } from 'lucide-react';
+
+      // === ТЕМА (Neo-Utilitarian) ===
+      const theme = {
+        bg: '#000000', 
+        primary: '#D4FF00', // Campus Lime
+        primaryText: '#000000',
+        text: '#FFFFFF',
+        textMuted: '#888888',
+        textBody: '#D1D1D1',
+        surface: '#1C1C1E', 
+        surfaceElevated: '#2C2C2E',
+        border: 'rgba(255, 255, 255, 0.08)',
+        error: '#FF453A',
+        errorBg: 'rgba(255, 69, 58, 0.15)',
+        success: '#32D74B',
+        successBg: 'rgba(50, 215, 75, 0.12)',
+        warning: '#FF9F0A',
+        warningBg: 'rgba(255, 159, 10, 0.12)',
+        info: '#0A84FF',
+        infoBg: 'rgba(10, 132, 255, 0.15)'
+      };
+
+      // === МОК-ДАННЫЕ ТАСОК ===
+      const ALL_REQUESTS = [
+        {
+          id: 1,
+          author: 'Миша Смирнов',
+          avatarLetter: 'М',
+          avatarColor: 'linear-gradient(135deg, #FF453A, #FF9F0A)',
+          meta: 'ФКН • 2 курс',
+          karma: '⭐ 4.9 (12 отзывов)',
+          tag: '📚 УЧЁБА',
+          tagColor: '#4DA6FF',
+          tagBg: 'rgba(77, 166, 255, 0.15)',
+          title: 'Помогите разобраться с алгоритмами',
+          text: 'Завтра контра по алгосам, я жестко плаваю в динамическом программировании. Кто может посидеть со мной пару часов в коворкинге на Покре и объяснить на пальцах?\n\nТемы, которые нужно разобрать:\n1. Рюкзак (0-1 и неограниченный)\n2. Наибольшая возрастающая подпоследовательность (НВП)\n3. Расстояние Левенштейна (редакционное предписание)\n4. Задача о коммивояжере\n\nЯ посмотрел лекции, но на практике вообще не могу составить базу индукции и переходы. С меня 1000 рублей на карту сразу после посиделок и кофе с круассаном за мой счет! Спасайте, стипуха горит! 🔥',
+          rewardType: 'money',
+          rewardText: '💰 1 000 ₽',
+          isUrgent: true,
+          isBurning: true, // Экстремальное FOMO
+          timeLabel: 'Осталось 45 мин',
+          createdAt: 'Сегодня в 10:20',
+          deadlineAt: 'Сегодня в 14:00',
+          currentHelpers: 0,
+          targetHelpers: null,
+          status: 'open',
+          isMine: false
+        },
+        {
+          id: 2,
+          author: 'Ваш профиль',
+          avatarLetter: 'В',
+          avatarColor: 'linear-gradient(135deg, #7A5CFF, #4DA6FF)',
+          meta: 'ВШЭ • Экономика',
+          karma: '⭐ 5.0 (Новичок)',
+          tag: '🤝 ПОМОЩЬ',
+          tagColor: theme.warning,
+          tagBg: theme.warningBg,
+          title: 'Нужен конспект по макре за октябрь',
+          text: 'Проболел почти весь месяц, не успеваю подготовиться к сессии. Буду супер благодарен за сканы или фотки хорошего конспекта. С меня кофе и вкусняшка!',
+          rewardType: 'barter',
+          rewardText: '☕ Кофе / Еда',
+          isUrgent: false,
+          isBurning: false,
+          timeLabel: '2д 10ч',
+          createdAt: '7 марта в 01:28',
+          deadlineAt: '10 марта в 01:28',
+          currentHelpers: 1,
+          targetHelpers: null,
+          status: 'open',
+          isMine: true
+        },
+        {
+          id: 3,
+          author: 'Игорь Денисюк',
+          avatarLetter: 'И',
+          avatarColor: '#2C2C2E',
+          meta: 'Магистратура',
+          karma: '🤝 Выручил 24 раза',
+          tag: '🎉 ДВИЖ',
+          tagColor: theme.primary,
+          tagBg: 'rgba(212, 255, 0, 0.15)',
+          title: 'Скидываемся на подписку ChatGPT Plus',
+          text: 'Нас уже трое, ищем еще одного человека в складчину на ChatGPT Plus для курсовых. Выходит по 500р/мес. Аккаунт общий, лимиты делим по-братски.',
+          rewardType: 'barter',
+          rewardText: '🤖 Подписка',
+          isUrgent: true,
+          isBurning: false,
+          timeLabel: 'Осталось 5ч',
+          createdAt: 'Сегодня в 14:00',
+          deadlineAt: 'Сегодня в 23:59',
+          currentHelpers: 3,
+          targetHelpers: 4,
+          status: 'open',
+          isMine: false
+        }
+      ];
+
+      const FILTERS = ['Все', 'Учёба', 'Общага', 'Движ', 'Помощь'];
+
+      // === КОМПОНЕНТ: КАРТОЧКА ЗАПРОСА ===
+      const RequestCard = ({ req, onClick }) => {
+        
+        let bountyStyle = { bg: theme.surfaceElevated, color: '#EAEAEA' };
+        if (req.rewardType === 'money') bountyStyle = { bg: theme.successBg, color: theme.success };
+        if (req.rewardType === 'barter') bountyStyle = { bg: theme.warningBg, color: theme.warning };
+
+        const isInProgress = req.status === 'in_progress';
+
+        return (
+          <div 
+            onClick={() => onClick(req)}
+            className="spring-btn"
+            style={{ 
+              background: 'transparent', 
+              borderBottom: `1px solid ${theme.border}`,
+              padding: '24px 0',
+              textAlign: 'left',
+              opacity: isInProgress ? 0.6 : 1 // Затемняем карточки "в работе"
+            }}
+          >
+            <div style={{ display: 'flex', gap: '12px', padding: '0 16px' }}>
+              {/* Аватар */}
+              <div style={{ 
+                width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                background: req.avatarColor, display: 'flex', alignItems: 'center', 
+                justifyContent: 'center', fontSize: '18px', fontWeight: 800, color: '#FFF',
+                border: `1px solid ${theme.border}`
+              }}>{req.avatarLetter}</div>
+
+              {/* Основная колонка */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Шапка: Имя + ТЕГ (Theme Badge) */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontWeight: 700, fontSize: '16px', color: theme.text, lineHeight: 1.2 }}>{req.author}</span>
+                      {req.isMine && (
+                        <span style={{ background: theme.surfaceElevated, border: `1px solid ${theme.border}`, color: '#FFF', fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '6px' }}>ВЫ</span>
+                      )}
+                    </div>
+                    <span style={{ color: theme.textMuted, fontSize: '13px', marginTop: '2px' }}>{req.meta}</span>
+                  </div>
+
+                  {/* Бейдж Темы */}
+                  <div style={{ 
+                    color: req.tagColor, background: req.tagBg, 
+                    padding: '4px 10px', borderRadius: '10px', fontSize: '11px', 
+                    fontWeight: 800, letterSpacing: '0.5px' 
+                  }}>
+                    {req.tag}
+                  </div>
+                </div>
+
+                {/* Контент: Заголовок, Текст */}
+                <div style={{ position: 'relative', marginTop: '4px' }}>
+                  <h3 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#FFF', lineHeight: 1.3 }}>{req.title}</h3>
+                  <p style={{ margin: 0, fontSize: '15px', color: theme.textBody, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {req.text}
+                  </p>
+                  
+                  {/* Блок УСЛОВИЯ СДЕЛКИ: Награда + Таймер */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: bountyStyle.bg, color: bountyStyle.color, padding: '4px 10px', borderRadius: '8px', fontSize: '13px', fontWeight: 700 }}>
+                      {req.rewardText}
+                    </div>
+                    
+                    {/* Таймер срочности */}
+                    <div style={{ 
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      background: isInProgress ? theme.surfaceElevated : (req.isUrgent ? theme.errorBg : theme.surfaceElevated),
+                      color: isInProgress ? theme.textMuted : (req.isUrgent ? theme.error : theme.textMuted),
+                      padding: '4px 10px', borderRadius: '8px', fontSize: '13px', fontWeight: 700
+                    }}>
+                      {req.isBurning && !isInProgress && <div className="burning-dot" />}
+                      {!req.isBurning && (req.isUrgent && !isInProgress ? <Zap size={14} strokeWidth={3} /> : <Clock size={14} strokeWidth={2.5} />)}
+                      {req.timeLabel}
+                    </div>
+                  </div>
+
+                  {/* Прогресс-бар FOMO (если есть цель по людям) */}
+                  {req.targetHelpers > 0 && !isInProgress && (
+                    <div style={{ marginTop: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '12px', border: `1px solid ${theme.border}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 600, marginBottom: '8px' }}>
+                        <span style={{ color: '#FFF' }}>Собрано: {req.currentHelpers} чел.</span>
+                        <span style={{ color: theme.textMuted }}>Цель: {req.targetHelpers}</span>
+                      </div>
+                      <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${(req.currentHelpers / req.targetHelpers) * 100}%`, background: theme.primary, borderRadius: '3px' }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Футер: Метрики и Кнопка действия */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', padding: '0 16px' }}>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: theme.textMuted, fontSize: '13px', fontWeight: 600 }}>
+                {isInProgress ? (
+                   <span style={{ color: theme.textMuted }}>Исполнитель найден</span>
+                ) : req.targetHelpers > 0 ? (
+                  req.currentHelpers >= req.targetHelpers ? (
+                    <span style={{ color: theme.success }}>Мест больше нет</span>
+                  ) : (
+                    <><Users size={16} /> <span style={{ color: theme.primary }}>Осталось {req.targetHelpers - req.currentHelpers} места</span></>
+                  )
+                ) : req.currentHelpers > 0 ? (
+                  <><Users size={16} /> <span>{req.currentHelpers} откликнулись</span></>
+                ) : (
+                  <span style={{ color: '#666' }}>Пока нет откликов</span>
+                )}
+              </div>
+
+              {/* Мини-CTA кнопка */}
+              {req.isMine ? (
+                <button style={{ background: 'transparent', border: `1px solid ${theme.border}`, color: theme.text, padding: '6px 14px', borderRadius: '14px', fontSize: '13px', fontWeight: 600, pointerEvents: 'none' }}>
+                  Моя таска
+                </button>
+              ) : isInProgress ? (
+                <button style={{ background: theme.surfaceElevated, border: 'none', color: '#666', padding: '6px 14px', borderRadius: '14px', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', pointerEvents: 'none' }}>
+                  <Lock size={14} /> В работе
+                </button>
+              ) : (
+                <button className="spring-btn" onClick={(e) => { e.stopPropagation(); onClick(req); }} style={{ background: theme.surfaceElevated, border: 'none', color: theme.text, padding: '6px 14px', borderRadius: '14px', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  Помочь <ChevronRight size={14} />
+                </button>
+              )}
+
+            </div>
+          </div>
+        );
+      };
+
+      // === КОМПОНЕНТ: ПУСТОЕ СОСТОЯНИЕ ===
+      const EmptyState = () => (
+        <div style={{ padding: '60px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'fadeIn 0.3s' }}>
+          <div style={{ width: 80, height: 80, borderRadius: '40px', background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', fontSize: '36px', boxShadow: `inset 0 0 0 1px ${theme.border}` }}>
+            👻
+          </div>
+          <h3 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#FFF' }}>Здесь пока тихо</h3>
+          <p style={{ margin: '0 0 32px', fontSize: '15px', color: theme.textMuted, lineHeight: 1.5, maxWidth: '280px' }}>
+            Никто еще не просил о помощи в этой категории. Самое время стать первым!
+          </p>
+          <button className="spring-btn" style={{ background: theme.primary, color: '#000', padding: '16px 28px', borderRadius: '16px', fontWeight: 800, fontSize: '16px', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: `0 8px 24px rgba(212, 255, 0, 0.2)` }}>
+            <Plus size={20} strokeWidth={3} /> Создать таску
+          </button>
+        </div>
+      );
+
+      // === КОМПОНЕНТ: МОДАЛКА ЗАПРОСА (Bottom Sheet) ===
+      const RequestModal = ({ req, isOpen, onClose }) => {
+        const [isTextExpanded, setIsTextExpanded] = useState(false);
+        const textScrollRef = useRef(null);
+        const [scrollState, setScrollState] = useState({ isTop: true, isBottom: false });
+
+        const handleScroll = () => {
+          if (textScrollRef.current) {
+            const { scrollTop, scrollHeight, clientHeight } = textScrollRef.current;
+            setScrollState({
+              isTop: scrollTop <= 1, // Погрешность в 1px
+              isBottom: scrollTop + clientHeight >= scrollHeight - 1
+            });
+          }
+        };
+
+        // Сбрасываем скролл текста при новом открытии
+        useEffect(() => {
+          if (isOpen) {
+            setIsTextExpanded(false);
+            setScrollState({ isTop: true, isBottom: false });
+            if (textScrollRef.current) textScrollRef.current.scrollTop = 0;
+          }
+        }, [isOpen, req]);
+
+        // Проверяем скролл после анимации раскрытия (вдруг текст поместился полностью)
+        useEffect(() => {
+          if (isTextExpanded) {
+            const timer = setTimeout(handleScroll, 350);
+            return () => clearTimeout(timer);
+          }
+        }, [isTextExpanded]);
+
+        if (!isOpen || !req) return null;
+
+        let bountyStyle = { bg: theme.surfaceElevated, color: '#EAEAEA' };
+        if (req.rewardType === 'money') bountyStyle = { bg: theme.successBg, color: theme.success };
+        if (req.rewardType === 'barter') bountyStyle = { bg: theme.warningBg, color: theme.warning };
+        
+        const isInProgress = req.status === 'in_progress';
+
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', textAlign: 'left' }}>
+            <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s forwards' }} />
+            
+            <div style={{ 
+              background: theme.surface, 
+              borderTopLeftRadius: '24px', borderTopRightRadius: '24px',
+              borderTop: `1px solid ${theme.border}`, 
+              position: 'relative', 
+              animation: 'slideUpSheet 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+              display: 'flex', flexDirection: 'column', maxHeight: '90%'
+            }}>
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '10px 0', position: 'absolute', top: 0, zIndex: 2 }}>
+                <div style={{ width: 40, height: 4, background: 'rgba(255,255,255,0.2)', borderRadius: 2 }} />
+              </div>
+
+              <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', paddingTop: '32px', paddingBottom: '24px', paddingLeft: '20px', paddingRight: '20px' }}>
+                
+                <h1 style={{ margin: '0 0 16px', fontSize: '24px', fontWeight: 800, color: '#FFF', lineHeight: 1.2 }}>
+                  {req.title}
+                </h1>
+
+                {/* Чипы под заголовком */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: req.tagBg, color: req.tagColor, padding: '6px 12px', borderRadius: '10px', fontSize: '14px', fontWeight: 700 }}>
+                    {req.tag}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: bountyStyle.bg, color: bountyStyle.color, padding: '6px 12px', borderRadius: '10px', fontSize: '14px', fontWeight: 700 }}>
+                    {req.rewardText}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: isInProgress ? theme.surfaceElevated : (req.isUrgent ? theme.errorBg : theme.surfaceElevated), color: isInProgress ? theme.textMuted : (req.isUrgent ? theme.error : theme.textMuted), padding: '6px 12px', borderRadius: '10px', fontSize: '14px', fontWeight: 700 }}>
+                    {req.isBurning && !isInProgress && <div className="burning-dot" style={{width: 10, height: 10}} />}
+                    {!req.isBurning && (req.isUrgent && !isInProgress ? <Zap size={14} strokeWidth={3} /> : <Clock size={14} />)} 
+                    {req.timeLabel}
+                  </div>
+                </div>
+
+                {/* Блок Автора с Кармой */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', borderBottom: `1px solid ${theme.border}`, marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: 48, height: 48, borderRadius: '16px', background: req.avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 800, color: '#FFF' }}>
+                      {req.avatarLetter}
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '16px', color: '#FFF' }}>{req.author}</span>
+                        {req.isMine && <span style={{ background: 'transparent', border: `1px solid ${theme.primary}`, color: theme.primary, fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '6px' }}>ЭТО ВЫ</span>}
+                      </div>
+                      {/* Строка социального капитала (Карма) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                        <span style={{ color: theme.textBody, fontSize: '13px', fontWeight: 600 }}>{req.karma}</span>
+                        <span style={{ color: theme.textMuted, fontSize: '12px' }}>• {req.meta.split(' • ')[1]}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: theme.surfaceElevated, border: 'none', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <MoreVertical size={20} />
+                  </button>
+                </div>
+
+                {/* Описание */}
+                <div style={{ marginBottom: '24px' }}>
+                  <h4 style={{ margin: '0 0 8px', fontSize: '13px', fontWeight: 600, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Описание</h4>
+                  <div style={{ position: 'relative' }}>
+                    
+                    {/* Верхний блюр (появляется только если прокрутили вниз) */}
+                    {req.text.length > 150 && (
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '24px', background: `linear-gradient(to top, transparent, ${theme.surface})`, pointerEvents: 'none', opacity: isTextExpanded && !scrollState.isTop ? 1 : 0, transition: 'opacity 0.3s', zIndex: 1 }} />
+                    )}
+
+                    <div 
+                      ref={textScrollRef}
+                      onScroll={handleScroll}
+                      className={isTextExpanded ? "hide-scroll" : ""}
+                      style={{ 
+                        margin: 0, fontSize: '15px', color: '#EAEAEA', lineHeight: 1.45, whiteSpace: 'pre-wrap',
+                        maxHeight: isTextExpanded ? '200px' : '90px',
+                        overflowY: isTextExpanded ? 'auto' : 'hidden',
+                        transition: 'max-height 0.3s cubic-bezier(0.32, 0.72, 0, 1)'
+                      }}
+                    >
+                      {req.text}
+                    </div>
+                    
+                    {/* Нижний блюр (исчезает если докрутили до конца) */}
+                    {req.text.length > 150 && (
+                      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '48px', background: `linear-gradient(to bottom, transparent, ${theme.surface})`, pointerEvents: 'none', opacity: !isTextExpanded || (isTextExpanded && !scrollState.isBottom) ? 1 : 0, transition: 'opacity 0.3s', zIndex: 1 }} />
+                    )}
+
+                  </div>
+                  {req.text.length > 150 && !isTextExpanded && (
+                    <button 
+                      className="spring-btn"
+                      onClick={() => setIsTextExpanded(true)}
+                      style={{ background: 'none', border: 'none', color: theme.primary, fontSize: '14px', fontWeight: 600, padding: '8px 0 0', cursor: 'pointer' }}
+                    >
+                      Показать ещё
+                    </button>
+                  )}
+                </div>
+
+                {/* Прогресс-бар FOMO в модалке */}
+                {req.targetHelpers > 0 && !isInProgress && (
+                  <div style={{ marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '16px', border: `1px solid ${theme.border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 600, marginBottom: '10px' }}>
+                      <span style={{ color: '#FFF' }}>Собрано: <span style={{ color: theme.primary }}>{req.currentHelpers} человека</span></span>
+                      <span style={{ color: theme.textMuted }}>Цель: {req.targetHelpers}</span>
+                    </div>
+                    <div style={{ height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${(req.currentHelpers / req.targetHelpers) * 100}%`, background: theme.primary, borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Мета данные дат */}
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${theme.border}`, borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: theme.textMuted, fontSize: '13px', fontWeight: 500 }}>
+                    <Calendar size={16} /> Создано: {req.createdAt}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: theme.textMuted, fontSize: '13px', fontWeight: 500 }}>
+                    <Clock size={16} /> Актуально до: <span style={{ color: isInProgress ? theme.textMuted : (req.isUrgent ? theme.error : '#FFF'), fontWeight: isInProgress ? 500 : (req.isUrgent ? 700 : 500) }}>{req.deadlineAt}</span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Фиксированный Sticky Footer для кнопок */}
+              <div style={{ 
+                padding: '16px 20px', 
+                paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 20px))',
+                background: theme.surface, 
+                borderTop: `1px solid ${theme.border}`,
+                display: 'flex', gap: '12px'
+              }}>
+                {req.isMine ? (
+                  <button onClick={onClose} className="spring-btn" style={{ flex: 1, padding: '16px', borderRadius: '16px', background: theme.surfaceElevated, border: 'none', color: '#FFF', fontSize: '16px', fontWeight: 700 }}>
+                    Закрыть таску (Решено)
+                  </button>
+                ) : isInProgress ? (
+                   // Заблокированная кнопка, если уже в работе
+                   <button onClick={onClose} style={{ flex: 1, padding: '16px', borderRadius: '16px', background: theme.surfaceElevated, border: 'none', color: theme.textMuted, fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                     <Lock size={20} /> Исполнитель уже найден
+                   </button>
+                ) : (
+                  // Главная CTA кнопка
+                  <button onClick={onClose} className="spring-btn" style={{ flex: 1, padding: '16px', borderRadius: '16px', background: theme.primary, border: 'none', color: '#000', fontSize: '16px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: `0 8px 24px rgba(212, 255, 0, 0.2)` }}>
+                    <MessageSquare size={20} strokeWidth={2.5} /> Откликнуться
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // === ГЛАВНЫЙ АПП ===
+      function App() {
+        const [activeRequest, setActiveRequest] = useState(null);
+        const [activeFilter, setActiveFilter] = useState('Все');
+
+        // Имитация фильтрации для демонстрации Пустого Состояния (Empty State)
+        const filteredRequests = activeFilter === 'Общага' 
+          ? [] 
+          : activeFilter === 'Все' ? ALL_REQUESTS : ALL_REQUESTS.filter(r => r.tag.includes(activeFilter.toUpperCase()));
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: theme.bg, borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            {/* ШАПКА */}
+            <header style={{ paddingTop: '60px', paddingBottom: '12px', zIndex: 100, background: theme.bg }}>
+              
+              {/* Табы */}
+              <div style={{ background: theme.surfaceElevated, borderRadius: '24px', display: 'flex', padding: '4px', height: '48px', marginBottom: '16px', margin: '0 16px 16px' }}>
+                <button style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF', fontWeight: 700, fontSize: '15px' }}>Посты</button>
+                <div style={{ flex: 1, background: theme.primary, borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', fontWeight: 800, fontSize: '15px', boxShadow: `0 4px 12px rgba(212,255,0,0.3)` }}>
+                  Помощь
+                </div>
+              </div>
+
+              {/* Поиск */}
+              <div style={{ margin: '0 16px 12px' }}>
+                <div style={{ width: '100%', height: '44px', background: theme.surface, borderRadius: '22px', border: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', padding: '0 16px' }}>
+                  <Search size={18} color={theme.textMuted} style={{ marginRight: '8px' }} />
+                  <span style={{ color: theme.textMuted, fontSize: '15px' }}>Поиск задач...</span>
+                </div>
+              </div>
+
+              {/* Фильтры */}
+              <div className="hide-scroll" style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '0 16px' }}>
+                {FILTERS.map(f => (
+                  <button 
+                    key={f} 
+                    onClick={() => setActiveFilter(f)}
+                    className="spring-btn" 
+                    style={{ 
+                      padding: '0 16px', height: '36px', borderRadius: '18px', 
+                      background: activeFilter === f ? 'rgba(212,255,0,0.1)' : theme.surfaceElevated, 
+                      color: activeFilter === f ? theme.primary : '#FFF', 
+                      border: `1px solid ${activeFilter === f ? theme.primary : 'transparent'}`,
+                      fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' 
+                    }}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </header>
+
+            {/* СКРОЛЛ ЛЕНТЫ */}
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: '100px' }}>
+              
+              {filteredRequests.length > 0 ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', margin: '16px 16px 20px' }}>
+                    <div style={{ flex: 1, height: '1px', background: theme.border }} />
+                    <span style={{ padding: '0 12px', color: theme.textMuted, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px' }}>Актуальное</span>
+                    <div style={{ flex: 1, height: '1px', background: theme.border }} />
+                  </div>
+
+                  {filteredRequests.map(req => (
+                    <RequestCard key={req.id} req={req} onClick={setActiveRequest} />
+                  ))}
+                </>
+              ) : (
+                <EmptyState />
+              )}
+
+            </div>
+
+            {/* НИЖНИЙ ТАББАР */}
+            <div style={{ position: 'absolute', bottom: '16px', left: '16px', right: '16px', zIndex: 100, display: 'flex', justifyContent: 'center' }}>
+              <nav style={{ background: theme.surface, borderRadius: '32px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', boxShadow: '0 20px 40px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)' }}>
+                <button className="spring-btn" style={{ flex: 1, height: '48px', background: 'none', border: 'none', color: '#FFF', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ position: 'absolute', top: -8, width: '24px', height: '4px', borderRadius: '0 0 4px 4px', background: '#FFFFFF' }}/>
+                  <Home size={24} strokeWidth={2.5} />
+                </button>
+                <button className="spring-btn" style={{ flex: 1, height: '48px', background: 'none', border: 'none', color: theme.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ShoppingBag size={24} /></button>
+                <button className="spring-btn" style={{ width: '48px', height: '48px', borderRadius: '24px', background: theme.primary, border: 'none', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={26} strokeWidth={3} /></button>
+                <button className="spring-btn" style={{ flex: 1, height: '48px', background: 'none', border: 'none', color: theme.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Heart size={24} /></button>
+                <button className="spring-btn" style={{ flex: 1, height: '48px', background: 'none', border: 'none', color: theme.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={24} /></button>
+              </nav>
+            </div>
+
+            <RequestModal req={activeRequest} isOpen={!!activeRequest} onClose={() => setActiveRequest(null)} />
+
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

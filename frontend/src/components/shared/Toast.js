@@ -1,32 +1,29 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { CheckCircle2, AlertTriangle, Info, X as XIcon } from 'lucide-react';
 import useStore from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 
 // ===== КОНФИГУРАЦИЯ ТИПОВ ТОСТОВ =====
 const TOAST_CONFIG = {
   success: {
-    icon: '✓',
-    color: '#10b981',
-    bg: '#10b98125',
-    borderColor: '#10b981',
+    Icon: CheckCircle2,
+    color: '#32D74B',
+    borderColor: 'rgba(50,215,75,0.25)',
   },
   error: {
-    icon: '✗',
-    color: '#ef4444',
-    bg: '#ef444425',
-    borderColor: '#ef4444',
+    Icon: AlertTriangle,
+    color: '#FF453A',
+    borderColor: 'rgba(255,69,58,0.25)',
   },
   info: {
-    icon: 'ℹ',
-    color: '#3b82f6',
-    bg: '#3b82f625',
-    borderColor: '#3b82f6',
+    Icon: Info,
+    color: '#0A84FF',
+    borderColor: 'rgba(10,132,255,0.25)',
   },
   warning: {
-    icon: '⚠',
-    color: '#f59e0b',
-    bg: '#f59e0b25',
-    borderColor: '#f59e0b',
+    Icon: AlertTriangle,
+    color: '#FF9F0A',
+    borderColor: 'rgba(255,159,10,0.25)',
   },
 };
 
@@ -41,6 +38,7 @@ const Toast = ({ id, type = 'info', message, duration = 3000, onClose }) => {
   const remainingTimeRef = useRef(duration);
 
   const config = TOAST_CONFIG[type] || TOAST_CONFIG.info;
+  const ToastIcon = config.Icon;
 
   // Появление
   useEffect(() => {
@@ -100,7 +98,7 @@ const Toast = ({ id, type = 'info', message, duration = 3000, onClose }) => {
     <div
       style={{
         ...styles.toast,
-        background: config.bg,
+        background: '#1C1C1E',
         borderColor: config.borderColor,
         animation: isExiting
           ? 'slideOutDown 0.3s ease forwards'
@@ -113,9 +111,7 @@ const Toast = ({ id, type = 'info', message, duration = 3000, onClose }) => {
       onMouseLeave={handleMouseLeave}
     >
       {/* Иконка */}
-      <div style={{ ...styles.icon, color: config.color }}>
-        {config.icon}
-      </div>
+      <ToastIcon size={20} color={config.color} strokeWidth={2.5} style={{ flexShrink: 0 }} />
 
       {/* Текст */}
       <div style={styles.message}>{message}</div>
@@ -126,7 +122,7 @@ const Toast = ({ id, type = 'info', message, duration = 3000, onClose }) => {
         style={styles.closeButton}
         aria-label="Закрыть"
       >
-        ✕
+        <XIcon size={14} />
       </button>
 
       {/* Прогресс-бар */}
@@ -231,17 +227,6 @@ const styles = {
     overflow: 'hidden',
     pointerEvents: 'auto',
     transition: 'all 0.2s ease',
-  },
-
-  icon: {
-    fontSize: '20px',
-    fontWeight: 'bold',
-    flexShrink: 0,
-    width: '24px',
-    height: '24px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   message: {

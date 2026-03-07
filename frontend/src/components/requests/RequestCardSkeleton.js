@@ -1,52 +1,35 @@
-// ===== 📄 ФАЙЛ: RequestCardSkeleton.js =====
-
 import React from 'react';
 import theme from '../../theme';
 
 function RequestCardSkeleton() {
   return (
     <div style={styles.card}>
-      {/* ХЕДЕР - как в RequestCard */}
-      <div style={styles.header}>
-        <div style={{ ...styles.skeleton, width: 100, height: 24, borderRadius: 16 }} />
-        <div style={{ ...styles.skeleton, width: 70, height: 20, borderRadius: 10 }} />
-      </div>
+      <div style={styles.mainRow}>
+        <div style={{ ...styles.skeleton, ...styles.avatar }} />
 
-      {/* ЗАГОЛОВОК - fontSize.lg */}
-      <div style={{ ...styles.skeleton, width: '90%', height: 22, marginBottom: theme.spacing.md }} />
+        <div style={styles.mainContent}>
+          <div style={styles.topRow}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ ...styles.skeleton, width: 132, height: 16, marginBottom: 6 }} />
+              <div style={{ ...styles.skeleton, width: 94, height: 12 }} />
+            </div>
+            <div style={{ ...styles.skeleton, width: 88, height: 20, borderRadius: 10 }} />
+          </div>
 
-      {/* ОПИСАНИЕ - fontSize.sm, 2 строки */}
-      <div style={{ ...styles.skeleton, width: '100%', height: 16, marginBottom: 8 }} />
-      <div style={{ ...styles.skeleton, width: '75%', height: 16, marginBottom: theme.spacing.lg }} />
+          <div style={{ ...styles.skeleton, width: '78%', height: 18, marginBottom: 8 }} />
+          <div style={{ ...styles.skeleton, width: '100%', height: 14, marginBottom: 6 }} />
+          <div style={{ ...styles.skeleton, width: '66%', height: 14 }} />
 
-      {/* ЛИНИЯ РАЗДЕЛИТЕЛЬ */}
-      <div style={{ height: 1, background: theme.colors.border, marginBottom: theme.spacing.md }} />
-
-      {/* АВТОР - высота 48px (как authorBlock) */}
-      <div style={styles.authorBlock}>
-        <div style={{ ...styles.skeleton, width: 48, height: 48, borderRadius: '50%' }} />
-        <div style={{ flex: 1 }}>
-          <div style={{ ...styles.skeleton, width: 140, height: 16, marginBottom: 6 }} />
-          <div style={{ ...styles.skeleton, width: 100, height: 14 }} />
+          <div style={styles.chipsRow}>
+            <div style={{ ...styles.skeleton, width: 92, height: 24, borderRadius: 8 }} />
+            <div style={{ ...styles.skeleton, width: 118, height: 24, borderRadius: 8 }} />
+          </div>
         </div>
       </div>
 
-      {/* ЛИНИЯ РАЗДЕЛИТЕЛЬ */}
-      <div style={{ height: 1, background: theme.colors.border, marginTop: theme.spacing.md, marginBottom: theme.spacing.md }} />
-
-      {/* ФУТЕР */}
       <div style={styles.footer}>
-        {/* ТЕГИ */}
-        <div style={styles.tags}>
-          <div style={{ ...styles.skeleton, width: 60, height: 20, borderRadius: 12 }} />
-          <div style={{ ...styles.skeleton, width: 70, height: 20, borderRadius: 12 }} />
-        </div>
-
-        {/* СТАТИСТИКА */}
-        <div style={styles.stats}>
-          <div style={{ ...styles.skeleton, width: 35, height: 16 }} />
-          <div style={{ ...styles.skeleton, width: 35, height: 16 }} />
-        </div>
+        <div style={{ ...styles.skeleton, width: 138, height: 14 }} />
+        <div style={{ ...styles.skeleton, width: 90, height: 28, borderRadius: 14 }} />
       </div>
     </div>
   );
@@ -54,66 +37,64 @@ function RequestCardSkeleton() {
 
 const styles = {
   card: {
-    background: theme.colors.card,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
-    border: `1px solid ${theme.colors.border}`,
+    padding: '24px 0 16px',
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
+    opacity: 0.75,
     cursor: 'not-allowed',
-    opacity: 0.6,
-    transition: theme.transitions.normal
   },
-
-  skeleton: {
-    background: `linear-gradient(90deg, ${theme.colors.bgSecondary} 0%, ${theme.colors.border} 50%, ${theme.colors.bgSecondary} 100%)`,
-    backgroundSize: '200% 100%',
-    animation: 'shimmer 1.5s infinite',
-    borderRadius: theme.radius.sm
+  mainRow: {
+    display: 'flex',
+    gap: 12,
+    padding: '0 16px',
   },
-
-  header: {
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  mainContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  topRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.md
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 10,
   },
-
-  authorBlock: {
+  chipsRow: {
     display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.md
+    gap: 8,
+    marginTop: 12,
   },
-
   footer: {
+    marginTop: 16,
+    padding: '0 16px',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: 10,
   },
-
-  tags: {
-    display: 'flex',
-    gap: theme.spacing.sm
+  skeleton: {
+    borderRadius: theme.radius.sm,
+    background: `linear-gradient(90deg, ${theme.colors.premium.surfaceElevated} 0%, ${theme.colors.premium.surfaceHover} 50%, ${theme.colors.premium.surfaceElevated} 100%)`,
+    backgroundSize: '220% 100%',
+    animation: 'requestShimmer 1.5s infinite linear',
   },
-
-  stats: {
-    display: 'flex',
-    gap: theme.spacing.lg
-  }
 };
 
-// CSS анимация
-if (typeof document !== 'undefined') {
+if (typeof document !== 'undefined' && !document.getElementById('request-skeleton-keyframes')) {
   const styleSheet = document.createElement('style');
+  styleSheet.id = 'request-skeleton-keyframes';
   styleSheet.textContent = `
-    @keyframes shimmer {
+    @keyframes requestShimmer {
       0% { background-position: 200% 0; }
       100% { background-position: -200% 0; }
     }
   `;
-  if (!document.querySelector('#shimmer-keyframes')) {
-    styleSheet.id = 'shimmer-keyframes';
-    document.head.appendChild(styleSheet);
-  }
+  document.head.appendChild(styleSheet);
 }
 
 export default RequestCardSkeleton;
