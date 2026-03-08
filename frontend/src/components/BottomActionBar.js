@@ -1,289 +1,241 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, Mail, X, Check } from 'lucide-react';
-import { hapticFeedback } from '../utils/telegram';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Paperclip, Send, X } from 'lucide-react';
+
 import theme from '../theme';
+import { hapticFeedback } from '../utils/telegram';
+import { processImageFiles, revokeObjectURLs } from '../utils/media';
+import { toast } from './shared/Toast';
 
 function BottomActionBar({
   onCommentSend,
-  onDirectSend,
   disabled = false,
   replyTo = null,
   replyToName = '',
   onCancelReply = null,
-  postAuthorName = 'автора',
-  isAnonymousPost = false,
+  maxImages = 3,
 }) {
-  const [mode, setMode] = useState('default');
-  const [commentText, setCommentText] = useState('');
-  const [directText, setDirectText] = useState('');
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [sendState, setSendState] = useState('idle');
+  const [text, setText] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [isSending, setIsSending] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const commentInputRef = useRef(null);
-  const directInputRef = useRef(null);
+  const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const attachmentUrlsRef = useRef(new Set());
 
-  useEffect(() => {
-    if (!replyTo) return;
-    if (mode !== 'comment') switchMode('comment');
-    setTimeout(() => {
-      if (commentInputRef.current) {
-        commentInputRef.current.focus();
-      }
-    }, 0);
-  }, [replyTo]);
-
-  const switchMode = (next) => {
-    if (isAnimating || disabled || mode === next) return;
-    hapticFeedback('light');
-    setIsAnimating(true);
-    setMode(next);
-    setTimeout(() => {
-      setIsAnimating(false);
-      if (next === 'comment' && commentInputRef.current) commentInputRef.current.focus();
-      if (next === 'direct' && directInputRef.current) directInputRef.current.focus();
-    }, 220);
-  };
-
-  const performSendWithSuccess = (sendCallback, clearCallback) => {
-    sendCallback();
-    hapticFeedback('success');
-    setSendState('success');
-    clearCallback();
-    setTimeout(() => {
-      setSendState('idle');
-      setMode('default');
-      if (onCancelReply) onCancelReply();
-    }, 500);
-  };
-
-  const sendComment = () => {
-    const text = commentText.trim();
-    if (!text) return;
-    performSendWithSuccess(
-      () => onCommentSend(text),
-      () => setCommentText('')
-    );
-  };
-
-  const sendDirect = () => {
-    const text = directText.trim();
-    if (!text) {
-      hapticFeedback('error');
-      return;
-    }
-    performSendWithSuccess(
-      () => onDirectSend(text),
-      () => setDirectText('')
-    );
-  };
-
-  const autoResize = (e) => {
-    const ta = e.target;
-    ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
-  };
+  const canSend = useMemo(() => {
+    return !disabled && !isSending && (text.trim().length > 0 || attachments.length > 0);
+  }, [disabled, isSending, text, attachments.length]);
 
   useEffect(() => {
-    const onResize = () => {
+    if (!textareaRef.current) return;
+    textareaRef.current.style.height = '22px';
+    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 100)}px`;
+  }, [text]);
+
+  useEffect(() => {
+    const onViewportResize = () => {
       if (!window.visualViewport) return;
-      const kb = window.innerHeight - window.visualViewport.height;
-      const bar = document.querySelector('.bottom-action-bar');
-      if (bar) bar.style.transform = `translateY(-${kb}px)`;
+      const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
+      const node = document.querySelector('.post-detail-bottom-bar');
+      if (node) {
+        node.style.transform = `translateY(-${keyboardHeight}px)`;
+      }
     };
-    if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', onViewportResize);
+      window.visualViewport.addEventListener('scroll', onViewportResize);
+    }
+
     return () => {
-      if (window.visualViewport) window.visualViewport.removeEventListener('resize', onResize);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', onViewportResize);
+        window.visualViewport.removeEventListener('scroll', onViewportResize);
+      }
     };
   }, []);
 
-  const isSuccess = sendState === 'success';
+  useEffect(() => {
+    return () => {
+      revokeObjectURLs(Array.from(attachmentUrlsRef.current));
+      attachmentUrlsRef.current.clear();
+    };
+  }, []);
+
+  const openFilePicker = () => {
+    if (disabled || isProcessing || attachments.length >= maxImages) return;
+    hapticFeedback('light');
+    fileInputRef.current?.click();
+  };
+
+  const handleFilesSelected = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (files.length === 0) return;
+
+    const available = maxImages - attachments.length;
+    if (available <= 0) {
+      toast.error(`Максимум ${maxImages} фото`);
+      hapticFeedback('error');
+      return;
+    }
+
+    const toProcess = files.slice(0, available);
+    if (files.length > available) {
+      toast.error(`Максимум ${maxImages} фото`);
+    }
+
+    setIsProcessing(true);
+    try {
+      const processed = await processImageFiles(toProcess);
+      processed.forEach((item) => {
+        if (item.preview) attachmentUrlsRef.current.add(item.preview);
+      });
+      setAttachments((prev) => [...prev, ...processed].slice(0, maxImages));
+      hapticFeedback('success');
+    } catch (error) {
+      console.error('Comment attachment processing failed:', error);
+      toast.error('Не удалось обработать фото');
+      hapticFeedback('error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments((prev) => {
+      const next = [...prev];
+      const removed = next[index];
+      if (removed?.preview) {
+        revokeObjectURLs([removed.preview]);
+        attachmentUrlsRef.current.delete(removed.preview);
+      }
+      next.splice(index, 1);
+      return next;
+    });
+    hapticFeedback('light');
+  };
+
+  const handleSend = async () => {
+    if (!canSend || typeof onCommentSend !== 'function') return;
+
+    const payloadText = text.trim();
+    const payloadFiles = attachments.map((item) => item.file).filter(Boolean);
+
+    setIsSending(true);
+    try {
+      await Promise.resolve(onCommentSend(payloadText, payloadFiles));
+      setText('');
+      revokeObjectURLs(Array.from(attachmentUrlsRef.current));
+      attachmentUrlsRef.current.clear();
+      setAttachments([]);
+      if (onCancelReply) onCancelReply();
+      hapticFeedback('success');
+    } catch (error) {
+      console.error('Comment send failed:', error);
+      toast.error('Не удалось отправить комментарий');
+      hapticFeedback('error');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const replyLabel = replyTo && replyToName
+    ? (replyToName.startsWith('Аноним') ? 'Ответ анониму' : `Ответ @${replyToName}`)
+    : '';
 
   return (
-    <div
-      className="bottom-action-bar"
-      style={{
-        ...styles.container,
-        opacity: disabled ? 0.5 : 1,
-        pointerEvents: disabled ? 'none' : 'auto',
-      }}
-    >
-      {/* Левая — комментарий */}
-      <div
-        className={`action-button action-button-left ${mode === 'comment' ? 'active' : ''} ${mode === 'direct' ? 'inactive' : ''}`}
-        style={{
-          ...styles.button,
-          flex: mode === 'comment' ? 6 : 1,
-          backgroundColor: mode === 'comment' ? styles.bgActive : styles.bgIdle,
-          border: mode === 'comment' ? `1px solid ${theme.colors.primary}` : '1px solid transparent',
-        }}
-        onClick={() => mode !== 'comment' && switchMode('comment')}
-      >
-        {mode === 'comment' ? (
-          <div style={styles.inputWrap}>
-            {replyTo && replyToName && (
-              <div style={styles.contextRow}>
+    <div className="post-detail-bottom-bar" style={styles.container}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFilesSelected}
+        style={{ display: 'none' }}
+      />
+
+      <div style={styles.pill}>
+        {replyLabel && (
+          <div style={styles.replyRow}>
+            <span style={styles.replyText}>{replyLabel}</span>
+            <button
+              type="button"
+              onClick={onCancelReply}
+              style={styles.replyClose}
+              aria-label="Отменить ответ"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {attachments.length > 0 && (
+          <div style={styles.attachmentsRow}>
+            {attachments.map((item, index) => (
+              <div key={`${item.preview}-${index}`} style={styles.attachmentItem}>
+                <img src={item.preview} alt="attachment" style={styles.attachmentImage} />
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    hapticFeedback('light');
-                    onCancelReply && onCancelReply();
-                  }}
-                  style={styles.closeBtn}
-                  aria-label="Отменить ответ"
+                  onClick={() => removeAttachment(index)}
+                  style={styles.attachmentRemove}
+                  aria-label="Удалить фото"
                 >
-                  <X size={16} color={theme.colors.textTertiary} />
+                  <X size={12} />
                 </button>
-                <span style={styles.contextLabel}>
-                  {replyToName && replyToName.startsWith('Аноним') 
-                    ? 'Ответить @аноним'
-                    : `Ответить @${replyToName}`}
-                </span>
               </div>
-            )}
-
-            <div style={styles.inputRow}>
-              <textarea
-                ref={commentInputRef}
-                value={commentText}
-                onChange={(e) => {
-                  setCommentText(e.target.value);
-                  autoResize(e);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendComment();
-                  }
-                }}
-                placeholder={
-                  replyTo && replyToName
-                    ? (replyToName.startsWith('Аноним') 
-                        ? 'Ответить @аноним...' 
-                        : `Ответить @${replyToName}...`)
-                    : 'Напишите комментарий...'
-                }
-                style={styles.textarea}
-                rows={1}
-                maxLength={2000}
-              />
-
-              {(commentText.trim() || isSuccess) && (
-                <button
-                  type="button"
-                  onClick={sendComment}
-                  disabled={isSuccess}
-                  style={{
-                    ...styles.sendFab,
-                    background: isSuccess
-                      ? theme.colors.success
-                      : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
-                    transform: isSuccess
-                      ? 'translateY(-50%) scale(1.1)'
-                      : 'translateY(-50%) scale(1)',
-                  }}
-                  className="send-fab-animate"
-                >
-                  {isSuccess ? <Check size={20} /> : <Send size={18} />}
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="button-content" style={styles.buttonContent}>
-            <MessageCircle size={20} color={theme.colors.text} style={{ flexShrink: 0 }} />
-            <span className="button-label" style={styles.buttonLabel}>
-              Комментарий
-            </span>
+            ))}
           </div>
         )}
-      </div>
 
-      {/* Правая — лично */}
-      <div
-        className={`action-button action-button-right ${mode === 'direct' ? 'active' : ''} ${mode === 'comment' ? 'inactive' : ''}`}
-        style={{
-          ...styles.button,
-          flex: mode === 'direct' ? 6 : 1,
-          backgroundColor: mode === 'direct' ? styles.bgActive : styles.bgIdle,
-          border: mode === 'direct' ? `1px solid ${theme.colors.primary}` : '1px solid transparent',
-          opacity: isAnonymousPost ? 0.4 : 1,
-          cursor: isAnonymousPost ? 'not-allowed' : 'pointer',
-        }}
-        onClick={() => !isAnonymousPost && mode !== 'direct' && switchMode('direct')}
-      >
-        {mode === 'direct' ? (
-          <div style={styles.inputWrap}>
-            <div style={styles.contextRow}>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  hapticFeedback('light');
-                  switchMode('default');
-                }}
-                style={styles.closeBtn}
-                aria-label="Закрыть"
-              >
-                <X size={16} color={theme.colors.textTertiary} />
-              </button>
-              <span style={styles.contextLabel}>
-                ЛС для @{replyToName || 'автора'}
-              </span>
-            </div>
+        <div style={styles.inputRow}>
+          <button
+            type="button"
+            onClick={openFilePicker}
+            disabled={disabled || isProcessing || attachments.length >= maxImages}
+            style={{
+              ...styles.attachButton,
+              color: attachments.length > 0 ? theme.colors.premium.primary : theme.colors.premium.textMuted,
+              opacity: disabled || attachments.length >= maxImages ? 0.5 : 1,
+            }}
+            aria-label="Прикрепить фото"
+          >
+            <Paperclip size={18} />
+          </button>
 
-            <div style={styles.inputRow}>
-              <textarea
-                ref={directInputRef}
-                value={directText}
-                onChange={(e) => {
-                  setDirectText(e.target.value);
-                  autoResize(e);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendDirect();
-                  }
-                }}
-                placeholder="Отклик автору..."
-                style={styles.textarea}
-                rows={1}
-                maxLength={500}
-              />
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Написать комментарий..."
+            rows={1}
+            maxLength={2000}
+            style={styles.textarea}
+          />
 
-              {(directText.trim() || isSuccess) && (
-                <button
-                  type="button"
-                  onClick={sendDirect}
-                  disabled={isSuccess}
-                  style={{
-                    ...styles.sendFab,
-                    background: isSuccess
-                      ? theme.colors.success
-                      : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
-                    transform: isSuccess
-                      ? 'translateY(-50%) scale(1.1)'
-                      : 'translateY(-50%) scale(1)',
-                  }}
-                  className="send-fab-animate"
-                >
-                  {isSuccess ? <Check size={20} /> : <Send size={18} />}
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="button-content" style={styles.buttonContent}>
-            <Mail size={20} color={isAnonymousPost ? theme.colors.textDisabled : theme.colors.text} style={{ flexShrink: 0 }} />
-            <span className="button-label" style={{
-              ...styles.buttonLabel,
-              color: isAnonymousPost ? theme.colors.textDisabled : theme.colors.text
-            }}>
-              Лично
-            </span>
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!canSend}
+            style={{
+              ...styles.sendButton,
+              backgroundColor: canSend ? theme.colors.premium.primary : 'transparent',
+              color: canSend ? theme.colors.premium.primaryText : theme.colors.premium.textMuted,
+              transform: canSend ? 'scale(1)' : 'scale(0.9)',
+              opacity: canSend ? 1 : 0.6,
+            }}
+            aria-label="Отправить комментарий"
+          >
+            <Send size={16} style={{ marginLeft: canSend ? 2 : 0, transition: 'margin 0.2s' }} />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -291,200 +243,140 @@ function BottomActionBar({
 
 const styles = {
   container: {
-    position: 'fixed',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: theme.spacing.sm,
-    paddingBottom: `calc(${theme.spacing.sm}px + env(safe-area-inset-bottom))`,
-    display: 'flex',
-    gap: theme.spacing.sm,
-    backgroundColor: theme.colors.bgSecondary,
-    borderTop: `1px solid ${theme.colors.border}`,
-    zIndex: 100,
-    transition: 'transform .25s ease',
+    position: 'absolute',
+    left: 'max(12px, env(safe-area-inset-left, 0px))',
+    right: 'max(12px, env(safe-area-inset-right, 0px))',
+    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+    zIndex: 115,
+    transition: 'transform 0.2s ease',
+    transform: 'translateZ(0)',
+    willChange: 'transform',
   },
-  button: {
-    minHeight: 48,
-    borderRadius: 14,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    overflow: 'hidden',
-    transition: 'flex .25s cubic-bezier(.4,0,.2,1), background-color .18s ease, border .18s ease, height .25s ease',
-    position: 'relative',
-  },
-  bgIdle: theme.colors.cardHover,
-  bgActive: theme.colors.border,
-
-  buttonContent: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing.sm,
-    padding: `0 ${theme.spacing.lg}px`,
-  },
-  buttonLabel: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.text,
-    whiteSpace: 'nowrap',
-    transition: 'opacity .25s ease, width .25s ease',
-  },
-
-  inputWrap: {
+  pill: {
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing.xs,
-    width: '100%',
-    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+    gap: 0,
+    borderRadius: 24,
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(28, 28, 30, 0.85)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    boxShadow: '0 16px 40px rgba(0, 0, 0, 0.5)',
+    overflow: 'hidden',
   },
-
-  contextRow: {
+  replyRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    minHeight: 20,
+    justifyContent: 'space-between',
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
+    padding: '2px 8px 8px',
   },
-  closeBtn: {
-    background: 'none',
+  replyText: {
+    fontSize: 12,
+    color: theme.colors.premium.textMuted,
+    fontWeight: 600,
+  },
+  replyClose: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     border: 'none',
-    padding: theme.spacing.xs,
-    cursor: 'pointer',
+    background: 'rgba(255,255,255,0.08)',
+    color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    cursor: 'pointer',
     flexShrink: 0,
-    transition: theme.transitions.fast,
   },
-  contextLabel: {
-    fontSize: 11,
-    color: theme.colors.primary,
-    fontWeight: theme.fontWeight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: '0.3px',
+  attachmentsRow: {
+    display: 'flex',
+    gap: 8,
+    overflowX: 'auto',
+    padding: '12px 16px 6px',
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
   },
-
-  inputRow: {
+  attachmentItem: {
     position: 'relative',
+    width: 58,
+    height: 58,
+    borderRadius: 12,
+    overflow: 'hidden',
+    border: `1px solid ${theme.colors.premium.border}`,
+    flexShrink: 0,
+  },
+  attachmentImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  attachmentRemove: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    border: 'none',
+    background: 'rgba(0, 0, 0, 0.65)',
+    color: '#fff',
     display: 'flex',
     alignItems: 'center',
-    width: '100%',
-    minHeight: 32,
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: 0,
+  },
+  inputRow: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: 8,
+    padding: '6px 6px 6px 12px',
+  },
+  attachButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    border: 'none',
+    background: 'transparent',
+    color: theme.colors.premium.textMuted,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    flexShrink: 0,
+    marginBottom: 4,
   },
   textarea: {
     flex: 1,
-    border: 'none',
-    outline: 'none',
-    backgroundColor: 'transparent',
-    color: theme.colors.text,
-    fontSize: theme.fontSize.md,
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    minHeight: 22,
+    maxHeight: 100,
+    height: 22,
     resize: 'none',
-    minHeight: 24,
-    maxHeight: 120,
-    lineHeight: '24px',
-    padding: '0 48px 0 0',
-    overflowY: 'auto',
+    border: 'none',
+    background: 'transparent',
+    color: '#fff',
+    fontSize: 15,
+    lineHeight: 1.4,
+    outline: 'none',
+    padding: '11px 0',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+    overflowY: 'hidden',
   },
-
-  sendFab: {
-    position: 'absolute',
-    right: 4,
-    top: '50%',
-    transform: 'translateY(-50%)',
+  sendButton: {
     width: 36,
     height: 36,
-    minWidth: 36,
-    minHeight: 36,
-    borderRadius: theme.radius.full,
+    borderRadius: 18,
     border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: theme.colors.text,
-    boxShadow: '0 4px 14px rgba(135,116,225,0.4)',
     cursor: 'pointer',
-    transition: 'all .3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    transition: 'all 0.25s cubic-bezier(0.32, 0.72, 0, 1)',
     flexShrink: 0,
+    marginBottom: 4,
   },
 };
-
-const styleTag = document.createElement('style');
-styleTag.textContent = `
-  .action-button.active {
-    animation: glowPulse 2s ease-in-out infinite;
-  }
-  @keyframes glowPulse {
-    0%, 100% { box-shadow: 0 0 18px rgba(135,116,225,.30); }
-    50%      { box-shadow: 0 0 26px rgba(135,116,225,.45); }
-  }
-
-  .action-button.inactive .button-label { 
-    display: none; 
-  }
-  .action-button.inactive .button-content { 
-    justify-content: center; 
-    gap: 0; 
-    padding: 0; 
-  }
-
-  .send-fab-animate {
-    animation: sendBounceIn 0.35s cubic-bezier(0.68, -0.55, 0.27, 1.55);
-  }
-  @keyframes sendBounceIn {
-    0% {
-      transform: translateY(-50%) scale(0) rotate(-180deg);
-      opacity: 0;
-    }
-    60% {
-      transform: translateY(-50%) scale(1.15) rotate(10deg);
-    }
-    100% {
-      transform: translateY(-50%) scale(1) rotate(0deg);
-      opacity: 1;
-    }
-  }
-
-  .send-fab-animate:hover {
-    transform: translateY(-50%) scale(1.08) !important;
-    box-shadow: 0 6px 20px rgba(135,116,225,0.6) !important;
-  }
-  .send-fab-animate:active {
-    transform: translateY(-50%) scale(0.92) !important;
-    box-shadow: 0 2px 8px rgba(135,116,225,0.3) !important;
-  }
-
-  .bottom-action-bar button[aria-label="Отменить ответ"]:hover,
-  .bottom-action-bar button[aria-label="Закрыть"]:hover {
-    transform: scale(1.1);
-  }
-  .bottom-action-bar button[aria-label="Отменить ответ"]:active,
-  .bottom-action-bar button[aria-label="Закрыть"]:active {
-    transform: scale(0.9);
-  }
-
-  .bottom-action-bar textarea::-webkit-scrollbar {
-    width: 4px;
-  }
-  .bottom-action-bar textarea::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .bottom-action-bar textarea::-webkit-scrollbar-thumb {
-    background: ${theme.colors.textDisabled};
-    border-radius: 2px;
-  }
-  .bottom-action-bar textarea::placeholder {
-    color: ${theme.colors.textTertiary};
-    opacity: 1;
-  }
-`;
-if (!document.getElementById('bottom-action-bar-styles')) {
-  styleTag.id = 'bottom-action-bar-styles';
-  document.head.appendChild(styleTag);
-}
 
 export default BottomActionBar;

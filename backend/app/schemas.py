@@ -371,7 +371,7 @@ class PostResponse(BaseModel):
     body: str
     tags: List[str] = []
     
-    images: List[ImageMeta] = []
+    images: List[ImageMeta] = Field(default_factory=list)
     
     # Анонимность
     is_anonymous: bool = False
@@ -442,9 +442,18 @@ class PostsFeedResponse(BaseModel):
 class CommentCreate(BaseModel):
     """Создание комментария"""
     post_id: int
-    body: str = Field(..., min_length=1)
+    body: Optional[str] = Field(default='')
     parent_id: Optional[int] = None
     is_anonymous: bool = False
+    images: List[ImageMeta] = Field(default_factory=list, max_length=3)
+
+    @model_validator(mode='after')
+    def validate_content(self):
+        has_text = bool((self.body or '').strip())
+        has_images = bool(self.images)
+        if not has_text and not has_images:
+            raise ValueError('Комментарий должен содержать текст или фото')
+        return self
 
 class CommentUpdate(BaseModel):
     """Обновление комментария"""
@@ -465,8 +474,14 @@ class CommentResponse(BaseModel):
     is_deleted: bool = False
     is_edited: bool = False
     deleted_reason: Optional[str] = None
+    images: List[ImageMeta] = []
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    @field_validator('images', mode='before')
+    @classmethod
+    def coerce_images(cls, v):
+        return _coerce_json_list(v)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -474,7 +489,6 @@ class CommentsFeedResponse(BaseModel):
     """Лента комментариев"""
     items: List[CommentResponse]
     total: int
-
 # ===== REQUEST SCHEMAS =====
 
 class RequestCreate(BaseModel):
@@ -1142,3 +1156,4 @@ class NotificationResponse(BaseModel):
 
 class FollowupAnswer(BaseModel):
     answer: str = Field(..., pattern="^(yes|no|in_progress)$")
+

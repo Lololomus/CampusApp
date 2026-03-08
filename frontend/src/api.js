@@ -421,20 +421,55 @@ export async function getPostComments(postId) {
   }
 }
 
-export async function createComment(postId, body, parentId = null) {
+export async function createComment(postId, bodyOrPayload, parentId = null) {
   try {
     const telegram_id = getTelegramId();
-    if (!body || body.trim().length === 0) {
-      throw new Error('Тело комментария обязательно');
+
+    let body = '';
+    let actualParentId = parentId;
+    let isAnonymous = false;
+    let images = [];
+
+    if (typeof bodyOrPayload === 'object' && bodyOrPayload !== null && !Array.isArray(bodyOrPayload)) {
+      body = String(bodyOrPayload.body ?? '');
+      actualParentId = bodyOrPayload.parentId ?? null;
+      isAnonymous = Boolean(bodyOrPayload.isAnonymous);
+      images = Array.isArray(bodyOrPayload.images) ? bodyOrPayload.images.filter(Boolean) : [];
+    } else {
+      body = String(bodyOrPayload ?? '');
     }
-    
+
+    const text = body.trim();
+    if (!text && images.length === 0) {
+      throw new Error('Комментарий должен содержать текст или фото');
+    }
+    if (images.length > 3) {
+      throw new Error('Максимум 3 изображения');
+    }
+
+    if (images.length > 0) {
+      const formData = new FormData();
+      formData.append('body', text);
+      if (actualParentId !== null && actualParentId !== undefined) {
+        formData.append('parent_id', String(actualParentId));
+      }
+      formData.append('is_anonymous', isAnonymous ? 'true' : 'false');
+      images.forEach((file) => formData.append('images', file));
+
+      const response = await api.post(`/posts/${postId}/comments`, formData, {
+        params: { telegram_id },
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    }
+
     const payload = {
       post_id: postId,
-      body: body.trim(),
-      is_anonymous: false,
-      parent_id: parentId
+      body: text,
+      is_anonymous: isAnonymous,
+      parent_id: actualParentId
     };
-    
+
     const response = await api.post(`/posts/${postId}/comments`, payload, {
       params: { telegram_id },
     });
@@ -1390,3 +1425,4 @@ export async function unbindUserFromCampus(userId) {
 
 
 export { api };
+

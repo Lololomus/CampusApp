@@ -9,6 +9,7 @@ const SAFE_MARGIN = 8;
 
 
 export const ACTION_COLORS = {
+  edit: '#0A84FF',
   delete: '#FF453A',
   default: '#FFFFFF',
 };
@@ -20,7 +21,8 @@ function DropdownMenu({
   items, 
   anchorRef,
   header, 
-  closeOnScroll = true
+  closeOnScroll = true,
+  variant = 'default'
 }) {
   const menuRef = useRef(null);
   const [state, setState] = useState({ 
@@ -210,6 +212,7 @@ function DropdownMenu({
 
 
   const pos = state.position || { top: 0, left: 'auto', right: 'auto' };
+  const variantStyles = DROPDOWN_VARIANTS[variant] || DROPDOWN_VARIANTS.default;
 
 
   const dropdownContent = (
@@ -241,6 +244,7 @@ function DropdownMenu({
         onMouseMove={handleMouseMove}
         style={{
           ...styles.dropdown,
+          ...variantStyles.dropdown,
           visibility: state.position ? 'visible' : 'hidden', 
           opacity: state.mounted ? 1 : 0,
           
@@ -258,13 +262,13 @@ function DropdownMenu({
         {header && (
           <div style={{ marginBottom: 4 }}>
             {header}
-            {items.length > 0 && <div style={styles.divider} />}
+            {items.length > 0 && <div style={{ ...styles.divider, ...variantStyles.divider }} />}
           </div>
         )}
 
         {items.map((item, index) => {
           if (item.divider) {
-            return <div key={`divider-${index}`} style={styles.divider} role="separator" />;
+            return <div key={`divider-${index}`} style={{ ...styles.divider, ...variantStyles.divider }} role="separator" />;
           }
           
           return (
@@ -280,6 +284,7 @@ function DropdownMenu({
               actionType={item.actionType}
               disabled={item.disabled}
               isActive={activeIndex === index}
+              variantStyles={variantStyles}
             />
           );
         })}
@@ -299,7 +304,8 @@ function MenuItem({
   actionType = 'default', 
   disabled, 
   dataIndex,
-  isActive 
+  isActive,
+  variantStyles
 }) {
   const [isPressed, setIsPressed] = useState(false);
   const accentColor = ACTION_COLORS[actionType] || ACTION_COLORS.default;
@@ -319,6 +325,7 @@ function MenuItem({
       disabled={disabled}
       style={{
         ...styles.menuItem,
+        ...variantStyles.menuItem,
         color: disabled ? theme.colors.textDisabled : accentColor,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
@@ -331,7 +338,7 @@ function MenuItem({
       onTouchStart={() => !disabled && setIsPressed(true)}
       onTouchEnd={() => setIsPressed(false)}
     >
-      <span style={{ ...styles.menuIcon, color: accentColor }}>
+      <span style={{ ...styles.menuIcon, ...variantStyles.menuIcon, color: accentColor }}>
         {icon}
       </span>
       <span style={styles.menuLabel}>{label}</span>
@@ -418,6 +425,43 @@ const styles = {
     )`,
     margin: '8px 8px',
     opacity: 0.5,
+  },
+};
+
+const DROPDOWN_VARIANTS = {
+  default: {
+    dropdown: {},
+    menuItem: {},
+    menuIcon: {},
+    divider: {},
+  },
+  premium: {
+    dropdown: {
+      background: '#1C1C1E',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
+      borderRadius: 12,
+      padding: 4,
+      minWidth: 160,
+      maxWidth: 220,
+      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
+    },
+    menuItem: {
+      minHeight: 40,
+      borderRadius: 8,
+      fontSize: 14,
+      gap: 8,
+      padding: '10px 12px',
+      marginBottom: 0,
+    },
+    menuIcon: {
+      fontSize: 16,
+      width: 18,
+      height: 18,
+    },
+    divider: {
+      margin: '4px 6px',
+      opacity: 0.35,
+    },
   },
 };
 

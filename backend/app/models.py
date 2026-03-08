@@ -355,6 +355,7 @@ class Comment(Base):
     author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     parent_id = Column(Integer, ForeignKey('comments.id', ondelete='CASCADE'), nullable=True)
     body = Column(Text, nullable=False)
+    images = Column(JSONB, nullable=False, default=list)
     
     # АНОНИМНОСТЬ
     is_anonymous = Column(Boolean, default=False)

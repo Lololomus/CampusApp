@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Heart, MessageCircle, Eye, MapPin, Calendar,
   ChevronLeft, ChevronRight, MoreVertical,
-  Gift, Phone
+  Gift, Phone, Link2, Pencil, Trash2, Flag
 } from 'lucide-react';
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost } from '../../api';
 import { useStore } from '../../store';
@@ -22,6 +22,41 @@ import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
+
+const parseImages = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const getImageUrl = (img) => {
+  if (!img) return '';
+  const filename = (typeof img === 'object') ? img.url : img;
+  return resolveImageUrl(filename, 'images');
+};
+
+const formatPostDateForDetail = (value, nowValue = new Date()) => {
+  const date = parseApiDate(value);
+  const now = parseApiDate(nowValue) || new Date();
+  if (!date) return '';
+
+  const timePart = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const dayNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((dayNow.getTime() - dayDate.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (diffDays === 0) return `Сегодня в ${timePart}`;
+  if (diffDays === 1) return `Вчера в ${timePart}`;
+  return date.toLocaleDateString('ru-RU');
+};
 
 function PostDetail() {
   const { viewPostId, setViewPostId, user, setUpdatedPost, likedPosts, setPostLiked, setEditingContent } = useStore();
@@ -48,7 +83,10 @@ function PostDetail() {
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
+  const [commentViewer, setCommentViewer] = useState({ isOpen: false, photos: [], index: 0 });
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
+  const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+  const lastScrollTopRef = useRef(0);
 
   const closeDetail = () => {
     setViewPostId(null);
@@ -81,17 +119,14 @@ function PostDetail() {
     try {
       const data = await getPost(viewPostId);
 
-      let imagesData = [];
-      if (typeof data.images === 'string') {
-        try { imagesData = JSON.parse(data.images); } catch (e) { imagesData = []; }
-      } else {
-        imagesData = data.images || [];
-      }
+      const imagesData = parseImages(data.images);
       setPost({ ...data, images: imagesData });
 
       try {
         const commentsData = await getPostComments(viewPostId);
-        const commentsArray = Array.isArray(commentsData) ? commentsData : [];
+        const commentsArray = Array.isArray(commentsData)
+          ? commentsData.map((item) => ({ ...item, images: parseImages(item.images) }))
+          : [];
         setComments(commentsArray);
 
         const initialLikes = {};
@@ -113,10 +148,7 @@ function PostDetail() {
   const refreshPost = async () => {
     try {
       const fresh = await getPost(viewPostId);
-      let imagesData = [];
-      if (typeof fresh.images === 'string') {
-        try { imagesData = JSON.parse(fresh.images); } catch (e) { imagesData = []; }
-      } else { imagesData = fresh.images || []; }
+      const imagesData = parseImages(fresh.images);
 
       setPost({ ...fresh, images: imagesData });
 
@@ -135,12 +167,6 @@ function PostDetail() {
     return post.images;
   }, [post]);
 
-  const getImageUrl = (img) => {
-    if (!img) return '';
-    const filename = (typeof img === 'object') ? img.url : img;
-    return resolveImageUrl(filename, 'images');
-  };
-
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
 
   const safeRatio = useMemo(() => {
@@ -155,7 +181,7 @@ function PostDetail() {
     const created = parseApiDate(post.created_at);
     if (!created) return { dateText: '', isEdited: false };
 
-    const text = formatRelativeRu(created);
+    const text = formatPostDateForDetail(created);
     const updated = parseApiDate(post.updated_at || post.created_at) || created;
     const edited = (updated.getTime() - created.getTime()) > 5 * 60 * 1000;
     return { dateText: text, isEdited: edited };
@@ -244,23 +270,26 @@ function PostDetail() {
     }
   };
 
-  const handleSendComment = async (text) => {
-    if (!text || !text.trim()) return;
+  const handleSendComment = async (text, files = []) => {
+    const safeText = (text || '').trim();
+    const safeFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!safeText && safeFiles.length === 0) return;
     try {
-      const comment = await createComment(viewPostId, text.trim(), replyTo);
-      setComments(prev => [...prev, comment]);
-      setCommentLikes(prev => ({ ...prev, [comment.id]: { isLiked: false, count: 0 } }));
+      const comment = await createComment(viewPostId, {
+        body: safeText,
+        parentId: replyTo,
+        images: safeFiles,
+      });
+      const normalizedComment = { ...comment, images: parseImages(comment.images) };
+      setComments(prev => [...prev, normalizedComment]);
+      setCommentLikes(prev => ({ ...prev, [normalizedComment.id]: { isLiked: false, count: normalizedComment.likes || 0 } }));
       setReplyTo(null);
+      setReplyToName('');
       await refreshPost();
-    } catch (error) { 
-  console.error('Ошибка отправки комментария:', error);
-  toast.error('Не удалось отправить комментарий'); 
-   }
-  };
-
-  const handleDirectSend = (text) => {
-    hapticFeedback('success');
-    alert(`Отклик отправлен автору!\n\n"${text}"`);
+    } catch (error) {
+      console.error('Ошибка отправки комментария:', error);
+      throw error;
+    }
   };
 
   const handleCommentLike = async (commentId) => {
@@ -288,7 +317,7 @@ function PostDetail() {
       if (result.type === 'hard_delete') {
         setComments(prev => prev.filter(c => c.id !== commentId));
       } else {
-        setComments(prev => prev.map(c => c.id === commentId ? { ...c, body: 'Комментарий удалён', is_deleted: true } : c));
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, body: 'Комментарий удалён', is_deleted: true, images: [] } : c));
       }
       await refreshPost();
     } catch (error) {}
@@ -321,6 +350,33 @@ function PostDetail() {
     setMenuOpen(null);
   };
 
+  const openCommentImageViewer = (imagesList, index = 0) => {
+    const photos = (imagesList || [])
+      .map((item) => getImageUrl(item))
+      .filter(Boolean);
+    if (photos.length === 0) return;
+    setCommentViewer({
+      isOpen: true,
+      photos,
+      index: Math.max(0, Math.min(index, photos.length - 1)),
+    });
+  };
+
+  const handleDetailScroll = (event) => {
+    const current = event.currentTarget.scrollTop || 0;
+    if (current <= 0) {
+      setIsHeaderHidden(false);
+      lastScrollTopRef.current = 0;
+      return;
+    }
+    if (current > lastScrollTopRef.current + 8 && current > 64) {
+      setIsHeaderHidden(true);
+    } else if (current < lastScrollTopRef.current - 8) {
+      setIsHeaderHidden(false);
+    }
+    lastScrollTopRef.current = current;
+  };
+
   const commentTree = useMemo(() => {
     const commentMap = {};
     const roots = [];
@@ -336,25 +392,25 @@ function PostDetail() {
   const postMenuItems = [
     ...(postActionSet.canCopyLink ? [{
       label: 'Скопировать ссылку', 
-      icon: '🔗',
+      icon: <Link2 size={16} />,
       actionType: 'copy',
       onClick: handleCopyLink 
     }] : []),
     ...(postActionSet.canEdit ? [{
         label: 'Редактировать', 
-        icon: '✏️',
+        icon: <Pencil size={16} />,
         actionType: 'edit',
         onClick: handleEditPost 
       }] : []),
     ...(postActionSet.canDelete ? [{
         label: 'Удалить', 
-        icon: '🗑️',
+        icon: <Trash2 size={16} />,
         actionType: 'delete',
         onClick: handleDeletePost 
       }] : []),
     ...(postActionSet.canReportContent ? [{
         label: 'Пожаловаться', 
-        icon: '🚩',
+        icon: <Flag size={16} />,
         actionType: 'report',
         onClick: () => { 
           hapticFeedback('light');
@@ -385,9 +441,11 @@ function PostDetail() {
       `}</style>
 
       <div style={styles.container}>
-        <DrilldownHeader title="Пост" onBack={closeDetail} />
+        <div style={{ ...styles.headerWrap, transform: isHeaderHidden ? 'translateY(-100%)' : 'translateY(0)' }}>
+          <DrilldownHeader title="Пост" onBack={closeDetail} />
+        </div>
 
-        <div style={styles.scrollContent}>
+        <div style={styles.scrollContent} onScroll={handleDetailScroll}>
           {loading || !post ? (
             <div style={styles.cardContent}>
               <div style={styles.authorSection}>
@@ -449,6 +507,7 @@ function PostDetail() {
                   onClose={() => setPostMenuOpen(false)}
                   anchorRef={postMenuRef}
                   items={postMenuItems}
+                  variant="premium"
                 />
 
                 <div style={styles.textContent}>
@@ -546,9 +605,9 @@ function PostDetail() {
                   </div>
 
                   <div style={styles.footerRight}>
-                    <div style={styles.statItem}>
-                      <Eye size={18} color={theme.colors.textTertiary} strokeWidth={2} />
-                      <span style={styles.statText}>{post.views_count || 0}</span>
+                    <div style={styles.readonlyMetric}>
+                      <Eye size={16} color={theme.colors.premium.textMuted} strokeWidth={2.5} />
+                      <span style={styles.readonlyMetricText}>{post.views_count || 0}</span>
                     </div>
                     <div style={styles.statItem}>
                       <MessageCircle size={18} color={theme.colors.textSecondary} strokeWidth={2} />
@@ -607,6 +666,7 @@ function PostDetail() {
                         setEditText={setEditText}
                         onSaveEdit={handleSaveEdit}
                         onCancelEdit={() => { setEditingComment(null); setEditText(''); }}
+                        onOpenImage={openCommentImageViewer}
                       />
                     ))}
                   </div>
@@ -618,12 +678,9 @@ function PostDetail() {
 
         <BottomActionBar
           onCommentSend={handleSendComment}
-          onDirectSend={handleDirectSend}
           replyTo={replyTo}
           replyToName={replyToName}
-          onCancelReply={() => setReplyTo(null)}
-          postAuthorName={post?.is_anonymous ? 'Аноним' : (post?.author?.name || 'Автор')}
-          isAnonymousPost={post?.is_anonymous}
+          onCancelReply={() => { setReplyTo(null); setReplyToName(''); }}
         />
 
         {isPhotoViewerOpen && (
@@ -631,6 +688,14 @@ function PostDetail() {
             photos={viewerPhotos}
             initialIndex={currentImageIndex}
             onClose={() => setIsPhotoViewerOpen(false)}
+          />
+        )}
+
+        {commentViewer.isOpen && (
+          <PhotoViewer
+            photos={commentViewer.photos}
+            initialIndex={commentViewer.index}
+            onClose={() => setCommentViewer({ isOpen: false, photos: [], index: 0 })}
           />
         )}
 
@@ -674,7 +739,7 @@ function PostDetail() {
   );
 }
 
-const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit }) => {
+const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit, onOpenImage }) => {
   const menuButtonRef = useRef(null);
   const avatarRef = useRef(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -684,6 +749,13 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
   const maxDepth = 3;
   const isMyComment = isEntityOwner('comment', comment, currentUser);
   const isEditing = editingComment === comment.id;
+  const commentCreatedAt = parseApiDate(comment.created_at);
+  const commentUpdatedAt = parseApiDate(comment.updated_at || comment.created_at) || commentCreatedAt;
+  const commentTimeText = commentCreatedAt ? formatRelativeRu(commentCreatedAt) : '';
+  const isCommentEdited = Boolean(
+    comment.is_edited
+    || (commentCreatedAt && commentUpdatedAt && (commentUpdatedAt.getTime() - commentCreatedAt.getTime()) > 5 * 60 * 1000)
+  );
 
   const isAnonymousComment = comment.is_anonymous || false;
   const commentAuthorName = isAnonymousComment
@@ -692,20 +764,20 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
 
   const menuItems = isMyComment ? [
     { 
-      icon: '✏️', 
+      icon: <Pencil size={16} />, 
       label: 'Редактировать',
       actionType: 'edit',
       onClick: () => onEdit(comment) 
     },
     { 
-      icon: '🗑️', 
+      icon: <Trash2 size={16} />, 
       label: 'Удалить',
       actionType: 'delete',
       onClick: () => onDelete(comment.id)
     },
   ] : [
     { 
-      icon: '🚩', 
+      icon: <Flag size={16} />, 
       label: 'Пожаловаться',
       actionType: 'report',
       onClick: () => onReport(comment.id)
@@ -720,13 +792,14 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
     ];
     return colors[(index || 0) % colors.length];
   };
+  const commentImages = parseImages(comment.images);
 
   return (
     <div style={{ position: 'relative' }}>
       {comment.replies && comment.replies.length > 0 && (
         <div style={{
-          position: 'absolute', left: 18, top: 36, bottom: 0, width: 2,
-          backgroundColor: 'rgba(135, 116, 225, 0.25)', zIndex: 0,
+          position: 'absolute', left: 17.5, top: 36, bottom: -16, width: 2,
+          backgroundColor: theme.colors.premium.border, zIndex: 0,
         }} />
       )}
 
@@ -752,15 +825,28 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
 
         <div style={styles.commentContent}>
           <div style={styles.commentHeader}>
-            <span style={styles.commentAuthor}>{commentAuthorName}</span>
-            {!isAnonymousComment && comment.author?.university && (
-              <span style={styles.commentMeta}>
-                {[comment.author?.university, comment.author?.course ? `${comment.author.course}к` : null].filter(Boolean).join(' · ')}
-              </span>
-            )}
+            <div style={styles.commentHeaderMain}>
+              <div style={styles.commentNameRow}>
+                <span style={styles.commentAuthor}>{commentAuthorName}</span>
+                {commentTimeText && (
+                  <>
+                    <span style={styles.commentNameDivider}>·</span>
+                    <span style={styles.commentTime}>{commentTimeText}</span>
+                  </>
+                )}
+                {!comment.is_deleted && !isEditing && isCommentEdited && (
+                  <span style={styles.commentEdited}>(изм.)</span>
+                )}
+              </div>
+              {!isAnonymousComment && comment.author?.university && (
+                <span style={styles.commentMeta}>
+                  {[comment.author?.university, comment.author?.course ? `${comment.author.course}к` : null].filter(Boolean).join(' · ')}
+                </span>
+              )}
+            </div>
 
             {!comment.is_deleted && (
-              <div style={{ marginLeft: 'auto', position: 'relative' }}>
+              <div style={{ marginLeft: 'auto', position: 'relative', flexShrink: 0 }}>
                 <button
                   ref={menuButtonRef}
                   onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === comment.id ? null : comment.id); }}
@@ -770,7 +856,7 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
                 </button>
                 <DropdownMenu
                   isOpen={menuOpen === comment.id} onClose={() => setMenuOpen(null)}
-                  anchorRef={menuButtonRef} items={menuItems}
+                  anchorRef={menuButtonRef} items={menuItems} variant="premium"
                 />
               </div>
             )}
@@ -797,8 +883,34 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
             </p>
           )}
 
+          {!comment.is_deleted && commentImages.length > 0 && (
+            <div
+              style={{
+                ...styles.commentImages,
+                gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, commentImages.length))}, minmax(0, 1fr))`,
+              }}
+            >
+              {commentImages.map((img, idx) => {
+                const url = getImageUrl(img);
+                if (!url) return null;
+                return (
+                  <button
+                    key={`${comment.id}-img-${idx}`}
+                    style={styles.commentImageButton}
+                    onClick={() => onOpenImage(commentImages, idx)}
+                  >
+                    <img src={url} alt="" style={styles.commentImage} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {!comment.is_deleted && !isEditing && (
             <div style={styles.commentActions}>
+              {depth < maxDepth && (
+                <button style={styles.commentAction} onClick={() => onReply(comment)}>Ответить</button>
+              )}
               <button
                 style={{ ...styles.commentAction, color: likes.isLiked ? theme.colors.accent : theme.colors.textTertiary }}
                 onClick={() => onLike(comment.id)}
@@ -806,17 +918,13 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
                 <Heart size={14} fill={likes.isLiked ? theme.colors.accent : 'none'} />
                 <span>{likes.count}</span>
               </button>
-
-              {depth < maxDepth && (
-                <button style={styles.commentAction} onClick={() => onReply(comment)}>Ответить</button>
-              )}
             </div>
           )}
         </div>
       </div>
 
       {comment.replies && comment.replies.length > 0 && (
-        <div style={{ marginLeft: 30, marginTop: theme.spacing.md, position: 'relative', zIndex: 1 }}>
+        <div style={{ marginLeft: 28, marginTop: theme.spacing.md, position: 'relative', zIndex: 1 }}>
           {comment.replies.map(reply => (
             <Comment
               key={reply.id} comment={reply} depth={depth + 1}
@@ -827,6 +935,7 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
               setMenuOpen={setMenuOpen} editingComment={editingComment}
               editText={editText} setEditText={setEditText}
               onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
+              onOpenImage={onOpenImage}
             />
           ))}
         </div>
@@ -863,7 +972,7 @@ const styles = {
     position: 'fixed',
     top: 0, left: 0, right: 0, bottom: 0,
     zIndex: Z_MODAL_POST_DETAIL,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: theme.colors.premium.bg,
     display: 'flex',
     flexDirection: 'column',
     animation: 'slideInRight 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
@@ -871,16 +980,22 @@ const styles = {
     transform: 'translate3d(0,0,0)',
     WebkitOverflowScrolling: 'touch',
   },
+  headerWrap: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 120,
+    transition: 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
+  },
   scrollContent: {
     flex: 1,
     overflowY: 'auto',
-    paddingBottom: 80,
+    paddingBottom: 190,
     WebkitOverflowScrolling: 'touch',
     overscrollBehaviorY: 'contain',
   },
   cardContent: {
-    backgroundColor: theme.colors.bgSecondary,
-    borderBottom: `1px solid ${theme.colors.border}`,
+    backgroundColor: theme.colors.premium.bg,
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
     marginBottom: theme.spacing.md,
   },
   authorSection: {
@@ -973,17 +1088,52 @@ const styles = {
   statsFooter: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: `${theme.spacing.sm + 2}px ${theme.spacing.lg}px`,
-    backgroundColor: theme.colors.bgSecondary, minHeight: 48,
+    backgroundColor: theme.colors.premium.bg, minHeight: 48,
   },
   footerLeft: {
     display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0,
   },
-  dateText: { fontSize: 12, color: theme.colors.textTertiary, fontWeight: theme.fontWeight.medium },
-  editedLabel: { fontSize: 11, color: theme.colors.textTertiary, opacity: 0.7, fontStyle: 'italic' },
-  footerRight: { display: 'flex', alignItems: 'center', gap: theme.spacing.lg },
-  statItem: { display: 'flex', alignItems: 'center', gap: theme.spacing.xs, color: theme.colors.textTertiary },
-  footerAction: { display: 'flex', alignItems: 'center', gap: theme.spacing.xs, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: theme.colors.textTertiary },
-  statText: { fontSize: 14, fontWeight: theme.fontWeight.medium, color: theme.colors.textTertiary, minWidth: 14, textAlign: 'center', lineHeight: 1 },
+  dateText: { fontSize: 12, color: theme.colors.premium.textMuted, fontWeight: theme.fontWeight.medium },
+  editedLabel: { fontSize: 11, color: theme.colors.premium.textMuted, opacity: 0.7, fontStyle: 'italic' },
+  footerRight: { display: 'flex', alignItems: 'center', gap: theme.spacing.sm },
+  readonlyMetric: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    color: theme.colors.premium.textMuted,
+    paddingRight: 4,
+  },
+  readonlyMetricText: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: theme.colors.premium.textMuted,
+    lineHeight: 1,
+    minWidth: 14,
+    textAlign: 'center',
+  },
+  statItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    color: theme.colors.premium.textMuted,
+    padding: '6px 10px',
+    borderRadius: 16,
+    border: `1px solid ${theme.colors.premium.border}`,
+    backgroundColor: theme.colors.premium.surfaceElevated,
+    fontWeight: 600,
+  },
+  footerAction: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    borderRadius: 16,
+    border: `1px solid ${theme.colors.premium.border}`,
+    backgroundColor: theme.colors.premium.surfaceElevated,
+    padding: '6px 10px',
+    cursor: 'pointer',
+    color: theme.colors.premium.textMuted,
+  },
+  statText: { fontSize: 13, fontWeight: 600, color: theme.colors.premium.textMuted, minWidth: 14, textAlign: 'center', lineHeight: 1 },
 
   commentsSection: {
     padding: `0 ${theme.spacing.lg}px ${theme.spacing.lg}px`,
@@ -1010,40 +1160,77 @@ const styles = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.bold, color: theme.colors.text, flexShrink: 0,
   },
-  commentContent: { flex: 1 },
+  commentContent: { flex: 1, paddingLeft: 10, minWidth: 0 },
   commentHeader: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm,
-    marginBottom: theme.spacing.xs, flexWrap: 'wrap',
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
   },
+  commentHeaderMain: { display: 'flex', flexDirection: 'column', minWidth: 0 },
+  commentNameRow: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' },
   commentAuthor: { fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, color: theme.colors.text },
-  commentMeta: { fontSize: theme.fontSize.xs, color: theme.colors.textDisabled },
+  commentNameDivider: { fontSize: 12, color: theme.colors.textDisabled, lineHeight: 1 },
+  commentMeta: { fontSize: theme.fontSize.xs, color: theme.colors.textDisabled, marginTop: 2 },
+  commentTime: { fontSize: 12, color: theme.colors.textDisabled },
+  commentEdited: {
+    fontSize: 11,
+    color: '#666666',
+    opacity: 0.75,
+    fontStyle: 'italic',
+  },
   commentText: {
-    fontSize: theme.fontSize.md, lineHeight: 1.5, marginBottom: theme.spacing.sm,
+    margin: '4px 0 8px',
+    fontSize: 14,
+    lineHeight: 1.45,
     wordBreak: 'break-word', overflowWrap: 'break-word',
   },
-  commentActions: { display: 'flex', gap: theme.spacing.lg },
+  commentActions: { display: 'flex', gap: 16, alignItems: 'center' },
   commentAction: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.xs,
+    display: 'flex', alignItems: 'center', gap: 4,
     background: 'none', border: 'none', color: theme.colors.textTertiary,
-    fontSize: theme.fontSize.sm, cursor: 'pointer', padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-    borderRadius: theme.radius.sm,
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0,
+    transition: 'opacity 0.2s',
   },
   editForm: { display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
   editTextarea: {
     width: '100%', padding: theme.spacing.md, borderRadius: theme.radius.sm,
-    border: `1px solid ${theme.colors.border}`, backgroundColor: theme.colors.card,
+    border: `1px solid ${theme.colors.premium.border}`,
+    backgroundColor: theme.colors.premium.surfaceElevated,
     color: theme.colors.text, fontSize: theme.fontSize.md, resize: 'vertical', outline: 'none',
   },
   editButtons: { display: 'flex', gap: theme.spacing.sm, justifyContent: 'flex-end' },
   saveButton: {
     padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`, borderRadius: theme.radius.sm,
-    border: 'none', backgroundColor: theme.colors.primary, color: theme.colors.text,
+    border: 'none', backgroundColor: theme.colors.premium.primary, color: theme.colors.premium.primaryText,
     fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer'
   },
   cancelEditButton: {
     padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`, borderRadius: theme.radius.sm,
-    border: `1px solid ${theme.colors.border}`, backgroundColor: 'transparent',
-    color: theme.colors.textTertiary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer'
+    border: `1px solid ${theme.colors.premium.border}`, backgroundColor: 'transparent',
+    color: theme.colors.premium.textMuted, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer'
+  },
+  commentImages: {
+    display: 'grid',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  commentImageButton: {
+    width: '100%',
+    aspectRatio: '4 / 3',
+    borderRadius: theme.radius.md,
+    border: `1px solid ${theme.colors.premium.border}`,
+    backgroundColor: theme.colors.premium.surfaceElevated,
+    overflow: 'hidden',
+    padding: 0,
+    cursor: 'pointer',
+  },
+  commentImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
   },
   modalOverlay: {
     position: 'fixed', inset: 0, backgroundColor: theme.colors.overlay,
@@ -1068,34 +1255,37 @@ const styles = {
 
   skeletonAvatar: {
     width: 40, height: 40, borderRadius: theme.radius.full,
-    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    background: `linear-gradient(90deg, ${theme.colors.premium.surfaceElevated} 25%, ${theme.colors.premium.surfaceHover} 50%, ${theme.colors.premium.surfaceElevated} 75%)`,
     backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', marginRight: theme.spacing.sm + 2,
   },
   skeletonTextShort: {
     height: 14, width: '40%', marginBottom: theme.spacing.xs + 2, borderRadius: theme.radius.xs,
-    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    background: `linear-gradient(90deg, ${theme.colors.premium.surfaceElevated} 25%, ${theme.colors.premium.surfaceHover} 50%, ${theme.colors.premium.surfaceElevated} 75%)`,
     backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
   skeletonTextMini: {
     height: 10, width: '20%', borderRadius: theme.radius.xs,
-    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    background: `linear-gradient(90deg, ${theme.colors.premium.surfaceElevated} 25%, ${theme.colors.premium.surfaceHover} 50%, ${theme.colors.premium.surfaceElevated} 75%)`,
     backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
   skeletonTitle: {
     height: 20, width: '80%', marginBottom: theme.spacing.md, borderRadius: theme.radius.xs,
-    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    background: `linear-gradient(90deg, ${theme.colors.premium.surfaceElevated} 25%, ${theme.colors.premium.surfaceHover} 50%, ${theme.colors.premium.surfaceElevated} 75%)`,
     backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
   skeletonBody: {
     height: 14, width: '100%', marginBottom: theme.spacing.sm, borderRadius: theme.radius.xs,
-    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    background: `linear-gradient(90deg, ${theme.colors.premium.surfaceElevated} 25%, ${theme.colors.premium.surfaceHover} 50%, ${theme.colors.premium.surfaceElevated} 75%)`,
     backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
   skeletonImage: {
     width: '100%', aspectRatio: '16/9', borderRadius: theme.radius.md,
-    background: `linear-gradient(90deg, ${theme.colors.skeleton} 25%, ${theme.colors.skeletonHighlight} 50%, ${theme.colors.skeleton} 75%)`,
+    background: `linear-gradient(90deg, ${theme.colors.premium.surfaceElevated} 25%, ${theme.colors.premium.surfaceHover} 50%, ${theme.colors.premium.surfaceElevated} 75%)`,
     backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
   },
 };
 
 export default PostDetail;
+
+
+

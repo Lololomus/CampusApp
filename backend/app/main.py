@@ -834,6 +834,7 @@ async def get_post_comments_endpoint(
             "is_deleted": comment.is_deleted,
             "likes": comment.likes_count,
             "is_liked": comment.is_liked,
+            "images": get_image_urls(comment.images) if comment.images else [],
             "created_at": comment.created_at
         }
         result.append(comment_dict)
@@ -843,14 +844,62 @@ async def get_post_comments_endpoint(
 @app.post("/posts/{post_id}/comments", response_model=schemas.CommentResponse)
 async def create_comment_endpoint(
     post_id: int,
+    request: Request,
     telegram_id: int = Query(...),
-    comment_data: schemas.CommentCreate = Body(...),
     db: AsyncSession = Depends(get_db)
 ):
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
+    content_type = (request.headers.get("content-type") or "").lower()
+
+    try:
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+
+            body_raw = form.get("body")
+            body = body_raw if isinstance(body_raw, str) else ""
+            body = (body or "").strip()
+
+            parent_raw = form.get("parent_id")
+            parent_id = int(parent_raw) if parent_raw not in (None, "", "null") else None
+
+            is_anonymous_raw = str(form.get("is_anonymous", "false")).lower()
+            is_anonymous = is_anonymous_raw in {"1", "true", "yes", "on"}
+
+            raw_images = [*form.getlist("images"), *form.getlist("images[]")]
+            valid_images = [
+                img for img in raw_images
+                if hasattr(img, "filename") and img.filename and len(img.filename) > 0
+            ]
+
+            if len(valid_images) > 3:
+                raise HTTPException(status_code=400, detail="Maximum 3 images")
+            if not body and not valid_images:
+                raise HTTPException(status_code=422, detail="Comment must contain text or images")
+
+            images_meta = await process_uploaded_files(valid_images) if valid_images else []
+            comment_data = schemas.CommentCreate(
+                post_id=post_id,
+                body=body,
+                parent_id=parent_id,
+                is_anonymous=is_anonymous,
+                images=images_meta,
+            )
+        else:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise HTTPException(status_code=422, detail="Invalid payload")
+            payload["post_id"] = post_id
+            comment_data = schemas.CommentCreate(**payload)
+    except HTTPException:
+        raise
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     comment = await crud.create_comment(db, comment_data, user.id)
     if not comment:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -878,6 +927,7 @@ async def create_comment_endpoint(
         "anonymous_index": comment.anonymous_index,
         "likes": 0,
         "is_liked": False,
+        "images": get_image_urls(comment.images) if comment.images else [],
         "created_at": comment.created_at
     })
 
@@ -932,7 +982,9 @@ async def update_comment_endpoint(
         "is_edited": comment.is_edited,
         "likes": comment.likes_count,
         "is_liked": getattr(comment, 'is_liked', False),
-        "created_at": comment.created_at
+        "images": get_image_urls(comment.images) if comment.images else [],
+        "created_at": comment.created_at,
+        "updated_at": comment.updated_at,
     })
 
 @app.post("/comments/{comment_id}/like")

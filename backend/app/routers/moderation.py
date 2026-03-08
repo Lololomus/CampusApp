@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from app.database import get_db
 from app import models, schemas
 from app.services import notification_service as notif
+from app.utils import delete_images
 
 router = APIRouter(tags=["moderation"])
 
@@ -187,6 +188,12 @@ async def moderate_delete_comment(
     comment.body = "Удалён модератором"
     comment.deleted_by = moderator.id
     comment.deleted_reason = action.reason
+    if comment.images:
+        try:
+            delete_images(comment.images, default_kind="images")
+        except Exception:
+            pass
+    comment.images = []
 
     post = await db.get(models.Post, comment.post_id)
     if post:
