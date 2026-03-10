@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA - Smart Create (v6)</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #000000;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        --error: #FF453A;
+        --success: #32D74B;
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: #050505; 
+        color: var(--text); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.92); opacity: 0.8; }
+
+      textarea, input { appearance: none; font-family: inherit; }
+      textarea::placeholder { color: #666; }
+      
+      @keyframes slideDownFader {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      
+      @keyframes toastSlide {
+        0% { opacity: 0; transform: translate(-50%, -20px); }
+        10% { opacity: 1; transform: translate(-50%, 0); }
+        90% { opacity: 1; transform: translate(-50%, 0); }
+        100% { opacity: 0; transform: translate(-50%, -20px); }
+      }
+
+      .smart-block { animation: slideDownFader 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+
+      /* === УЛУЧШЕНИЕ 4: Идеальный Auto-resize Textarea без прыжков и лагов === */
+      .grow-wrap {
+        display: grid;
+      }
+      .grow-wrap::after {
+        content: attr(data-replicated-value) " ";
+        white-space: pre-wrap;
+        visibility: hidden;
+        font-size: 18px;
+        font-weight: 500;
+        line-height: 1.4;
+        min-height: 76px; /* === УЛУЧШЕНИЕ 1: Фиксируем минимум 2-3 строки всегда === */
+        word-wrap: break-word;
+      }
+      .grow-wrap > textarea {
+        resize: none;
+        overflow: hidden;
+      }
+      .grow-wrap > textarea,
+      .grow-wrap::after {
+        grid-area: 1 / 1 / 2 / 2;
+        padding: 0;
+        font-family: inherit;
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useRef, useEffect } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        X, Image as ImageIcon, BarChart2, VenetianMask, MapPin, 
+        Calendar, Send, Plus, Hash, Settings, Users, CheckCircle, Circle, HelpCircle
+      } from 'lucide-react';
+
+      // --- КОНФИГ КАТЕГОРИЙ ---
+      const POST_CATEGORIES = [
+        { id: 'news', label: 'Новости', icon: '📰' },
+        { id: 'events', label: 'События', icon: '🎉' },
+        { id: 'confessions', label: 'Признания', icon: '💭' },
+        { id: 'lost_found', label: 'Потеряшки', icon: '🎒' },
+        { id: 'memes', label: 'Мемы', icon: '🤡' }
+      ];
+
+      const REQ_CATEGORIES = [
+        { id: 'study', label: 'Учёба', icon: '📚' },
+        { id: 'help', label: 'Помощь', icon: '🤝' },
+        { id: 'hangout', label: 'Движ', icon: '🔥' }
+      ];
+
+      const SUGGESTED_TAGS = ['python', 'react', 'помощь', 'курсач', 'сопромат', 'общага', 'ищу_команду'];
+
+      function App() {
+        const [isVisible, setIsVisible] = useState(false); // Для теста изначально скрыто, чтобы показать фоновую кнопку
+        const [activeTab, setActiveTab] = useState('post');
+        
+        // --- СТЕЙТ ПОСТА ---
+        const [postCat, setPostCat] = useState('news');
+        const [postText, setPostText] = useState('');
+        const [isAnonymous, setIsAnonymous] = useState(false);
+        const [photos, setPhotos] = useState([]);
+        
+        // Стейт хештегов
+        const [postTags, setPostTags] = useState([]);
+        const [showTagTool, setShowTagTool] = useState(false);
+        const [postTagInput, setPostTagInput] = useState('');
+
+        // Стейт опросов
+        const [hasPoll, setHasPoll] = useState(false);
+        const [pollOptions, setPollOptions] = useState(['', '']);
+        const [showPollSettings, setShowPollSettings] = useState(false);
+        const [pollType, setPollType] = useState('regular'); // regular | quiz
+        const [pollCorrectOption, setPollCorrectOption] = useState(null);
+        const [pollMulti, setPollMulti] = useState(false);
+        const [pollAnon, setPollAnon] = useState(true);
+
+        // Смарт-контекст состояния (Посты)
+        const [lfType, setLfType] = useState('lost'); 
+        const [eventDate, setEventDate] = useState('today'); 
+        const [customDate, setCustomDate] = useState('');
+        const [location, setLocation] = useState('');
+
+        // Стейт запросов (Requests)
+        const [reqText, setReqText] = useState('');
+        
+        // Стейт уведомлений
+        const [toast, setToast] = useState(null);
+
+        const textareaRef = useRef(null);
+        const reqTextareaRef = useRef(null);
+
+        // Открываем модалку при старте (для удобства просмотра)
+        useEffect(() => {
+          setTimeout(() => setIsVisible(true), 300);
+        }, []);
+
+        // Сброс контекста при смене категории
+        useEffect(() => {
+          if (postCat === 'confessions') setIsAnonymous(true);
+          else setIsAnonymous(false);
+          
+          setHasPoll(false);
+          setPhotos([]);
+          setShowTagTool(false);
+        }, [postCat]);
+
+        const handleAddPhoto = () => {
+          if (photos.length < 3) {
+            const mockImages = [
+              'https://images.unsplash.com/photo-1555949963-aa79dcee981c?auto=format&fit=crop&q=80&w=300',
+              'https://images.unsplash.com/photo-1527192491265-7e15c55b1ed2?auto=format&fit=crop&q=80&w=300',
+              'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=300'
+            ];
+            setPhotos([...photos, mockImages[photos.length]]);
+          }
+        };
+
+        const addPostTag = (tag) => {
+            const val = (tag || postTagInput).trim().toLowerCase().replace(/[^a-zа-я0-9_]/g, '');
+            if (val && !postTags.includes(val) && postTags.length < 5) {
+                setPostTags([...postTags, val]);
+                setPostTagInput('');
+            }
+        };
+
+        const toggleTag = (tag) => {
+            setPostTags(postTags.filter(t => t !== tag));
+        };
+
+        const formatCustomDate = (dateString) => {
+          if (!dateString) return 'Выбрать📅';
+          const d = new Date(dateString);
+          return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        };
+
+        const getPlaceholder = () => {
+          switch(postCat) {
+            case 'news': return "Что происходит в кампусе?";
+            case 'events': return "Опиши тусовку или лекцию...";
+            case 'confessions': return "Выскажи всё, что на душе...";
+            case 'lost_found': return "Подробно опиши вещь...";
+            case 'memes': return "Заливай годноту...";
+            default: return "О чем расскажешь?";
+          }
+        };
+
+        const currentText = activeTab === 'post' ? postText : reqText;
+        const canSend = currentText.trim().length > 3;
+
+        // === ИНТЕРАКТИВНОСТЬ: Отправка формы ===
+        const handleSend = () => {
+          if (!canSend) return;
+          
+          // Показываем уведомление
+          setToast(activeTab === 'post' ? 'Пост успешно опубликован!' : 'Запрос успешно создан!');
+          setTimeout(() => setToast(null), 3000);
+          
+          // Закрываем шторку
+          setIsVisible(false);
+          
+          // Сбрасываем стейты (очистка формы)
+          setTimeout(() => {
+            setPostText('');
+            setReqText('');
+            setPhotos([]);
+            setPostTags([]);
+            setHasPoll(false);
+            setPollOptions(['', '']);
+            setEventDate('today');
+            setCustomDate('');
+            setLocation('');
+            setPostTagInput('');
+            setShowTagTool(false);
+            setShowPollSettings(false);
+          }, 300); // Ждем пока шторка уедет вниз
+        };
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: 'var(--bg)', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            {/* ТОСТ УВЕДОМЛЕНИЕ */}
+            {toast && (
+              <div style={{
+                position: 'absolute', top: '70px', left: '50%', transform: 'translateX(-50%)',
+                background: 'var(--surface-elevated)', border: '1px solid rgba(50, 215, 75, 0.3)',
+                padding: '12px 24px', borderRadius: '24px', color: '#FFF', fontWeight: 600, fontSize: '14px',
+                zIndex: 2000, display: 'flex', alignItems: 'center', gap: '8px',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.6)', animation: 'toastSlide 3s forwards'
+              }}>
+                <CheckCircle size={18} color="var(--success)" strokeWidth={2.5} />
+                {toast}
+              </div>
+            )}
+
+            {/* ИНТЕРАКТИВНАЯ ЛЕНТА НА ЗАДНЕМ ФОНЕ */}
+            <div style={{ flex: 1, background: '#0A0A0C', padding: '60px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+              <div style={{ width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' }}>
+                <ImageIcon size={24} color="var(--text-muted)" />
+              </div>
+              <h2 style={{ margin: '0 0 8px', color: '#FFF', fontSize: '20px' }}>Главная лента</h2>
+              <p style={{ margin: '0 0 32px', textAlign: 'center', fontSize: '14px', lineHeight: 1.5, maxWidth: '280px' }}>Здесь будут посты студентов. Нажмите кнопку ниже, чтобы открыть окно создания.</p>
+              
+              <button 
+                onClick={() => setIsVisible(true)} 
+                className="spring-btn" 
+                style={{ 
+                  background: 'var(--primary)', color: '#000', border: 'none', 
+                  padding: '16px 32px', borderRadius: '20px', fontSize: '16px', 
+                  fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px',
+                  boxShadow: '0 8px 24px rgba(212, 255, 0, 0.2)'
+                }}
+              >
+                <Plus size={20} strokeWidth={2.5} /> Создать запись
+              </button>
+            </div>
+
+            {/* === BOTTOM SHEET === */}
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+              pointerEvents: isVisible ? 'auto' : 'none'
+            }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', opacity: isVisible ? 1 : 0, transition: 'opacity 0.3s' }} onClick={() => setIsVisible(false)} />
+
+              <div style={{
+                background: 'var(--surface)', borderTopLeftRadius: '24px', borderTopRightRadius: '24px',
+                borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
+                height: '92%', 
+                transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
+                transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+              }}>
+                
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', position: 'relative', flexShrink: 0 }}>
+                  <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
+                  <button onClick={() => setIsVisible(false)} className="spring-btn" style={{ position: 'absolute', right: 16, background: 'rgba(255,255,255,0.08)', border: 'none', width: 30, height: 30, borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div style={{ padding: '0 16px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', background: 'var(--surface-elevated)', borderRadius: '12px', padding: '4px' }}>
+                    <button onClick={() => setActiveTab('post')} className="spring-btn" style={{ flex: 1, padding: '8px', background: activeTab === 'post' ? 'var(--primary)' : 'transparent', color: activeTab === 'post' ? '#000' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '15px', transition: 'all 0.2s' }}>Пост</button>
+                    <button onClick={() => setActiveTab('request')} className="spring-btn" style={{ flex: 1, padding: '8px', background: activeTab === 'request' ? 'var(--primary)' : 'transparent', color: activeTab === 'request' ? '#000' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '15px', transition: 'all 0.2s' }}>Запрос</button>
+                  </div>
+                </div>
+
+                {/* === КОНТЕЙНЕР КОНТЕНТА === */}
+                <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                  
+                  {/* ГЛОБАЛЬНЫЙ СКРОЛЛ */}
+                  <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                      <div style={{
+                        display: 'flex', width: '200%', flex: '1 0 auto',
+                        transform: `translateX(${activeTab === 'post' ? '0' : '-50%'})`,
+                        transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+                      }}>
+                        
+                        {/* ============================== */}
+                        {/* === POST SLIDE ===             */}
+                        {/* ============================== */}
+                        <div style={{ width: '50%', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+                            
+                            {/* Категории (Сверху) - Строго 2 строки через CSS Grid со скроллом */}
+                            <div className="hide-scroll" style={{ 
+                                display: 'grid', gridTemplateRows: 'repeat(2, auto)', gridAutoFlow: 'column', gridAutoColumns: 'max-content',
+                                gap: '8px', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' 
+                            }}>
+                                {POST_CATEGORIES.map(cat => (
+                                  <button 
+                                    key={cat.id} onClick={() => setPostCat(cat.id)} className="spring-btn"
+                                    style={{ 
+                                      padding: '8px 16px', borderRadius: '20px', flexShrink: 0,
+                                      border: `1px solid ${postCat === cat.id ? 'var(--primary)' : 'transparent'}`,
+                                      background: postCat === cat.id ? 'rgba(212, 255, 0, 0.1)' : 'var(--surface-elevated)',
+                                      color: postCat === cat.id ? 'var(--primary)' : '#FFF',
+                                      fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px',
+                                      transition: 'all 0.2s'
+                                    }}
+                                  >
+                                    <span>{cat.icon}</span> {cat.label}
+                                  </button>
+                                ))}
+                            </div>
+
+                            <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', flex: '1 0 auto' }}>
+                                
+                                {/* Главный Текст с умным Grow-Wrap (Без лагов) */}
+                                <div className="grow-wrap" data-replicated-value={postText} style={{ marginBottom: '16px', width: '100%', flexShrink: 0 }}>
+                                  <textarea
+                                    ref={textareaRef}
+                                    value={postText}
+                                    onChange={(e) => setPostText(e.target.value)}
+                                    placeholder={getPlaceholder()}
+                                    className="hide-scroll"
+                                    style={{
+                                      width: '100%', background: 'transparent', border: 'none', color: '#FFF',
+                                      fontSize: '18px', fontWeight: 500, lineHeight: 1.4, padding: '0', outline: 'none'
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Стеклянные Чипсы Хештегов */}
+                                {postTags.length > 0 && (
+                                  <div className="smart-block" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px', flexShrink: 0 }}>
+                                    {postTags.map(tag => (
+                                      <span key={tag} style={{ 
+                                          background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                                          color: '#FFF', padding: '6px 12px', borderRadius: '16px', fontSize: '13px', fontWeight: 600, 
+                                          display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(255,255,255,0.1)' 
+                                      }}>
+                                        #{tag}
+                                        {/* === УЛУЧШЕНИЕ 3: Увеличенный хитбокс для тегов === */}
+                                        <button onClick={() => toggleTag(tag)} className="spring-btn" style={{ background: 'transparent', border: 'none', color: '#FFF', cursor: 'pointer', padding: '10px', margin: '-10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12}/></div>
+                                        </button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Фотографии */}
+                                {photos.length > 0 && (
+                                  <div className="hide-scroll smart-block" style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', flexShrink: 0 }}>
+                                    {photos.map((p, i) => (
+                                      <div key={i} style={{ position: 'relative', width: '100px', height: '100px', borderRadius: '16px', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
+                                        <img src={p} alt="demo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        {/* === УЛУЧШЕНИЕ 3: Увеличенный хитбокс для фото === */}
+                                        <button onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))} style={{ position: 'absolute', top: 0, right: 0, background: 'transparent', border: 'none', width: 44, height: 44, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: '6px', cursor: 'pointer', zIndex: 10 }}>
+                                          <div style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', color: '#FFF', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14}/></div>
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* === ПРОДВИНУТЫЙ ОПРОС === */}
+                                {hasPoll && (
+                                  <div className="smart-block" style={{ background: 'var(--surface-elevated)', borderRadius: '16px', padding: '16px', marginBottom: '16px', border: '1px solid var(--border)', flexShrink: 0 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+                                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.5px' }}>ОПРОС</span>
+                                      <button onClick={() => setHasPoll(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={16}/></button>
+                                    </div>
+                                    
+                                    {/* Базовые поля */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                      {pollOptions.map((opt, i) => (
+                                        <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                          {pollType === 'quiz' && (
+                                             <button onClick={() => setPollCorrectOption(i)} style={{ background: 'none', border: 'none', padding: 0, color: pollCorrectOption === i ? 'var(--success)' : 'var(--text-muted)', cursor: 'pointer' }}>
+                                               {pollCorrectOption === i ? <CheckCircle size={20} /> : <Circle size={20} />}
+                                             </button>
+                                          )}
+                                          <input placeholder={`Вариант ${i + 1}`} value={opt} onChange={(e) => { const newOpts = [...pollOptions]; newOpts[i] = e.target.value; setPollOptions(newOpts); }} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', padding: '10px 12px', borderRadius: '10px', color: '#FFF', fontSize: '15px' }} />
+                                          {i > 1 && (
+                                            /* === УЛУЧШЕНИЕ 3: Увеличенный хитбокс для опций опроса === */
+                                            <button onClick={() => setPollOptions(pollOptions.filter((_, idx) => idx !== i))} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', margin: '-8px' }}>
+                                              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14}/></div>
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {pollOptions.length < 5 && (
+                                        <button onClick={() => setPollOptions([...pollOptions, ''])} className="spring-btn" style={{ background: 'transparent', border: '1px dashed var(--border)', padding: '10px', borderRadius: '10px', color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                          <Plus size={16} /> Добавить вариант
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {/* Спойлер настроек с иконками Summary */}
+                                    <div style={{ marginTop: '12px', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '12px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <button onClick={() => setShowPollSettings(!showPollSettings)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: 0 }}>
+                                              <Settings size={14} /> Настройки опроса
+                                            </button>
+                                            
+                                            {/* Summary Icons */}
+                                            <div style={{ display: 'flex', gap: '6px', color: 'var(--text-muted)' }}>
+                                                {pollAnon && <VenetianMask size={14} />}
+                                                {pollMulti && <Users size={14} />}
+                                                {pollType === 'quiz' && <HelpCircle size={14} />}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Продвинутые настройки */}
+                                        {showPollSettings && (
+                                            <div className="smart-block" style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '4px' }}>
+                                                    <button onClick={() => setPollType('regular')} style={{ flex: 1, padding: '8px', background: pollType === 'regular' ? 'var(--surface-elevated)' : 'transparent', color: pollType === 'regular' ? '#FFF' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' }}><BarChart2 size={14}/> Опрос</button>
+                                                    <button onClick={() => {setPollType('quiz'); setPollCorrectOption(0); setPollMulti(false);}} style={{ flex: 1, padding: '8px', background: pollType === 'quiz' ? 'var(--surface-elevated)' : 'transparent', color: pollType === 'quiz' ? '#FFF' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' }}><HelpCircle size={14}/> Викторина</button>
+                                                </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                                    <button onClick={() => setPollMulti(!pollMulti)} disabled={pollType === 'quiz'} style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${pollMulti ? 'var(--primary)' : 'transparent'}`, color: pollMulti ? 'var(--primary)' : 'var(--text-muted)', padding: '10px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', opacity: pollType === 'quiz' ? 0.5 : 1, cursor: 'pointer' }}>
+                                                        <Users size={14}/> Мультивыбор
+                                                    </button>
+                                                    <button onClick={() => setPollAnon(!pollAnon)} style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${pollAnon ? 'var(--primary)' : 'transparent'}`, color: pollAnon ? 'var(--primary)' : 'var(--text-muted)', padding: '10px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer' }}>
+                                                        <VenetianMask size={14}/> Анонимно
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* --- СМАРТ-КОНТЕКСТ --- */}
+                                {postCat === 'lost_found' && (
+                                  <div className="smart-block" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px', flexShrink: 0 }}>
+                                    <div style={{ display: 'flex', background: 'var(--surface-elevated)', borderRadius: '12px', padding: '4px' }}>
+                                      <button onClick={() => setLfType('lost')} className="spring-btn" style={{ flex: 1, padding: '10px', background: lfType === 'lost' ? 'rgba(255, 69, 58, 0.15)' : 'transparent', color: lfType === 'lost' ? 'var(--error)' : 'var(--text-muted)', border: `1px solid ${lfType === 'lost' ? 'rgba(255, 69, 58, 0.3)' : 'transparent'}`, borderRadius: '10px', fontWeight: 600, fontSize: '14px', transition: 'all 0.2s' }}>😢 Потерял</button>
+                                      <button onClick={() => setLfType('found')} className="spring-btn" style={{ flex: 1, padding: '10px', background: lfType === 'found' ? 'rgba(50, 215, 75, 0.15)' : 'transparent', color: lfType === 'found' ? 'var(--success)' : 'var(--text-muted)', border: `1px solid ${lfType === 'found' ? 'rgba(50, 215, 75, 0.3)' : 'transparent'}`, borderRadius: '10px', fontWeight: 600, fontSize: '14px', transition: 'all 0.2s' }}>🎉 Нашёл</button>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0 12px' }}>
+                                      <MapPin size={18} color="var(--text-muted)" />
+                                      <input placeholder="Где это было?" value={location} onChange={e => setLocation(e.target.value)} style={{ flex: 1, background: 'transparent', border: 'none', padding: '12px', color: '#FFF', fontSize: '15px' }} />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {postCat === 'events' && (
+                                  <div className="smart-block" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px', flexShrink: 0 }}>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                      <button onClick={() => setEventDate('today')} className="spring-btn" style={{ flex: 1, padding: '10px 4px', background: eventDate === 'today' ? 'var(--primary)' : 'var(--surface-elevated)', color: eventDate === 'today' ? '#000' : 'var(--text-muted)', border: 'none', borderRadius: '12px', fontWeight: 600, fontSize: '13px' }}>Сегодня</button>
+                                      <button onClick={() => setEventDate('tomorrow')} className="spring-btn" style={{ flex: 1, padding: '10px 4px', background: eventDate === 'tomorrow' ? 'var(--primary)' : 'var(--surface-elevated)', color: eventDate === 'tomorrow' ? '#000' : 'var(--text-muted)', border: 'none', borderRadius: '12px', fontWeight: 600, fontSize: '13px' }}>Завтра</button>
+                                      <div style={{ position: 'relative', flex: 1 }}>
+                                        <button className="spring-btn" style={{ width: '100%', padding: '10px 4px', background: eventDate === 'picker' ? 'var(--primary)' : 'var(--surface-elevated)', color: eventDate === 'picker' ? '#000' : 'var(--text-muted)', border: 'none', borderRadius: '12px', fontWeight: 600, fontSize: '13px' }}>
+                                          {customDate ? formatCustomDate(customDate) : 'Выбрать📅'}
+                                        </button>
+                                        <input type="datetime-local" value={customDate} onChange={(e) => { setEventDate('picker'); setCustomDate(e.target.value); }} style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0 12px' }}>
+                                      <MapPin size={18} color="var(--text-muted)" />
+                                      <input placeholder="Место проведения" value={location} onChange={e => setLocation(e.target.value)} style={{ flex: 1, background: 'transparent', border: 'none', padding: '12px', color: '#FFF', fontSize: '15px' }} />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {postCat === 'confessions' && (
+                                  <div className="smart-block" style={{ padding: '12px 16px', background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', borderRadius: '16px', display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px', flexShrink: 0 }}>
+                                    <div style={{ color: 'var(--primary)' }}><VenetianMask size={24} strokeWidth={1.5} /></div>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                      <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--primary)' }}>Полная анонимность</span>
+                                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.3, marginTop: '2px' }}>Авторство скрыто. Комментарии также будут анонимными.</span>
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ============================== */}
+                        {/* === REQUEST SLIDE ===          */}
+                        {/* ============================== */}
+                        <div style={{ width: '50%', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+                            <div className="hide-scroll" style={{ 
+                                display: 'grid', gridTemplateRows: 'repeat(2, auto)', gridAutoFlow: 'column', gridAutoColumns: 'max-content',
+                                gap: '8px', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' 
+                            }}>
+                                {REQ_CATEGORIES.map(cat => (
+                                  <button 
+                                    key={cat.id} className="spring-btn"
+                                    style={{ 
+                                      padding: '8px 16px', borderRadius: '20px', flexShrink: 0,
+                                      border: '1px solid transparent',
+                                      background: 'var(--surface-elevated)',
+                                      color: '#FFF',
+                                      fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                  >
+                                    <span>{cat.icon}</span> {cat.label}
+                                  </button>
+                                ))}
+                            </div>
+                            <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', flex: '1 0 auto' }}>
+                                <div className="grow-wrap" data-replicated-value={reqText} style={{ marginBottom: '16px', width: '100%', flexShrink: 0 }}>
+                                  <textarea 
+                                    ref={reqTextareaRef}
+                                    value={reqText}
+                                    onChange={(e) => setReqText(e.target.value)}
+                                    placeholder="Опиши, какая помощь нужна..." 
+                                    className="hide-scroll"
+                                    style={{ 
+                                      width: '100%', background: 'transparent', border: 'none', color: '#FFF', 
+                                      fontSize: '18px', fontWeight: 500, lineHeight: 1.4, padding: '0', outline: 'none'
+                                    }} 
+                                  />
+                                </div>
+                               <div style={{ flexShrink: 0, padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Смарт-контекст для Запросов (Дедлайн, Награда)</div>
+                            </div>
+                        </div>
+
+                      </div>
+                  </div>
+
+                  {/* === БЛОК ПРИЛИПШЕГО ТУЛБАРА === */}
+                  <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+                      
+                      {/* Стеклянная Панель Хештегов */}
+                      {showTagTool && (
+                          <div className="smart-block" style={{ 
+                              padding: '12px 16px', 
+                              background: 'rgba(28, 28, 30, 0.75)', 
+                              backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', 
+                              borderTop: '1px solid rgba(255,255,255,0.1)',
+                              borderTopLeftRadius: '20px', borderTopRightRadius: '20px',
+                              boxShadow: '0 -4px 20px rgba(0,0,0,0.5)'
+                          }}>
+                              {/* Популярные подсказки */}
+                              <div className="hide-scroll" style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '12px' }}>
+                                  {SUGGESTED_TAGS.filter(t => t.includes(postTagInput.toLowerCase()) && !postTags.includes(t)).map(t => (
+                                    <button 
+                                        key={t} onClick={() => addPostTag(t)} 
+                                        className="spring-btn"
+                                        style={{ 
+                                            padding: '6px 12px', borderRadius: '16px', flexShrink: 0,
+                                            background: 'rgba(255,255,255,0.1)', color: '#FFF', border: '1px solid rgba(255,255,255,0.05)', 
+                                            fontSize: '13px', fontWeight: 600 
+                                        }}
+                                    >
+                                        #{t}
+                                    </button>
+                                  ))}
+                                  {SUGGESTED_TAGS.filter(t => t.includes(postTagInput.toLowerCase()) && !postTags.includes(t)).length === 0 && (
+                                      <span style={{color: 'rgba(255,255,255,0.4)', fontSize: '13px', padding: '6px 0'}}>Нет подсказок</span>
+                                  )}
+                              </div>
+                              
+                              {/* Кастомный Инпут */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.4)', borderRadius: '14px', padding: '8px 12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                      <Hash size={16} color="var(--text-muted)" />
+                                      <input 
+                                          autoFocus
+                                          value={postTagInput} 
+                                          onChange={(e) => setPostTagInput(e.target.value)} 
+                                          placeholder="Свой тег (например: курсач)" 
+                                          style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF', fontSize: '15px', outline: 'none', marginLeft: '8px' }}
+                                          onKeyPress={(e) => e.key === 'Enter' && addPostTag()}
+                                      />
+                                  </div>
+                                  <button onClick={() => addPostTag()} className="spring-btn" style={{ 
+                                      width: '38px', height: '38px', borderRadius: '19px', 
+                                      background: postTagInput.trim() ? 'var(--primary)' : 'rgba(255,255,255,0.1)', 
+                                      color: postTagInput.trim() ? '#000' : 'var(--text-muted)', 
+                                      border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s',
+                                      flexShrink: 0
+                                  }}>
+                                      <Plus size={20} strokeWidth={2.5} />
+                                  </button>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* Тулбар */}
+                      <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)' }}>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button onClick={handleAddPhoto} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: photos.length > 0 ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: photos.length > 0 ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: photos.length >= 3 ? 0.5 : 1 }}>
+                            <ImageIcon size={20} />
+                          </button>
+                          
+                          <button onClick={() => setShowTagTool(!showTagTool)} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: showTagTool || postTags.length > 0 ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: showTagTool || postTags.length > 0 ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Hash size={20} />
+                          </button>
+
+                          {postCat !== 'lost_found' && postCat !== 'confessions' && (
+                            <button onClick={() => setHasPoll(!hasPoll)} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: hasPoll ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: hasPoll ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <BarChart2 size={20} />
+                            </button>
+                          )}
+
+                          <button onClick={() => setIsAnonymous(!isAnonymous)} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: isAnonymous ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: isAnonymous ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: postCat === 'confessions' ? 0.5 : 1, pointerEvents: postCat === 'confessions' ? 'none' : 'auto' }}>
+                            <VenetianMask size={20} />
+                          </button>
+                        </div>
+
+                        {/* === КНОПКА ОТПРАВКИ (Теперь рабочая) === */}
+                        <button onClick={handleSend} className="spring-btn" style={{ 
+                            width: '40px', height: '40px', borderRadius: '20px', 
+                            background: canSend ? 'var(--primary)' : 'var(--surface-elevated)', 
+                            color: canSend ? '#000' : 'var(--text-muted)', 
+                            border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                            transition: 'all 0.3s' 
+                        }}>
+                          <Send size={18} style={{ marginLeft: canSend ? '2px' : '0', transition: 'all 0.2s' }}/>
+                        </button>
+                      </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

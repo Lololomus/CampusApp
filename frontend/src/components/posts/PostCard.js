@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, MoreVertical, ChevronLeft, ChevronRight, Calendar, ExternalLink, Megaphone, Link, Edit2, Trash2, Flag } from 'lucide-react';
+import { Heart, MessageCircle, Eye, MapPin, ChevronLeft, ChevronRight, Calendar, ExternalLink, Megaphone, Link, Edit2, Trash2, Flag } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { likePost, deletePost, trackAdImpression, trackAdClick } from '../../api';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
+import OverflowMenuButton from '../shared/OverflowMenuButton';
 import PollWidget from './PollWidget';
 import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
@@ -17,6 +18,7 @@ import { toast } from '../shared/Toast';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
+import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const { likedPosts, setPostLiked, user, setEditingContent } = useStore();
@@ -43,6 +45,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     if (Array.isArray(post.images)) return post.images;
     try { return JSON.parse(post.images); } catch { return []; }
   }, [post.images]);
+  const hasTags = Array.isArray(post.tags) && post.tags.length > 0;
 
   const firstImage = images.length > 0 ? images[0] : null;
   const meta = (typeof firstImage === 'object' && firstImage !== null) ? firstImage : null;
@@ -192,6 +195,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       default:            return { label: 'Пост',        color: theme.colors.textSecondary, bg: 'transparent' };
     }
   }, [post.category, isAd]);
+
+  const displayBody = useMemo(
+    () => stripLeadingTitleFromBody(post.title, post.body),
+    [post.title, post.body]
+  );
 
   // ===== MODERATION HOOK =====
   const { moderationMenuItems, moderationModals } = useModerationActions({
@@ -419,13 +427,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
                   </span>
                 )}
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <button
+                  <OverflowMenuButton
                     ref={menuButtonRef}
-                    style={styles.menuButton}
-                    onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); hapticFeedback('light'); }}
-                  >
-                    <MoreVertical size={20} />
-                  </button>
+                    isOpen={menuOpen}
+                    onToggle={() => setMenuOpen((prev) => !prev)}
+                  />
                   <DropdownMenu
                     isOpen={menuOpen}
                     onClose={() => setMenuOpen(false)}
@@ -442,14 +448,14 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
             )}
 
             {/* Текст поста — внутри info-колонки (как в моке) */}
-            {post.body && (
+            {displayBody && (
               <div style={{ marginTop: 4 }}>
                 <p style={{
                   ...styles.body,
                   WebkitLineClamp: isBodyExpanded ? 'unset' : 4,
                   overflow: isBodyExpanded ? 'visible' : 'hidden',
-                }}>{post.body}</p>
-                {!isBodyExpanded && post.body.length > 150 && (
+                }}>{displayBody}</p>
+                {!isBodyExpanded && displayBody.length > 150 && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setIsBodyExpanded(true); }}
                     style={styles.expandButton}
@@ -516,15 +522,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           </div>
         )}
 
-        {post.tags && post.tags.length > 0 && (
+        {hasTags && (
           <div style={styles.tags}>
-            {post.tags.slice(0, 3).map(t => <span key={t} style={styles.tag}>#{t}</span>)}
+            {post.tags.slice(0, 3).map((t, index) => (
+              <span key={`${t}-${index}`} className="hashtag-chip">#{t}</span>
+            ))}
           </div>
         )}
 
         {/* === FOOTER (СКРЫТ ДЛЯ РЕКЛАМЫ) === */}
         {!isAd && (
-          <div style={styles.footer}>
+          <div style={{ ...styles.footer, marginTop: hasTags ? 10 : styles.footer.marginTop }}>
             <div style={styles.footerLeft}>
               <span style={styles.dateText}>{dateText}</span>
               {isEdited && <span style={styles.editedLabel}>(изм.)</span>}
@@ -701,17 +709,6 @@ const styles = {
     padding: '4px 10px',
     borderRadius: 10,
   },
-  menuButton: {
-    padding: 6,
-    background: 'transparent',
-    border: 'none',
-    color: theme.colors.textTertiary,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.radius.full,
-  },
   content: {
     padding: '0 16px',
   },
@@ -801,11 +798,7 @@ const styles = {
   tags: {
     padding: `0 16px`,
     display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm,
-    marginBottom: 10,
-  },
-  tag: {
-    color: theme.colors.primary,
-    fontSize: 13, fontWeight: theme.fontWeight.medium,
+    marginBottom: 0,
   },
   footer: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',

@@ -11,7 +11,7 @@ import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { 
   getUserPosts, getMyRequests, getMyMarketItems, 
-  getMyDatingProfile, getUserStats, deleteMarketItem, deleteRequest
+  getMyDatingProfile, getUserStats, deleteMarketItem, deleteRequest, getRequestById
 } from '../../api';
 import theme from '../../theme';
 import { toast } from '../shared/Toast';
@@ -197,9 +197,15 @@ function Profile() {
     }
   };
 
-  const handleEditRequest = (request) => {
+  const handleEditRequest = async (request) => {
     hapticFeedback('light');
-    setEditingRequest(request);
+    try {
+      const fullRequest = await getRequestById(request.id);
+      setEditingRequest(fullRequest);
+    } catch (error) {
+      console.error('Request load error before edit:', error);
+      toast.error('Не удалось загрузить запрос для редактирования');
+    }
   };
 
   const handleDeleteRequest = (request) => {

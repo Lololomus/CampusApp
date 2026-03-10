@@ -266,3 +266,30 @@ body.dating-active {
   height: 100vh;
   max-height: 100vh;
 }
+
+/* Shared hashtag chips for post/request tags */
+.hashtag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  background-color: #1c1c1e;
+  color: #e5e5e5;
+  border-radius: 9999px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .hashtag-chip:hover {
+    background-color: #2c2c2e;
+  }
+}
+
+.hashtag-chip:active {
+  border-color: #d4ff00;
+  color: #d4ff00;
+}

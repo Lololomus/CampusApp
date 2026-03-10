@@ -7,7 +7,6 @@ import {
   Image as ImageIcon,
   Link,
   Lock,
-  MoreVertical,
   Pencil,
   Trash2,
   Users,
@@ -18,6 +17,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS } from '../../types';
 import DropdownMenu from '../DropdownMenu';
+import OverflowMenuButton from '../shared/OverflowMenuButton';
 import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
@@ -51,6 +51,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
+  const [isMenuPressing, setIsMenuPressing] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -324,7 +325,11 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
     <>
       <style>{keyframesStyles}</style>
 
-      <div style={cardStyle} onClick={handleCardClick} className="request-card-spring">
+      <div
+        style={cardStyle}
+        onClick={handleCardClick}
+        className={`request-card-spring${isMenuPressing ? ' request-card-no-active' : ''}`}
+      >
         <div style={styles.mainRow}>
           <div
             onClick={(e) => {
@@ -364,21 +369,23 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
                 </span>
 
                 <div style={{ position: 'relative' }}>
-                  <button
+                  <OverflowMenuButton
                     ref={menuButtonRef}
-                    style={styles.menuButton}
+                    isOpen={menuOpen}
                     className="dropdown-menu-trigger"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      hapticFeedback('light');
+                    onPressStart={() => setIsMenuPressing(true)}
+                    onPressEnd={() => setIsMenuPressing(false)}
+                    onToggle={() => {
                       setMenuOpen((prev) => !prev);
+                      setIsMenuPressing(false);
                     }}
-                  >
-                    <MoreVertical size={20} />
-                  </button>
+                  />
                   <DropdownMenu
                     isOpen={menuOpen}
-                    onClose={() => setMenuOpen(false)}
+                    onClose={() => {
+                      setMenuOpen(false);
+                      setIsMenuPressing(false);
+                    }}
                     anchorRef={menuButtonRef}
                     items={menuItems}
                   />
@@ -579,19 +586,6 @@ const styles = {
     letterSpacing: '0.5px',
     whiteSpace: 'nowrap',
   },
-  menuButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    border: 'none',
-    background: '#2C2C2E',
-    color: '#FFFFFF',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    padding: 0,
-  },
   title: {
     margin: '0 0 6px',
     fontSize: 16,
@@ -733,7 +727,7 @@ const keyframesStyles = `
     transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s;
   }
 
-  .request-card-spring:active {
+  .request-card-spring:not(.request-card-no-active):active {
     transform: scale(0.98);
     opacity: 0.9;
   }

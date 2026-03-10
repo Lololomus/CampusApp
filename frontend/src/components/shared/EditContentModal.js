@@ -1,107 +1,216 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/shared/EditContentModal.js =====
-
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, 
-  Image as ImageIcon, Trash2, BarChart2, Clock, EyeOff, Eye,
-  Star, Lock, Info, Gift
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  AlertCircle,
+  BarChart2,
+  Check,
+  CheckCircle,
+  Circle,
+  Clock,
+  Gift,
+  Hash,
+  HelpCircle,
+  Image as ImageIcon,
+  Lock,
+  MapPin,
+  Plus,
+  Send,
+  Settings,
+  Users,
+  VenetianMask,
+  X,
 } from 'lucide-react';
-import { toast } from './Toast';
+import imageCompression from 'browser-image-compression';
+import { useSwipe } from '../../hooks/useSwipe';
 import { updatePost, updateRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import { Z_EDIT_POST, Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
-import imageCompression from 'browser-image-compression';
-import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from '../../types';
-import { useTelegramScreen } from './telegram/useTelegramScreen';
-import DrilldownHeader from './DrilldownHeader';
+import { Z_MODAL_EDIT_POST, getOverlayZIndex } from '../../constants/zIndex';
+import { REWARD_TYPES } from '../../types';
+import { IMAGE_SETTINGS, POST_LIMITS, REQUEST_LIMITS } from '../../constants/contentConstants';
+import {
+  CREATE_CONTENT_CATEGORY_CAPABILITIES,
+  CREATE_CONTENT_POST_CATEGORIES,
+  CREATE_CONTENT_POST_PLACEHOLDERS,
+  CREATE_CONTENT_REQUEST_CATEGORIES,
+  CREATE_CONTENT_REQUEST_DEADLINE_OPTIONS,
+  CREATE_CONTENT_REQUEST_PLACEHOLDERS,
+  CREATE_CONTENT_REQUEST_REWARD_OPTIONS,
+  CREATE_CONTENT_SUGGESTED_TAGS,
+} from '../../constants/createContentUiConfig';
+import {
+  composeSingleTextFromTitleBody,
+  parsePostSingleText,
+  parseRequestSingleText,
+} from '../../utils/contentTextParser';
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import { toast } from './Toast';
+import ConfirmationDialog from './ConfirmationDialog';
+import SmartDatePicker from './SmartDatePicker';
+import { useTelegramScreen } from './telegram/useTelegramScreen';
 
-// ===== CONSTANTS =====
-const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'сопромат'];
-const REQUEST_TAGS = ['помощь', 'срочно', 'курсовая', 'спорт', 'подвезти'];
+const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
+const MAX_TAGS = POST_LIMITS.TAGS_MAX;
+const ALLOWED_FORMATS = IMAGE_SETTINGS.ALLOWED_FORMATS;
 
-const MAX_TITLE_LENGTH = 100;
-const MAX_BODY_LENGTH = 1000;
-const MAX_TAGS = 5;
-const MAX_IMAGES = 3;
-const ALLOWED_FORMATS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const normalizeTag = (raw) =>
+  String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^#+/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/[^a-zа-яё0-9_-]/gi, '');
 
-// Категории
-const POST_CATEGORIES = CATEGORIES.map(cat => ({
-  ...cat,
-  color: theme.colors[cat.value] || theme.colors.primary
-}));
-
-const REQUEST_CATEGORIES = [
-  { value: 'study', label: 'Учёба', icon: '📚', color: '#3b82f6' },
-  { value: 'help', label: 'Помощь', icon: '🤝', color: '#10b981' },
-  { value: 'hangout', label: 'Движ', icon: '🎉', color: '#f59e0b' }
-];
-
-const normalizeText = (value) => String(value ?? '').trim();
-
-const normalizeTags = (rawTags) => {
-  let parsedTags = rawTags;
-
-  if (typeof rawTags === 'string') {
-    try {
-      parsedTags = JSON.parse(rawTags);
-    } catch {
-      parsedTags = [];
-    }
+const parseArrayField = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
-
-  if (!Array.isArray(parsedTags)) return [];
-
-  return parsedTags
-    .map((tag) => normalizeText(tag).toLowerCase())
-    .filter(Boolean);
 };
 
 const extractImageKey = (value) => {
-  const raw = String(value ?? '');
+  const raw = String(value || '').trim();
   if (!raw) return '';
-
   const withoutHash = raw.split('#')[0];
   const withoutQuery = withoutHash.split('?')[0];
   const normalized = withoutQuery.replace(/\\/g, '/');
-
-  if (!normalized) return '';
   if (!normalized.includes('/')) return normalized;
   return normalized.split('/').pop() || '';
 };
 
-const normalizeInitialImageKeys = (rawImages) => {
-  let parsedImages = rawImages;
-
-  if (typeof rawImages === 'string') {
-    try {
-      parsedImages = JSON.parse(rawImages);
-    } catch {
-      parsedImages = [];
-    }
-  }
-
-  if (!Array.isArray(parsedImages)) return [];
-
-  return parsedImages
-    .map((img) => {
-      if (typeof img === 'object' && img !== null) {
-        return extractImageKey(img.filename || img.url);
-      }
-      return extractImageKey(img);
+const parseInitialImages = (images) =>
+  parseArrayField(images)
+    .map((raw, index) => {
+      const source = typeof raw === 'object' && raw !== null ? raw.url || raw.filename || '' : raw;
+      const key = extractImageKey(source);
+      if (!source && !key) return null;
+      return {
+        id: `old-${index}-${key || 'img'}`,
+        key,
+        preview: resolveImageUrl(source, 'images'),
+        isNew: false,
+        file: null,
+      };
     })
     .filter(Boolean);
+
+const parseInitialTags = (tags) =>
+  parseArrayField(tags)
+    .map((tag) => normalizeTag(tag))
+    .filter(Boolean)
+    .slice(0, MAX_TAGS);
+
+const formatCustomDate = (value) => {
+  if (!value) return 'Выбрать дату';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Выбрать дату';
+  return date.toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
-const getBorderColor = (isValid, attemptedSubmit) => {
-  if (!attemptedSubmit) return theme.colors.border;
-  return isValid ? theme.colors.success : theme.colors.error;
+const firstLine = (text) =>
+  String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || '';
+
+const buildEventDateIso = (mode, customDate) => {
+  const now = new Date();
+  const date = new Date();
+  if (mode === 'today') {
+    date.setHours(18, 0, 0, 0);
+    return date.toISOString();
+  }
+  if (mode === 'tomorrow') {
+    date.setDate(now.getDate() + 1);
+    date.setHours(18, 0, 0, 0);
+    return date.toISOString();
+  }
+  if (mode === 'custom') {
+    const custom = new Date(customDate || '');
+    if (!Number.isNaN(custom.getTime())) return custom.toISOString();
+  }
+  return null;
 };
 
-function EditContentModal({ contentType = 'post', initialData, onClose, onSuccess }) {
-  // ===== GLOBAL STATE =====
+const deriveEventPreset = (value) => {
+  if (!value) return { mode: 'today', custom: '' };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { mode: 'today', custom: '' };
+
+  const now = new Date();
+  const todayPreset = new Date(now);
+  todayPreset.setHours(18, 0, 0, 0);
+  const tomorrowPreset = new Date(now);
+  tomorrowPreset.setDate(now.getDate() + 1);
+  tomorrowPreset.setHours(18, 0, 0, 0);
+
+  const deltaToday = Math.abs(date.getTime() - todayPreset.getTime());
+  const deltaTomorrow = Math.abs(date.getTime() - tomorrowPreset.getTime());
+  if (deltaToday <= 45 * 60 * 1000) return { mode: 'today', custom: '' };
+  if (deltaTomorrow <= 45 * 60 * 1000) return { mode: 'tomorrow', custom: '' };
+  return { mode: 'custom', custom: date.toISOString() };
+};
+
+const buildRequestExpiresAtIso = (type, customDate) => {
+  const now = Date.now();
+  if (type === '3h') return new Date(now + 3 * 60 * 60 * 1000).toISOString();
+  if (type === '24h') return new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  if (type === '3d') return new Date(now + 72 * 60 * 60 * 1000).toISOString();
+  if (type === 'custom') {
+    const custom = new Date(customDate || '');
+    if (!Number.isNaN(custom.getTime())) return custom.toISOString();
+  }
+  return null;
+};
+
+const deriveRequestDeadline = (value) => {
+  if (!value) return { type: '24h', custom: '' };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { type: '24h', custom: '' };
+  const diffHours = Math.round((date.getTime() - Date.now()) / (60 * 60 * 1000));
+  if (Math.abs(diffHours - 3) <= 1) return { type: '3h', custom: '' };
+  if (Math.abs(diffHours - 24) <= 2) return { type: '24h', custom: '' };
+  if (Math.abs(diffHours - 72) <= 3) return { type: '3d', custom: '' };
+  return { type: 'custom', custom: date.toISOString() };
+};
+
+const toIso = (value) => {
+  const date = new Date(value || '');
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+};
+
+const mapRewardTypeToUi = (value) => {
+  if (value === REWARD_TYPES.MONEY) return 'money';
+  if (value === REWARD_TYPES.FAVOR || value === REWARD_TYPES.GIFT) return 'barter';
+  return 'none';
+};
+
+function EditContentModal({ contentType = 'post', initialData = {}, onClose, onSuccess }) {
+  const isPost = contentType === 'post';
+  const postCategory = initialData.category || 'news';
+  const requestCategory = initialData.category || 'help';
+  const categoryCapabilities =
+    CREATE_CONTENT_CATEGORY_CAPABILITIES[postCategory] || CREATE_CONTENT_CATEGORY_CAPABILITIES.news;
+  const categoryItem = (isPost ? CREATE_CONTENT_POST_CATEGORIES : CREATE_CONTENT_REQUEST_CATEGORIES).find(
+    (item) => item.value === (isPost ? postCategory : requestCategory)
+  );
+
+  const initialText = composeSingleTextFromTitleBody(initialData?.title, initialData?.body);
+  const initialEventPreset = deriveEventPreset(initialData?.event_date);
+  const initialRequestDeadline = deriveRequestDeadline(initialData?.expires_at);
+  const initialTags = useMemo(() => parseInitialTags(initialData?.tags), [initialData?.tags]);
+  const initialImages = useMemo(() => parseInitialImages(initialData?.images), [initialData?.images]);
+
+  const [isMounted, setIsMounted] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -109,1144 +218,1083 @@ function EditContentModal({ contentType = 'post', initialData, onClose, onSucces
   const [error, setError] = useState('');
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
-  // ===== DATA INITIALIZATION =====
-  const isPost = contentType === 'post';
-  const category = initialData.category || 'general';
-
-  // Common Fields
-  const [title, setTitle] = useState(() => initialData?.title || '');
-  const [body, setBody] = useState(() => initialData?.body || '');
-  const [tags, setTags] = useState(() => {
-    if (!initialData) return [];
-    if (Array.isArray(initialData.tags)) return initialData.tags;
-    try { return JSON.parse(initialData.tags); } catch { return []; }
-  });
+  const [postText, setPostText] = useState(initialText);
+  const [reqText, setReqText] = useState(initialText);
+  const [tags, setTags] = useState(initialTags);
   const [tagInput, setTagInput] = useState('');
+  const [showTagTool, setShowTagTool] = useState(false);
+  const [photos, setPhotos] = useState(initialImages);
+  const [processingImages, setProcessingImages] = useState([]);
 
-  // Images (для постов И запросов)
-  const [images, setImages] = useState(() => {
-    const rawImages = initialData.images || [];
-    let parsedImages = rawImages;
-    
-    if (typeof rawImages === 'string') {
-        try { parsedImages = JSON.parse(rawImages); } catch { parsedImages = []; }
-    }
-    if (!Array.isArray(parsedImages)) parsedImages = [];
+  const [isAnonymous, setIsAnonymous] = useState(Boolean(initialData?.is_anonymous) || postCategory === 'confessions');
+  const [lfType, setLfType] = useState(initialData?.lost_or_found || 'lost');
+  const [location, setLocation] = useState(initialData?.location || initialData?.event_location || '');
+  const [eventDateMode, setEventDateMode] = useState(initialEventPreset.mode);
+  const [customDate, setCustomDate] = useState(initialEventPreset.custom);
+  const [showEventPicker, setShowEventPicker] = useState(false);
 
-    return parsedImages.map(img => {
-      let rawFilename = (typeof img === 'object' && img !== null) ? img.url : img;
-      const fullUrl = resolveImageUrl(rawFilename, 'images');
-      return {
-        url: fullUrl,
-        filename: rawFilename,
-        isNew: false
-      };
-    });
-  });
-  
-  const [processingImages, setProcessingImages] = useState([]); // { id, progress }
-
-  // Flags
-  const [isAnonymous, setIsAnonymous] = useState(() => initialData?.is_anonymous || false);
-  const [isImportant, setIsImportant] = useState(() => initialData?.is_important || false);
-  
-  // Lost & Found
-  const [lostOrFound, setLostOrFound] = useState(() => initialData?.lost_or_found || 'lost');
-  const [itemDescription, setItemDescription] = useState(() => initialData?.item_description || '');
-  const [location, setLocation] = useState(() => initialData?.location || '');
-  const [rewardType, setRewardType] = useState(() => initialData?.reward_type || REWARD_TYPES.NONE);
-  const [rewardValue, setRewardValue] = useState(() => initialData?.reward_value || '');
-
-  // Events
-  const [eventName, setEventName] = useState(() => initialData?.event_name || '');
-  const [eventDate, setEventDate] = useState(() => 
-    initialData?.event_date ? new Date(initialData.event_date).toISOString().slice(0, 16) : ''
-  );
-  const [eventLocation, setEventLocation] = useState(() => initialData?.event_location || '');
-  const [eventContact, setEventContact] = useState(() => initialData?.event_contact || '');
-  const [activeEventDateBtn, setActiveEventDateBtn] = useState(null);
-
-  // Polls
   const poll = initialData?.poll || null;
+  const pollOptions = useMemo(() => {
+    const options = Array.isArray(poll?.options) ? poll.options : [];
+    const values = options
+      .map((item) => (typeof item === 'string' ? item : item?.text || item?.option_text || ''))
+      .filter(Boolean);
+    return values.length ? values : ['', ''];
+  }, [poll]);
+  const pollType = poll?.type || 'regular';
+  const pollCorrectOption = Number.isInteger(poll?.correct_option) ? poll.correct_option : null;
+  const pollMulti = Boolean(poll?.allow_multiple);
+  const pollAnon = Boolean(poll?.is_anonymous);
+  const [showPollSettings, setShowPollSettings] = useState(false);
 
-  // Request Specific
-  const [expiresAt, setExpiresAt] = useState(() => initialData?.expires_at || '');
-  const [activeTimeBtn, setActiveTimeBtn] = useState(() => {
-    if (!initialData || !initialData.expires_at) return 72;
-    
-    const now = new Date();
-    const expires = new Date(initialData.expires_at);
-    const diffHours = Math.round((expires - now) / (1000 * 60 * 60));
-    
-    if (Math.abs(diffHours - 24) < 2) return 24;
-    if (Math.abs(diffHours - 72) < 2) return 72;
-    if (Math.abs(diffHours - 168) < 2) return 168;
-    
-    return 0;
-  });
+  const [showReqReward, setShowReqReward] = useState(false);
+  const [reqRewardType, setReqRewardType] = useState(mapRewardTypeToUi(initialData?.reward_type));
+  const [reqRewardValue, setReqRewardValue] = useState(initialData?.reward_value || '');
+  const [showReqDeadline, setShowReqDeadline] = useState(false);
+  const [reqDeadlineType, setReqDeadlineType] = useState(initialRequestDeadline.type);
+  const [reqCustomDate, setReqCustomDate] = useState(initialRequestDeadline.custom);
+  const [showReqPicker, setShowReqPicker] = useState(false);
 
-  // Refs
-  const titleInputRef = useRef(null);
+  const sheetRef = useRef(null);
   const fileInputRef = useRef(null);
+  const postTextareaRef = useRef(null);
+  const reqTextareaRef = useRef(null);
+  const tagInputRef = useRef(null);
 
-  // ===== EFFECTS =====
+  const postPlaceholder =
+    CREATE_CONTENT_POST_PLACEHOLDERS[postCategory] || CREATE_CONTENT_POST_PLACEHOLDERS.default;
+  const requestPlaceholder =
+    CREATE_CONTENT_REQUEST_PLACEHOLDERS[requestCategory] || CREATE_CONTENT_REQUEST_PLACEHOLDERS.default;
+  const requestParsed = useMemo(() => parseRequestSingleText(reqText), [reqText]);
+  const resolvedRequestExpiresAt = useMemo(
+    () => buildRequestExpiresAtIso(reqDeadlineType, reqCustomDate),
+    [reqDeadlineType, reqCustomDate]
+  );
+
+  const filteredSuggestions = useMemo(() => {
+    const query = tagInput.trim().toLowerCase();
+    return CREATE_CONTENT_SUGGESTED_TAGS.filter((tag) => {
+      if (tags.includes(tag)) return false;
+      return query ? tag.includes(query) : true;
+    });
+  }, [tagInput, tags]);
+
+  const baseline = useMemo(
+    () => ({
+      text: initialText.trim(),
+      tags: initialTags,
+      photos: initialImages.map((item) => item.key).filter(Boolean),
+      isAnonymous: Boolean(initialData?.is_anonymous) || postCategory === 'confessions',
+      lfType: initialData?.lost_or_found || 'lost',
+      location: (initialData?.location || initialData?.event_location || '').trim(),
+      eventDate: buildEventDateIso(initialEventPreset.mode, initialEventPreset.custom) || '',
+      rewardType: mapRewardTypeToUi(initialData?.reward_type),
+      rewardValue: (initialData?.reward_value || '').trim(),
+      requestExpiresAt: toIso(initialData?.expires_at),
+    }),
+    [initialData, initialEventPreset.custom, initialEventPreset.mode, initialImages, initialTags, initialText, postCategory]
+  );
+
+  const hasChanges = useMemo(() => {
+    const currentText = (isPost ? postText : reqText).trim();
+    if (currentText !== baseline.text) return true;
+
+    const currentTags = tags.join('|');
+    const baselineTags = baseline.tags.join('|');
+    if (currentTags !== baselineTags) return true;
+
+    if (photos.some((photo) => photo.isNew)) return true;
+    const currentPhotoKeys = photos.filter((photo) => !photo.isNew).map((photo) => photo.key).filter(Boolean);
+    if (currentPhotoKeys.join('|') !== baseline.photos.join('|')) return true;
+
+    if (isPost) {
+      if (Boolean(isAnonymous) !== Boolean(baseline.isAnonymous)) return true;
+      if (postCategory === 'lost_found') {
+        if (lfType !== baseline.lfType) return true;
+        if (location.trim() !== baseline.location) return true;
+      }
+      if (postCategory === 'events') {
+        if (location.trim() !== baseline.location) return true;
+        if ((buildEventDateIso(eventDateMode, customDate) || '') !== baseline.eventDate) return true;
+      }
+      return false;
+    }
+
+    if (reqRewardType !== baseline.rewardType) return true;
+    if (reqRewardValue.trim() !== baseline.rewardValue) return true;
+    if ((resolvedRequestExpiresAt || '') !== baseline.requestExpiresAt) return true;
+    return false;
+  }, [
+    baseline,
+    customDate,
+    eventDateMode,
+    isAnonymous,
+    isPost,
+    lfType,
+    location,
+    photos,
+    postCategory,
+    postText,
+    reqRewardType,
+    reqRewardValue,
+    reqText,
+    resolvedRequestExpiresAt,
+    tags,
+  ]);
+
+  const isPostValid = () => {
+    if (postCategory === 'polls') return postText.trim().length >= 3;
+    if (postText.trim().length < POST_LIMITS.BODY_MIN) return false;
+    if (postCategory === 'lost_found') return location.trim().length >= 3;
+    if (postCategory === 'events') {
+      return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
+    }
+    return true;
+  };
+
+  const isRequestValid = () =>
+    requestParsed.title.length >= REQUEST_LIMITS.TITLE_MIN &&
+    requestParsed.body.length >= REQUEST_LIMITS.BODY_MIN &&
+    Boolean(resolvedRequestExpiresAt);
+
+  const canSend = hasChanges && (isPost ? isPostValid() : isRequestValid()) && !isSubmitting;
 
   useEffect(() => {
-    setTimeout(() => setIsVisible(true), 50);
+    setIsMounted(true);
+    const timer = setTimeout(() => setIsVisible(true), 20);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (window.innerWidth >= 768 && !isSubmitting && titleInputRef.current) {
-       setTimeout(() => titleInputRef.current.focus(), 300);
-    }
-  }, [isSubmitting]);
+    const body = document.body;
+    const html = document.documentElement;
+    const root = document.getElementById('root');
+    const scrollY = window.scrollY || window.pageYOffset || 0;
 
-  // ===== HANDLERS =====
+    const prevBodyStyle = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    };
+    const prevHtmlOverflow = html.style.overflow;
+    const prevRootOverflow = root?.style.overflow || '';
+    const shouldRestoreScroll = prevBodyStyle.position !== 'fixed';
 
-  const hasChanges = () => {
-    if (normalizeText(title) !== normalizeText(initialData?.title)) return true;
-    if (normalizeText(body) !== normalizeText(initialData?.body)) return true;
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    html.style.overflow = 'hidden';
+    if (root) root.style.overflow = 'hidden';
 
-    const currentTags = normalizeTags(tags);
-    const initialTags = normalizeTags(initialData?.tags);
-    if (JSON.stringify(currentTags) !== JSON.stringify(initialTags)) return true;
+    const restoreScrollPosition = () => {
+      const prevScrollBehavior = html.style.scrollBehavior;
+      html.style.scrollBehavior = 'auto';
+      window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+        setTimeout(() => {
+          window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+          html.style.scrollBehavior = prevScrollBehavior;
+        }, 0);
+      });
+    };
 
-    if (isPost) {
-      if (Boolean(isAnonymous) !== Boolean(initialData?.is_anonymous)) return true;
-      if (Boolean(isImportant) !== Boolean(initialData?.is_important)) return true;
+    return () => {
+      body.style.overflow = prevBodyStyle.overflow;
+      body.style.position = prevBodyStyle.position;
+      body.style.top = prevBodyStyle.top;
+      body.style.left = prevBodyStyle.left;
+      body.style.right = prevBodyStyle.right;
+      body.style.width = prevBodyStyle.width;
+      html.style.overflow = prevHtmlOverflow;
+      if (root) root.style.overflow = prevRootOverflow;
+      if (shouldRestoreScroll) restoreScrollPosition();
+    };
+  }, []);
 
-      if (category === 'lost_found') {
-        if (normalizeText(lostOrFound) !== normalizeText(initialData?.lost_or_found || 'lost')) return true;
-        if (normalizeText(itemDescription) !== normalizeText(initialData?.item_description)) return true;
-        if (normalizeText(location) !== normalizeText(initialData?.location)) return true;
-        if (normalizeText(rewardType) !== normalizeText(initialData?.reward_type || REWARD_TYPES.NONE)) return true;
-        if (normalizeText(rewardValue) !== normalizeText(initialData?.reward_value)) return true;
-      }
+  useEffect(() => {
+    if (postCategory === 'confessions') setIsAnonymous(true);
+  }, [postCategory]);
 
-      if (category === 'events') {
-        const initialEventDate = initialData?.event_date
-          ? new Date(initialData.event_date).toISOString().slice(0, 16)
-          : '';
+  useEffect(() => {
+    if (!showTagTool) return undefined;
+    const timer = setTimeout(() => tagInputRef.current?.focus(), 40);
+    return () => clearTimeout(timer);
+  }, [showTagTool]);
 
-        if (normalizeText(eventName) !== normalizeText(initialData?.event_name)) return true;
-        if (normalizeText(eventDate) !== normalizeText(initialEventDate)) return true;
-        if (normalizeText(eventLocation) !== normalizeText(initialData?.event_location)) return true;
-        if (normalizeText(eventContact) !== normalizeText(initialData?.event_contact)) return true;
-      }
-    } else {
-      if (normalizeText(rewardType) !== normalizeText(initialData?.reward_type || REWARD_TYPES.NONE)) return true;
-      if (normalizeText(rewardValue) !== normalizeText(initialData?.reward_value)) return true;
-      if (normalizeText(expiresAt) !== normalizeText(initialData?.expires_at)) return true;
-    }
+  useEffect(() => {
+    if (window.innerWidth < 768 || isSubmitting) return undefined;
+    const timer = setTimeout(() => {
+      if (isPost) postTextareaRef.current?.focus();
+      else reqTextareaRef.current?.focus();
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [isPost, isSubmitting]);
 
-    if (images.some((img) => img?.isNew)) return true;
-
-    const currentExistingImageKeys = images
-      .filter((img) => !img?.isNew)
-      .map((img) => extractImageKey(img?.filename || img?.url))
-      .filter(Boolean);
-
-    const initialImageKeys = normalizeInitialImageKeys(initialData?.images);
-
-    if (currentExistingImageKeys.length !== initialImageKeys.length) return true;
-
-    for (let index = 0; index < currentExistingImageKeys.length; index += 1) {
-      if (currentExistingImageKeys[index] !== initialImageKeys[index]) {
-        return true;
-      }
-    }
-
-    return false;
-  };
-
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-
-    if (category === 'confessions' || category === 'polls') {
-      hapticFeedback('error');
-      toast.error(`В категории ${category === 'confessions' ? 'Признания' : 'Опросы'} нельзя менять изображения`);
-      return;
-    }
-
-    const remainingSlots = MAX_IMAGES - images.length - processingImages.length;
-    if (remainingSlots <= 0) {
-      hapticFeedback('error');
-      toast.error(`Максимум ${MAX_IMAGES} изображений`);
-      return;
-    }
-
-    const filesToProcess = files.slice(0, remainingSlots);
-    const newProcessors = filesToProcess.map(() => ({ id: Math.random().toString(36).substr(2, 9), progress: 0 }));
-    setProcessingImages(prev => [...prev, ...newProcessors]);
-    hapticFeedback('light');
-
-    try {
-      for (let i = 0; i < filesToProcess.length; i++) {
-        const file = filesToProcess[i];
-        const procId = newProcessors[i].id;
-
-        if (!ALLOWED_FORMATS.includes(file.type)) {
-          setProcessingImages(prev => prev.filter(p => p.id !== procId));
-          continue;
-        }
-
-        const options = {
-          maxSizeMB: 1,
-          maxWidthOrHeight: 1600,
-          useWebWorker: true,
-          onProgress: (prog) => {
-            setProcessingImages(prev => prev.map(p => p.id === procId ? { ...p, progress: prog } : p));
-          }
-        };
-
-        const compressedFile = await imageCompression(file, options);
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setImages(prev => [...prev, {
-              url: ev.target.result,
-              file: compressedFile, 
-              isNew: true
-          }]);
-          setProcessingImages(prev => prev.filter(p => p.id !== procId));
-        };
-        reader.readAsDataURL(compressedFile);
-      }
-      hapticFeedback('success');
-    } catch (err) { 
-      console.error(err);
-      setProcessingImages([]);
-    }
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleRemoveImage = (index) => {
-    hapticFeedback('light');
-    setImages(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const addTag = (tag) => {
-    const val = (tag || tagInput).trim().toLowerCase();
-    if (val && !tags.includes(val) && tags.length < MAX_TAGS && val.length <= 20) {
-      setTags([...tags, val]);
-      setTagInput('');
-      hapticFeedback('light');
-    }
-  };
-
-  const setQuickDate = (type) => {
-    hapticFeedback('light');
-    const now = new Date();
-    let targetDate = new Date();
-    if (type === 'today') targetDate.setHours(18, 0, 0, 0);
-    else if (type === 'tomorrow') { targetDate.setDate(now.getDate() + 1); targetDate.setHours(18, 0, 0, 0); }
-    else if (type === 'week') { targetDate.setDate(now.getDate() + 7); targetDate.setHours(18, 0, 0, 0); }
-    
-    const year = targetDate.getFullYear();
-    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
-    const day = String(targetDate.getDate()).padStart(2, '0');
-    const hours = String(targetDate.getHours()).padStart(2, '0');
-    const minutes = String(targetDate.getMinutes()).padStart(2, '0');
-    
-    setEventDate(`${year}-${month}-${day}T${hours}:${minutes}`);
-    setActiveEventDateBtn(type);
-  };
-
-  // ===== VALIDATION =====
-  const isFormValid = () => {
-    if (category === 'polls') {
-      return title.trim().length >= 3;
-    }
-    const basicValid = title.trim().length >= 3 && body.trim().length >= 10;
-    if (category === 'lost_found') {
-      return basicValid && itemDescription.trim().length >= 3 && location.trim().length >= 3;
-    }
-    if (category === 'events') {
-      return basicValid && eventName.trim().length >= 3 && eventDate && eventLocation.trim().length >= 3;
-    }
-    return basicValid;
+  const confirmClose = () => {
+    setIsVisible(false);
+    setTimeout(onClose, 280);
   };
 
   const handleClose = () => {
-    if (hasChanges() && !isSubmitting) {
-      hapticFeedback('light');
+    if (isSubmitting) return;
+    if (hasChanges) {
       setShowConfirmation(true);
-    } else {
-      confirmClose();
+      hapticFeedback('light');
+      return;
     }
+    confirmClose();
   };
 
-  const confirmClose = () => {
+  const swipeHandlers = useSwipe({
+    elementRef: sheetRef,
+    onSwipeDown: handleClose,
+    isModal: true,
+    threshold: 120,
+  });
+
+  const addTag = (value) => {
+    const normalized = normalizeTag(value || tagInput);
+    if (!normalized || tags.includes(normalized) || tags.length >= MAX_TAGS || normalized.length > 20) return;
+    setTags((prev) => [...prev, normalized]);
+    setTagInput('');
     hapticFeedback('light');
-    setIsVisible(false);
-    setTimeout(() => {
-      onClose();
-    }, 300);
+  };
+
+  const handleImageSelect = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    if (isPost && !categoryCapabilities.allowImages) {
+      toast.error('В этой категории фото недоступны');
+      hapticFeedback('error');
+      return;
+    }
+
+    const freeSlots = MAX_IMAGES - photos.length - processingImages.length;
+    if (freeSlots <= 0) {
+      toast.error(`Максимум ${MAX_IMAGES} фото`);
+      hapticFeedback('error');
+      return;
+    }
+
+    const filesToProcess = files.slice(0, freeSlots);
+    const processors = filesToProcess.map(() => ({ id: Math.random().toString(36).slice(2), progress: 0 }));
+    setProcessingImages((prev) => [...prev, ...processors]);
+
+    try {
+      for (let i = 0; i < filesToProcess.length; i += 1) {
+        const file = filesToProcess[i];
+        const processorId = processors[i].id;
+        if (!ALLOWED_FORMATS.includes(file.type)) {
+          setProcessingImages((prev) => prev.filter((item) => item.id !== processorId));
+          continue;
+        }
+
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1600,
+          useWebWorker: true,
+          onProgress: (progress) =>
+            setProcessingImages((prev) =>
+              prev.map((item) => (item.id === processorId ? { ...item, progress } : item))
+            ),
+        });
+
+        const preview = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result || '');
+          reader.readAsDataURL(compressed);
+        });
+
+        setPhotos((prev) => [
+          ...prev,
+          {
+            id: `new-${processorId}`,
+            key: '',
+            preview: String(preview),
+            isNew: true,
+            file: compressed,
+          },
+        ]);
+        setProcessingImages((prev) => prev.filter((item) => item.id !== processorId));
+      }
+      hapticFeedback('success');
+    } catch (uploadError) {
+      console.error(uploadError);
+      setProcessingImages([]);
+      toast.error('Ошибка обработки фото');
+      hapticFeedback('error');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleSubmit = async () => {
     setAttemptedSubmit(true);
     setError('');
-
-    if (!isFormValid()) {
-        hapticFeedback('error');
-        setError('Пожалуйста, заполните все обязательные поля');
-        return;
+    if (!canSend) {
+      setError('Заполните обязательные поля');
+      hapticFeedback('error');
+      return;
     }
 
     setIsSubmitting(true);
-    setUploadProgress(10);
+    setUploadProgress(8);
 
     try {
-        if (isPost) {
-            const formData = new FormData();
-            formData.append('title', title.trim());
-            formData.append('body', body.trim());
-            formData.append('tags', JSON.stringify(tags));
-            formData.append('is_anonymous', isAnonymous);
-            // ✅ FIX: Отправляем is_important всегда
-            formData.append('is_important', isImportant);
-            
-            if (category === 'lost_found') {
-                formData.append('lost_or_found', lostOrFound);
-                formData.append('item_description', itemDescription);
-                formData.append('location', location);
-                if (lostOrFound === 'lost' && rewardType !== REWARD_TYPES.NONE) {
-                    formData.append('reward_type', rewardType);
-                    formData.append('reward_value', rewardValue);
-                }
-            }
-            if (category === 'events') {
-                formData.append('event_name', eventName);
-                formData.append('event_date', new Date(eventDate).toISOString());
-                formData.append('event_location', eventLocation);
-                if (eventContact) formData.append('event_contact', eventContact);
-            }
+      if (isPost) {
+        const parsed = postCategory === 'polls'
+          ? { title: postText.trim().slice(0, POST_LIMITS.TITLE_MAX), body: postText.trim() }
+          : parsePostSingleText(postText, { titleMax: POST_LIMITS.TITLE_MAX, bodyMin: POST_LIMITS.BODY_MIN });
+        const formData = new FormData();
+        formData.append('category', postCategory);
+        formData.append('title', parsed.title || '');
+        formData.append('body', parsed.body || '');
+        formData.append('tags', JSON.stringify(tags));
+        formData.append('is_anonymous', String(Boolean(isAnonymous)));
 
-            // Изображения: разделяем старые (keep) и новые (new)
-            const oldImages = [];
-            
-            images.forEach(img => {
-                if (img.isNew && img.file) {
-                    // Новые файлы
-                    formData.append('new_images', img.file);
-                } else if (!img.isNew && img.filename) {
-                    // Старые файлы
-                    let cleanName = img.filename;
-                    if (cleanName.includes('/')) cleanName = cleanName.split('/').pop();
-                    if (cleanName) oldImages.push(cleanName);
-                }
-            });
-            formData.append('keep_images', JSON.stringify(oldImages));
+        if (postCategory === 'lost_found') {
+          formData.append('lost_or_found', lfType);
+          formData.append('item_description', (parsed.body || '').trim());
+          formData.append('location', location.trim());
+        }
 
-            setUploadProgress(50);
-            const updatedPost = await updatePost(initialData.id, formData, (pe) => setUploadProgress(Math.round(40 + (pe.loaded / pe.total) * 50)));
-            
-            if (onSuccess) onSuccess(updatedPost);
-            hapticFeedback('success');
-            toast.success('Пост обновлён!');
+        if (postCategory === 'events') {
+          const eventDateIso = buildEventDateIso(eventDateMode, customDate);
+          formData.append('event_name', firstLine(postText).slice(0, 200) || 'Событие');
+          if (eventDateIso) formData.append('event_date', eventDateIso);
+          formData.append('event_location', location.trim());
+        }
 
+        const keepImages = photos
+          .filter((photo) => !photo.isNew)
+          .map((photo) => photo.key)
+          .filter(Boolean);
+
+        photos
+          .filter((photo) => photo.isNew && photo.file)
+          .forEach((photo) => formData.append('new_images', photo.file));
+        formData.append('keep_images', JSON.stringify(keepImages));
+
+        const updatedPost = await updatePost(initialData.id, formData, (progressEvent) => {
+          if (!progressEvent?.total) return;
+          setUploadProgress(Math.round(35 + (progressEvent.loaded / progressEvent.total) * 55));
+        });
+        onSuccess?.(updatedPost);
+        toast.success('Пост обновлён');
+      } else {
+        const payload = parseRequestSingleText(reqText, { titleMax: REQUEST_LIMITS.TITLE_MAX });
+        const requestBody = {
+          title: payload.title,
+          body: payload.body,
+          tags,
+          expires_at: resolvedRequestExpiresAt,
+        };
+
+        if (reqRewardType === 'none') {
+          requestBody.reward_type = null;
+          requestBody.reward_value = null;
+        } else if (reqRewardType === 'money') {
+          requestBody.reward_type = REWARD_TYPES.MONEY;
+          requestBody.reward_value = reqRewardValue.trim() || null;
         } else {
-                // REQUEST UPDATE
-                const requestData = {
-                title: title.trim(),
-                body: body.trim(),
-                tags: tags,
-                reward_type: rewardType,           
-                reward_value: rewardValue || '',   
-                expires_at: expiresAt              
-            };
-            
-            const updatedReq = await updateRequest(initialData.id, requestData);
-            if (onSuccess) onSuccess(updatedReq);
-            hapticFeedback('success');
-            toast.success('Запрос обновлён!');
+          requestBody.reward_type = REWARD_TYPES.FAVOR;
+          requestBody.reward_value = reqRewardValue.trim() || 'Бартер';
         }
 
-        setUploadProgress(100);
-        setTimeout(confirmClose, 100);
-
-      } catch (e) {
-        console.error(e);
-        
-        let errorMsg = 'Ошибка сохранения';
-        if (e.response?.data?.detail) {
-          const detail = e.response.data.detail;
-          if (Array.isArray(detail)) {
-            errorMsg = detail.map(err => err.msg || err.type).join(', ');
-          } else if (typeof detail === 'string') {
-            errorMsg = detail;
-          }
-        }
-        
-        toast.error(errorMsg);
-        setIsSubmitting(false);
-        setUploadProgress(0);
+        const updatedRequest = await updateRequest(initialData.id, requestBody);
+        onSuccess?.(updatedRequest);
+        toast.success('Запрос обновлён');
       }
+
+      hapticFeedback('success');
+      setUploadProgress(100);
+      setTimeout(confirmClose, 120);
+    } catch (submitError) {
+      console.error(submitError);
+      const detail = submitError?.response?.data?.detail;
+      const message = Array.isArray(detail)
+        ? detail.map((item) => item.msg || item.type).join(', ')
+        : typeof detail === 'string'
+          ? detail
+          : 'Не удалось сохранить изменения';
+      setError(message);
+      toast.error(message);
+      setIsSubmitting(false);
+      setUploadProgress(0);
+      hapticFeedback('error');
+    }
   };
 
-  // ===== RENDER HELPERS =====
-  
-  const TagBadge = ({ tag, onRemove }) => (
-    <span style={styles.tag}>
-      #{tag}
-      <button style={styles.tagRemove} onClick={(e) => { e.stopPropagation(); onRemove(tag); }} disabled={isSubmitting}>
-        <X size={16} />
-      </button>
-    </span>
-  );
-
-  const CharCounter = ({ current, min, max, isValid }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: theme.fontSize.xs }}>
-        {!isValid && <span style={{ color: theme.colors.textTertiary }}>мин. {min}</span>}
-        <span style={{color: isValid ? theme.colors.textTertiary : theme.colors.error}}>
-            {current}/{max} 
-        </span>
-        {isValid && <Check size={14} color={theme.colors.success} />}
-    </div>
-  );
-
-  const CircularProgress = ({ progress }) => (
-    <div style={{ position: 'relative', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <svg width="40" height="40" viewBox="0 0 40 40" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="20" cy="20" r="16" fill="none" stroke="#e5e7eb" strokeWidth="4" />
-        <circle 
-          cx="20" cy="20" r="16" fill="none" stroke={theme.colors.primary} strokeWidth="4" 
-          strokeDasharray={`${2 * Math.PI * 16}`} 
-          strokeDashoffset={`${2 * Math.PI * 16 * (1 - progress / 100)}`} 
-          strokeLinecap="round" 
-          style={{ transition: 'stroke-dashoffset 0.3s ease' }}
-        />
-      </svg>
-    </div>
-  );
-  
-  const categoryData = isPost 
-      ? (POST_CATEGORIES.find(c => c.value === category) || POST_CATEGORIES[0])
-      : (REQUEST_CATEGORIES.find(c => c.value === category) || REQUEST_CATEGORIES[0]);
-
-  const editorTitle = isPost ? 'Редактирование поста' : 'Редактирование запроса';
-  const hasUnsavedChanges = hasChanges();
-
   useTelegramScreen({
-    id: `edit-content-modal-${contentType}-${initialData?.id || 'unknown'}`,
-    title: editorTitle,
-    priority: 120,
+    id: `edit-content-modal-${contentType}-${initialData?.id || 'new'}`,
+    title: isPost ? 'Редактирование поста' : 'Редактирование запроса',
+    priority: 125,
     back: {
       visible: isVisible,
       onClick: showConfirmation ? () => setShowConfirmation(false) : handleClose,
     },
-    main: showConfirmation
-      ? {
-          visible: isVisible,
-          text: 'Выйти',
-          onClick: confirmClose,
-          enabled: !isSubmitting,
-          loading: false,
-          color: theme.colors.error,
-        }
-      : {
-          visible: isVisible && hasUnsavedChanges,
-          text: 'Сохранить изменения',
-          onClick: handleSubmit,
-          enabled: hasUnsavedChanges && !isSubmitting,
-          loading: isSubmitting,
-        },
-    secondary: {
-      visible: isVisible && showConfirmation,
-      text: 'Вернуться',
-      onClick: () => setShowConfirmation(false),
-      enabled: !isSubmitting,
-      loading: false,
-    },
+    main: { visible: false, text: '', enabled: false, loading: false, onClick: undefined },
+    secondary: { visible: false, text: '', enabled: false, loading: false, onClick: undefined },
   });
 
-  return (
+  if (!isMounted) return null;
+
+  return createPortal(
     <>
-      <style>{keyframesStyles}</style>
-      
-      <div 
-        style={{
-          ...styles.overlay,
-          opacity: isVisible ? 1 : 0,
-          pointerEvents: showConfirmation ? 'none' : 'auto'
-        }}
-        onClick={handleClose}
-      >
-        <div 
-          style={{
-            ...styles.modal,
-            transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
-            opacity: isVisible ? 1 : 0
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {isSubmitting && (
-            <div style={styles.topProgressBar}>
-              <div style={{ ...styles.topProgressFill, width: `${uploadProgress}%` }} />
-            </div>
-          )}
-
-                    {/* Telegram/local header */}
-          <DrilldownHeader title={editorTitle} onBack={handleClose} />
-
-          {/* CONTENT */}
-          <div style={styles.contentWrapper}>
-             <div style={styles.formScrollContent}>
-                  
-                  {/* Category (LOCKED) */}
-                  <div style={styles.section}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                         <label style={styles.label}>Категория (нельзя изменить)</label>
-                         
-                         {/* ANONYMITY STATUS - STATUS ONLY */}
-                         <div style={{
-                             display: 'flex', alignItems: 'center', gap: 6,
-                             opacity: 0.8,
-                             background: isAnonymous ? `${theme.colors.textSecondary}15` : `${theme.colors.primary}15`,
-                             padding: '4px 8px',
-                             borderRadius: 6
-                         }}>
-                            {isAnonymous ? 
-                                <><EyeOff size={14} color={theme.colors.textSecondary}/> <span style={{fontSize: 12, fontWeight: 600, color: theme.colors.textSecondary}}>Анонимно</span></> 
-                                : 
-                                <><Eye size={14} color={theme.colors.primary}/> <span style={{fontSize: 12, fontWeight: 600, color: theme.colors.primary}}>Публично</span></>
-                            }
-                            <Lock size={10} color={theme.colors.textTertiary} style={{marginLeft: 2}}/>
-                         </div>
-                    </div>
-
-                    <div 
-                        style={{
-                            ...styles.categoryReadonly,
-                            borderColor: categoryData.color,
-                            background: `${categoryData.color}10`
-                        }}
-                    >
-                        <span style={styles.categoryIcon}>{categoryData.icon}</span>
-                        <span style={styles.categoryText}>{categoryData.label}</span>
-                        <Lock size={14} style={{ color: theme.colors.textTertiary }} />
-                    </div>
-
-                    {category === 'confessions' && (
-                        <div style={styles.infoHint}>
-                            <Info size={14} />
-                            Посты в "Подслушано" всегда анонимны.
-                        </div>
-                    )}
-                  </div>
-
-                  {/* Main Inputs */}
-                  {category !== 'polls' ? (
-                    <>
-                      <div style={styles.section}>
-                        <label style={styles.label}>
-                          {isPost ? 'Заголовок' : 'Суть запроса'}
-                          <CharCounter current={title.length} min={3} max={MAX_TITLE_LENGTH} isValid={title.trim().length >= 3} />
-                        </label>
-                        <input
-                          ref={titleInputRef}
-                          type="text"
-                          value={title}
-                          onChange={(e) => setTitle(e.target.value)}
-                          style={{
-                            ...styles.input,
-                            borderColor: getBorderColor(title.trim().length >= 3, attemptedSubmit)
-                          }}
-                          maxLength={MAX_TITLE_LENGTH}
-                          disabled={isSubmitting}
-                        />
-                      </div>
-                      <div style={styles.section}>
-                        <label style={styles.label}>
-                          {isPost ? 'Текст поста' : 'Подробности'}
-                          <CharCounter current={body.length} min={10} max={MAX_BODY_LENGTH} isValid={body.trim().length >= 10} />
-                        </label>
-                        <textarea
-                          value={body}
-                          onChange={(e) => setBody(e.target.value)}
-                          style={{
-                            ...styles.textarea,
-                            borderColor: getBorderColor(body.trim().length >= 10, attemptedSubmit)
-                          }}
-                          rows={6}
-                          maxLength={MAX_BODY_LENGTH}
-                          disabled={isSubmitting}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                       <div style={styles.section}>
-                         <label style={styles.label}>Заголовок опроса</label>
-                         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} style={styles.input} />
-                         
-                         <div style={{marginTop: 12}}>
-                             <label style={styles.label}>Описание (опционально)</label>
-                             <textarea value={body} onChange={(e)=>setBody(e.target.value)} style={styles.textarea} rows={3} />
-                         </div>
-                       </div>
-                  )}
-
-                  {/* POLL WIDGET (LOCKED) */}
-                  {category === 'polls' && poll && (
-                      <div style={styles.section}>
-                          <label style={styles.label}>Варианты ответов (изменить нельзя)</label>
-                          <div style={styles.pollLocked}>
-                              {poll?.options?.map((opt, i) => (
-                                  <div key={i} style={styles.pollOptionLocked}>
-                                      <div style={styles.pollCircle} />
-                                      <span>{opt}</span>
-                                  </div>
-                              ))}
-                              <div style={styles.lockOverlay}>
-                                  <Lock size={16} /> Структура зафиксирована
-                              </div>
-                          </div>
-                      </div>
-                  )}
-                  
-                  {/* LOST & FOUND */}
-                  {isPost && category === 'lost_found' && (
-                    <>
-                      <div style={styles.section}>
-                        <label style={styles.label}>Статус</label>
-                        <div style={styles.toggleWrapper}>
-                            <button onClick={()=>{setLostOrFound('lost'); hapticFeedback('light');}} style={lostOrFound==='lost' ? {...styles.toggleButton, ...styles.toggleButtonActive} : styles.toggleButton}>😢 Потерял</button>
-                            <button onClick={()=>{setLostOrFound('found'); hapticFeedback('light');}} style={lostOrFound==='found' ? {...styles.toggleButton, ...styles.toggleButtonActive} : styles.toggleButton}>🎉 Нашёл</button>
-                        </div>
-                      </div>
-                      <div style={styles.section}>
-                        <label style={styles.label}>Что именно?*</label>
-                        <input type="text" value={itemDescription} onChange={e=>setItemDescription(e.target.value)} style={styles.input} disabled={isSubmitting} />
-                      </div>
-                      <div style={styles.section}>
-                         <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><MapPin size={14}/> Где?*</div></label>
-                         <input type="text" value={location} onChange={e=>setLocation(e.target.value)} style={styles.input} disabled={isSubmitting} />
-                      </div>
-                    </>
-                  )}
-
-                  {/* EVENTS */}
-                  {isPost && category === 'events' && (
-                    <>
-                      <div style={styles.section}>
-                        <label style={styles.label}>Название события*</label>
-                        <input type="text" value={eventName} onChange={e=>setEventName(e.target.value)} style={styles.input} disabled={isSubmitting} />
-                      </div>
-                      <div style={styles.section}>
-                         <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><Calendar size={14}/> Дата и время*</div></label>
-                         <div style={styles.quickDateButtons}>
-                             <button onClick={()=>setQuickDate('today')} style={activeEventDateBtn === 'today' ? styles.quickDateBtnActive : styles.quickDateBtn} type="button">Сегодня</button>
-                             <button onClick={()=>setQuickDate('tomorrow')} style={activeEventDateBtn === 'tomorrow' ? styles.quickDateBtnActive : styles.quickDateBtn} type="button">Завтра</button>
-                             <button onClick={()=>setQuickDate('week')} style={activeEventDateBtn === 'week' ? styles.quickDateBtnActive : styles.quickDateBtn} type="button">Через неделю</button>
-                         </div>
-                         <input
-                          type="datetime-local"
-                          value={eventDate}
-                          onChange={(e) => { setEventDate(e.target.value); setActiveEventDateBtn(null); }}
-                          style={{
-                            ...styles.input,
-                            marginTop: theme.spacing.sm,
-                            borderColor: getBorderColor(!!eventDate, attemptedSubmit)
-                          }}
-                          disabled={isSubmitting}
-                        />
-                      </div>
-                      <div style={styles.section}>
-                         <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><MapPin size={14}/> Место*</div></label>
-                         <input type="text" value={eventLocation} onChange={e=>setEventLocation(e.target.value)} style={styles.input} disabled={isSubmitting} />
-                      </div>
-                      <div style={styles.section}>
-                          <label style={styles.label}>Контакт (опционально)</label>
-                          <input type="text" value={eventContact} onChange={e=>setEventContact(e.target.value)} style={styles.input} disabled={isSubmitting} />
-                      </div>
-                    </>
-                  )}
-
-                  {/* IMAGES (Скрыты для Polls и Confessions) */}
-                  {isPost && category !== 'polls' && category !== 'confessions' && (
-                    <div style={styles.section}>
-                      <label style={styles.label}>
-                          Изображения 
-                          <span style={styles.charCount}>{images.length + processingImages.length}/{MAX_IMAGES}</span>
-                      </label>
-                      <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileSelect} style={{ display: 'none' }} />
-                      
-                      {(images.length > 0 || processingImages.length > 0) ? (
-                        <div style={styles.imagesPreview}>
-                            {images.map((img, i) => (
-                            <div key={i} style={styles.imagePreviewItem}>
-                                <img src={img.url} style={styles.previewImage} alt="" />
-                                <button onClick={() => handleRemoveImage(i)} style={styles.removeImageButton}><Trash2 size={16} /></button>
-                                {/* Бейдж "Новое" - ФИОЛЕТОВЫЙ */}
-                                {img.isNew && <div style={styles.newBadge}>NEW</div>}
-                            </div>
-                            ))}
-                            
-                            {/* Загрузка */}
-                            {processingImages.map((proc) => (
-                                <div key={proc.id} style={styles.imagePreviewItem}>
-                                    <div style={styles.loadingOverlay}>
-                                        <CircularProgress progress={proc.progress} />
-                                        <span style={styles.loadingPercent}>{Math.round(proc.progress)}%</span>
-                                    </div>
-                                </div>
-                            ))}
-
-                            {/* Кнопка Добавить внутри сетки */}
-                            {(images.length + processingImages.length) < MAX_IMAGES && (
-                            <button onClick={()=>fileInputRef.current?.click()} style={styles.addImagePlaceholder} disabled={isSubmitting}>
-                                <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                                    <Plus size={24} />
-                                </div>
-                            </button>
-                            )}
-                        </div>
-                      ) : (
-                          // Кнопка "Добавить фото" когда нет изображений (Как в CreateContentModal)
-                          <button onClick={()=>fileInputRef.current?.click()} style={styles.addImageButton} disabled={isSubmitting}>
-                              <ImageIcon size={20} /> Добавить фото
-                          </button>
-                      )}
-                    </div>
-                  )}
-                  {/* ПОЛЯ ДЛЯ ЗАПРОСОВ */}
-                  {!isPost && (
-                    <>
-                      {/* НАГРАДА */}
-                      <div style={styles.section}>
-                        <label style={styles.label}>
-                          <div style={{display:'flex',alignItems:'center',gap:6}}>
-                            <Gift size={16}/> Награда
-                          </div>
-                          <span style={{fontSize: theme.fontSize.xs, color: theme.colors.textTertiary, fontWeight: 400}}>опционально</span>
-                        </label>
-                        <div style={{
-                          padding: theme.spacing.md,
-                          borderRadius: theme.radius.lg,
-                          background: `linear-gradient(135deg, rgba(255,215,0,0.08) 0%, rgba(255,165,0,0.08) 100%)`,
-                          border: `2px dashed rgba(255,215,0,0.25)`
-                        }}>
-                          <select 
-                            value={rewardType} 
-                            onChange={e=>setRewardType(e.target.value)} 
-                            style={{...styles.input, marginBottom: rewardType !== REWARD_TYPES.NONE ? theme.spacing.sm : 0}}
-                            disabled={isSubmitting}
-                          >
-                            {Object.entries(REWARD_TYPE_LABELS).map(([k,l])=>(
-                              <option key={k} value={k}>{REWARD_TYPE_ICONS[k]} {l}</option>
-                            ))}
-                          </select>
-                          {rewardType !== REWARD_TYPES.NONE && (
-                            <input 
-                              type="text" 
-                              placeholder={
-                                rewardType==='money' ? "Например: 500₽" :
-                                rewardType==='help_back' ? "Например: Помогу с программированием" :
-                                rewardType==='food' ? "Например: Кофе в буфете" :
-                                "Опишите награду"
-                              }
-                              value={rewardValue} 
-                              onChange={e=>setRewardValue(e.target.value)} 
-                              style={styles.input}
-                              maxLength={100}
-                              disabled={isSubmitting}
-                            />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* ИЗОБРАЖЕНИЯ ДЛЯ ЗАПРОСОВ */}
-                      <div style={styles.section}>
-                        <label style={styles.label}>
-                            Изображения (опционально)
-                            <span style={styles.charCount}>{images.length + processingImages.length}/{MAX_IMAGES}</span>
-                        </label>
-                        <input 
-                          ref={fileInputRef} 
-                          type="file" 
-                          accept="image/*" 
-                          multiple 
-                          onChange={handleFileSelect} 
-                          style={{ display: 'none' }} 
-                        />
-                        
-                        {(images.length > 0 || processingImages.length > 0) ? (
-                          <div style={styles.imagesPreview}>
-                              {images.map((img, i) => (
-                              <div key={i} style={styles.imagePreviewItem}>
-                                  <img src={img.url} style={styles.previewImage} alt="" />
-                                  <button 
-                                    onClick={() => handleRemoveImage(i)} 
-                                    style={styles.removeImageButton}
-                                    disabled={isSubmitting}
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                  {img.isNew && <div style={styles.newBadge}>NEW</div>}
-                              </div>
-                              ))}
-                              
-                              {processingImages.map((proc) => (
-                                  <div key={proc.id} style={styles.imagePreviewItem}>
-                                      <div style={styles.loadingOverlay}>
-                                          <CircularProgress progress={proc.progress} />
-                                          <span style={styles.loadingPercent}>{Math.round(proc.progress)}%</span>
-                                      </div>
-                                  </div>
-                              ))}
-                              
-                              {(images.length + processingImages.length) < MAX_IMAGES && (
-                              <button 
-                                onClick={() => fileInputRef.current?.click()} 
-                                style={styles.addImagePlaceholder} 
-                                disabled={isSubmitting}
-                              >
-                                  <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                                      <Plus size={24} />
-                                  </div>
-                              </button>
-                              )}
-                          </div>
-                        ) : (
-                            <button 
-                              onClick={() => fileInputRef.current?.click()} 
-                              style={styles.addImageButton} 
-                              disabled={isSubmitting}
-                            >
-                                <ImageIcon size={20} /> Добавить фото
-                            </button>
-                        )}
-                      </div>
-
-                      {/* ВРЕМЯ ИСТЕЧЕНИЯ */}
-                      <div style={styles.section}>
-                        <label style={styles.label}>
-                          <div style={{display:'flex',alignItems:'center',gap:6}}>
-                            <Clock size={16}/> Актуально до*
-                          </div>
-                        </label>
-                        <div style={styles.quickDateButtons}>
-                          {[24, 72, 168].map(h => (
-                              <button 
-                                key={h}
-                                onClick={() => { 
-                                  const now = new Date();
-                                  const future = new Date(now.getTime() + h * 60 * 60 * 1000);
-                                  setExpiresAt(future.toISOString()); 
-                                  setActiveTimeBtn(h); 
-                                  hapticFeedback('light');
-                                }} 
-                                style={activeTimeBtn === h ? styles.quickDateBtnActive : styles.quickDateBtn}
-                                type="button"
-                                disabled={isSubmitting}
-                              >
-                                  {h === 24 ? '24ч' : h === 72 ? '3 дня' : 'Неделя'}
-                              </button>
-                          ))}
-                        </div>
-                        <input
-                          type="datetime-local"
-                          value={expiresAt ? new Date(expiresAt).toISOString().slice(0, 16) : ''}
-                          onChange={(e) => {
-                            setExpiresAt(new Date(e.target.value).toISOString());
-                            setActiveTimeBtn(0);
-                          }}
-                          style={{
-                            ...styles.input,
-                            marginTop: theme.spacing.sm,
-                            borderColor: getBorderColor(!!expiresAt, attemptedSubmit)
-                          }}
-                          disabled={isSubmitting}
-                        />
-                      </div>
-                    </>
-                  )}
-                  {/* TAGS */}
-                  <div style={styles.section}>
-                    <label style={styles.label}>Теги</label>
-                    <div style={styles.tagInputWrapper}>
-                      <Hash size={18} style={{ color: theme.colors.primary, flexShrink: 0 }} />
-                      <input type="text" value={tagInput} onChange={(e) => setTagInput(e.target.value)} style={styles.tagInput} placeholder="добавить тег..." onKeyPress={(e) => e.key === 'Enter' && addTag()} disabled={isSubmitting || tags.length>=MAX_TAGS} />
-                      <button onClick={() => addTag()} style={tagInput.trim() ? styles.addTagButtonActive : styles.addTagButton} disabled={!tagInput.trim()}><Plus size={18} /></button>
-                    </div>
-                    {tags.length > 0 && (
-                        <div style={styles.tagsList}>
-                        {tags.map(tag => <TagBadge key={tag} tag={tag} onRemove={(t) => setTags(p => p.filter(x => x !== t))} />)}
-                        </div>
-                    )}
-                  </div>
-                  
-                  <div style={{ height: theme.spacing.xl }} />
-             </div>
+      <style>{keyframeStyles}</style>
+      <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}>
+        <div style={styles.backdrop} onClick={handleClose} />
+        <div ref={sheetRef} {...swipeHandlers} style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }} onClick={(e) => e.stopPropagation()}>
+          {isSubmitting ? <div style={{ ...styles.progress, width: `${uploadProgress}%` }} /> : null}
+          <div style={styles.handleWrap}>
+            <div style={styles.handle} />
           </div>
 
-          {/* ERROR */}
-          {error && (
-            <div style={styles.errorAlert}>
-              <AlertCircle size={18} />
-              <span>{error}</span>
+          <div className="hide-scroll" style={styles.content}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--create-text-muted)', marginBottom: 10 }}>
+              {isPost ? 'Редактирование поста' : 'Редактирование запроса'}
             </div>
-          )}
 
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              borderRadius: 14,
+              border: '1px solid var(--create-border)',
+              background: 'var(--create-surface-elevated)',
+              padding: '10px 12px',
+              marginBottom: 12,
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#fff',
+            }}>
+              <Lock size={14} />
+              <span>{categoryItem?.icon || '📌'} {categoryItem?.label || (isPost ? 'Пост' : 'Запрос')}</span>
+              <span style={{ marginLeft: 'auto', color: 'var(--create-text-muted)', fontSize: 11 }}>категория зафиксирована</span>
+            </div>
+
+            <div className="create-grow-wrap" data-replicated-value={(isPost ? postText : reqText) || ' '} style={{ marginBottom: 14 }}>
+              <textarea
+                ref={isPost ? postTextareaRef : reqTextareaRef}
+                value={isPost ? postText : reqText}
+                onChange={(e) => (isPost ? setPostText(e.target.value) : setReqText(e.target.value))}
+                placeholder={isPost ? postPlaceholder : requestPlaceholder}
+                className="hide-scroll create-input"
+                style={styles.textarea}
+                maxLength={isPost ? POST_LIMITS.BODY_MAX : REQUEST_LIMITS.BODY_MAX}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {tags.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                {tags.map((tag) => (
+                  <span key={tag} style={styles.tagChip}>
+                    #{tag}
+                    <button
+                      type="button"
+                      className="create-spring-btn"
+                      style={styles.removeMiniBtn}
+                      onClick={() => setTags((prev) => prev.filter((item) => item !== tag))}
+                      disabled={isSubmitting}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {(photos.length > 0 || processingImages.length > 0) ? (
+              <div className="hide-scroll" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 12 }}>
+                {photos.map((photo) => (
+                  <div key={photo.id} style={styles.photoCard}>
+                    <img src={photo.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button
+                      type="button"
+                      className="create-spring-btn"
+                      style={styles.removePhotoBtn}
+                      onClick={() => setPhotos((prev) => prev.filter((item) => item.id !== photo.id))}
+                      disabled={isSubmitting}
+                    >
+                      <X size={13} />
+                    </button>
                   </div>
-      </div>
+                ))}
+                {processingImages.map((processor) => (
+                  <div key={processor.id} style={styles.photoCard}>
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--create-primary)', fontSize: 13, fontWeight: 700 }}>
+                      {Math.round(processor.progress)}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
-      {/* CONFIRMATION DIALOG */}
-      {showConfirmation && (
-        <div style={styles.confirmationOverlay}>
-          <div style={styles.confirmationDialog}>
-            <h3 style={styles.confirmationTitle}>Отменить изменения?</h3>
-            <p style={styles.confirmationText}>Все правки будут потеряны</p>
-            <div style={styles.confirmationButtons}>
-              <button onClick={() => setShowConfirmation(false)} style={styles.confirmationCancel}>Вернуться</button>
-              <button onClick={confirmClose} style={styles.confirmationConfirm}>Выйти</button>
+            {isPost && postCategory === 'lost_found' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className="create-spring-btn" style={lfType === 'lost' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => setLfType('lost')} disabled={isSubmitting}>Потерял</button>
+                  <button type="button" className="create-spring-btn" style={lfType === 'found' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => setLfType('found')} disabled={isSubmitting}>Нашёл</button>
+                </div>
+                <div style={styles.smartInputWrap}>
+                  <MapPin size={16} color="var(--create-text-muted)" />
+                  <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Где это было?" style={styles.smartInput} disabled={isSubmitting} />
+                </div>
+              </div>
+            ) : null}
+
+            {isPost && postCategory === 'events' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className="create-spring-btn" style={eventDateMode === 'today' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => { setEventDateMode('today'); setShowEventPicker(false); }} disabled={isSubmitting}>Сегодня</button>
+                  <button type="button" className="create-spring-btn" style={eventDateMode === 'tomorrow' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => { setEventDateMode('tomorrow'); setShowEventPicker(false); }} disabled={isSubmitting}>Завтра</button>
+                  <button type="button" className="create-spring-btn" style={eventDateMode === 'custom' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => { setEventDateMode('custom'); setShowEventPicker(true); setShowReqPicker(false); setShowTagTool(false); }} disabled={isSubmitting}>
+                    {eventDateMode === 'custom' ? formatCustomDate(customDate) : 'Своя дата'}
+                  </button>
+                </div>
+                <div style={styles.smartInputWrap}>
+                  <MapPin size={16} color="var(--create-text-muted)" />
+                  <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Место проведения" style={styles.smartInput} disabled={isSubmitting} />
+                </div>
+              </div>
+            ) : null}
+
+            {isPost && postCategory === 'confessions' ? (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                borderRadius: 14,
+                border: '1px solid rgba(212,255,0,0.2)',
+                background: 'rgba(212,255,0,0.06)',
+                padding: '10px 12px',
+                marginBottom: 12,
+              }}>
+                <VenetianMask size={18} color="var(--create-primary)" />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--create-primary)' }}>Полная анонимность</div>
+                  <div style={{ fontSize: 12, color: 'var(--create-text-muted)' }}>Авторство скрыто автоматически</div>
+                </div>
+              </div>
+            ) : null}
+
+            {isPost && (postCategory === 'polls' || poll) ? (
+              <div style={styles.pollCard}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, color: 'var(--create-text-muted)', fontWeight: 700 }}>ОПРОС</span>
+                  <span style={{ fontSize: 11, color: 'var(--create-text-muted)', display: 'inline-flex', gap: 4, alignItems: 'center' }}><Lock size={12} /> структура фиксирована</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {pollOptions.map((option, index) => (
+                    <div key={`${option}-${index}`} style={styles.pollRow}>
+                      <span style={{ display: 'flex', color: 'var(--create-text-muted)' }}>
+                        {pollType === 'quiz'
+                          ? (pollCorrectOption === index ? <CheckCircle size={18} /> : <Circle size={18} />)
+                          : <BarChart2 size={16} />}
+                      </span>
+                      <span style={{ fontSize: 14 }}>{option || `Вариант ${index + 1}`}</span>
+                    </div>
+                  ))}
+                </div>
+                <button type="button" className="create-spring-btn" style={{ marginTop: 10, border: 'none', background: 'transparent', color: 'var(--create-text-muted)', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, cursor: 'pointer' }} onClick={() => setShowPollSettings((prev) => !prev)} disabled={isSubmitting}>
+                  <Settings size={14} /> Настройки
+                </button>
+                {showPollSettings ? (
+                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <span style={styles.pollFlag}><HelpCircle size={12} /> {pollType === 'quiz' ? 'Викторина' : 'Опрос'}</span>
+                    <span style={styles.pollFlag}><Users size={12} /> {pollMulti ? 'Мультивыбор' : 'Один выбор'}</span>
+                    <span style={styles.pollFlag}><VenetianMask size={12} /> {pollAnon ? 'Анонимный' : 'Публичный'}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageSelect} style={{ display: 'none' }} />
+
+            <div style={{ height: 150 }} />
+          </div>
+
+          <div style={styles.bottomDock}>
+            {showTagTool ? (
+              <div style={styles.popup}>
+                <div className="hide-scroll" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 10 }}>
+                  {filteredSuggestions.length ? filteredSuggestions.map((tag) => (
+                    <button key={tag} type="button" className="create-spring-btn" style={styles.suggestionBtn} onClick={() => addTag(tag)} disabled={isSubmitting}>
+                      #{tag}
+                    </button>
+                  )) : <span style={{ color: 'var(--create-text-muted)', fontSize: 12 }}>Нет подсказок</span>}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={styles.tagInputWrap}>
+                    <Hash size={15} color="var(--create-text-muted)" />
+                    <input
+                      ref={tagInputRef}
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addTag();
+                        }
+                      }}
+                      placeholder="Свой тег"
+                      style={styles.tagInput}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <button type="button" className="create-spring-btn" style={tagInput.trim() ? { ...styles.toolBtn, ...styles.sendBtnActive } : styles.toolBtn} onClick={() => addTag()} disabled={isSubmitting}>
+                    <Plus size={18} />
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {!isPost && showReqReward ? (
+              <div style={styles.popup}>
+                <div style={styles.popupTitle}>НАГРАДА</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                  {CREATE_CONTENT_REQUEST_REWARD_OPTIONS.map((option) => (
+                    <button key={option.value} type="button" className="create-spring-btn" style={reqRewardType === option.value ? { ...styles.optionBtn, ...styles.optionBtnActive } : styles.optionBtn} onClick={() => setReqRewardType(option.value)} disabled={isSubmitting}>
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                {reqRewardType !== 'none' ? (
+                  <input value={reqRewardValue} onChange={(e) => setReqRewardValue(e.target.value)} placeholder={reqRewardType === 'money' ? 'Например: 500₽' : 'Что предлагаете?'} style={styles.popupInput} disabled={isSubmitting} />
+                ) : null}
+              </div>
+            ) : null}
+
+            {!isPost && showReqDeadline ? (
+              <div style={styles.popup}>
+                <div style={styles.popupTitle}>АКТУАЛЬНО ДО</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {CREATE_CONTENT_REQUEST_DEADLINE_OPTIONS.map((option) => (
+                    <button key={option.value} type="button" className="create-spring-btn" style={reqDeadlineType === option.value ? { ...styles.optionBtn, ...styles.optionBtnActive } : styles.optionBtn} onClick={() => { setReqDeadlineType(option.value); setShowReqPicker(false); }} disabled={isSubmitting}>
+                      {option.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="create-spring-btn"
+                    style={reqDeadlineType === 'custom' ? { ...styles.optionBtn, ...styles.optionBtnActive } : styles.optionBtn}
+                    onClick={() => {
+                      setReqDeadlineType('custom');
+                      setShowReqPicker(true);
+                      setShowEventPicker(false);
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    {reqDeadlineType === 'custom' ? formatCustomDate(reqCustomDate) : 'Своя дата'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {error ? (
+              <div style={styles.errorBar}>
+                <AlertCircle size={14} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+
+            <div style={styles.toolbar}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="create-spring-btn" style={styles.toolBtn} onClick={() => fileInputRef.current?.click()} disabled={isSubmitting}>
+                  <ImageIcon size={18} />
+                </button>
+                <button type="button" className="create-spring-btn" style={showTagTool ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => { setShowTagTool((prev) => !prev); setShowReqReward(false); setShowReqDeadline(false); }} disabled={isSubmitting}>
+                  <Hash size={18} />
+                </button>
+                {isPost ? (
+                  <button type="button" className="create-spring-btn" style={showPollSettings ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => setShowPollSettings((prev) => !prev)} disabled={isSubmitting || !(postCategory === 'polls' || poll)}>
+                    <BarChart2 size={18} />
+                  </button>
+                ) : (
+                  <button type="button" className="create-spring-btn" style={showReqReward ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => { setShowReqReward((prev) => !prev); setShowReqDeadline(false); setShowTagTool(false); }} disabled={isSubmitting}>
+                    <Gift size={18} />
+                  </button>
+                )}
+                {isPost ? (
+                  <button type="button" className="create-spring-btn" style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => setIsAnonymous((prev) => !prev)} disabled={isSubmitting || postCategory === 'confessions'}>
+                    <VenetianMask size={18} />
+                  </button>
+                ) : (
+                  <button type="button" className="create-spring-btn" style={showReqDeadline ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => { setShowReqDeadline((prev) => !prev); setShowReqReward(false); setShowTagTool(false); }} disabled={isSubmitting}>
+                    <Clock size={18} />
+                  </button>
+                )}
+              </div>
+
+              <button type="button" className="create-spring-btn" style={canSend ? { ...styles.sendBtn, ...styles.sendBtnActive } : styles.sendBtn} onClick={handleSubmit} disabled={!canSend}>
+                {isPost ? <Check size={18} strokeWidth={2.5} /> : <Send size={18} />}
+              </button>
             </div>
           </div>
         </div>
-      )}
-    </>
+      </div>
+
+      {(showEventPicker || showReqPicker) ? (
+        <div style={styles.pickerOverlay}>
+          <div style={styles.pickerBackdrop} onClick={() => { setShowEventPicker(false); setShowReqPicker(false); }} />
+          <div style={styles.pickerSheet}>
+            <SmartDatePicker
+              initialDate={showEventPicker ? (customDate || new Date().toISOString()) : (reqCustomDate || new Date().toISOString())}
+              onCancel={() => { setShowEventPicker(false); setShowReqPicker(false); }}
+              onSave={(value) => {
+                if (showEventPicker) {
+                  setCustomDate(value);
+                  setEventDateMode('custom');
+                  setShowEventPicker(false);
+                } else {
+                  setReqCustomDate(value);
+                  setReqDeadlineType('custom');
+                  setShowReqPicker(false);
+                }
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmationDialog
+        isOpen={showConfirmation}
+        title="Отменить изменения?"
+        message="Несохранённые правки будут потеряны."
+        confirmText="Выйти"
+        cancelText="Остаться"
+        confirmType="danger"
+        onCancel={() => setShowConfirmation(false)}
+        onConfirm={confirmClose}
+      />
+    </>,
+    document.body
   );
 }
 
-// ===== STYLES =====
 const styles = {
-  overlay: {
-    position: 'fixed', inset: 0,
-    background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)',
-    zIndex: Z_EDIT_POST, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-    transition: 'opacity 0.3s ease',
-  },
-  modal: {
-    position: 'fixed', inset: 0,
-    background: theme.colors.bg,
-    display: 'flex', flexDirection: 'column',
-    boxShadow: theme.shadows.lg,
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    overflow: 'hidden',
-  },
-  topProgressBar: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 3,
-    background: theme.colors.bgSecondary, zIndex: 1000,
-  },
-  topProgressFill: {
-    height: '100%', background: `linear-gradient(90deg, ${theme.colors.primary} 0%, ${theme.colors.success} 100%)`,
-    transition: 'width 0.3s ease',
-  },
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-    borderBottom: `1px solid ${theme.colors.border}`, flexShrink: 0,
-  },
-  closeButton: {
-    background: 'none', border: 'none', color: theme.colors.text,
-    padding: 8, borderRadius: theme.radius.sm, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
-  title: {
-    fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold, color: theme.colors.text, margin: 0,
-  },
-  contentWrapper: {
-    flex: 1, overflowY: 'auto', overflowX: 'hidden',
-  },
-  formScrollContent: {
-    padding: theme.spacing.lg,
-    paddingBottom: `calc(${theme.spacing.lg}px + var(--screen-bottom-offset))`,
-  },
-
-  // FORM ELEMENTS
-  section: { marginBottom: theme.spacing.lg },
-  label: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text, marginBottom: theme.spacing.sm,
-  },
-  input: {
-    width: '100%', padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    background: theme.colors.bgSecondary, 
-    borderWidth: 2, borderStyle: 'solid', borderColor: theme.colors.border,
-    borderRadius: theme.radius.md, color: theme.colors.text, fontSize: theme.fontSize.md,
-    outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s ease',
-  },
-  textarea: {
-    width: '100%', padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    background: theme.colors.bgSecondary, 
-    borderWidth: 2, borderStyle: 'solid', borderColor: theme.colors.border,
-    borderRadius: theme.radius.md, color: theme.colors.text, fontSize: theme.fontSize.md,
-    outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5,
-    boxSizing: 'border-box', transition: 'border-color 0.2s ease',
-  },
-  
-  // CATEGORY LOCKED
-  categoryReadonly: {
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    borderRadius: theme.radius.md,
-    border: '1px solid',
+  overlay: { position: 'fixed', inset: 0, zIndex: getOverlayZIndex(Z_MODAL_EDIT_POST), transition: 'opacity 0.3s ease' },
+  backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(2px)' },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '92%',
+    background: 'var(--create-surface)',
+    borderTop: '1px solid var(--create-border)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
+    boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
+  },
+  progress: { position: 'absolute', top: 0, left: 0, height: 3, background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)' },
+  handleWrap: { display: 'flex', justifyContent: 'center', padding: '12px 16px', borderBottom: '1px solid var(--create-border)' },
+  handle: { width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' },
+  content: { flex: 1, padding: 16, overflowY: 'auto', overflowX: 'hidden', color: '#fff', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' },
+  textarea: {
+    width: '100%',
+    minHeight: 84,
+    border: 'none',
+    resize: 'none',
+    background: 'transparent',
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 500,
+    lineHeight: 1.4,
+    padding: 0,
+    outline: 'none',
+    fontFamily: 'inherit',
+  },
+  tagChip: {
+    display: 'inline-flex',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.xs,
-    opacity: 0.9
+    gap: 6,
+    borderRadius: 16,
+    padding: '6px 12px',
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    fontSize: 13,
+    fontWeight: 600,
   },
-  categoryIcon: { fontSize: '20px', lineHeight: 1 },
-  categoryText: {
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-    flex: 1
-  },
-  infoHint: {
-      display: 'flex', alignItems: 'center', gap: 6,
-      fontSize: 12, color: theme.colors.textSecondary,
-      paddingLeft: 4
-  },
-
-  // POLL LOCKED
-  pollLocked: {
-      position: 'relative',
-      border: `1px solid ${theme.colors.border}`,
-      borderRadius: theme.radius.md,
-      padding: theme.spacing.md,
-      background: theme.colors.bgSecondary
-  },
-  pollOptionLocked: {
-      display: 'flex', alignItems: 'center', gap: 10,
-      marginBottom: 8, opacity: 0.6
-  },
-  pollCircle: {
-      width: 18, height: 18, borderRadius: '50%', border: `2px solid ${theme.colors.textTertiary}`
-  },
-  lockOverlay: {
-      position: 'absolute', inset: 0,
-      background: 'rgba(0,0,0,0.05)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      gap: 8, color: theme.colors.textSecondary, fontWeight: 600, fontSize: 13,
-      backdropFilter: 'blur(1px)'
-  },
-
-  // LOST & FOUND TOGGLE
-  toggleWrapper: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing.sm },
-  toggleButton: {
-      padding: theme.spacing.md, 
-      borderWidth: 2, borderStyle: 'solid', borderColor: theme.colors.border, 
-      borderRadius: theme.radius.md,
-      background: theme.colors.bgSecondary, color: theme.colors.text, cursor: 'pointer', fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium, transition: 'all 0.2s ease'
-  },
-  toggleButtonActive: { borderColor: theme.colors.primary, background: `${theme.colors.primary}15`, color: theme.colors.primary },
-
-  // IMAGES
-  imagesPreview: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
-  imagePreviewItem: { position: 'relative', paddingTop: '100%', borderRadius: theme.radius.md, overflow: 'hidden', backgroundColor: theme.colors.bgSecondary },
-  previewImage: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' },
-  removeImageButton: {
-    position: 'absolute', top: 4, right: 4,
-    padding: 4, background: 'rgba(0,0,0,0.7)', border: 'none',
-    borderRadius: 4, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10
-  },
-  newBadge: {
-    position: 'absolute', bottom: 4, right: 4,
-    padding: '2px 6px', background: theme.colors.primary, color: '#fff', // ✅ FIOL
-    borderRadius: 4, fontSize: 10, fontWeight: 'bold'
-  },
-  loadingOverlay: {
-    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    background: `${theme.colors.bgSecondary}CC`, zIndex: 5
-  },
-  loadingPercent: { fontSize: 10, fontWeight: 'bold', color: theme.colors.textSecondary, marginTop: 4 },
-  addImagePlaceholder: {
-    paddingTop: '100%', position: 'relative', border: `2px dashed ${theme.colors.border}`,
-    borderRadius: theme.radius.md, background: theme.colors.bgSecondary,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.colors.textTertiary,
-    cursor: 'pointer', transition: 'all 0.2s ease', padding: 0
-  },
-  addImageButton: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm, padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    border: `2px dashed ${theme.colors.border}`, borderRadius: theme.radius.md, background: 'transparent',
-    color: theme.colors.textSecondary, cursor: 'pointer', fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium,
-    transition: 'all 0.2s ease', width: '100%', justifyContent: 'center'
-  },
-
-  // TAGS
-  tagInputWrapper: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm,
-    padding: `${theme.spacing.md}px ${theme.spacing.md}px`, background: theme.colors.bgSecondary,
-    border: `2px solid ${theme.colors.border}`, borderRadius: theme.radius.md, transition: 'border-color 0.2s ease',
-  },
-  tagInput: { flex: 1, background: 'transparent', border: 'none', color: theme.colors.text, fontSize: theme.fontSize.md, outline: 'none' },
-  addTagButton: { padding: 6, background: theme.colors.bgTertiary, border: 'none', borderRadius: 4, color: theme.colors.textTertiary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.5 },
-  addTagButtonActive: { padding: 6, background: theme.colors.primary, border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  tagsList: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  tag: {
-    display: 'inline-flex', alignItems: 'center', gap: 4,
-    padding: '4px 10px', background: `${theme.colors.primary}15`,
-    color: theme.colors.primary, borderRadius: 4, fontSize: 13,
-    fontWeight: 500
-  },
-  tagRemove: { background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex' },
-
-  // DATE BUTTONS
-  quickDateButtons: { display: 'flex', gap: theme.spacing.xs, marginBottom: theme.spacing.sm },
-  quickDateBtn: {
-    flex: 1, padding: `12px 14px`, background: theme.colors.bgSecondary, 
-    borderWidth: '1px', borderStyle: 'solid', borderColor: theme.colors.border,
-    borderRadius: theme.radius.sm, color: theme.colors.textSecondary, 
-    fontSize: theme.fontSize.sm, cursor: 'pointer', transition: 'all 0.2s ease',
-  },
-  quickDateBtnActive: {
-      flex: 1, padding: `12px 14px`, background: theme.colors.primary,
-      borderWidth: '1px', borderStyle: 'solid', borderColor: theme.colors.primary, 
-      borderRadius: theme.radius.sm, color: '#fff',
-      fontSize: theme.fontSize.sm, cursor: 'pointer', transition: 'all 0.2s ease',
-  },
-
-  // FOOTER & ERROR
-  errorAlert: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm,
-    padding: theme.spacing.md, background: `${theme.colors.error}15`,
-    border: `1px solid ${theme.colors.error}`, borderRadius: theme.radius.md,
-    color: theme.colors.error, fontSize: theme.fontSize.sm, margin: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`,
-    animation: 'shake 0.3s ease',
-  },
-  footer: { padding: theme.spacing.lg, borderTop: `1px solid ${theme.colors.border}`, flexShrink: 0 },
-  publishButton: {
-    width: '100%', padding: 14,
-    borderRadius: theme.radius.md, fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.bold,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-    transition: 'all 0.2s ease',
-    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
-    color: '#fff', border: 'none'
-  },
-
-  // CONFIRMATION
-  confirmationOverlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0,0,0,0.75)',
-    backdropFilter: 'blur(4px)',
-    zIndex: Z_CONFIRMATION_DIALOG,
+  removeMiniBtn: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    border: '1px solid rgba(255,255,255,0.16)',
+    background: 'rgba(24,24,26,0.86)',
+    color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    animation: 'fadeIn 0.2s ease',
+    padding: 0,
+    cursor: 'pointer',
   },
-  confirmationDialog: {
-    background: theme.colors.bg, borderRadius: theme.radius.xl,
-    padding: theme.spacing.xl, margin: theme.spacing.lg, maxWidth: 300, width: '100%',
-    textAlign: 'center'
+  photoCard: {
+    position: 'relative',
+    width: 96,
+    height: 96,
+    borderRadius: 14,
+    overflow: 'hidden',
+    border: '1px solid var(--create-border)',
+    background: 'var(--create-surface-elevated)',
+    flexShrink: 0,
   },
-  confirmationTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
-  confirmationText: { fontSize: 14, color: theme.colors.textSecondary, marginBottom: 20 },
-  confirmationButtons: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
-  confirmationCancel: { padding: 10, background: theme.colors.bgSecondary, border: 'none', borderRadius: 8, color: theme.colors.text, fontWeight: '600' },
-  confirmationConfirm: { padding: 10, background: theme.colors.error, border: 'none', borderRadius: 8, color: '#fff', fontWeight: '600' },
+  removePhotoBtn: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    border: '1px solid rgba(255,255,255,0.16)',
+    background: 'rgba(24,24,26,0.86)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    cursor: 'pointer',
+  },
+  switchBtn: {
+    flex: 1,
+    border: '1px solid var(--create-border)',
+    borderRadius: 12,
+    background: 'var(--create-surface-elevated)',
+    color: 'var(--create-text-muted)',
+    padding: '10px 6px',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  switchBtnActive: {
+    border: '1px solid var(--create-primary)',
+    background: 'rgba(212,255,0,0.12)',
+    color: 'var(--create-primary)',
+  },
+  smartInputWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    border: '1px solid var(--create-border)',
+    background: 'var(--create-surface-elevated)',
+    padding: '0 10px',
+  },
+  smartInput: {
+    flex: 1,
+    border: 'none',
+    background: 'transparent',
+    color: '#fff',
+    fontSize: 14,
+    padding: '12px 0',
+    outline: 'none',
+  },
+  pollCard: {
+    borderRadius: 14,
+    border: '1px solid var(--create-border)',
+    background: 'var(--create-surface-elevated)',
+    padding: 12,
+    marginBottom: 12,
+  },
+  pollRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.06)',
+    background: 'rgba(255,255,255,0.04)',
+    padding: '8px 10px',
+  },
+  pollFlag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.12)',
+    padding: '5px 9px',
+    fontSize: 12,
+    color: 'var(--create-text-muted)',
+  },
+  bottomDock: { position: 'sticky', bottom: 0, display: 'flex', flexDirection: 'column', zIndex: 8 },
+  popup: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    zIndex: 10,
+    padding: 14,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderTop: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(28,28,30,0.95)',
+    backdropFilter: 'blur(18px)',
+    boxShadow: '0 -8px 30px rgba(0,0,0,0.45)',
+  },
+  suggestionBtn: {
+    borderRadius: 14,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.08)',
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 10px',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  tagInputWrap: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(0,0,0,0.4)',
+    padding: '8px 10px',
+  },
+  tagInput: { flex: 1, border: 'none', background: 'transparent', color: '#fff', fontSize: 14, outline: 'none' },
+  popupTitle: { fontSize: 12, fontWeight: 700, color: 'var(--create-text-muted)', marginBottom: 10, letterSpacing: 0.3 },
+  optionBtn: {
+    minWidth: 82,
+    borderRadius: 12,
+    border: '1px solid transparent',
+    background: 'rgba(255,255,255,0.06)',
+    color: 'var(--create-text-muted)',
+    padding: '8px 10px',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  optionBtnActive: { border: '1px solid var(--create-primary)', color: 'var(--create-primary)', background: 'rgba(212,255,0,0.08)' },
+  popupInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(0,0,0,0.4)',
+    color: '#fff',
+    padding: '10px 12px',
+    fontSize: 14,
+    outline: 'none',
+  },
+  errorBar: {
+    margin: '0 12px 10px',
+    borderRadius: 12,
+    border: '1px solid rgba(255,69,58,0.35)',
+    background: 'rgba(255,69,58,0.14)',
+    color: '#ffb0aa',
+    padding: '8px 10px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  toolbar: {
+    padding: '10px 14px calc(10px + var(--screen-bottom-offset))',
+    borderTop: '1px solid var(--create-border)',
+    background: 'var(--create-surface)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  toolBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    border: 'none',
+    background: 'var(--create-surface-elevated)',
+    color: 'var(--create-text-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  toolBtnActive: { background: 'rgba(212,255,0,0.16)', color: 'var(--create-primary)' },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    border: 'none',
+    background: 'var(--create-surface-elevated)',
+    color: 'var(--create-text-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  sendBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  pickerOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: getOverlayZIndex(Z_MODAL_EDIT_POST) + 3,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+  },
+  pickerBackdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(2px)' },
+  pickerSheet: {
+    position: 'relative',
+    borderTop: '1px solid var(--create-border)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    background: 'var(--create-surface)',
+    padding: '20px 16px calc(var(--screen-bottom-offset) + 16px)',
+  },
 };
 
-const keyframesStyles = `
-  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
-  .animate-spin { animation: spin 1s linear infinite; }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+const keyframeStyles = `
+:root {
+  --create-primary: ${theme.colors.premium.primary};
+  --create-surface: ${theme.colors.premium.surfaceElevated};
+  --create-surface-elevated: ${theme.colors.premium.surfaceHover};
+  --create-border: ${theme.colors.premium.border};
+  --create-text-muted: ${theme.colors.premium.textMuted};
+}
+
+.create-spring-btn {
+  transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s;
+}
+
+.create-spring-btn:active {
+  transform: scale(0.92);
+  opacity: 0.85;
+}
+
+.hide-scroll::-webkit-scrollbar { display: none; }
+.hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+.create-grow-wrap { display: grid; }
+.create-grow-wrap::after {
+  content: attr(data-replicated-value) " ";
+  visibility: hidden;
+  white-space: pre-wrap;
+  min-height: 84px;
+}
+.create-grow-wrap > textarea,
+.create-grow-wrap::after {
+  grid-area: 1 / 1 / 2 / 2;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.4;
+  font-family: inherit;
+  word-break: break-word;
+}
+
+.create-input::placeholder { color: #666; }
 `;
 
 export default EditContentModal;

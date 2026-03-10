@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Heart, MessageCircle, Eye, MapPin, Calendar,
-  ChevronLeft, ChevronRight, MoreVertical,
+  ChevronLeft, ChevronRight,
   Gift, Phone, Link2, Pencil, Trash2, Flag
 } from 'lucide-react';
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost } from '../../api';
@@ -19,9 +19,11 @@ import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { toast } from '../shared/Toast'; 
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import OverflowMenuButton from '../shared/OverflowMenuButton';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
+import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 
 const parseImages = (value) => {
   if (!value) return [];
@@ -213,6 +215,11 @@ function PostDetail() {
           .filter(Boolean).join(' · ')
       : null;
   }, [post?.author, post?.is_anonymous]);
+
+  const displayBody = useMemo(
+    () => stripLeadingTitleFromBody(post?.title, post?.body),
+    [post?.title, post?.body]
+  );
 
   const handleLike = async () => {
     hapticFeedback('medium');
@@ -491,13 +498,11 @@ function PostDetail() {
                     <span style={{...styles.categoryText, color: catInfo.color}}>
                       {catInfo.label}
                     </span>
-                    <button
+                    <OverflowMenuButton
                       ref={postMenuRef}
-                      style={styles.menuButton}
-                      onClick={(e) => { e.stopPropagation(); setPostMenuOpen(!postMenuOpen); hapticFeedback('light'); }}
-                    >
-                      <MoreVertical size={20} />
-                    </button>
+                      isOpen={postMenuOpen}
+                      onToggle={() => setPostMenuOpen((prev) => !prev)}
+                    />
                   </div>
                 </div>
                 
@@ -514,8 +519,8 @@ function PostDetail() {
                   {post.title && post.category !== 'polls' && (
                     <h3 style={styles.title}>{post.title}</h3>
                   )}
-                  {post.body && (
-                    <p style={styles.body}>{post.body}</p>
+                  {displayBody && (
+                    <p style={styles.body}>{displayBody}</p>
                   )}
                 </div>
 
@@ -594,7 +599,9 @@ function PostDetail() {
 
                 {post.tags && post.tags.length > 0 && (
                   <div style={styles.tags}>
-                    {post.tags.map((t, i) => <span key={i} style={styles.tag}>#{t}</span>)}
+                    {post.tags.map((t, i) => (
+                      <span key={`${t}-${i}`} className="hashtag-chip">#{t}</span>
+                    ))}
                   </div>
                 )}
 
@@ -847,13 +854,12 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
 
             {!comment.is_deleted && (
               <div style={{ marginLeft: 'auto', position: 'relative', flexShrink: 0 }}>
-                <button
+                <OverflowMenuButton
                   ref={menuButtonRef}
-                  onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === comment.id ? null : comment.id); }}
-                  style={styles.menuButton}
-                >
-                  <MoreVertical size={16} />
-                </button>
+                  isOpen={menuOpen === comment.id}
+                  iconSize={16}
+                  onToggle={() => setMenuOpen(menuOpen === comment.id ? null : comment.id)}
+                />
                 <DropdownMenu
                   isOpen={menuOpen === comment.id} onClose={() => setMenuOpen(null)}
                   anchorRef={menuButtonRef} items={menuItems} variant="premium"
@@ -1031,11 +1037,6 @@ const styles = {
   categoryText: {
     fontSize: 12, fontWeight: theme.fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px',
   },
-  menuButton: {
-    padding: theme.spacing.xs + 2, background: 'transparent', border: 'none',
-    color: theme.colors.textTertiary, cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.full,
-  },
   textContent: {
     padding: `${theme.spacing.xs}px ${theme.spacing.lg}px ${theme.spacing.md}px`,
   },
@@ -1055,7 +1056,13 @@ const styles = {
     fontSize: 12, color: theme.colors.textSecondary, fontWeight: theme.fontWeight.medium
   },
   imageContainer: {
-    width: '100%', position: 'relative', backgroundColor: theme.colors.bg, marginBottom: theme.spacing.md,
+    width: 'calc(100% - 32px)',
+    position: 'relative',
+    backgroundColor: theme.colors.bg,
+    margin: '12px 16px 8px',
+    borderRadius: 16,
+    overflow: 'hidden',
+    border: `1px solid ${theme.colors.premium.border}`,
   },
   image: {
     width: '100%', height: '100%', objectFit: 'cover',
@@ -1082,12 +1089,9 @@ const styles = {
   tags: {
     padding: `0 ${theme.spacing.lg}px`, display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm, marginBottom: theme.spacing.md
   },
-  tag: {
-    color: theme.colors.primary, fontSize: 13, fontWeight: theme.fontWeight.medium
-  },
   statsFooter: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: `${theme.spacing.sm + 2}px ${theme.spacing.lg}px`,
+    padding: `${theme.spacing.xs + 2}px ${theme.spacing.lg}px ${theme.spacing.sm + 2}px`,
     backgroundColor: theme.colors.premium.bg, minHeight: 48,
   },
   footerLeft: {

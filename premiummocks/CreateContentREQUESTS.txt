@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA - Smart Create (Global Picker)</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #000000;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        --error: #FF453A;
+        --success: #32D74B;
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: #050505; 
+        color: var(--text); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.92); opacity: 0.8; }
+
+      textarea, input { appearance: none; font-family: inherit; }
+      textarea::placeholder { color: #666; }
+      
+      @keyframes slideDownFader {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes popupSlide {
+        from { opacity: 0; transform: translateY(16px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .popup-block {
+        animation: popupSlide 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+      }
+      
+      @keyframes toastSlide {
+        0% { opacity: 0; transform: translate(-50%, -20px); }
+        10% { opacity: 1; transform: translate(-50%, 0); }
+        90% { opacity: 1; transform: translate(-50%, 0); }
+        100% { opacity: 0; transform: translate(-50%, -20px); }
+      }
+
+      .smart-block { animation: slideDownFader 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+
+      .grow-wrap { display: grid; }
+      .grow-wrap::after {
+        content: attr(data-replicated-value) " ";
+        white-space: pre-wrap;
+        visibility: hidden;
+        font-size: 18px;
+        font-weight: 500;
+        line-height: 1.4;
+        min-height: 76px;
+        word-wrap: break-word;
+      }
+      .grow-wrap > textarea { resize: none; overflow: hidden; }
+      .grow-wrap > textarea,
+      .grow-wrap::after {
+        grid-area: 1 / 1 / 2 / 2;
+        padding: 0;
+        font-family: inherit;
+      }
+
+      .time-input {
+        width: 48px; height: 48px; text-align: center; font-size: 20px; font-weight: 700;
+        background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);
+        color: #FFF; border-radius: 12px; transition: all 0.2s; outline: none;
+      }
+      .time-input:focus { border-color: var(--primary); background: rgba(212, 255, 0, 0.05); }
+      .time-input::-webkit-outer-spin-button, .time-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useRef, useEffect } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        X, Image as ImageIcon, BarChart2, VenetianMask, MapPin, 
+        Calendar, Send, Plus, Hash, Settings, Users, CheckCircle, 
+        Circle, HelpCircle, Gift, Clock, ChevronLeft, ChevronRight, Check
+      } from 'lucide-react';
+
+      // ==========================================
+      // === КАСТОМНЫЙ КАЛЕНДАРЬ (ОЧИЩЕН ОТ РАМОК) ===
+      // ==========================================
+      function SmartDatePicker({ initialDate, onSave, onCancel }) {
+        const [viewDate, setViewDate] = useState(initialDate ? new Date(initialDate) : new Date());
+        const [selectedDate, setSelectedDate] = useState(initialDate ? new Date(initialDate) : new Date());
+        
+        const [hh, setHh] = useState(initialDate ? String(new Date(initialDate).getHours()).padStart(2, '0') : '12');
+        const [mm, setMm] = useState(initialDate ? String(new Date(initialDate).getMinutes()).padStart(2, '0') : '00');
+
+        const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+        const daysOfWeek = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+        const year = viewDate.getFullYear();
+        const month = viewDate.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const firstDay = new Date(year, month, 1).getDay();
+        const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+
+        const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+        const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+        const handleSave = () => {
+          let h = parseInt(hh, 10) || 0;
+          let m = parseInt(mm, 10) || 0;
+          if (h > 23) h = 23; if (m > 59) m = 59;
+          
+          const finalDate = new Date(selectedDate);
+          finalDate.setHours(h, m, 0, 0);
+          onSave(finalDate.toISOString());
+        };
+
+        const handleTimeChange = (type, val) => {
+          const num = val.replace(/\D/g, '').slice(0, 2);
+          if (type === 'hh') {
+            if (parseInt(num) > 23) setHh('23'); else setHh(num);
+          } else {
+            if (parseInt(num) > 59) setMm('59'); else setMm(num);
+          }
+        };
+
+        return (
+          <div style={{ width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <button onClick={prevMonth} className="spring-btn" style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#FFF', width: 32, height: 32, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={18} /></button>
+              <div style={{ fontWeight: 700, fontSize: '15px', color: '#FFF' }}>{monthNames[month]} {year}</div>
+              <button onClick={nextMonth} className="spring-btn" style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#FFF', width: 32, height: 32, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={18} /></button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '8px' }}>
+              {daysOfWeek.map(d => (
+                <div key={d} style={{ textAlign: 'center', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>{d}</div>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '20px' }}>
+              {Array.from({ length: startOffset }).map((_, i) => <div key={`empty-${i}`} />)}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const dayNum = i + 1;
+                const currentDate = new Date(year, month, dayNum);
+                const isSelected = selectedDate.getDate() === dayNum && selectedDate.getMonth() === month && selectedDate.getFullYear() === year;
+                const isToday = new Date().getDate() === dayNum && new Date().getMonth() === month && new Date().getFullYear() === year;
+
+                return (
+                  <button 
+                    key={dayNum} onClick={() => setSelectedDate(currentDate)} className="spring-btn"
+                    style={{
+                      aspectRatio: '1', borderRadius: '12px', border: 'none', fontSize: '15px', fontWeight: 600,
+                      background: isSelected ? 'var(--primary)' : 'transparent',
+                      color: isSelected ? '#000' : '#FFF',
+                      boxShadow: isSelected ? '0 4px 12px rgba(212, 255, 0, 0.4)' : 'none',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px',
+                      border: isToday && !isSelected ? '1px solid rgba(255,255,255,0.2)' : '1px solid transparent'
+                    }}
+                  >
+                    {dayNum}
+                    {isToday && !isSelected && <div style={{ width: 4, height: 4, borderRadius: 2, background: 'var(--primary)' }} />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', marginBottom: '16px' }}>
+              <Clock size={20} color="var(--text-muted)" style={{ marginRight: '8px' }} />
+              <input type="text" className="time-input" value={hh} onChange={(e) => handleTimeChange('hh', e.target.value)} onBlur={() => setHh(hh.padStart(2, '0'))} placeholder="12" />
+              <span style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>:</span>
+              <input type="text" className="time-input" value={mm} onChange={(e) => handleTimeChange('mm', e.target.value)} onBlur={() => setMm(mm.padStart(2, '0'))} placeholder="00" />
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={onCancel} className="spring-btn" style={{ flex: 1, padding: '12px', borderRadius: '14px', background: 'rgba(255,255,255,0.05)', color: '#FFF', border: 'none', fontWeight: 600, fontSize: '15px' }}>Отмена</button>
+              <button onClick={handleSave} className="spring-btn" style={{ flex: 2, padding: '12px', borderRadius: '14px', background: 'var(--primary)', color: '#000', border: 'none', fontWeight: 700, fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <Check size={18} strokeWidth={2.5} /> Сохранить
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // --- КОНФИГ КАТЕГОРИЙ ---
+      const POST_CATEGORIES = [
+        { id: 'news', label: 'Новости', icon: '📰' },
+        { id: 'events', label: 'События', icon: '🎉' },
+        { id: 'confessions', label: 'Признания', icon: '💭' },
+        { id: 'lost_found', label: 'Потеряшки', icon: '🎒' },
+        { id: 'memes', label: 'Мемы', icon: '🤡' }
+      ];
+
+      const REQ_CATEGORIES = [
+        { id: 'help', label: 'Помощь', icon: '🤝' },
+        { id: 'study', label: 'Учёба', icon: '📚' },
+        { id: 'hangout', label: 'Движ', icon: '🔥' }
+      ];
+
+      const SUGGESTED_TAGS = ['python', 'react', 'помощь', 'курсач', 'сопромат', 'общага', 'ищу_команду'];
+
+      function App() {
+        const [isVisible, setIsVisible] = useState(false);
+        const [activeTab, setActiveTab] = useState('request');
+        
+        // === СТЕЙТ ОБЩИЙ ===
+        const [photos, setPhotos] = useState([]);
+        const [postTags, setPostTags] = useState([]);
+        const [showTagTool, setShowTagTool] = useState(false);
+        const [postTagInput, setPostTagInput] = useState('');
+        const [toast, setToast] = useState(null);
+
+        // === СТЕЙТ ПОСТА ===
+        const [postCat, setPostCat] = useState('news');
+        const [postText, setPostText] = useState('');
+        const [isAnonymous, setIsAnonymous] = useState(false);
+        const [hasPoll, setHasPoll] = useState(false);
+        const [pollOptions, setPollOptions] = useState(['', '']);
+        const [showPollSettings, setShowPollSettings] = useState(false);
+        const [pollType, setPollType] = useState('regular');
+        const [pollCorrectOption, setPollCorrectOption] = useState(null);
+        const [pollMulti, setPollMulti] = useState(false);
+        const [pollAnon, setPollAnon] = useState(true);
+        const [lfType, setLfType] = useState('lost'); 
+        
+        const [eventDate, setEventDate] = useState('today'); 
+        const [eventCustomDate, setEventCustomDate] = useState('');
+        const [showEventPicker, setShowEventPicker] = useState(false);
+        const [location, setLocation] = useState('');
+
+        // === СТЕЙТ ЗАПРОСОВ ===
+        const [reqCat, setReqCat] = useState('help');
+        const [reqText, setReqText] = useState('');
+        
+        const [showReqReward, setShowReqReward] = useState(false);
+        const [reqRewardType, setReqRewardType] = useState('none'); 
+        const [reqRewardText, setReqRewardText] = useState('');
+
+        const [showReqDeadline, setShowReqDeadline] = useState(false);
+        const [reqDeadlineType, setReqDeadlineType] = useState('24h'); 
+        const [reqCustomDate, setReqCustomDate] = useState('');
+        const [showReqPicker, setShowReqPicker] = useState(false);
+
+        const textareaRef = useRef(null);
+        const reqTextareaRef = useRef(null);
+
+        const getSmartBlockBtnStyle = (isActive) => ({
+          flex: 1, padding: '10px 4px', borderRadius: '12px', fontWeight: 600, fontSize: '13px',
+          background: isActive ? 'rgba(212, 255, 0, 0.1)' : 'rgba(255,255,255,0.05)',
+          border: `1px solid ${isActive ? 'var(--primary)' : 'transparent'}`,
+          color: isActive ? 'var(--primary)' : 'var(--text-muted)',
+          transition: 'all 0.2s'
+        });
+
+        useEffect(() => {
+          setTimeout(() => setIsVisible(true), 300);
+        }, []);
+
+        useEffect(() => {
+          setShowTagTool(false);
+          setShowReqReward(false);
+          setShowReqDeadline(false);
+          setHasPoll(false);
+        }, [activeTab]);
+
+        const handleToggleTags = () => {
+          setShowTagTool(!showTagTool);
+          setShowReqReward(false);
+          setShowReqDeadline(false);
+        };
+
+        const handleToggleReward = () => {
+          document.activeElement?.blur(); 
+          setShowReqReward(!showReqReward);
+          setShowTagTool(false);
+          setShowReqDeadline(false);
+        };
+
+        const handleToggleDeadline = () => {
+          document.activeElement?.blur(); 
+          setShowReqDeadline(!showReqDeadline);
+          setShowTagTool(false);
+          setShowReqReward(false);
+        };
+
+        const handleAddPhoto = () => {
+          if (photos.length < 3) {
+            const mockImages = [
+              'https://images.unsplash.com/photo-1555949963-aa79dcee981c?auto=format&fit=crop&q=80&w=300',
+              'https://images.unsplash.com/photo-1527192491265-7e15c55b1ed2?auto=format&fit=crop&q=80&w=300',
+              'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=300'
+            ];
+            setPhotos([...photos, mockImages[photos.length]]);
+          }
+        };
+
+        const addPostTag = (tag) => {
+            const val = (tag || postTagInput).trim().toLowerCase().replace(/[^a-zа-я0-9_]/g, '');
+            if (val && !postTags.includes(val) && postTags.length < 5) {
+                setPostTags([...postTags, val]);
+                setPostTagInput('');
+            }
+        };
+
+        const toggleTag = (tag) => setPostTags(postTags.filter(t => t !== tag));
+
+        const formatCustomDateStr = (dateString) => {
+          if (!dateString) return '';
+          const d = new Date(dateString);
+          return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        };
+
+        const getPostPlaceholder = () => {
+          switch(postCat) {
+            case 'news': return "Что происходит в кампусе?";
+            case 'events': return "Опиши тусовку или лекцию...";
+            case 'confessions': return "Выскажи всё, что на душе...";
+            case 'lost_found': return "Подробно опиши вещь...";
+            case 'memes': return "Заливай годноту...";
+            default: return "О чем расскажешь?";
+          }
+        };
+
+        const getReqPlaceholder = () => {
+          switch(reqCat) {
+            case 'study': return "Нужен конспект, помощь с лабой или билет?";
+            case 'help': return "Что случилось? Опиши проблему...";
+            case 'hangout': return "Кого ищешь? Настолки, бар, спорт...";
+            default: return "Опиши суть запроса...";
+          }
+        };
+
+        const currentText = activeTab === 'post' ? postText : reqText;
+        const canSend = currentText.trim().length > 3;
+
+        const handleSend = () => {
+          if (!canSend) return;
+          setToast(activeTab === 'post' ? 'Пост успешно опубликован!' : 'Запрос успешно создан!');
+          setTimeout(() => setToast(null), 3000);
+          setIsVisible(false);
+          
+          setTimeout(() => {
+            setPostText(''); setHasPoll(false); setPollOptions(['', '']); setEventDate('today'); setEventCustomDate(''); setShowEventPicker(false);
+            setReqText(''); setReqRewardType('none'); setReqRewardText(''); setReqDeadlineType('24h'); setReqCustomDate(''); setShowReqPicker(false);
+            setPhotos([]); setPostTags([]); setShowTagTool(false); setShowReqReward(false); setShowReqDeadline(false);
+          }, 300);
+        };
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: 'var(--bg)', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            {/* Тост Уведомление */}
+            {toast && (
+              <div style={{
+                position: 'absolute', top: '70px', left: '50%', transform: 'translateX(-50%)',
+                background: 'var(--surface-elevated)', border: '1px solid rgba(50, 215, 75, 0.3)',
+                padding: '12px 24px', borderRadius: '24px', color: '#FFF', fontWeight: 600, fontSize: '14px',
+                zIndex: 2000, display: 'flex', alignItems: 'center', gap: '8px',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.6)', animation: 'toastSlide 3s forwards'
+              }}>
+                <CheckCircle size={18} color="var(--success)" strokeWidth={2.5} /> {toast}
+              </div>
+            )}
+
+            <div style={{ flex: 1, background: '#0A0A0C', padding: '60px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+              <div style={{ width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' }}>
+                <ImageIcon size={24} color="var(--text-muted)" />
+              </div>
+              <h2 style={{ margin: '0 0 8px', color: '#FFF', fontSize: '20px' }}>Главная лента</h2>
+              <button onClick={() => setIsVisible(true)} className="spring-btn" style={{ background: 'var(--primary)', color: '#000', border: 'none', padding: '16px 32px', borderRadius: '20px', fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginTop: '20px' }}>
+                <Plus size={20} strokeWidth={2.5} /> Создать
+              </button>
+            </div>
+
+            {/* === BOTTOM SHEET === */}
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+              pointerEvents: isVisible ? 'auto' : 'none'
+            }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', opacity: isVisible ? 1 : 0, transition: 'opacity 0.3s' }} onClick={() => setIsVisible(false)} />
+
+              <div style={{
+                background: 'var(--surface)', borderTopLeftRadius: '24px', borderTopRightRadius: '24px',
+                borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
+                height: '92%', transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
+                transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+              }}>
+                
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', position: 'relative', flexShrink: 0 }}>
+                  <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
+                  <button onClick={() => setIsVisible(false)} className="spring-btn" style={{ position: 'absolute', right: 16, background: 'rgba(255,255,255,0.08)', border: 'none', width: 30, height: 30, borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}><X size={16} /></button>
+                </div>
+
+                <div style={{ padding: '0 16px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', background: 'var(--surface-elevated)', borderRadius: '12px', padding: '4px' }}>
+                    <button onClick={() => setActiveTab('post')} className="spring-btn" style={{ flex: 1, padding: '8px', background: activeTab === 'post' ? 'var(--primary)' : 'transparent', color: activeTab === 'post' ? '#000' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '15px', transition: 'all 0.2s' }}>Пост</button>
+                    <button onClick={() => setActiveTab('request')} className="spring-btn" style={{ flex: 1, padding: '8px', background: activeTab === 'request' ? 'var(--primary)' : 'transparent', color: activeTab === 'request' ? '#000' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '15px', transition: 'all 0.2s' }}>Запрос</button>
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                  
+                  <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                      <div style={{
+                        display: 'flex', width: '200%', flex: '1 0 auto',
+                        transform: `translateX(${activeTab === 'post' ? '0' : '-50%'})`,
+                        transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+                      }}>
+                        
+                        {/* ============================== */}
+                        {/* === POST SLIDE ===             */}
+                        {/* ============================== */}
+                        <div style={{ width: '50%', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+                            <div className="hide-scroll" style={{ 
+                                display: 'grid', gridTemplateRows: 'repeat(2, auto)', gridAutoFlow: 'column', gridAutoColumns: 'max-content',
+                                gap: '8px', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' 
+                            }}>
+                                {POST_CATEGORIES.map(cat => (
+                                  <button 
+                                    key={cat.id} onClick={() => setPostCat(cat.id)} className="spring-btn"
+                                    style={{ 
+                                      padding: '8px 16px', borderRadius: '20px', flexShrink: 0,
+                                      border: `1px solid ${postCat === cat.id ? 'var(--primary)' : 'transparent'}`,
+                                      background: postCat === cat.id ? 'rgba(212, 255, 0, 0.1)' : 'var(--surface-elevated)',
+                                      color: postCat === cat.id ? 'var(--primary)' : '#FFF',
+                                      fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px',
+                                      transition: 'all 0.2s'
+                                    }}
+                                  >
+                                    <span>{cat.icon}</span> {cat.label}
+                                  </button>
+                                ))}
+                            </div>
+
+                            <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', flex: '1 0 auto' }}>
+                                <div className="grow-wrap" data-replicated-value={postText} style={{ marginBottom: '16px', width: '100%', flexShrink: 0 }}>
+                                  <textarea
+                                    ref={textareaRef} value={postText} onChange={(e) => setPostText(e.target.value)}
+                                    placeholder={getPostPlaceholder()} className="hide-scroll"
+                                    style={{ width: '100%', background: 'transparent', border: 'none', color: '#FFF', fontSize: '18px', fontWeight: 500, lineHeight: 1.4, padding: '0', outline: 'none' }}
+                                  />
+                                </div>
+
+                                {postTags.length > 0 && (
+                                  <div className="smart-block" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px', flexShrink: 0 }}>
+                                    {postTags.map(tag => (
+                                      <span key={tag} style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)', color: '#FFF', padding: '6px 12px', borderRadius: '16px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                        #{tag}
+                                        <button onClick={() => toggleTag(tag)} className="spring-btn" style={{ background: 'transparent', border: 'none', color: '#FFF', cursor: 'pointer', padding: '10px', margin: '-10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12}/></div>
+                                        </button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {photos.length > 0 && (
+                                  <div className="hide-scroll smart-block" style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', flexShrink: 0 }}>
+                                    {photos.map((p, i) => (
+                                      <div key={i} style={{ position: 'relative', width: '100px', height: '100px', borderRadius: '16px', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
+                                        <img src={p} alt="demo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        <button onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))} style={{ position: 'absolute', top: 0, right: 0, background: 'transparent', border: 'none', width: 44, height: 44, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: '6px', cursor: 'pointer', zIndex: 10 }}>
+                                          <div style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', color: '#FFF', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14}/></div>
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {postCat === 'events' && (
+                                  <div className="smart-block" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px', flexShrink: 0 }}>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                      <button onClick={() => {setEventDate('today'); setShowEventPicker(false);}} className="spring-btn" style={getSmartBlockBtnStyle(eventDate === 'today')}>Сегодня</button>
+                                      <button onClick={() => {setEventDate('tomorrow'); setShowEventPicker(false);}} className="spring-btn" style={getSmartBlockBtnStyle(eventDate === 'tomorrow')}>Завтра</button>
+                                      {/* Открываем ГЛОБАЛЬНЫЙ пикер */}
+                                      <button onClick={() => {setEventDate('custom'); setShowEventPicker(true); document.activeElement?.blur();}} className="spring-btn" style={{ ...getSmartBlockBtnStyle(eventDate === 'custom'), width: 'auto', flex: 1.5 }}>
+                                        {eventDate === 'custom' && eventCustomDate ? formatCustomDateStr(eventCustomDate) : 'Своя дата 📅'}
+                                      </button>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0 12px' }}>
+                                      <MapPin size={18} color="var(--text-muted)" />
+                                      <input placeholder="Место проведения" value={location} onChange={e => setLocation(e.target.value)} style={{ flex: 1, background: 'transparent', border: 'none', padding: '12px', color: '#FFF', fontSize: '15px' }} />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {postCat === 'lost_found' && (
+                                  <div className="smart-block" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px', flexShrink: 0 }}>
+                                    <div style={{ display: 'flex', background: 'var(--surface-elevated)', borderRadius: '12px', padding: '4px' }}>
+                                      <button onClick={() => setLfType('lost')} className="spring-btn" style={{ flex: 1, padding: '10px', background: lfType === 'lost' ? 'rgba(255, 69, 58, 0.15)' : 'transparent', color: lfType === 'lost' ? 'var(--error)' : 'var(--text-muted)', border: `1px solid ${lfType === 'lost' ? 'rgba(255, 69, 58, 0.3)' : 'transparent'}`, borderRadius: '10px', fontWeight: 600, fontSize: '14px', transition: 'all 0.2s' }}>😢 Потерял</button>
+                                      <button onClick={() => setLfType('found')} className="spring-btn" style={{ flex: 1, padding: '10px', background: lfType === 'found' ? 'rgba(50, 215, 75, 0.15)' : 'transparent', color: lfType === 'found' ? 'var(--success)' : 'var(--text-muted)', border: `1px solid ${lfType === 'found' ? 'rgba(50, 215, 75, 0.3)' : 'transparent'}`, borderRadius: '10px', fontWeight: 600, fontSize: '14px', transition: 'all 0.2s' }}>🎉 Нашёл</button>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0 12px' }}>
+                                      <MapPin size={18} color="var(--text-muted)" />
+                                      <input placeholder="Где это было?" value={location} onChange={e => setLocation(e.target.value)} style={{ flex: 1, background: 'transparent', border: 'none', padding: '12px', color: '#FFF', fontSize: '15px' }} />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {postCat === 'confessions' && (
+                                  <div className="smart-block" style={{ padding: '12px 16px', background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', borderRadius: '16px', display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px', flexShrink: 0 }}>
+                                    <div style={{ color: 'var(--primary)' }}><VenetianMask size={24} strokeWidth={1.5} /></div>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                      <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--primary)' }}>Полная анонимность</span>
+                                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.3, marginTop: '2px' }}>Авторство скрыто. Комментарии также будут анонимными.</span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {hasPoll && (
+                                  <div className="smart-block" style={{ background: 'var(--surface-elevated)', borderRadius: '16px', padding: '16px', marginBottom: '16px', border: '1px solid var(--border)', flexShrink: 0 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+                                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.5px' }}>ОПРОС</span>
+                                      <button onClick={() => setHasPoll(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={16}/></button>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                      {pollOptions.map((opt, i) => (
+                                        <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                          {pollType === 'quiz' && (
+                                             <button onClick={() => setPollCorrectOption(i)} style={{ background: 'none', border: 'none', padding: 0, color: pollCorrectOption === i ? 'var(--success)' : 'var(--text-muted)', cursor: 'pointer' }}>
+                                               {pollCorrectOption === i ? <CheckCircle size={20} /> : <Circle size={20} />}
+                                             </button>
+                                          )}
+                                          <input placeholder={`Вариант ${i + 1}`} value={opt} onChange={(e) => { const newOpts = [...pollOptions]; newOpts[i] = e.target.value; setPollOptions(newOpts); }} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', padding: '10px 12px', borderRadius: '10px', color: '#FFF', fontSize: '15px' }} />
+                                          {i > 1 && (
+                                            <button onClick={() => setPollOptions(pollOptions.filter((_, idx) => idx !== i))} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', margin: '-8px' }}>
+                                              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14}/></div>
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {pollOptions.length < 5 && (
+                                        <button onClick={() => setPollOptions([...pollOptions, ''])} className="spring-btn" style={{ background: 'transparent', border: '1px dashed var(--border)', padding: '10px', borderRadius: '10px', color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                          <Plus size={16} /> Добавить вариант
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ============================== */}
+                        {/* === REQUEST SLIDE ==== */}
+                        {/* ============================== */}
+                        <div style={{ width: '50%', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+                            <div className="hide-scroll" style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
+                                {REQ_CATEGORIES.map(cat => (
+                                  <button 
+                                    key={cat.id} onClick={() => setReqCat(cat.id)} className="spring-btn"
+                                    style={{ 
+                                      padding: '8px 16px', borderRadius: '20px', flexShrink: 0,
+                                      border: `1px solid ${reqCat === cat.id ? 'var(--primary)' : 'transparent'}`,
+                                      background: reqCat === cat.id ? 'rgba(212, 255, 0, 0.1)' : 'var(--surface-elevated)',
+                                      color: reqCat === cat.id ? 'var(--primary)' : '#FFF',
+                                      fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px',
+                                      transition: 'all 0.2s'
+                                    }}
+                                  >
+                                    <span>{cat.icon}</span> {cat.label}
+                                  </button>
+                                ))}
+                            </div>
+                            
+                            <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', flex: '1 0 auto' }}>
+                                <div className="grow-wrap" data-replicated-value={reqText} style={{ marginBottom: '16px', width: '100%', flexShrink: 0 }}>
+                                  <textarea 
+                                    ref={reqTextareaRef} value={reqText} onChange={(e) => setReqText(e.target.value)}
+                                    placeholder={getReqPlaceholder()} className="hide-scroll"
+                                    style={{ width: '100%', background: 'transparent', border: 'none', color: '#FFF', fontSize: '18px', fontWeight: 500, lineHeight: 1.4, padding: '0', outline: 'none' }} 
+                                  />
+                                </div>
+
+                                {(reqRewardType !== 'none' || reqDeadlineType !== '24h' || postTags.length > 0 || photos.length > 0) && (
+                                  <div className="smart-block" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px', flexShrink: 0 }}>
+                                    
+                                    {reqRewardType !== 'none' && (
+                                      <span style={{ background: 'rgba(212, 255, 0, 0.1)', color: 'var(--primary)', padding: '6px 12px', borderRadius: '16px', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--primary)' }}>
+                                        {reqRewardType === 'money' ? '💰 ' : '☕ '} {reqRewardText || 'Награда'}
+                                        <button onClick={() => setReqRewardType('none')} className="spring-btn" style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: '10px', margin: '-10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <div style={{ background: 'rgba(212, 255, 0, 0.2)', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12}/></div>
+                                        </button>
+                                      </span>
+                                    )}
+
+                                    {reqDeadlineType !== '24h' && (
+                                      <span style={{ background: 'rgba(212, 255, 0, 0.1)', color: 'var(--primary)', padding: '6px 12px', borderRadius: '16px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--primary)' }}>
+                                        ⏳ {reqDeadlineType === '3h' ? 'До 3 часов' : reqDeadlineType === '3d' ? 'До 3 дней' : formatCustomDateStr(reqCustomDate)}
+                                        <button onClick={() => setReqDeadlineType('24h')} className="spring-btn" style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: '10px', margin: '-10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <div style={{ background: 'rgba(212, 255, 0, 0.2)', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12}/></div>
+                                        </button>
+                                      </span>
+                                    )}
+
+                                    {postTags.map(tag => (
+                                      <span key={tag} style={{ background: 'rgba(255,255,255,0.08)', color: '#FFF', padding: '6px 12px', borderRadius: '16px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                        #{tag}
+                                        <button onClick={() => toggleTag(tag)} className="spring-btn" style={{ background: 'transparent', border: 'none', color: '#FFF', cursor: 'pointer', padding: '10px', margin: '-10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12}/></div>
+                                        </button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {photos.length > 0 && (
+                                  <div className="hide-scroll smart-block" style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', flexShrink: 0 }}>
+                                    {photos.map((p, i) => (
+                                      <div key={i} style={{ position: 'relative', width: '100px', height: '100px', borderRadius: '16px', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border)' }}>
+                                        <img src={p} alt="demo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        <button onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))} style={{ position: 'absolute', top: 0, right: 0, background: 'transparent', border: 'none', width: 44, height: 44, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: '6px', cursor: 'pointer', zIndex: 10 }}>
+                                          <div style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', color: '#FFF', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14}/></div>
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                            </div>
+                        </div>
+
+                      </div>
+                  </div>
+
+                  {/* === БЛОК ПРИЛИПШЕГО ТУЛБАРА И ПЛАВАЮЩИХ POPUPS === */}
+                  <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 200 }}>
+                      
+                      {/* --- ABSOLUTE POPUP: ТЕГИ --- */}
+                      {showTagTool && (
+                          <div className="popup-block" style={{ 
+                              position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 10,
+                              padding: '16px', background: 'rgba(28, 28, 30, 0.95)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                              borderTop: '1px solid rgba(255,255,255,0.1)', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', boxShadow: '0 -10px 40px rgba(0,0,0,0.5)'
+                          }}>
+                              <div className="hide-scroll" style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '12px' }}>
+                                  {SUGGESTED_TAGS.filter(t => t.includes(postTagInput.toLowerCase()) && !postTags.includes(t)).map(t => (
+                                    <button key={t} onClick={() => addPostTag(t)} className="spring-btn" style={{ padding: '6px 12px', borderRadius: '16px', flexShrink: 0, background: 'rgba(255,255,255,0.1)', color: '#FFF', border: '1px solid rgba(255,255,255,0.05)', fontSize: '13px', fontWeight: 600 }}>#{t}</button>
+                                  ))}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.4)', borderRadius: '14px', padding: '8px 12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                      <Hash size={16} color="var(--text-muted)" />
+                                      <input autoFocus value={postTagInput} onChange={(e) => setPostTagInput(e.target.value)} placeholder="Свой тег (например: курсач)" style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF', fontSize: '15px', outline: 'none', marginLeft: '8px' }} onKeyPress={(e) => e.key === 'Enter' && addPostTag()} />
+                                  </div>
+                                  <button onClick={() => addPostTag()} className="spring-btn" style={{ width: '38px', height: '38px', borderRadius: '19px', background: postTagInput.trim() ? 'var(--primary)' : 'rgba(255,255,255,0.1)', color: postTagInput.trim() ? '#000' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      <Plus size={20} strokeWidth={2.5} />
+                                  </button>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* --- ABSOLUTE POPUP: НАГРАДА --- */}
+                      {activeTab === 'request' && showReqReward && (
+                          <div className="popup-block" style={{ 
+                              position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 10,
+                              padding: '16px', background: 'rgba(28, 28, 30, 0.95)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                              borderTop: '1px solid rgba(255,255,255,0.1)', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', boxShadow: '0 -10px 40px rgba(0,0,0,0.5)'
+                          }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.5px' }}>НАГРАДА</span>
+                                  <button onClick={() => setShowReqReward(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={16}/></button>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', marginBottom: reqRewardType !== 'none' ? '12px' : '0' }}>
+                                  <button onClick={() => setReqRewardType('none')} className="spring-btn" style={getSmartBlockBtnStyle(reqRewardType === 'none')}>❌ Нет</button>
+                                  <button onClick={() => setReqRewardType('money')} className="spring-btn" style={getSmartBlockBtnStyle(reqRewardType === 'money')}>💰 Деньги</button>
+                                  <button onClick={() => setReqRewardType('barter')} className="spring-btn" style={getSmartBlockBtnStyle(reqRewardType === 'barter')}>☕ Бартер</button>
+                              </div>
+                              {reqRewardType === 'money' && (
+                                <input value={reqRewardText} onChange={e => setReqRewardText(e.target.value)} placeholder="Сумма (например, 500 ₽)" style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px', borderRadius: '14px', color: '#FFF', fontSize: '15px' }} />
+                              )}
+                              {reqRewardType === 'barter' && (
+                                <input value={reqRewardText} onChange={e => setReqRewardText(e.target.value)} placeholder="Что взамен? (кофе, шоколадка...)" style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px', borderRadius: '14px', color: '#FFF', fontSize: '15px' }} />
+                              )}
+                          </div>
+                      )}
+
+                      {/* --- ABSOLUTE POPUP: ДЕДЛАЙН --- */}
+                      {activeTab === 'request' && showReqDeadline && (
+                          <div className="popup-block" style={{ 
+                              position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 10,
+                              padding: '16px', background: 'rgba(28, 28, 30, 0.95)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                              borderTop: '1px solid rgba(255,255,255,0.1)', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', boxShadow: '0 -10px 40px rgba(0,0,0,0.5)'
+                          }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.5px' }}>АКТУАЛЬНО ДО</span>
+                                  <button onClick={() => setShowReqDeadline(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={16}/></button>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                  <button onClick={() => {setReqDeadlineType('3h'); setShowReqPicker(false);}} className="spring-btn" style={getSmartBlockBtnStyle(reqDeadlineType === '3h')}>3 часа</button>
+                                  <button onClick={() => {setReqDeadlineType('24h'); setShowReqPicker(false);}} className="spring-btn" style={getSmartBlockBtnStyle(reqDeadlineType === '24h')}>24 часа</button>
+                                  <button onClick={() => {setReqDeadlineType('3d'); setShowReqPicker(false);}} className="spring-btn" style={getSmartBlockBtnStyle(reqDeadlineType === '3d')}>3 дня</button>
+                                  
+                                  {/* Кнопка открывает глобальный пикер (календарь) */}
+                                  <button onClick={() => {setReqDeadlineType('custom'); setShowReqPicker(true); document.activeElement?.blur();}} className="spring-btn" style={{ ...getSmartBlockBtnStyle(reqDeadlineType === 'custom'), flex: 1.2 }}>
+                                    {reqDeadlineType === 'custom' && reqCustomDate ? '📅 Выбрано' : 'Своя дата'}
+                                  </button>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* --- MAIN TOOLBAR --- */}
+                      <div style={{ padding: '10px 16px', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)', position: 'relative', zIndex: 20 }}>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button onClick={handleAddPhoto} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: photos.length > 0 ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: photos.length > 0 ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: photos.length >= 3 ? 0.5 : 1 }}>
+                            <ImageIcon size={20} />
+                          </button>
+                          
+                          <button onClick={handleToggleTags} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: showTagTool || postTags.length > 0 ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: showTagTool || postTags.length > 0 ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Hash size={20} />
+                          </button>
+
+                          {activeTab === 'post' && (
+                            <>
+                              {postCat !== 'lost_found' && postCat !== 'confessions' && (
+                                <button onClick={() => setHasPoll(!hasPoll)} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: hasPoll ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: hasPoll ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <BarChart2 size={20} />
+                                </button>
+                              )}
+                              <button onClick={() => setIsAnonymous(!isAnonymous)} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: isAnonymous ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: isAnonymous ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: postCat === 'confessions' ? 0.5 : 1, pointerEvents: postCat === 'confessions' ? 'none' : 'auto' }}>
+                                <VenetianMask size={20} />
+                              </button>
+                            </>
+                          )}
+
+                          {activeTab === 'request' && (
+                             <>
+                               <button onClick={handleToggleReward} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: showReqReward || reqRewardType !== 'none' ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: showReqReward || reqRewardType !== 'none' ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                 <Gift size={20} />
+                               </button>
+                               <button onClick={handleToggleDeadline} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: showReqDeadline || reqDeadlineType !== '24h' ? 'rgba(212, 255, 0, 0.15)' : 'var(--surface-elevated)', color: showReqDeadline || reqDeadlineType !== '24h' ? 'var(--primary)' : 'var(--text-muted)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                 <Clock size={20} />
+                               </button>
+                             </>
+                          )}
+                        </div>
+
+                        <button onClick={handleSend} className="spring-btn" style={{ 
+                            width: '40px', height: '40px', borderRadius: '20px', 
+                            background: canSend ? 'var(--primary)' : 'var(--surface-elevated)', 
+                            color: canSend ? '#000' : 'var(--text-muted)', 
+                            border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                            transition: 'all 0.3s' 
+                        }}>
+                          <Send size={18} style={{ marginLeft: canSend ? '2px' : '0', transition: 'all 0.2s' }}/>
+                        </button>
+                      </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            {/* ==========================================
+                ГЛОБАЛЬНЫЙ КАЛЕНДАРЬ (СИСТЕМНАЯ КЛАВИАТУРА)
+                Выезжает с самого низа, скрывая тулбар!
+                ========================================== */}
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 3000,
+              pointerEvents: (showEventPicker || showReqPicker) ? 'auto' : 'none',
+              display: 'flex', flexDirection: 'column', justifyContent: 'flex-end'
+            }}>
+              {/* Затемнение остального интерфейса */}
+              <div 
+                onClick={() => { setShowEventPicker(false); setShowReqPicker(false); }}
+                style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(2px)', opacity: (showEventPicker || showReqPicker) ? 1 : 0, transition: 'opacity 0.3s' }} 
+              />
+              
+              {/* Сама шторка календаря */}
+              <div style={{
+                background: 'var(--surface)', borderTop: '1px solid var(--border)',
+                borderTopLeftRadius: '24px', borderTopRightRadius: '24px',
+                padding: '24px 16px calc(env(safe-area-inset-bottom, 20px) + 16px)',
+                transform: (showEventPicker || showReqPicker) ? 'translateY(0)' : 'translateY(100%)',
+                transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+                position: 'relative'
+              }}>
+                {showEventPicker && (
+                  <SmartDatePicker 
+                    initialDate={eventCustomDate} 
+                    onSave={(iso) => { setEventCustomDate(iso); setShowEventPicker(false); }} 
+                    onCancel={() => { setShowEventPicker(false); if(!eventCustomDate) setEventDate('today'); }} 
+                  />
+                )}
+                {showReqPicker && (
+                  <SmartDatePicker 
+                    initialDate={reqCustomDate} 
+                    onSave={(iso) => { setReqCustomDate(iso); setShowReqPicker(false); }} 
+                    onCancel={() => { setShowReqPicker(false); if(!reqCustomDate) setReqDeadlineType('24h'); }} 
+                  />
+                )}
+              </div>
+            </div>
+
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

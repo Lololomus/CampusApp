@@ -12,6 +12,7 @@ import theme from '../../theme';
 import { Z_MARKET_DETAIL } from '../../constants/zIndex';
 import { hapticFeedback } from '../../utils/telegram';
 import DropdownMenu from '../DropdownMenu';
+import OverflowMenuButton from '../shared/OverflowMenuButton';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
@@ -226,7 +227,6 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   };
 
   const handleMenuToggle = () => {
-    hapticFeedback('light');
     setShowMenu(!showMenu);
   };
 
@@ -392,13 +392,14 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                 </button>
                 
                 <div style={styles.menuContainer} ref={menuRef}>
-                  <button 
+                  <OverflowMenuButton
+                    isOpen={showMenu}
+                    onToggle={handleMenuToggle}
+                    icon={<span style={styles.dotsIcon}>⋯</span>}
                     style={styles.actionButton}
-                    onClick={handleMenuToggle}
-                    aria-label="Меню"
-                  >
-                    <span style={styles.dotsIcon}>⋯</span>
-                  </button>
+                    activeStyle={styles.menuActionButtonActive}
+                    activeBorderColor={theme.colors.border}
+                  />
                   
                   <DropdownMenu
                     isOpen={showMenu}
@@ -733,6 +734,10 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     color: theme.colors.text,
+  },
+  menuActionButtonActive: {
+    background: 'rgba(255,255,255,0.08)',
+    color: '#FFFFFF',
   },
 
   actionButtonAnimating: {

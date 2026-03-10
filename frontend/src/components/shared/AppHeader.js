@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Search, Filter, X, SlidersHorizontal } from 'lucide-react';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
+import { useStore } from '../../store';
 
 const AppHeader = ({
   title = '',
@@ -34,6 +35,20 @@ const AppHeader = ({
   const [isScrolled, setIsScrolled] = useState(false);
   const [isManualExpanded, setIsManualExpanded] = useState(false);
   const premiumSearchRef = useRef(null);
+  const isModalOpen = useStore((state) => Boolean(
+    state.showAuthModal ||
+    state.showCreateModal ||
+    state.showCreateRequestModal ||
+    state.showCreateMarketItem ||
+    state.showEditModal ||
+    state.editingContent ||
+    state.viewPostId ||
+    state.currentRequest ||
+    state.currentMarketItem ||
+    state.showSettingsModal ||
+    state.showLikesModal ||
+    state.showMatchModal
+  ));
 
   // #New Premium: drawer виден если не скроллили ИЛИ если юзер нажал лупу
   const showDrawer = !isScrolled || isManualExpanded;
@@ -83,6 +98,7 @@ const AppHeader = ({
   // ===== SCROLL HANDLER =====
   useEffect(() => {
     const handleScroll = () => {
+      if (isModalOpen || document.body.style.position === 'fixed') return;
       const currentScrollY = window.scrollY;
 
       if (currentScrollY < 10) {
@@ -98,12 +114,13 @@ const AppHeader = ({
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
+  }, [lastScrollY, isModalOpen]);
 
   // #New Premium: scroll-детект для drawer-анимации
   useEffect(() => {
     if (!premium) return;
     const handlePremiumScroll = () => {
+      if (isModalOpen || document.body.style.position === 'fixed') return;
       const y = window.scrollY;
       if (y > 40) {
         setIsScrolled(true);
@@ -114,7 +131,7 @@ const AppHeader = ({
     };
     window.addEventListener('scroll', handlePremiumScroll, { passive: true });
     return () => window.removeEventListener('scroll', handlePremiumScroll);
-  }, [premium]);
+  }, [premium, isModalOpen]);
 
   // #New Premium: автофокус при ручном открытии
   useEffect(() => {

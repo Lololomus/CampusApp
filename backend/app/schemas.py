@@ -301,10 +301,10 @@ class PostCreate(BaseModel):
     @field_validator('title')
     @classmethod
     def validate_title(cls, v, info):
-        category = info.data.get('category')
-        if category != 'polls' and (not v or len(v.strip()) < 3):
-            raise ValueError('Заголовок обязателен (мин. 3 символа)')
-        return v
+        if v is None:
+            return None
+        normalized = v.strip()
+        return normalized or None
     
     @field_validator('body')
     @classmethod
@@ -367,7 +367,7 @@ class PostResponse(BaseModel):
     author_id: Optional[int] = None
     author: Optional[UserShort] = None
     category: str
-    title: str
+    title: Optional[str] = None
     body: str
     tags: List[str] = []
     

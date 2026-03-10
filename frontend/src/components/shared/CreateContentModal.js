@@ -1,53 +1,122 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  X, Hash, Plus, Check, AlertCircle, MapPin, Calendar, 
-  Image as ImageIcon, Trash2, BarChart2, Clock, EyeOff, Eye,
-  Star, Gift
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  X,
+  Image as ImageIcon,
+  BarChart2,
+  VenetianMask,
+  MapPin,
+  Send,
+  Plus,
+  Hash,
+  Settings,
+  Users,
+  CheckCircle,
+  Circle,
+  HelpCircle,
+  AlertCircle,
+  Gift,
+  Clock,
 } from 'lucide-react';
+import imageCompression from 'browser-image-compression';
+import { useSwipe } from '../../hooks/useSwipe';
 import { useStore } from '../../store';
 import { createPost, createRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { Z_MODAL_CREATE_POST, getOverlayZIndex } from '../../constants/zIndex';
-import imageCompression from 'browser-image-compression';
-import { REWARD_TYPES, REWARD_TYPE_LABELS, REWARD_TYPE_ICONS, CATEGORIES } from '../../types';
-import PollCreator from '../posts/PollCreator'; 
+import { REWARD_TYPES } from '../../types';
+import { POST_LIMITS, REQUEST_LIMITS, IMAGE_SETTINGS } from '../../constants/contentConstants';
+import {
+  CREATE_CONTENT_CATEGORY_CAPABILITIES,
+  CREATE_CONTENT_POST_CATEGORIES,
+  CREATE_CONTENT_POST_PLACEHOLDERS,
+  CREATE_CONTENT_REQUEST_DEADLINE_OPTIONS,
+  CREATE_CONTENT_REQUEST_CATEGORIES,
+  CREATE_CONTENT_REQUEST_PLACEHOLDERS,
+  CREATE_CONTENT_REQUEST_REWARD_OPTIONS,
+  CREATE_CONTENT_SUGGESTED_TAGS,
+} from '../../constants/createContentUiConfig';
+import { parsePostSingleText, parseRequestSingleText } from '../../utils/contentTextParser';
 import ConfirmationDialog from './ConfirmationDialog';
-import { CharCounter, getBorderColor } from './FormValidation';
 import { toast } from './Toast';
 import { useTelegramScreen } from './telegram/useTelegramScreen';
-import DrilldownHeader from './DrilldownHeader';
-import { 
-  POST_LIMITS, 
-  REQUEST_LIMITS, 
-  IMAGE_SETTINGS 
-} from '../../constants/contentConstants';
+import SmartDatePicker from './SmartDatePicker';
 
-// ===== CONSTANTS =====
-const POPULAR_TAGS = ['python', 'react', 'помощь', 'курсовая', 'сопромат'];
-const REQUEST_TAGS = ['помощь', 'срочно', 'курсовая', 'спорт', 'подвезти'];
-
-const MAX_TITLE_LENGTH = POST_LIMITS.TITLE_MAX;
-const MAX_BODY_LENGTH = POST_LIMITS.BODY_MAX;
-const MAX_TAGS = POST_LIMITS.TAGS_MAX;
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
+const MAX_TAGS = POST_LIMITS.TAGS_MAX;
+const MAX_TITLE_LENGTH = POST_LIMITS.TITLE_MAX;
 const ALLOWED_FORMATS = IMAGE_SETTINGS.ALLOWED_FORMATS;
 
-const POST_CATEGORIES = CATEGORIES.map(cat => ({
-  ...cat,
-  color: theme.colors[cat.value] || theme.colors.primary
-}));
+const normalizeTag = (raw) =>
+  String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^#+/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/[^a-zа-яё0-9_-]/gi, '');
 
-const REQUEST_CATEGORIES = [
-  { value: 'study', label: 'Учёба', icon: '📚', color: '#3b82f6' },
-  { value: 'help', label: 'Помощь', icon: '🤝', color: '#10b981' },
-  { value: 'hangout', label: 'Движ', icon: '🎉', color: '#f59e0b' }
-];
+const formatCustomDate = (value) => {
+  if (!value) return 'Выбрать 📅';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return 'Выбрать 📅';
+  return d.toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getFirstNonEmptyLine = (rawText) =>
+  String(rawText || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || '';
+
+const buildEventDateIso = (mode, customDate) => {
+  const now = new Date();
+  const date = new Date();
+
+  if (mode === 'today') {
+    date.setHours(18, 0, 0, 0);
+    return date.toISOString();
+  }
+  if (mode === 'tomorrow') {
+    date.setDate(now.getDate() + 1);
+    date.setHours(18, 0, 0, 0);
+    return date.toISOString();
+  }
+  if (mode === 'custom' && customDate) {
+    const picked = new Date(customDate);
+    if (!Number.isNaN(picked.getTime())) return picked.toISOString();
+  }
+  return null;
+};
+
+const formatRequestDeadlineLabel = (deadlineType, customDate) => {
+  if (deadlineType === '3h') return 'До 3 часов';
+  if (deadlineType === '3d') return 'До 3 дней';
+  if (deadlineType === 'custom') return formatCustomDate(customDate);
+  return '';
+};
+
+const buildRequestExpiresAtIso = (deadlineType, customDate) => {
+  const now = Date.now();
+  if (deadlineType === '3h') return new Date(now + 3 * 60 * 60 * 1000).toISOString();
+  if (deadlineType === '24h') return new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  if (deadlineType === '3d') return new Date(now + 72 * 60 * 60 * 1000).toISOString();
+  if (deadlineType === 'custom') {
+    const picked = new Date(customDate || '');
+    if (!Number.isNaN(picked.getTime())) return picked.toISOString();
+  }
+  return null;
+};
 
 function CreateContentModal({ onClose }) {
   const { addNewPost, addNewRequest, feedSubTab, setFeedSubTab } = useStore();
 
-  // ===== GLOBAL STATE =====
+  const [isMounted, setIsMounted] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,609 +124,560 @@ function CreateContentModal({ onClose }) {
   const [error, setError] = useState('');
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
-  // ===== POST STATE =====
-  const [postCategory, setPostCategory] = useState('news');
-  const [postTitle, setPostTitle] = useState('');
-  const [postBody, setPostBody] = useState('');
+  const [activeTab, setActiveTab] = useState(feedSubTab === 'requests' ? 'request' : 'post');
+
+  const [postCategory, setPostCategory] = useState(CREATE_CONTENT_POST_CATEGORIES[0]?.value || 'news');
+  const [postText, setPostText] = useState('');
   const [postTags, setPostTags] = useState([]);
   const [postTagInput, setPostTagInput] = useState('');
-   
-  const [images, setImages] = useState([]);
+  const [showTagTool, setShowTagTool] = useState(false);
+  const [photos, setPhotos] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
   const [processingImages, setProcessingImages] = useState([]);
 
   const [isAnonymous, setIsAnonymous] = useState(false);
-   
-  const [lostOrFound, setLostOrFound] = useState('lost');
-  const [itemDescription, setItemDescription] = useState('');
+  const [lfType, setLfType] = useState('lost');
+  const [eventDateMode, setEventDateMode] = useState('today');
+  const [customDate, setCustomDate] = useState('');
   const [location, setLocation] = useState('');
-  const [rewardType, setRewardType] = useState(REWARD_TYPES.NONE);
-  const [rewardValue, setRewardValue] = useState('');
-  const [eventName, setEventName] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [eventLocation, setEventLocation] = useState('');
-  const [eventContact, setEventContact] = useState('');
-  const [activeEventDateBtn, setActiveEventDateBtn] = useState(null);
-  const [isImportant, setIsImportant] = useState(false);
 
-  const [activeTab, setActiveTab] = useState(
-  feedSubTab === 'requests' ? 'request' : 'post'
-  );
-   
   const [hasPoll, setHasPoll] = useState(false);
-  const [pollData, setPollData] = useState({
-    question: '',
-    options: ['', ''],
-    type: 'regular',
-    correctOption: null,
-    allowMultiple: false,
-    isAnonymous: true,
-  });
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [showPollSettings, setShowPollSettings] = useState(false);
+  const [pollType, setPollType] = useState('regular');
+  const [pollCorrectOption, setPollCorrectOption] = useState(null);
+  const [pollMulti, setPollMulti] = useState(false);
+  const [pollAnon, setPollAnon] = useState(true);
 
-  // ===== REQUEST STATE =====
-  const [reqCategory, setReqCategory] = useState('study');
-  const [reqTitle, setReqTitle] = useState('');
-  const [reqBody, setReqBody] = useState('');
-  const [reqTags, setReqTags] = useState([]);
-  const [reqTagInput, setReqTagInput] = useState('');
-  const [expiresAt, setExpiresAt] = useState('');
-  const [activeTimeBtn, setActiveTimeBtn] = useState(72);
-  const [reqRewardType, setReqRewardType] = useState(REWARD_TYPES.NONE);
+  const [reqCategory, setReqCategory] = useState(CREATE_CONTENT_REQUEST_CATEGORIES[0]?.value || 'help');
+  const [reqText, setReqText] = useState('');
+  const [showReqReward, setShowReqReward] = useState(false);
+  const [reqRewardType, setReqRewardType] = useState('none');
   const [reqRewardValue, setReqRewardValue] = useState('');
-  const [reqImages, setReqImages] = useState([]);
-  const [reqImageFiles, setReqImageFiles] = useState([]);
-  const [reqProcessingImages, setReqProcessingImages] = useState([]);
+  const [showReqDeadline, setShowReqDeadline] = useState(false);
+  const [reqDeadlineType, setReqDeadlineType] = useState('24h');
+  const [reqCustomDate, setReqCustomDate] = useState('');
+  const [showEventPicker, setShowEventPicker] = useState(false);
+  const [showReqPicker, setShowReqPicker] = useState(false);
 
+  const sheetRef = useRef(null);
+  const postTextareaRef = useRef(null);
+  const reqTextareaRef = useRef(null);
+  const postFileInputRef = useRef(null);
+  const postTagInputRef = useRef(null);
 
-  // ===== REFS =====
-  const postTitleRef = useRef(null);
-  const reqTitleRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const reqFileInputRef = useRef(null);
+  const categoryCapabilities =
+    CREATE_CONTENT_CATEGORY_CAPABILITIES[postCategory] || CREATE_CONTENT_CATEGORY_CAPABILITIES.news;
+  const postPlaceholder =
+    CREATE_CONTENT_POST_PLACEHOLDERS[postCategory] || CREATE_CONTENT_POST_PLACEHOLDERS.default;
+  const requestPlaceholder =
+    CREATE_CONTENT_REQUEST_PLACEHOLDERS[reqCategory] || CREATE_CONTENT_REQUEST_PLACEHOLDERS.default;
 
-  // ===== EFFECTS =====
+  const filteredSuggestions = useMemo(() => {
+    const query = postTagInput.trim().toLowerCase();
+    return CREATE_CONTENT_SUGGESTED_TAGS.filter((tag) => {
+      if (postTags.includes(tag)) return false;
+      return query ? tag.includes(query) : true;
+    });
+  }, [postTagInput, postTags]);
+
+  const parsedRequestText = useMemo(
+    () => parseRequestSingleText(reqText, { titleMax: REQUEST_LIMITS.TITLE_MAX }),
+    [reqText]
+  );
+
+  const resolvedRequestExpiresAt = useMemo(
+    () => buildRequestExpiresAtIso(reqDeadlineType, reqCustomDate),
+    [reqDeadlineType, reqCustomDate]
+  );
+
+  const isAnyPickerOpen = showEventPicker || showReqPicker;
 
   useEffect(() => {
-    setTimeout(() => setIsVisible(true), 50);
+    setIsMounted(true);
+    const timer = setTimeout(() => setIsVisible(true), 20);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (window.innerWidth >= 768 && !isSubmitting) {
-      if (activeTab === 'post') setTimeout(() => postTitleRef.current?.focus(), 300);
-      else setTimeout(() => reqTitleRef.current?.focus(), 300);
-    }
+    const body = document.body;
+    const root = document.getElementById('root');
+    const html = document.documentElement;
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+
+    const prevBodyStyle = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    };
+    const prevRootOverflow = root?.style.overflow || '';
+    const prevHtmlOverflow = html.style.overflow;
+    const shouldRestoreScroll = prevBodyStyle.position !== 'fixed';
+
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    html.style.overflow = 'hidden';
+    if (root) root.style.overflow = 'hidden';
+
+    const restoreScrollPosition = () => {
+      const prevScrollBehavior = html.style.scrollBehavior;
+      html.style.scrollBehavior = 'auto';
+      window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+        setTimeout(() => {
+          window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+          html.style.scrollBehavior = prevScrollBehavior;
+        }, 0);
+      });
+    };
+
+    return () => {
+      body.style.overflow = prevBodyStyle.overflow;
+      body.style.position = prevBodyStyle.position;
+      body.style.top = prevBodyStyle.top;
+      body.style.left = prevBodyStyle.left;
+      body.style.right = prevBodyStyle.right;
+      body.style.width = prevBodyStyle.width;
+      html.style.overflow = prevHtmlOverflow;
+      if (root) root.style.overflow = prevRootOverflow;
+      if (shouldRestoreScroll) restoreScrollPosition();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (window.innerWidth < 768 || isSubmitting) return;
+    const timer = setTimeout(() => {
+      if (activeTab === 'post') postTextareaRef.current?.focus();
+      else reqTextareaRef.current?.focus();
+    }, 220);
+    return () => clearTimeout(timer);
   }, [activeTab, isSubmitting]);
 
   useEffect(() => {
-    if (isAnonymous) {
-      setPollData(prev => ({ ...prev, isAnonymous: true }));
+    if (showTagTool) {
+      const timer = setTimeout(() => postTagInputRef.current?.focus(), 60);
+      return () => clearTimeout(timer);
     }
-  }, [isAnonymous]);
+    return undefined;
+  }, [showTagTool]);
 
   useEffect(() => {
-    const draft = localStorage.getItem('createPostDraft');
-    if (draft) {
-      try {
-        const parsed = JSON.parse(draft);
-        if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
-          setPostCategory(parsed.postCategory || 'news');
-          setPostTitle(parsed.postTitle || '');
-          setPostBody(parsed.postBody || '');
-        }
-      } catch(e) {}
-    }
-  }, []);
+    setShowReqReward(false);
+    setShowReqDeadline(false);
+    setShowEventPicker(false);
+    setShowReqPicker(false);
+  }, [activeTab]);
 
   useEffect(() => {
-    if (!expiresAt) {
-      const hours = reqCategory === 'study' ? 72 : 24;
-      const targetDate = new Date(Date.now() + hours * 60 * 60 * 1000);
-      setExpiresAt(targetDate.toISOString());
-      setActiveTimeBtn(hours);
-    }
-  }, [reqCategory, expiresAt]);
+    setLocation('');
+    setEventDateMode('today');
+    setCustomDate('');
+    setShowTagTool(false);
+    setHasPoll(false);
+    setPollOptions(['', '']);
+    setShowPollSettings(false);
+    setPollType('regular');
+    setPollCorrectOption(null);
+    setPollMulti(false);
+    setPollAnon(true);
 
-  useEffect(() => {
-    setItemDescription(''); setLocation(''); 
-    setEventName(''); setEventDate(''); setEventLocation(''); setEventContact('');
-    setRewardType(REWARD_TYPES.NONE); setRewardValue('');
-    setIsImportant(false);
-    setActiveEventDateBtn(null);
-    
     if (postCategory === 'confessions') {
       setIsAnonymous(true);
-      setImages([]); setImageFiles([]);
-      setError('');
+      setPhotos([]);
+      setImageFiles([]);
+      setProcessingImages([]);
     } else {
       setIsAnonymous(false);
     }
-    
+
     if (postCategory === 'polls') {
       setHasPoll(true);
-      setImages([]); setImageFiles([]);
-    } else {
-      setHasPoll(false);
+      setPhotos([]);
+      setImageFiles([]);
+      setProcessingImages([]);
     }
   }, [postCategory]);
 
-  // ===== HANDLERS =====
-
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-    if (postCategory === 'confessions' || postCategory === 'polls') {
-      hapticFeedback('error');
-      toast.error(`В категории ${postCategory === 'confessions' ? 'Признания' : 'Опросы'} нельзя прикреплять изображения`);
-      return;
-    }
-
-    const remainingSlots = MAX_IMAGES - images.length - processingImages.length;
-    if (remainingSlots <= 0) {
-      hapticFeedback('error');
-      toast.error(`Максимум ${MAX_IMAGES} изображений`);
-      return;
-    }
-
-    const filesToProcess = files.slice(0, remainingSlots);
-    const newProcessors = filesToProcess.map(() => ({ id: Math.random().toString(36).substr(2, 9), progress: 0 }));
-    setProcessingImages(prev => [...prev, ...newProcessors]);
-    hapticFeedback('light');
-
-    try {
-      for (let i = 0; i < filesToProcess.length; i++) {
-        const file = filesToProcess[i];
-        const procId = newProcessors[i].id;
-
-        if (!ALLOWED_FORMATS.includes(file.type)) {
-          setProcessingImages(prev => prev.filter(p => p.id !== procId));
-          continue;
-        }
-
-        const options = {
-          maxSizeMB: 1,
-          maxWidthOrHeight: 1600,
-          useWebWorker: true,
-          onProgress: (prog) => {
-            setProcessingImages(prev => prev.map(p => p.id === procId ? { ...p, progress: prog } : p));
-          }
-        };
-
-        const compressedFile = await imageCompression(file, options);
-        
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setImages(prev => [...prev, ev.target.result]);
-          setImageFiles(prev => [...prev, compressedFile]);
-          setProcessingImages(prev => prev.filter(p => p.id !== procId));
-        };
-        reader.readAsDataURL(compressedFile);
-      }
-      hapticFeedback('success');
-    } catch (err) { 
-      console.error(err);
-      setProcessingImages([]);
-    }
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleReqFileSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-
-    const remainingSlots = MAX_IMAGES - reqImages.length - reqProcessingImages.length;
-    if (remainingSlots <= 0) {
-      hapticFeedback('error');
-      toast.error(`Максимум ${MAX_IMAGES} изображений`);
-      return;
-    }
-
-    const filesToProcess = files.slice(0, remainingSlots);
-    const newProcessors = filesToProcess.map(() => ({ id: Math.random().toString(36).substr(2, 9), progress: 0 }));
-    setReqProcessingImages(prev => [...prev, ...newProcessors]);
-    hapticFeedback('light');
-
-    try {
-      for (let i = 0; i < filesToProcess.length; i++) {
-        const file = filesToProcess[i];
-        const procId = newProcessors[i].id;
-
-        if (!ALLOWED_FORMATS.includes(file.type)) {
-          setReqProcessingImages(prev => prev.filter(p => p.id !== procId));
-          continue;
-        }
-
-        const options = {
-          maxSizeMB: 1,
-          maxWidthOrHeight: 1600,
-          useWebWorker: true,
-          onProgress: (prog) => {
-            setReqProcessingImages(prev => prev.map(p => p.id === procId ? { ...p, progress: prog } : p));
-          }
-        };
-
-        const compressedFile = await imageCompression(file, options);
-        
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setReqImages(prev => [...prev, ev.target.result]);
-          setReqImageFiles(prev => [...prev, compressedFile]);
-          setReqProcessingImages(prev => prev.filter(p => p.id !== procId));
-        };
-        reader.readAsDataURL(compressedFile);
-      }
-      hapticFeedback('success');
-    } catch (err) { 
-      console.error(err);
-      setReqProcessingImages([]);
-    }
-    if (reqFileInputRef.current) reqFileInputRef.current.value = '';
-  };
-
-  const handleAddImageClick = () => {
-    if (postCategory === 'confessions' || postCategory === 'polls') {
-      hapticFeedback('error');
-      return;
-    }
-    fileInputRef.current?.click();
-  };
-
-  const addPostTag = (tag) => {
-    const val = (tag || postTagInput).trim().toLowerCase();
-    if (val && !postTags.includes(val) && postTags.length < MAX_TAGS && val.length <= 20) {
-      setPostTags([...postTags, val]);
-      setPostTagInput('');
-      hapticFeedback('light');
-    }
-  };
-
-  const addReqTag = (tag) => {
-    const val = (tag || reqTagInput).trim().toLowerCase();
-    if (val && !reqTags.includes(val) && reqTags.length < MAX_TAGS && val.length <= 20) {
-      setReqTags([...reqTags, val]);
-      setReqTagInput('');
-      hapticFeedback('light');
-    }
-  };
-
-  const setQuickTime = (hours) => {
-    hapticFeedback('light');
-    const targetDate = new Date(Date.now() + hours * 60 * 60 * 1000);
-    setExpiresAt(targetDate.toISOString());
-    setActiveTimeBtn(hours);
-  };
-
-  const setQuickDate = (type) => {
-    hapticFeedback('light');
-    const now = new Date();
-    let targetDate = new Date();
-    if (type === 'today') targetDate.setHours(18, 0, 0, 0);
-    else if (type === 'tomorrow') { targetDate.setDate(now.getDate() + 1); targetDate.setHours(18, 0, 0, 0); }
-    else if (type === 'week') { targetDate.setDate(now.getDate() + 7); targetDate.setHours(18, 0, 0, 0); }
-    
-    const year = targetDate.getFullYear();
-    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
-    const day = String(targetDate.getDate()).padStart(2, '0');
-    const hours = String(targetDate.getHours()).padStart(2, '0');
-    const minutes = String(targetDate.getMinutes()).padStart(2, '0');
-    
-    setEventDate(`${year}-${month}-${day}T${hours}:${minutes}`);
-    setActiveEventDateBtn(type);
-  };
-
-  // ===== VALIDATION =====
-  const isPostFormValid = () => {
-    if (postCategory === 'polls') {
-      const validOptions = pollData.options.filter(o => o.trim()).length;
-      return pollData.question.trim().length >= 3 && validOptions >= 2;
-    }
-    const basicValid = postTitle.trim().length >= 3 && postBody.trim().length >= 10;
-    if (postCategory === 'lost_found') return basicValid && itemDescription.trim().length >= 5 && location.trim().length >= 3;
-    if (postCategory === 'events') return basicValid && eventName.trim().length >= 3 && eventDate && eventLocation.trim().length >= 3;
-    return basicValid;
-  };
-
-  const isRequestFormValid = () => {
-    return reqTitle.trim().length >= 10 && reqBody.trim().length >= 20 && !!expiresAt;
-  };
-
   const hasAnyContent = () => {
-    if (activeTab === 'post') return postTitle.trim().length >= 3 || postBody.trim().length >= 10;
-    return reqTitle.trim().length >= 10 || reqBody.trim().length >= 20;
-  };
+    const hasPostDraft =
+      postText.trim().length > 0 ||
+      postTags.length > 0 ||
+      photos.length > 0 ||
+      processingImages.length > 0 ||
+      showTagTool ||
+      hasPoll ||
+      location.trim().length > 0 ||
+      customDate.trim().length > 0;
 
-  const handleClose = () => {
-    if (hasAnyContent() && !isSubmitting) {
-      hapticFeedback('light');
-      setShowConfirmation(true);
-    } else {
-      confirmClose();
-    }
+    const hasRequestDraft =
+      reqText.trim().length > 0 ||
+      reqRewardType !== 'none' ||
+      reqRewardValue.trim().length > 0 ||
+      reqDeadlineType !== '24h' ||
+      reqCustomDate.trim().length > 0;
+
+    return hasPostDraft || hasRequestDraft;
   };
 
   const confirmClose = () => {
     hapticFeedback('light');
     setIsVisible(false);
-    setTimeout(() => {
-      onClose();
-      localStorage.removeItem('createPostDraft');
-      localStorage.removeItem('createRequestDraft');
-    }, 300);
+    setTimeout(() => onClose(), 320);
+  };
+
+  const swipeHandlers = useSwipe({
+    elementRef: sheetRef,
+    onSwipeDown: () => {
+      if (showConfirmation) return;
+      if (hasAnyContent()) setShowConfirmation(true);
+      else confirmClose();
+    },
+    isModal: true,
+    threshold: 120,
+  });
+
+  const canUsePollByCategory =
+    postCategory !== 'lost_found' &&
+    postCategory !== 'confessions' &&
+    categoryCapabilities.allowPoll;
+
+  const isPollValid = () => {
+    const filled = pollOptions.map((v) => v.trim()).filter(Boolean);
+    if (filled.length < 2) return false;
+    if (pollType === 'quiz') {
+      if (pollCorrectOption === null || pollCorrectOption < 0) return false;
+      if (pollCorrectOption >= pollOptions.length) return false;
+      if (!pollOptions[pollCorrectOption]?.trim()) return false;
+    }
+    return true;
+  };
+
+  const isPostFormValid = () => {
+    const textValid = postText.trim().length >= POST_LIMITS.BODY_MIN;
+    if (postCategory === 'polls') return postText.trim().length >= 3 && isPollValid();
+    if (!textValid) return false;
+    if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
+    if (postCategory === 'lost_found') return location.trim().length >= 3;
+    if (hasPoll) return isPollValid();
+    return true;
+  };
+
+  const isRequestFormValid = () =>
+    parsedRequestText.title.length >= REQUEST_LIMITS.TITLE_MIN &&
+    parsedRequestText.body.length >= REQUEST_LIMITS.BODY_MIN &&
+    Boolean(resolvedRequestExpiresAt);
+
+  const canSend = activeTab === 'post' ? isPostFormValid() : isRequestFormValid();
+
+  const handleClose = () => {
+    if (isSubmitting) return;
+    if (hasAnyContent()) {
+      hapticFeedback('light');
+      setShowConfirmation(true);
+      return;
+    }
+    confirmClose();
+  };
+
+  const toggleTagTool = () => {
+    hapticFeedback('light');
+    setShowTagTool((prev) => !prev);
+    setShowReqReward(false);
+    setShowReqDeadline(false);
+  };
+
+  const toggleReqReward = () => {
+    hapticFeedback('light');
+    setShowReqReward((prev) => !prev);
+    setShowReqDeadline(false);
+    setShowTagTool(false);
+  };
+
+  const toggleReqDeadline = () => {
+    hapticFeedback('light');
+    setShowReqDeadline((prev) => !prev);
+    setShowReqReward(false);
+    setShowTagTool(false);
+  };
+
+  const selectReqDeadline = (value) => {
+    setReqDeadlineType(value);
+    if (value !== 'custom') setShowReqPicker(false);
+  };
+
+  const addPostTag = (tagValue) => {
+    const tag = normalizeTag(tagValue || postTagInput);
+    if (!tag || postTags.includes(tag) || postTags.length >= MAX_TAGS || tag.length > 20) return;
+    setPostTags((prev) => [...prev, tag]);
+    setPostTagInput('');
+    hapticFeedback('light');
+  };
+
+  const handleSharedFileSelect = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    if (activeTab === 'post' && !categoryCapabilities.allowImages) {
+      hapticFeedback('error');
+      toast.error(`В категории ${postCategory === 'confessions' ? 'Признания' : 'Опросы'} нельзя прикреплять изображения`);
+      return;
+    }
+
+    const remainingSlots = MAX_IMAGES - photos.length - processingImages.length;
+    if (remainingSlots <= 0) {
+      hapticFeedback('error');
+      toast.error(`Максимум ${MAX_IMAGES} изображений`);
+      return;
+    }
+
+    const filesToProcess = files.slice(0, remainingSlots);
+    const processors = filesToProcess.map(() => ({ id: Math.random().toString(36).slice(2, 10), progress: 0 }));
+    setProcessingImages((prev) => [...prev, ...processors]);
+
+    try {
+      for (let i = 0; i < filesToProcess.length; i += 1) {
+        const file = filesToProcess[i];
+        const processorId = processors[i].id;
+
+        if (!ALLOWED_FORMATS.includes(file.type)) {
+          setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
+          continue;
+        }
+
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1600,
+          useWebWorker: true,
+          onProgress: (progress) => {
+            setProcessingImages((prev) => prev.map((p) => (p.id === processorId ? { ...p, progress } : p)));
+          },
+        });
+
+        await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (readEvent) => {
+            setPhotos((prev) => [...prev, readEvent.target.result]);
+            setImageFiles((prev) => [...prev, compressed]);
+            setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
+            resolve();
+          };
+          reader.readAsDataURL(compressed);
+        });
+      }
+
+      hapticFeedback('success');
+    } catch (err) {
+      console.error(err);
+      setProcessingImages([]);
+      toast.error('Ошибка обработки изображений');
+    } finally {
+      if (postFileInputRef.current) postFileInputRef.current.value = '';
+    }
+  };
+
+  const buildPollPayload = () => {
+    const options = pollOptions.map((opt) => opt.trim()).filter(Boolean);
+    return {
+      question: postText.trim() || 'Опрос',
+      options,
+      type: pollType,
+      correct_option: pollType === 'quiz' ? (pollCorrectOption ?? 0) : null,
+      allow_multiple: pollType === 'quiz' ? false : pollMulti,
+      is_anonymous: pollAnon || isAnonymous,
+    };
   };
 
   const handleSubmit = async () => {
     setAttemptedSubmit(true);
     setError('');
-    
+
     if (activeTab === 'post') {
       if (!isPostFormValid()) {
         hapticFeedback('error');
-        if (postCategory === 'polls') setError('Введите вопрос (3+) и минимум 2 варианта ответа');
-        else if (postCategory === 'lost_found') setError('Заполните описание предмета и место');
-        else if (postCategory === 'events') setError('Заполните название, дату и место события');
-        else setError('Заполните заголовок (3+) и описание (10+)');
+        if (postCategory === 'polls') setError('Введите текст вопроса и минимум 2 варианта ответа');
+        else if (postCategory === 'lost_found') setError('Укажите место для категории Находки');
+        else if (postCategory === 'events') setError('Укажите дату и место события');
+        else setError(`Минимум ${POST_LIMITS.BODY_MIN} символов текста`);
         return;
-      }
-
-      if (hasPoll && postCategory !== 'polls') {
-        if (!pollData.question.trim() || pollData.options.filter(o=>o.trim()).length < 2) {
-          setError('Заполните опрос корректно');
-          return;
-        }
       }
 
       setIsSubmitting(true);
       setUploadProgress(10);
-      
+
       try {
         const formData = new FormData();
         formData.append('category', postCategory);
-        
+
         if (postCategory === 'polls') {
-          formData.append('title', pollData.question.trim() || 'Опрос');
-          formData.append('body', postBody.trim() || 'Опрос');
+          const pollQuestion = postText.trim() || 'Опрос';
+          formData.append('title', pollQuestion.slice(0, MAX_TITLE_LENGTH));
+          formData.append('body', pollQuestion);
         } else {
-          formData.append('title', postTitle.trim());
-          formData.append('body', postBody.trim());
+          const parsedPost = parsePostSingleText(postText, {
+            titleMax: POST_LIMITS.TITLE_MAX,
+            bodyMin: POST_LIMITS.BODY_MIN,
+          });
+          formData.append('title', parsedPost.title || '');
+          formData.append('body', parsedPost.body || '');
         }
-        
+
         formData.append('tags', JSON.stringify(postTags));
         formData.append('is_anonymous', isAnonymous);
         formData.append('enable_anonymous_comments', postCategory === 'confessions' ? true : isAnonymous);
-        
+
         if (postCategory === 'lost_found') {
-          formData.append('lost_or_found', lostOrFound);
-          formData.append('item_description', itemDescription);
-          formData.append('location', location);
-          if (lostOrFound === 'lost' && rewardType !== REWARD_TYPES.NONE) {
-            formData.append('reward_type', rewardType);
-            formData.append('reward_value', rewardValue);
-          }
+          formData.append('lost_or_found', lfType);
+          formData.append('item_description', postText.trim());
+          formData.append('location', location.trim());
         }
-        
+
         if (postCategory === 'events') {
-          formData.append('event_name', eventName);
-          formData.append('event_date', new Date(eventDate).toISOString());
-          formData.append('event_location', eventLocation);
-          if (eventContact) formData.append('event_contact', eventContact);
+          const eventDateIso = buildEventDateIso(eventDateMode, customDate);
+          const eventName = getFirstNonEmptyLine(postText).slice(0, 200);
+          formData.append('event_name', eventName || 'Событие');
+          formData.append('event_date', eventDateIso || new Date().toISOString());
+          formData.append('event_location', location.trim());
         }
-        
-        if (postCategory === 'news') formData.append('is_important', isImportant);
-        
+
         if (hasPoll || postCategory === 'polls') {
-          const cleanPoll = { ...pollData, options: pollData.options.filter(o => o.trim()) };
-          if (isAnonymous) cleanPoll.isAnonymous = true;
-          formData.append('poll_data', JSON.stringify(cleanPoll));
-        }
-        
-        imageFiles.forEach(f => formData.append('images', f));
-
-        setUploadProgress(50);
-        const newPost = await createPost(formData, (pe) => setUploadProgress(Math.round(40 + (pe.loaded / pe.total) * 50)));
-        addNewPost(newPost);
-        localStorage.removeItem('createPostDraft');
-        setUploadProgress(100);
-        hapticFeedback('success');
-        toast.success('Пост опубликован!');
-        setTimeout(confirmClose, 100);
-      } catch (e) {
-        console.error(e); 
-
-        let errorMsg = 'Ошибка публикации';
-        
-        if (e.response?.data?.detail) {
-          const detail = e.response.data.detail;
-          
-          if (Array.isArray(detail)) {
-            errorMsg = detail.map(err => err.msg || err.type).join(', ');
-          } else if (typeof detail === 'string') {
-            errorMsg = detail;
-          }
-        }
-        
-        toast.error(errorMsg);
-        setIsSubmitting(false);
-        setUploadProgress(0);
-      }
-    } else {
-      if (!isRequestFormValid()) {
-        hapticFeedback('error');
-        setError('Заполните обязательные поля (Заголовок 10+, Описание 20+)');
-        return;
-      }
-      
-      setIsSubmitting(true);
-      setUploadProgress(20);
-      
-      try {
-        const formData = new FormData();
-        formData.append('category', reqCategory);
-        formData.append('title', reqTitle.trim());
-        formData.append('body', reqBody.trim());
-        formData.append('expires_at', expiresAt); // ✅ ISO строка
-        
-        if (reqTags && reqTags.length > 0) {
-          formData.append('tags', JSON.stringify(reqTags));
-        } else {
-          formData.append('tags', JSON.stringify([]));
-        }
-        
-        formData.append('max_responses', '5');
-
-        if (reqRewardType && reqRewardType !== REWARD_TYPES.NONE) {
-          formData.append('reward_type', reqRewardType);
-          if (reqRewardValue && reqRewardValue.trim()) {
-            formData.append('reward_value', reqRewardValue.trim());
-          }
+          formData.append('poll_data', JSON.stringify(buildPollPayload()));
         }
 
-        if (reqImageFiles && reqImageFiles.length > 0) {
-          reqImageFiles.forEach(f => formData.append('images', f));
-        }
+        imageFiles.forEach((file) => formData.append('images', file));
 
-        setUploadProgress(60);
-        const newReq = await createRequest(formData, (pe) => {
-          setUploadProgress(Math.round(50 + (pe.loaded / pe.total) * 40));
+        const newPost = await createPost(formData, (progressEvent) => {
+          if (!progressEvent?.total) return;
+          const next = Math.round(40 + (progressEvent.loaded / progressEvent.total) * 50);
+          setUploadProgress(next);
         });
-        
-        addNewRequest(newReq);
-        localStorage.removeItem('createRequestDraft');
+
+        addNewPost(newPost);
         setUploadProgress(100);
         hapticFeedback('success');
-        toast.success('Запрос создан!');
-
-        if (feedSubTab !== 'requests') {
-          setFeedSubTab('requests');
-        }
-
-        setTimeout(confirmClose, 100);
-      } catch (e) {
-        console.error('❌ Ошибка создания запроса:', e);
-        console.error('Response:', e.response?.data);
-        
-        let errorMsg = 'Ошибка создания запроса';
-        
-        if (e.response?.data?.detail) {
-          const detail = e.response.data.detail;
-          
-          // Validation errors (массив)
-          if (Array.isArray(detail)) {
-            errorMsg = detail.map(err => {
-              const field = err.loc ? err.loc[err.loc.length - 1] : '';
-              return `${field}: ${err.msg || err.type}`;
-            }).join('; ');
-          } 
-          // Строка
-          else if (typeof detail === 'string') {
-            errorMsg = detail;
-          }
-        }
-        
-        toast.error(errorMsg);
+        toast.success('Пост успешно опубликован!');
+        setTimeout(confirmClose, 120);
+      } catch (submitError) {
+        console.error(submitError);
+        const detail = submitError?.response?.data?.detail;
+        const message = Array.isArray(detail)
+          ? detail.map((item) => item.msg || item.type).join(', ')
+          : typeof detail === 'string'
+            ? detail
+            : 'Ошибка публикации поста';
+        setError(message);
+        toast.error(message);
         setIsSubmitting(false);
         setUploadProgress(0);
       }
+
+      return;
+    }
+
+    if (!isRequestFormValid()) {
+      hapticFeedback('error');
+      setError('Заполните текст запроса: заголовок 10+ и описание 20+');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setUploadProgress(20);
+
+    try {
+      const formData = new FormData();
+      const requestPayload = parsedRequestText;
+      formData.append('category', reqCategory);
+      formData.append('title', requestPayload.title);
+      formData.append('body', requestPayload.body);
+      formData.append('expires_at', resolvedRequestExpiresAt);
+      formData.append('tags', JSON.stringify(postTags));
+      formData.append('max_responses', '5');
+
+      if (reqRewardType !== 'none') {
+        const mappedRewardType = reqRewardType === 'barter' ? REWARD_TYPES.FAVOR : REWARD_TYPES.MONEY;
+        formData.append('reward_type', mappedRewardType);
+        if (reqRewardValue.trim()) {
+          formData.append('reward_value', reqRewardValue.trim());
+        } else if (reqRewardType === 'barter') {
+          formData.append('reward_value', 'Бартер');
+        }
+      }
+
+      imageFiles.forEach((file) => formData.append('images', file));
+
+      const newRequest = await createRequest(formData, (progressEvent) => {
+        if (!progressEvent?.total) return;
+        const next = Math.round(45 + (progressEvent.loaded / progressEvent.total) * 45);
+        setUploadProgress(next);
+      });
+
+      addNewRequest(newRequest);
+      if (feedSubTab !== 'requests') setFeedSubTab('requests');
+      setUploadProgress(100);
+      hapticFeedback('success');
+      toast.success('Запрос успешно создан!');
+      setTimeout(confirmClose, 120);
+    } catch (submitError) {
+      console.error(submitError);
+      const detail = submitError?.response?.data?.detail;
+      const message = Array.isArray(detail)
+        ? detail.map((item) => item.msg || item.type).join(', ')
+        : typeof detail === 'string'
+          ? detail
+          : 'Ошибка создания запроса';
+      setError(message);
+      toast.error(message);
+      setIsSubmitting(false);
+      setUploadProgress(0);
     }
   };
-
-  // ===== RENDER HELPERS =====
-  
-  const TagBadge = ({ tag, onRemove }) => (
-    <span style={styles.tag}>
-      #{tag}
-      <button style={styles.tagRemove} onClick={(e) => { e.stopPropagation(); onRemove(tag); }} disabled={isSubmitting}>
-        <X size={16} />
-      </button>
-    </span>
-  );
-
-  const CircularProgress = ({ progress }) => (
-    <div style={{ position: 'relative', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <svg width="40" height="40" viewBox="0 0 40 40" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="20" cy="20" r="16" fill="none" stroke="#e5e7eb" strokeWidth="4" />
-        <circle 
-          cx="20" cy="20" r="16" fill="none" stroke={theme.colors.primary} strokeWidth="4" 
-          strokeDasharray={`${2 * Math.PI * 16}`} 
-          strokeDashoffset={`${2 * Math.PI * 16 * (1 - progress / 100)}`} 
-          strokeLinecap="round" 
-          style={{ transition: 'stroke-dashoffset 0.3s ease' }}
-        />
-      </svg>
-    </div>
-  );
-
-  const getFeatureBtnStyle = (isActive) => ({
-    ...styles.featureBtn,
-    borderColor: isActive ? theme.colors.primary : theme.colors.border,
-    background: isActive ? `${theme.colors.primary}15` : 'transparent',
-    color: isActive ? theme.colors.primary : theme.colors.textSecondary
-  });
-
-  const getPlaceholders = () => {
-    switch(postCategory) {
-      case 'confessions': return { title: 'О чём признание?', body: 'Напишите всё, что на душе (полностью анонимно)...' };
-      case 'lost_found': return { title: 'Кратко: что случилось?', body: 'Дополнительные детали, если нужно...' };
-      case 'events': return { title: 'Анонс мероприятия', body: 'Программа, условия входа и детали...' };
-      default: return { title: 'Например: Как пройти в библиотеку?', body: 'Опишите подробнее...' };
-    }
-  };
-  
-  const placeholders = getPlaceholders();
-  const canSubmit = activeTab === 'post' ? isPostFormValid() : isRequestFormValid();
-  const editorTitle = activeTab === 'post' ? 'Создание поста' : 'Создание запроса';
-  const submitText = activeTab === 'post' ? 'Опубликовать' : 'Создать запрос';
 
   useTelegramScreen({
     id: 'create-content-modal',
-    title: editorTitle,
+    title: activeTab === 'post' ? 'Создание поста' : 'Создание запроса',
     priority: 120,
     back: {
       visible: isVisible,
       onClick: showConfirmation ? () => setShowConfirmation(false) : handleClose,
     },
-    main: showConfirmation
-      ? {
-          visible: isVisible,
-          text: 'Выйти',
-          onClick: confirmClose,
-          enabled: !isSubmitting,
-          loading: false,
-          color: theme.colors.error,
-        }
-      : {
-          visible: isVisible,
-          text: submitText,
-          onClick: handleSubmit,
-          enabled: canSubmit && !isSubmitting,
-          loading: isSubmitting,
-        },
+    main: {
+      visible: false,
+      text: '',
+      onClick: undefined,
+      enabled: false,
+      loading: false,
+    },
     secondary: {
-      visible: isVisible && showConfirmation,
-      text: 'Вернуться',
-      onClick: () => setShowConfirmation(false),
-      enabled: !isSubmitting,
+      visible: false,
+      text: '',
+      onClick: undefined,
+      enabled: false,
       loading: false,
     },
   });
 
-  return (
+  if (!isMounted) return null;
+
+  const pollVisible = hasPoll || postCategory === 'polls';
+  const sendDisabled = !canSend || isSubmitting;
+
+  const content = (
     <>
-      <style>{keyframesStyles}</style>
-      
-      <div 
-        style={{
-          ...styles.overlay,
-          opacity: isVisible ? 1 : 0,
-          pointerEvents: showConfirmation ? 'none' : 'auto'
-        }}
-        onClick={handleClose}
-      >
-        <div 
-          style={{
-            ...styles.modal,
-            transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
-            opacity: isVisible ? 1 : 0
-          }}
-          onClick={(e) => e.stopPropagation()}
+      <style>{keyframeStyles}</style>
+      <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0, pointerEvents: showConfirmation ? 'none' : 'auto' }}>
+        <div style={{ ...styles.backdrop, opacity: isVisible ? 1 : 0 }} onClick={handleClose} />
+        <div
+          ref={sheetRef}
+          {...swipeHandlers}
+          style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }}
+          onClick={(event) => event.stopPropagation()}
         >
           {isSubmitting && (
             <div style={styles.topProgressBar}>
@@ -665,623 +685,568 @@ function CreateContentModal({ onClose }) {
             </div>
           )}
 
-          {/* Telegram/local header */}
-          <DrilldownHeader title={editorTitle} onBack={handleClose} />
+          <div style={styles.sheetHeader}>
+            <div style={styles.dragHandle} />
+          </div>
 
-          {/* TAB SWITCHER */}
-          <div style={styles.contentTypeSection}>
-            <div style={styles.contentTypeSwitcher}>
+          <div style={styles.switcherWrap}>
+            <div style={styles.switcherInner}>
               <button
+                type="button"
                 onClick={() => { setActiveTab('post'); hapticFeedback('light'); }}
-                style={activeTab === 'post' ? {...styles.contentTypeBtn, ...styles.contentTypeBtnActive} : styles.contentTypeBtn}
+                style={activeTab === 'post' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn}
+                className="create-spring-btn"
                 disabled={isSubmitting}
               >
                 Пост
               </button>
               <button
+                type="button"
                 onClick={() => { setActiveTab('request'); hapticFeedback('light'); }}
-                style={activeTab === 'request' ? {...styles.contentTypeBtn, ...styles.contentTypeBtnActive} : styles.contentTypeBtn}
+                style={activeTab === 'request' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn}
+                className="create-spring-btn"
                 disabled={isSubmitting}
               >
                 Запрос
               </button>
             </div>
-            <p style={styles.contentTypeHint}>
-              {activeTab === 'post' ? 'Посты для обсуждения' : 'Запросы для срочных задач'}
-            </p>
           </div>
-
-          {/* CONTENT SLIDER */}
-          <div style={styles.contentWrapper}>
-            <div style={{
-              ...styles.slidingTrack,
-              transform: `translateX(${activeTab === 'post' ? '0' : '-50%'})`
-            }}>
-              
-              {/* ===== POST FORM (LEFT) ===== */}
-              <div style={styles.formSlide}>
-                <div style={styles.formScrollContent}>
-                  
-                  {/* Category */}
-                  <div style={styles.section}>
-                    <label style={styles.label}>Категория</label>
-                    <div style={styles.categoriesGrid}>
-                      {POST_CATEGORIES.map(cat => (
-                        <button
-                          key={cat.value}
-                          onClick={() => { setPostCategory(cat.value); hapticFeedback('light'); }}
-                          style={postCategory === cat.value ? { ...styles.categoryButton, background: `linear-gradient(135deg, ${cat.color} 0%, ${cat.color}dd 100%)`, color: '#fff', borderColor: 'transparent', boxShadow: `0 4px 12px ${cat.color}40` } : styles.categoryButton}
-                          disabled={isSubmitting}
-                        >
-                          <span style={styles.categoryIcon}>{cat.icon}</span>
-                          <span style={styles.categoryLabel}>{cat.label}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {postCategory === 'news' && (
-                        <div style={styles.optionsGrid}>
-                            <button 
-                                style={getFeatureBtnStyle(isImportant)}
-                                onClick={() => { setIsImportant(!isImportant); hapticFeedback('light'); }}
-                                disabled={isSubmitting}
-                            >
-                                <Star size={18} fill={isImportant ? theme.colors.primary : 'none'} />
-                                <span>{isImportant ? 'Закреплено' : 'Закрепить?'}</span>
-                            </button>
-
-                            <button 
-                                style={getFeatureBtnStyle(isAnonymous)}
-                                onClick={() => { setIsAnonymous(!isAnonymous); hapticFeedback('light'); }}
-                                disabled={isSubmitting}
-                            >
-                                {isAnonymous ? <EyeOff size={18} /> : <Eye size={18} />}
-                                <span>{isAnonymous ? 'Анонимно' : 'Анонимно?'}</span>
-                            </button>
-                        </div>
-                    )}
-                    
-                    {postCategory !== 'news' && postCategory !== 'confessions' && postCategory !== 'polls' && (
-                        <button 
-                            style={getFeatureBtnStyle(isAnonymous)}
-                            onClick={() => { setIsAnonymous(!isAnonymous); hapticFeedback('light'); }}
-                            disabled={isSubmitting}
-                        >
-                            {isAnonymous ? <EyeOff size={18} /> : <Eye size={18} />}
-                            <span>{isAnonymous ? 'Анонимно' : 'Анонимно?'}</span>
-                        </button>
-                    )}
-                    
-                    {postCategory === 'confessions' && (
-                        <div style={styles.confessionHint}>
-                            <EyeOff size={16} style={{marginRight:8}} />
-                            Публикуется полностью анонимно
-                        </div>
-                    )}
-                  </div>
-
-                  {/* Main Inputs */}
-                  {postCategory !== 'polls' && (
-                    <>
-                      <div style={styles.section}>
-                        <label style={styles.label}>
-                          Заголовок*
-                          <CharCounter current={postTitle.length} min={3} max={MAX_TITLE_LENGTH} isValid={postTitle.trim().length >= 3} />
-                        </label>
-                        <div style={styles.inputWrapper}>
-                          <input 
-                            ref={postTitleRef}
-                            type="text" 
-                            placeholder={placeholders.title} 
-                            value={postTitle} 
-                            onChange={(e) => setPostTitle(e.target.value)}
-                            style={{
-                              ...styles.input, 
-                              borderColor: getBorderColor(postTitle.trim().length >= 3, attemptedSubmit)
-                            }} 
-                            maxLength={MAX_TITLE_LENGTH} 
-                            disabled={isSubmitting}
-                          />
-                          {postTitle.trim().length >= 3 && <Check size={20} style={styles.inputCheckIcon} />}
-                        </div>
-                      </div>
-                      <div style={styles.section}>
-                        <label style={styles.label}>
-                          Описание*
-                          <CharCounter current={postBody.length} min={10} max={MAX_BODY_LENGTH} isValid={postBody.trim().length >= 10} />
-                        </label>
-                        <div style={styles.inputWrapper}>
-                          <textarea 
-                            placeholder={placeholders.body}
-                            value={postBody} 
-                            onChange={(e) => setPostBody(e.target.value)}
-                            style={{
-                              ...styles.textarea, 
-                              borderColor: getBorderColor(postBody.trim().length >= 10, attemptedSubmit)
-                            }}
-                            rows={6} 
-                            maxLength={MAX_BODY_LENGTH} 
-                            disabled={isSubmitting}
-                          />
-                          {postBody.trim().length >= 10 && <Check size={20} style={styles.textareaCheckIcon} />}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  
-                  {/* LOST & FOUND */}
-                  {postCategory === 'lost_found' && (
-                    <>
-                      <div style={styles.section}>
-                        <label style={styles.label}>Что случилось?</label>
-                        <div style={styles.toggleWrapper}>
-                            <button onClick={()=>{setLostOrFound('lost'); hapticFeedback('light');}} style={lostOrFound==='lost' ? {...styles.toggleButton, ...styles.toggleButtonActive} : styles.toggleButton}>😢 Потерял</button>
-                            <button onClick={()=>{setLostOrFound('found'); hapticFeedback('light');}} style={lostOrFound==='found' ? {...styles.toggleButton, ...styles.toggleButtonActive} : styles.toggleButton}>🎉 Нашёл</button>
-                        </div>
-                      </div>
-                        <div style={styles.section}>
-                          <label style={styles.label}>Что именно?*</label>
-                          <input 
-                            type="text" 
-                            placeholder="Например: Чёрный рюкзак Nike" 
-                            value={itemDescription} 
-                            onChange={e => setItemDescription(e.target.value)} 
-                            style={{
-                              ...styles.input, 
-                              borderColor: getBorderColor(itemDescription.trim().length >= 5, attemptedSubmit)
-                            }} 
-                            disabled={isSubmitting} 
-                          />
-                        </div>
-                        <div style={styles.section}>
-                          <label style={styles.label}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
-                              <MapPin size={14} /> Где?*
-                            </div>
-                          </label>
-                          <input 
-                            type="text" 
-                            placeholder="Например: Возле столовой ГУК" 
-                            value={location} 
-                            onChange={e => setLocation(e.target.value)} 
-                            style={{
-                              ...styles.input, 
-                              borderColor: getBorderColor(location.trim().length >= 3, attemptedSubmit)
-                            }} 
-                            disabled={isSubmitting} 
-                          />
-                        </div>
-                      
-                      {lostOrFound === 'lost' && (
-                        <div style={styles.section}>
-                            <label style={styles.label}>Вознаграждение (опционально)</label>
-                            <select value={rewardType} onChange={e=>setRewardType(e.target.value)} style={{...styles.input, marginBottom: 8}}>
-                                {Object.entries(REWARD_TYPE_LABELS).map(([k,l])=><option key={k} value={k}>{REWARD_TYPE_ICONS[k]} {l}</option>)}
-                            </select>
-                            {rewardType !== REWARD_TYPES.NONE && (
-                                <input type="text" placeholder={rewardType==='money'?"Сумма (500р)":"Что подарите?"} value={rewardValue} onChange={e=>setRewardValue(e.target.value)} style={styles.input} />
-                            )}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* EVENTS */}
-                  {postCategory === 'events' && (
-                    <>
-                      <div style={styles.section}>
-                        <label style={styles.label}>Название события*</label>
-                        <input 
-                          type="text" 
-                          placeholder="Например: Хакатон 2025" 
-                          value={eventName} 
-                          onChange={e => setEventName(e.target.value)} 
-                          style={{
-                            ...styles.input, 
-                            borderColor: getBorderColor(eventName.trim().length >= 3, attemptedSubmit)
-                          }} 
-                          disabled={isSubmitting} 
-                        />
-                      </div>
-                      <div style={styles.section}>
-                         <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><Calendar size={14}/> Дата и время*</div></label>
-                         <div style={styles.quickDateButtons}>
-                             <button 
-                                onClick={()=>setQuickDate('today')} 
-                                style={activeEventDateBtn === 'today' ? styles.quickDateBtnActive : styles.quickDateBtn} 
-                                type="button"
-                             >
-                                Сегодня
-                             </button>
-                             <button 
-                                onClick={()=>setQuickDate('tomorrow')} 
-                                style={activeEventDateBtn === 'tomorrow' ? styles.quickDateBtnActive : styles.quickDateBtn} 
-                                type="button"
-                             >
-                                Завтра
-                             </button>
-                             <button 
-                                onClick={()=>setQuickDate('week')} 
-                                style={activeEventDateBtn === 'week' ? styles.quickDateBtnActive : styles.quickDateBtn} 
-                                type="button"
-                             >
-                                Через неделю
-                             </button>
-                         </div>
-                         <input 
-                            type="datetime-local" 
-                            value={eventDate} 
-                            onChange={e => { setEventDate(e.target.value); setActiveEventDateBtn(null); }} 
-                            style={{
-                              ...styles.input, 
-                              marginTop: theme.spacing.sm, 
-                              borderColor: getBorderColor(!!eventDate, attemptedSubmit)
-                            }} 
-                            disabled={isSubmitting} 
-                          />
-                      </div>
-                      <div style={styles.section}>
-                        <label style={styles.label}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
-                            <MapPin size={14} /> Место проведения*
-                          </div>
-                        </label>
-                        <input 
-                          type="text" 
-                          placeholder="Например: Актовый зал" 
-                          value={eventLocation} 
-                          onChange={e => setEventLocation(e.target.value)} 
-                          style={{
-                            ...styles.input, 
-                            borderColor: getBorderColor(eventLocation.trim().length >= 3, attemptedSubmit)
-                          }} 
-                          disabled={isSubmitting} 
-                        />
-                      </div>
-                      <div style={styles.section}>
-                          <label style={styles.label}>Контакт (опционально)</label>
-                          <input type="text" placeholder="@username" value={eventContact} onChange={e=>setEventContact(e.target.value)} style={styles.input} disabled={isSubmitting} />
-                      </div>
-                    </>
-                  )}
-                  
-                  {/* POLLS SECTION */}
-                  <div style={styles.section}>
-                    {postCategory !== 'polls' && (
-                        <button 
-                            style={getFeatureBtnStyle(hasPoll)}
-                            onClick={() => { setHasPoll(!hasPoll); hapticFeedback('light'); }}
-                            disabled={isSubmitting}
-                        >
-                            <BarChart2 size={18} />
-                            <span>{hasPoll ? 'Убрать опрос' : 'Добавить опрос'}</span>
-                        </button>
-                    )}
-                    
-                    <div style={{
-                        maxHeight: (hasPoll || postCategory === 'polls') ? (postCategory === 'polls' ? 'none' : '2000px') : '0',
-                        opacity: (hasPoll || postCategory === 'polls') ? 1 : 0,
-                        overflow: 'hidden',
-                        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                        marginTop: (hasPoll || postCategory === 'polls') ? theme.spacing.md : 0,
-                    }}>
-                        <div style={styles.pollEditorWrapper}>
-                            <PollCreator pollData={pollData} onChange={setPollData} />
-                        </div>
-                    </div>
-                  </div>
-
-                  {/* IMAGES */}
-                  {postCategory !== 'polls' && postCategory !== 'confessions' && (
-                    <div style={styles.section}>
-                      <label style={styles.label}>
-                          Изображения (опционально)
-                          <span style={styles.charCount}>{images.length + processingImages.length}/{MAX_IMAGES}</span>
-                      </label>
-                      <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileSelect} style={{ display: 'none' }} />
-                      
-                      {(images.length > 0 || processingImages.length > 0) ? (
-                        <div style={styles.imagesPreview}>
-                            {images.map((img, i) => (
-                            <div key={i} style={styles.imagePreviewItem}>
-                                <img src={img} style={styles.previewImage} alt="" />
-                                <button onClick={() => { setImages(p => p.filter((_, idx) => idx !== i)); setImageFiles(p => p.filter((_, idx) => idx !== i)); }} style={styles.removeImageButton}><Trash2 size={16} /></button>
-                            </div>
-                            ))}
-                            {processingImages.map((proc) => (
-                                <div key={proc.id} style={styles.imagePreviewItem}>
-                                    <div style={styles.loadingOverlay}>
-                                        <CircularProgress progress={proc.progress} />
-                                        <span style={styles.loadingPercent}>{Math.round(proc.progress)}%</span>
-                                    </div>
-                                </div>
-                            ))}
-                            {(images.length + processingImages.length) < MAX_IMAGES && (
-                            <button onClick={handleAddImageClick} style={styles.addImagePlaceholder} disabled={isSubmitting}>
-                                <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                                    <Plus size={24} />
-                                </div>
-                            </button>
-                            )}
-                        </div>
-                      ) : (
-                          <button onClick={handleAddImageClick} style={styles.addImageButton} disabled={isSubmitting}>
-                              <ImageIcon size={20} /> Добавить фото
-                          </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* TAGS */}
-                  <div style={styles.section}>
-                    <label style={styles.label}>Теги (опционально)</label>
-                    {postTags.length < MAX_TAGS && (
-                      <div style={styles.quickTagsWrapper}>
-                        {POPULAR_TAGS.filter(t => !postTags.includes(t)).slice(0, 5).map(t => (
-                          <button key={t} onClick={() => addPostTag(t)} style={styles.quickTagBtn}>#{t}</button>
-                        ))}
-                      </div>
-                    )}
-                    <div style={styles.tagInputWrapper}>
-                      <Hash size={18} style={{ color: theme.colors.primary, flexShrink: 0 }} />
-                      <input type="text" value={postTagInput} onChange={(e) => setPostTagInput(e.target.value)} style={styles.tagInput} placeholder="python, react..." onKeyPress={(e) => e.key === 'Enter' && addPostTag()} disabled={isSubmitting || postTags.length>=MAX_TAGS} />
-                      <button onClick={() => addPostTag()} style={postTagInput.trim() ? {...styles.addTagButton, opacity: 1, background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`} : styles.addTagButton} disabled={!postTagInput.trim()}><Plus size={18} /></button>
-                    </div>
-                    {postTags.length > 0 && (
-                        <div style={styles.tagsList}>
-                        {postTags.map(tag => <TagBadge key={tag} tag={tag} onRemove={(t) => setPostTags(p => p.filter(x => x !== t))} />)}
-                        </div>
-                    )}
-                  </div>
-                  <div style={{ height: theme.spacing.xl }} />
-                </div>
-              </div>
-
-              {/* ===== REQUEST FORM (RIGHT) ===== */}
-              <div style={styles.formSlide}>
-                <div style={styles.formScrollContent}>
-                  
-                  {/* Category */}
-                  <div style={styles.section}>
-                    <label style={styles.label}>Категория запроса</label>
-                    <div style={styles.categoriesGrid}>
-                      {REQUEST_CATEGORIES.map(cat => (
-                        <button
-                          key={cat.value}
-                          onClick={() => { setReqCategory(cat.value); hapticFeedback('light'); }}
-                          style={reqCategory === cat.value ? { ...styles.categoryButton, background: `linear-gradient(135deg, ${cat.color} 0%, ${cat.color}dd 100%)`, color: '#fff', borderColor: 'transparent', boxShadow: `0 4px 12px ${cat.color}40` } : styles.categoryButton}
-                          disabled={isSubmitting}
-                        >
-                          <span style={styles.categoryIcon}>{cat.icon}</span>
-                          <span style={styles.categoryLabel}>{cat.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Inputs */}
-                  <div style={styles.section}>
-                    <label style={styles.label}>
-                        Краткая суть*
-                        <CharCounter current={reqTitle.length} min={10} max={MAX_TITLE_LENGTH} isValid={reqTitle.length >= 10} />
-                    </label>
-                    <div style={styles.inputWrapper}>
-                      <input 
-                        ref={reqTitleRef}
-                        type="text" 
-                        placeholder="Помогите с курсовой по сопромату" 
-                        value={reqTitle} 
-                        onChange={e => setReqTitle(e.target.value)}
-                        style={{
-                          ...styles.input, 
-                          borderColor: getBorderColor(reqTitle.trim().length >= 10, attemptedSubmit)
-                        }} 
-                        maxLength={MAX_TITLE_LENGTH} 
-                        disabled={isSubmitting}
-                      />
-                      {reqTitle.trim().length >= 10 && <Check size={20} style={styles.inputCheckIcon} />}
-                    </div>
-                  </div>
-                  <div style={styles.section}>
-                    <label style={styles.label}>
-                        Подробности*
-                        <CharCounter current={reqBody.length} min={20} max={MAX_BODY_LENGTH} isValid={reqBody.length >= 20} />
-                    </label>
-                    <div style={styles.inputWrapper}>
-                      <textarea 
-                        placeholder="Описание, сроки, требования..."
-                        value={reqBody} 
-                        onChange={e => setReqBody(e.target.value)}
-                        style={{
-                          ...styles.textarea, 
-                          borderColor: getBorderColor(reqBody.trim().length >= 20, attemptedSubmit)
-                        }}
-                        rows={6} 
-                        maxLength={MAX_BODY_LENGTH} 
-                        disabled={isSubmitting}
-                      />
-                      {reqBody.trim().length >= 20 && <Check size={20} style={styles.textareaCheckIcon} />}
-                    </div>
-                  </div>
-
-                  {/* ✅✅✅ НАГРАДА ДЛЯ REQUEST ✅✅✅ */}
-                  <div style={styles.section}>
-                    <label style={styles.label}>
-                      <div style={{display:'flex',alignItems:'center',gap:6}}>
-                        <Gift size={16}/> Награда
-                      </div>
-                      <span style={{fontSize: theme.fontSize.xs, color: theme.colors.textTertiary, fontWeight: 400}}>опционально</span>
-                    </label>
-                    <div style={{
-                      padding: theme.spacing.md,
-                      borderRadius: theme.radius.lg,
-                      background: `linear-gradient(135deg, rgba(255,215,0,0.08) 0%, rgba(255,165,0,0.08) 100%)`,
-                      border: `2px dashed rgba(255,215,0,0.25)`
-                    }}>
-                      <select 
-                        value={reqRewardType} 
-                        onChange={e=>setReqRewardType(e.target.value)} 
-                        style={{...styles.input, marginBottom: reqRewardType !== REWARD_TYPES.NONE ? theme.spacing.sm : 0}}
+          <div style={styles.contentViewport}>
+            <div className="hide-scroll" style={styles.globalScroll}>
+              <div style={{ ...styles.track, transform: `translateX(${activeTab === 'post' ? '0' : '-50%'})` }}>
+                <div style={styles.slide}>
+                  <div className="hide-scroll" style={styles.categoriesRow}>
+                    {CREATE_CONTENT_POST_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat.value}
+                        type="button"
+                        onClick={() => { setPostCategory(cat.value); hapticFeedback('light'); }}
+                        style={postCategory === cat.value ? { ...styles.categoryChip, ...styles.categoryChipActive } : styles.categoryChip}
+                        className="create-spring-btn"
                         disabled={isSubmitting}
                       >
-                        {Object.entries(REWARD_TYPE_LABELS).map(([k,l])=>(
-                          <option key={k} value={k}>{REWARD_TYPE_ICONS[k]} {l}</option>
-                        ))}
-                      </select>
-                      {reqRewardType !== REWARD_TYPES.NONE && (
-                        <input 
-                          type="text" 
-                          placeholder={
-                            reqRewardType==='money' ? "Например: 500₽" :
-                            reqRewardType==='help_back' ? "Например: Помогу с программированием" :
-                            reqRewardType==='food' ? "Например: Кофе в буфете" :
-                            "Опишите награду"
-                          }
-                          value={reqRewardValue} 
-                          onChange={e=>setReqRewardValue(e.target.value)} 
-                          style={styles.input}
-                          maxLength={100}
-                          disabled={isSubmitting}
-                        />
-                      )}
-                    </div>
+                        <span>{cat.icon}</span>
+                        <span>{cat.label}</span>
+                      </button>
+                    ))}
                   </div>
 
-                  {/* ✅✅✅ ИЗОБРАЖЕНИЯ ДЛЯ REQUEST ✅✅✅ */}
-                  <div style={styles.section}>
-                    <label style={styles.label}>
-                        Изображения (опционально)
-                        <span style={styles.charCount}>{reqImages.length + reqProcessingImages.length}/{MAX_IMAGES}</span>
-                    </label>
-                    <input 
-                      ref={reqFileInputRef} 
-                      type="file" 
-                      accept="image/*" 
-                      multiple 
-                      onChange={handleReqFileSelect} 
-                      style={{ display: 'none' }} 
-                    />
-                    
-                    {(reqImages.length > 0 || reqProcessingImages.length > 0) ? (
-                      <div style={styles.imagesPreview}>
-                          {reqImages.map((img, i) => (
-                          <div key={i} style={styles.imagePreviewItem}>
-                              <img src={img} style={styles.previewImage} alt="" />
-                              <button 
-                                onClick={() => { 
-                                  setReqImages(p => p.filter((_, idx) => idx !== i)); 
-                                  setReqImageFiles(p => p.filter((_, idx) => idx !== i)); 
-                                }} 
-                                style={styles.removeImageButton}
-                                disabled={isSubmitting}
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                  <div style={styles.slideContent}>
+                    <div className="create-grow-wrap" data-replicated-value={postText || ' '} style={{ marginBottom: 16 }}>
+                      <textarea
+                        ref={postTextareaRef}
+                        value={postText}
+                        onChange={(e) => setPostText(e.target.value)}
+                        placeholder={postPlaceholder}
+                        className="hide-scroll create-post-input"
+                        style={styles.postTextareaInput}
+                        maxLength={POST_LIMITS.BODY_MAX}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+
+                    {postTags.length > 0 && (
+                      <div className="smart-block" style={styles.tagsWrap}>
+                        {postTags.map((tag) => (
+                          <span key={tag} style={styles.tagChip}>
+                            #{tag}
+                            <button
+                              type="button"
+                              onClick={() => setPostTags((prev) => prev.filter((item) => item !== tag))}
+                              style={styles.tagRemove}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {(photos.length > 0 || processingImages.length > 0) && (
+                      <div className="hide-scroll smart-block" style={styles.photoRow}>
+                        {photos.map((photo, i) => (
+                          <div key={`photo-${i}`} style={styles.photoCard}>
+                            <img src={photo} alt="" style={styles.photoImage} />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotos((prev) => prev.filter((_, idx) => idx !== i));
+                                setImageFiles((prev) => prev.filter((_, idx) => idx !== i));
+                              }}
+                              style={styles.removePhotoBtn}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={14} />
+                            </button>
                           </div>
-                          ))}
-                          {reqProcessingImages.map((proc) => (
-                              <div key={proc.id} style={styles.imagePreviewItem}>
-                                  <div style={styles.loadingOverlay}>
-                                      <CircularProgress progress={proc.progress} />
-                                      <span style={styles.loadingPercent}>{Math.round(proc.progress)}%</span>
-                                  </div>
-                              </div>
-                          ))}
-                          {(reqImages.length + reqProcessingImages.length) < MAX_IMAGES && (
-                          <button 
-                            onClick={() => reqFileInputRef.current?.click()} 
-                            style={styles.addImagePlaceholder} 
-                            disabled={isSubmitting}
-                          >
-                              <div style={{position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                                  <Plus size={24} />
-                              </div>
-                          </button>
-                          )}
-                      </div>
-                    ) : (
-                        <button 
-                          onClick={() => reqFileInputRef.current?.click()} 
-                          style={styles.addImageButton} 
-                          disabled={isSubmitting}
-                        >
-                            <ImageIcon size={20} /> Добавить фото
-                        </button>
-                    )}
-                  </div>
+                        ))}
 
-                  {/* Expires At */}
-                  <div style={styles.section}>
-                    <label style={styles.label}><div style={{display:'flex',alignItems:'center',gap:6}}><Clock size={16}/> Актуально до*</div></label>
-                    <div style={styles.quickDateButtons}>
-                      {[3, 24, 72].map(h => (
-                          <button 
-                            key={h}
-                            onClick={() => { setQuickTime(h); setActiveTimeBtn(h); }} 
-                            style={activeTimeBtn === h ? styles.quickDateBtnActive : styles.quickDateBtn}
-                            type="button"
-                            disabled={isSubmitting}
-                          >
-                              {h === 72 ? '3 дня' : `${h}ч`}
-                          </button>
-                      ))}
-                    </div>
-                    <input 
-                      type="datetime-local" 
-                      value={expiresAt ? expiresAt.slice(0, 16) : ''} 
-                      onChange={e => { 
-                        setExpiresAt(new Date(e.target.value).toISOString()); 
-                        setActiveTimeBtn(0); 
-                      }}
-                      style={{
-                        ...styles.input, 
-                        marginTop: theme.spacing.sm, 
-                        borderColor: getBorderColor(!!expiresAt, attemptedSubmit)
-                      }} 
-                      disabled={isSubmitting} 
-                    />
-                  </div>
-
-                  {/* Tags */}
-                  <div style={styles.section}>
-                    <label style={styles.label}>Теги (опционально)</label>
-                    {reqTags.length < MAX_TAGS && (
-                      <div style={styles.quickTagsWrapper}>
-                        {REQUEST_TAGS.filter(t => !reqTags.includes(t)).slice(0, 5).map(t => (
-                          <button key={t} onClick={() => addReqTag(t)} style={styles.quickTagBtn} disabled={isSubmitting}>#{t}</button>
+                        {processingImages.map((proc) => (
+                          <div key={proc.id} style={styles.photoCard}>
+                            <div style={styles.processingPlaceholder}>{Math.round(proc.progress)}%</div>
+                          </div>
                         ))}
                       </div>
                     )}
-                    <div style={styles.tagInputWrapper}>
-                      <Hash size={18} style={{ color: theme.colors.primary, flexShrink: 0 }} />
-                      <input type="text" value={reqTagInput} onChange={(e) => setReqTagInput(e.target.value)} style={styles.tagInput} placeholder="помощь, срочно..." onKeyPress={(e) => e.key === 'Enter' && addReqTag()} disabled={isSubmitting || reqTags.length>=MAX_TAGS} />
-                      <button onClick={() => addReqTag()} style={reqTagInput.trim() ? {...styles.addTagButton, opacity: 1, background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`} : styles.addTagButton} disabled={!reqTagInput.trim() || isSubmitting}><Plus size={18} /></button>
-                    </div>
-                    {reqTags.length > 0 && (
-                        <div style={styles.tagsList}>
-                        {reqTags.map(tag => <TagBadge key={tag} tag={tag} onRemove={(t) => setReqTags(p => p.filter(x => x !== t))} />)}
+
+                    {pollVisible && (
+                      <div className="smart-block" style={styles.pollCard}>
+                        <div style={styles.pollHead}>
+                          <span style={styles.pollCaption}>ОПРОС</span>
+                          {postCategory !== 'polls' && (
+                            <button type="button" onClick={() => setHasPoll(false)} style={styles.pollX} className="create-spring-btn" disabled={isSubmitting}>
+                              <X size={16} />
+                            </button>
+                          )}
                         </div>
+
+                        <div style={styles.pollOptions}>
+                          {pollOptions.map((opt, i) => (
+                            <div key={`opt-${i}`} style={styles.pollOptionRow}>
+                              {pollType === 'quiz' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPollCorrectOption(i)}
+                                  style={{ ...styles.quizSelect, color: pollCorrectOption === i ? '#32D74B' : 'var(--create-text-muted)' }}
+                                  className="create-spring-btn"
+                                  disabled={isSubmitting}
+                                >
+                                  {pollCorrectOption === i ? <CheckCircle size={20} /> : <Circle size={20} />}
+                                </button>
+                              )}
+
+                              <input
+                                value={opt}
+                                onChange={(e) => {
+                                  const next = [...pollOptions];
+                                  next[i] = e.target.value;
+                                  setPollOptions(next);
+                                }}
+                                placeholder={`Вариант ${i + 1}`}
+                                style={styles.pollOptionInput}
+                                disabled={isSubmitting}
+                              />
+
+                              {i > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPollOptions((prev) => prev.filter((_, idx) => idx !== i))}
+                                  style={styles.pollRemove}
+                                  className="create-spring-btn"
+                                  disabled={isSubmitting}
+                                >
+                                  <X size={14} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+
+                          {pollOptions.length < 5 && (
+                            <button type="button" onClick={() => setPollOptions((prev) => [...prev, ''])} style={styles.addPollOption} className="create-spring-btn" disabled={isSubmitting}>
+                              <Plus size={16} /> Добавить вариант
+                            </button>
+                          )}
+                        </div>
+
+                        <div style={styles.pollSettingsWrap}>
+                          <div style={styles.pollSettingsTop}>
+                            <button type="button" onClick={() => setShowPollSettings((prev) => !prev)} style={styles.pollSettingsBtn} className="create-spring-btn" disabled={isSubmitting}>
+                              <Settings size={14} /> Настройки опроса
+                            </button>
+                            <div style={styles.pollIndicators}>
+                              {pollAnon && <VenetianMask size={14} />}
+                              {pollMulti && <Users size={14} />}
+                              {pollType === 'quiz' && <HelpCircle size={14} />}
+                            </div>
+                          </div>
+
+                          {showPollSettings && (
+                            <div className="smart-block" style={styles.pollSettingsPanel}>
+                              <div style={styles.pollTypeRow}>
+                                <button type="button" onClick={() => { setPollType('regular'); setPollCorrectOption(null); }} style={pollType === 'regular' ? { ...styles.pollTypeBtn, ...styles.pollTypeBtnActive } : styles.pollTypeBtn} className="create-spring-btn" disabled={isSubmitting}>
+                                  <BarChart2 size={14} /> Опрос
+                                </button>
+                                <button type="button" onClick={() => { setPollType('quiz'); setPollCorrectOption(0); setPollMulti(false); }} style={pollType === 'quiz' ? { ...styles.pollTypeBtn, ...styles.pollTypeBtnActive } : styles.pollTypeBtn} className="create-spring-btn" disabled={isSubmitting}>
+                                  <HelpCircle size={14} /> Викторина
+                                </button>
+                              </div>
+
+                              <div style={styles.pollFlags}>
+                                <button type="button" onClick={() => setPollMulti((prev) => !prev)} style={pollMulti ? { ...styles.flagBtn, ...styles.flagBtnActive } : styles.flagBtn} className="create-spring-btn" disabled={isSubmitting || pollType === 'quiz'}>
+                                  <Users size={14} /> Мультивыбор
+                                </button>
+                                <button type="button" onClick={() => setPollAnon((prev) => !prev)} style={pollAnon ? { ...styles.flagBtn, ...styles.flagBtnActive } : styles.flagBtn} className="create-spring-btn" disabled={isSubmitting}>
+                                  <VenetianMask size={14} /> Анонимно
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )}
+
+                    {postCategory === 'lost_found' && (
+                      <div className="smart-block" style={styles.smartWrap}>
+                        <div style={styles.lfRow}>
+                          <button type="button" onClick={() => setLfType('lost')} style={lfType === 'lost' ? { ...styles.lfBtn, ...styles.lfBtnLost } : styles.lfBtn} className="create-spring-btn" disabled={isSubmitting}>😢 Потерял</button>
+                          <button type="button" onClick={() => setLfType('found')} style={lfType === 'found' ? { ...styles.lfBtn, ...styles.lfBtnFound } : styles.lfBtn} className="create-spring-btn" disabled={isSubmitting}>🎉 Нашёл</button>
+                        </div>
+                        <div style={styles.smartInputWrap}>
+                          <MapPin size={18} color="var(--create-text-muted)" />
+                          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Где это было?" style={styles.smartInput} disabled={isSubmitting} />
+                        </div>
+                      </div>
+                    )}
+
+                    {postCategory === 'events' && (
+                      <div className="smart-block" style={styles.smartWrap}>
+                        <div style={styles.eventRow}>
+                          <button type="button" onClick={() => { setEventDateMode('today'); setShowEventPicker(false); }} style={eventDateMode === 'today' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} className="create-spring-btn" disabled={isSubmitting}>Сегодня</button>
+                          <button type="button" onClick={() => { setEventDateMode('tomorrow'); setShowEventPicker(false); }} style={eventDateMode === 'tomorrow' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} className="create-spring-btn" disabled={isSubmitting}>Завтра</button>
+                          <div style={styles.eventPicker}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEventDateMode('custom');
+                                setShowEventPicker(true);
+                                setShowReqPicker(false);
+                                setShowReqDeadline(false);
+                                setShowReqReward(false);
+                              }}
+                              style={eventDateMode === 'custom' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              {eventDateMode === 'custom' && customDate ? formatCustomDate(customDate) : 'Своя дата 📅'}
+                            </button>
+                          </div>
+                        </div>
+                        <div style={styles.smartInputWrap}>
+                          <MapPin size={18} color="var(--create-text-muted)" />
+                          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Место проведения" style={styles.smartInput} disabled={isSubmitting} />
+                        </div>
+                      </div>
+                    )}
+
+                    {postCategory === 'confessions' && (
+                      <div className="smart-block" style={styles.confessionBlock}>
+                        <VenetianMask size={22} color="var(--create-primary)" />
+                        <div>
+                          <div style={styles.confessionTitle}>Полная анонимность</div>
+                          <div style={styles.confessionText}>Авторство скрыто. Комментарии также будут анонимными.</div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ height: 150 }} />
                   </div>
-                  <div style={{ height: theme.spacing.xl }} />
+                </div>
+
+                <div style={styles.slide}>
+                  <div className="hide-scroll" style={styles.requestCategoriesRow}>
+                    {CREATE_CONTENT_REQUEST_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat.value}
+                        type="button"
+                        onClick={() => { setReqCategory(cat.value); hapticFeedback('light'); }}
+                        style={reqCategory === cat.value ? { ...styles.categoryChip, ...styles.categoryChipActive } : styles.categoryChip}
+                        className="create-spring-btn"
+                        disabled={isSubmitting}
+                      >
+                        <span>{cat.icon}</span>
+                        <span>{cat.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={styles.slideContent}>
+                    <div className="create-grow-wrap" data-replicated-value={reqText || ' '} style={{ marginBottom: 16 }}>
+                      <textarea
+                        ref={reqTextareaRef}
+                        value={reqText}
+                        onChange={(e) => setReqText(e.target.value)}
+                        placeholder={requestPlaceholder}
+                        className="hide-scroll"
+                        style={styles.requestTextareaInput}
+                        maxLength={REQUEST_LIMITS.BODY_MAX}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+
+                    {(reqRewardType !== 'none' || reqDeadlineType !== '24h' || postTags.length > 0) && (
+                      <div className="smart-block" style={styles.tagsWrap}>
+                        {reqRewardType !== 'none' && (
+                          <span style={styles.requestMetaChip}>
+                            {reqRewardType === 'money' ? '💰' : '☕'} {reqRewardValue || 'Награда'}
+                            <button
+                              type="button"
+                              onClick={() => { setReqRewardType('none'); setReqRewardValue(''); }}
+                              style={styles.requestMetaRemove}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        )}
+
+                        {reqDeadlineType !== '24h' && (
+                          <span style={styles.requestMetaChip}>
+                            ⏳ {formatRequestDeadlineLabel(reqDeadlineType, reqCustomDate)}
+                            <button
+                              type="button"
+                              onClick={() => { setReqDeadlineType('24h'); setReqCustomDate(''); }}
+                              style={styles.requestMetaRemove}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        )}
+
+                        {postTags.map((tag) => (
+                          <span key={`req-shared-tag-${tag}`} style={styles.tagChip}>
+                            #{tag}
+                            <button
+                              type="button"
+                              onClick={() => setPostTags((prev) => prev.filter((item) => item !== tag))}
+                              style={styles.tagRemove}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {(photos.length > 0 || processingImages.length > 0) && (
+                      <div className="hide-scroll smart-block" style={styles.photoRow}>
+                        {photos.map((photo, i) => (
+                          <div key={`req-photo-${i}`} style={styles.photoCard}>
+                            <img src={photo} alt="" style={styles.photoImage} />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotos((prev) => prev.filter((_, idx) => idx !== i));
+                                setImageFiles((prev) => prev.filter((_, idx) => idx !== i));
+                              }}
+                              style={styles.removePhotoBtn}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        {processingImages.map((proc) => (
+                          <div key={`req-proc-${proc.id}`} style={styles.photoCard}>
+                            <div style={styles.processingPlaceholder}>{Math.round(proc.progress)}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ height: 150 }} />
+                  </div>
                 </div>
               </div>
+            </div>
 
+            <div style={styles.bottomDock}>
+              {showTagTool && (
+                <div className="smart-block" style={styles.popupPanel}>
+                  <div className="hide-scroll" style={styles.tagSuggestions}>
+                    {filteredSuggestions.map((tag) => (
+                      <button key={tag} type="button" onClick={() => addPostTag(tag)} style={styles.tagSuggestionBtn} className="create-spring-btn" disabled={isSubmitting}>#{tag}</button>
+                    ))}
+                    {filteredSuggestions.length === 0 && <span style={styles.noSuggestions}>Нет подсказок</span>}
+                  </div>
+
+                  <div style={styles.tagInputRow}>
+                    <div style={styles.tagInputWrap}>
+                      <Hash size={16} color="var(--create-text-muted)" />
+                      <input
+                        ref={postTagInputRef}
+                        value={postTagInput}
+                        onChange={(e) => setPostTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addPostTag();
+                          }
+                        }}
+                        placeholder="Свой тег (например: курсач)"
+                        style={styles.tagInput}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <button type="button" onClick={() => addPostTag()} style={postTagInput.trim() ? { ...styles.tagAddBtn, ...styles.tagAddBtnActive } : styles.tagAddBtn} className="create-spring-btn" disabled={isSubmitting}><Plus size={20} /></button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'request' && showReqReward && (
+                <div className="smart-block" style={styles.popupPanel}>
+                  <div style={styles.popupHead}>
+                    <span style={styles.popupCaption}>НАГРАДА</span>
+                    <button type="button" onClick={() => setShowReqReward(false)} style={styles.pollX} className="create-spring-btn" disabled={isSubmitting}>
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div style={styles.popupOptionRow}>
+                    {CREATE_CONTENT_REQUEST_REWARD_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setReqRewardType(opt.value)}
+                        style={reqRewardType === opt.value ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive } : styles.smartOptionBtn}
+                        className="create-spring-btn"
+                        disabled={isSubmitting}
+                      >
+                        {opt.icon} {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {reqRewardType === 'money' && (
+                    <input
+                      value={reqRewardValue}
+                      onChange={(e) => setReqRewardValue(e.target.value)}
+                      placeholder="Сумма (например, 500 ₽)"
+                      style={styles.popupInput}
+                      disabled={isSubmitting}
+                    />
+                  )}
+                  {reqRewardType === 'barter' && (
+                    <input
+                      value={reqRewardValue}
+                      onChange={(e) => setReqRewardValue(e.target.value)}
+                      placeholder="Что взамен? (кофе, шоколадка...)"
+                      style={styles.popupInput}
+                      disabled={isSubmitting}
+                    />
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'request' && showReqDeadline && (
+                <div className="smart-block" style={styles.popupPanel}>
+                  <div style={styles.popupHead}>
+                    <span style={styles.popupCaption}>АКТУАЛЬНО ДО</span>
+                    <button type="button" onClick={() => setShowReqDeadline(false)} style={styles.pollX} className="create-spring-btn" disabled={isSubmitting}>
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div style={styles.popupOptionRow}>
+                    {CREATE_CONTENT_REQUEST_DEADLINE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => selectReqDeadline(opt.value)}
+                        style={reqDeadlineType === opt.value ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive } : styles.smartOptionBtn}
+                        className="create-spring-btn"
+                        disabled={isSubmitting}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { setReqDeadlineType('custom'); setShowReqPicker(true); }}
+                      style={reqDeadlineType === 'custom' ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive, ...styles.deadlineCustomBtn } : { ...styles.smartOptionBtn, ...styles.deadlineCustomBtn }}
+                      className="create-spring-btn"
+                      disabled={isSubmitting}
+                    >
+                      {reqDeadlineType === 'custom' && reqCustomDate ? '📅 Выбрано' : 'Своя дата'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={styles.toolbar}>
+                <input ref={postFileInputRef} type="file" multiple accept="image/*" onChange={handleSharedFileSelect} style={{ display: 'none' }} />
+                {activeTab === 'post' ? (
+                  <>
+                    <div style={styles.toolGroup}>
+                      <button type="button" onClick={() => { if (!categoryCapabilities.allowImages) { hapticFeedback('error'); return; } postFileInputRef.current?.click(); }} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.allowImages ? styles.toolBtn : { ...styles.toolBtn, ...styles.toolBtnDisabled }} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={20} /></button>
+                      <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={20} /></button>
+                      {canUsePollByCategory && <button type="button" onClick={() => { if (postCategory !== 'polls') setHasPoll((prev) => !prev); }} style={pollVisible ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><BarChart2 size={20} /></button>}
+                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) setIsAnonymous((prev) => !prev); }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><VenetianMask size={20} /></button>
+                    </div>
+                  </>
+                ) : (
+                  <div style={styles.toolGroup}>
+                    <button type="button" onClick={() => postFileInputRef.current?.click()} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={20} /></button>
+                    <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={20} /></button>
+                    <button type="button" onClick={toggleReqReward} style={showReqReward || reqRewardType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Gift size={20} /></button>
+                    <button type="button" onClick={toggleReqDeadline} style={showReqDeadline || reqDeadlineType !== '24h' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Clock size={20} /></button>
+                  </div>
+                )}
+
+                <button type="button" onClick={handleSubmit} style={sendDisabled ? styles.sendBtn : { ...styles.sendBtn, ...styles.sendBtnActive }} className="create-spring-btn" disabled={isSubmitting}>
+                  <Send size={18} />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* ERROR */}
           {error && (
-            <div style={styles.errorAlert}>
-              <AlertCircle size={18} />
+            <div style={styles.errorBar}>
+              <AlertCircle size={16} />
               <span>{error}</span>
             </div>
           )}
-
         </div>
       </div>
 
-      {/* CONFIRMATION DIALOG */}
+      <div style={{ ...styles.pickerOverlay, pointerEvents: isAnyPickerOpen ? 'auto' : 'none' }}>
+        <div
+          style={{ ...styles.pickerBackdrop, opacity: isAnyPickerOpen ? 1 : 0 }}
+          onClick={() => {
+            setShowEventPicker(false);
+            setShowReqPicker(false);
+          }}
+        />
+        <div style={{ ...styles.pickerSheet, transform: isAnyPickerOpen ? 'translateY(0)' : 'translateY(100%)' }}>
+          {showEventPicker && (
+            <SmartDatePicker
+              initialDate={customDate}
+              onSave={(iso) => {
+                setCustomDate(iso);
+                setEventDateMode('custom');
+                setShowEventPicker(false);
+              }}
+              onCancel={() => {
+                setShowEventPicker(false);
+                if (!customDate) setEventDateMode('today');
+              }}
+            />
+          )}
+          {showReqPicker && (
+            <SmartDatePicker
+              initialDate={reqCustomDate}
+              onSave={(iso) => {
+                setReqCustomDate(iso);
+                setReqDeadlineType('custom');
+                setShowReqPicker(false);
+              }}
+              onCancel={() => {
+                setShowReqPicker(false);
+                if (!reqCustomDate) setReqDeadlineType('24h');
+              }}
+            />
+          )}
+        </div>
+      </div>
+
       <ConfirmationDialog
         isOpen={showConfirmation}
         title="Выйти из редактора?"
@@ -1294,316 +1259,407 @@ function CreateContentModal({ onClose }) {
       />
     </>
   );
-}
 
-// ===== STYLES =====
+  return createPortal(content, document.body);
+}
 const styles = {
   overlay: {
-    position: 'fixed', inset: 0,
-    background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)',
-    zIndex: getOverlayZIndex(Z_MODAL_CREATE_POST), display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    position: 'fixed',
+    inset: 0,
+    zIndex: getOverlayZIndex(Z_MODAL_CREATE_POST),
     transition: 'opacity 0.3s ease',
   },
-  modal: {
-    position: 'fixed', inset: 0,
-    background: theme.colors.bg,
-    display: 'flex', flexDirection: 'column',
-    boxShadow: theme.shadows.lg,
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  backdrop: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.62)',
+    backdropFilter: 'blur(2px)',
+    transition: 'opacity 0.3s ease',
+  },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '92%',
+    background: 'var(--create-surface)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTop: '1px solid var(--create-border)',
+    display: 'flex',
+    flexDirection: 'column',
     overflow: 'hidden',
+    transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
+    boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
   },
-  topProgressBar: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 3,
-    background: theme.colors.bgSecondary, zIndex: 1000,
+  topProgressBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.08)', zIndex: 2 },
+  topProgressFill: { height: '100%', background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.3s ease' },
+  sheetHeader: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', flexShrink: 0 },
+  dragHandle: { width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' },
+  switcherWrap: { padding: '0 16px 12px', borderBottom: '1px solid var(--create-border)', flexShrink: 0 },
+  switcherInner: { display: 'flex', background: 'var(--create-surface-elevated)', borderRadius: 12, padding: 4 },
+  switchBtn: {
+    flex: 1, border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--create-text-muted)',
+    padding: '8px', fontWeight: 700, fontSize: 15, cursor: 'pointer', transition: 'all 0.2s',
   },
-  topProgressFill: {
-    height: '100%', background: `linear-gradient(90deg, ${theme.colors.primary} 0%, ${theme.colors.success} 100%)`,
-    transition: 'width 0.3s ease',
+  switchBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  contentViewport: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' },
+  globalScroll: {
+    flex: 1,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    overscrollBehavior: 'contain',
+    WebkitOverflowScrolling: 'touch',
   },
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: `${theme.spacing.sm}px ${theme.spacing.lg}px`,
-    borderBottom: `1px solid ${theme.colors.border}`, flexShrink: 0,
+  track: { display: 'flex', width: '200%', minHeight: '100%', transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)' },
+  slide: { width: '50%', display: 'flex', flexDirection: 'column', flexShrink: 0 },
+  categoriesRow: {
+    display: 'grid', gridTemplateRows: 'repeat(2, auto)', gridAutoFlow: 'column', gridAutoColumns: 'max-content',
+    gap: 8, padding: '12px 16px', borderBottom: '1px solid var(--create-border)', overflowX: 'auto', flexShrink: 0,
   },
-  closeButton: {
-    background: 'none', border: 'none', color: theme.colors.text,
-    padding: 8, borderRadius: theme.radius.sm, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  requestCategoriesRow: {
+    display: 'flex',
+    gap: 8,
+    padding: '12px 16px',
+    borderBottom: '1px solid var(--create-border)',
+    overflowX: 'auto',
+    flexShrink: 0,
   },
-  title: {
-    fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold, color: theme.colors.text, margin: 0,
+  categoryChip: {
+    border: '1px solid transparent', borderRadius: 20, background: 'var(--create-surface-elevated)', color: '#fff',
+    padding: '8px 16px', fontSize: 14, fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap', cursor: 'pointer',
   },
-  
-  contentTypeSection: {
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    borderBottom: `1px solid ${theme.colors.border}`, flexShrink: 0,
+  categoryChipActive: { border: '1px solid var(--create-primary)', background: 'rgba(212,255,0,0.1)', color: 'var(--create-primary)' },
+  slideContent: { padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', flex: '1 0 auto' },
+  postTextareaInput: {
+    width: '100%', minHeight: 76, resize: 'none', overflow: 'hidden', border: 'none', background: 'transparent',
+    color: '#fff', caretColor: '#fff',
+    fontSize: 18, fontWeight: 500, lineHeight: 1.4, padding: 0, outline: 'none', fontFamily: 'inherit',
   },
-  contentTypeSwitcher: {
-    display: 'flex', background: theme.colors.bgSecondary,
-    borderRadius: theme.radius.md, padding: theme.spacing.xs,
-    marginBottom: theme.spacing.sm,
+  requestTextareaInput: {
+    width: '100%',
+    minHeight: 76,
+    resize: 'none',
+    overflow: 'hidden',
+    border: 'none',
+    background: 'transparent',
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 500,
+    lineHeight: 1.4,
+    padding: 0,
+    outline: 'none',
+    fontFamily: 'inherit',
   },
-  contentTypeBtn: {
-    flex: 1, padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-    background: 'transparent', border: 'none', borderRadius: theme.radius.sm,
-    color: theme.colors.textSecondary, fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.medium, cursor: 'pointer', transition: 'all 0.2s ease',
+  tagsWrap: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  tagChip: {
+    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff',
+    padding: '6px 12px', borderRadius: 16, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
   },
-  contentTypeBtnActive: {
-    background: theme.colors.primary, color: '#fff',
+  requestMetaChip: {
+    background: 'rgba(212,255,0,0.1)',
+    border: '1px solid var(--create-primary)',
+    color: 'var(--create-primary)',
+    padding: '6px 12px',
+    borderRadius: 16,
+    fontSize: 13,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
   },
-  contentTypeHint: {
-    fontSize: theme.fontSize.xs, color: theme.colors.textTertiary,
-    textAlign: 'center', margin: 0,
+  requestMetaRemove: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    border: 'none',
+    background: 'rgba(212,255,0,0.2)',
+    color: 'inherit',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
-
-  contentWrapper: {
-    flex: 1, overflow: 'hidden', position: 'relative',
+  tagRemove: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(36,36,40,0.9)',
+    color: 'rgba(255,255,255,0.92)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    backdropFilter: 'blur(8px)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
   },
-  slidingTrack: {
-    display: 'flex', width: '200%', height: '100%',
-    transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  photoRow: { display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 16 },
+  photoCard: { position: 'relative', width: 100, height: 100, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--create-border)', flexShrink: 0, background: 'var(--create-surface-elevated)' },
+  photoImage: { width: '100%', height: '100%', objectFit: 'cover' },
+  removePhotoBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(36,36,40,0.9)',
+    color: 'rgba(255,255,255,0.92)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    backdropFilter: 'blur(8px)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
   },
-  formSlide: {
-    width: '50%', height: '100%',
-    overflowY: 'auto', overflowX: 'hidden',
+  processingPlaceholder: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--create-primary)', fontSize: 13, fontWeight: 600 },
+  pollCard: { background: 'var(--create-surface-elevated)', border: '1px solid var(--create-border)', borderRadius: 16, padding: 16, marginBottom: 16 },
+  pollHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  pollCaption: { fontSize: 13, fontWeight: 700, color: 'var(--create-text-muted)', letterSpacing: '0.5px' },
+  pollX: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(36,36,40,0.9)',
+    color: 'rgba(255,255,255,0.92)',
+    cursor: 'pointer',
+    padding: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backdropFilter: 'blur(8px)',
   },
-  formScrollContent: {
-    padding: theme.spacing.lg,
-    paddingBottom: `calc(${theme.spacing.lg}px + var(--screen-bottom-offset))`,
+  pollOptions: { display: 'flex', flexDirection: 'column', gap: 8 },
+  pollOptionRow: { display: 'flex', gap: 8, alignItems: 'center' },
+  quizSelect: { background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' },
+  pollOptionInput: { flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--create-border)', borderRadius: 10, padding: '10px 12px', color: '#fff', fontSize: 15, outline: 'none' },
+  pollRemove: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(36,36,40,0.9)',
+    color: 'rgba(255,255,255,0.92)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    backdropFilter: 'blur(8px)',
   },
-
-  section: { marginBottom: theme.spacing.lg },
-  label: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text, marginBottom: theme.spacing.sm,
+  addPollOption: { background: 'transparent', border: '1px dashed var(--create-border)', borderRadius: 10, color: 'var(--create-primary)', fontWeight: 600, padding: 10, display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  pollSettingsWrap: { marginTop: 12, borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: 12 },
+  pollSettingsTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  pollSettingsBtn: { background: 'none', border: 'none', color: 'var(--create-text-muted)', fontSize: 13, fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', padding: 0 },
+  pollIndicators: { display: 'flex', gap: 6, color: 'var(--create-text-muted)' },
+  pollSettingsPanel: { marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 },
+  pollTypeRow: { display: 'flex', gap: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: 4 },
+  pollTypeBtn: { flex: 1, border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--create-text-muted)', padding: 8, fontSize: 13, fontWeight: 600, display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  pollTypeBtnActive: { background: 'var(--create-surface)', color: '#fff' },
+  pollFlags: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  flagBtn: { borderRadius: 10, border: '1px solid transparent', background: 'rgba(255,255,255,0.05)', color: 'var(--create-text-muted)', padding: 10, fontSize: 13, fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  flagBtnActive: { border: '1px solid var(--create-primary)', color: 'var(--create-primary)' },
+  smartWrap: { display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 },
+  lfRow: { display: 'flex', background: 'var(--create-surface-elevated)', borderRadius: 12, padding: 4 },
+  lfBtn: { flex: 1, borderRadius: 10, border: '1px solid transparent', background: 'transparent', color: 'var(--create-text-muted)', fontWeight: 600, fontSize: 14, padding: 10, cursor: 'pointer' },
+  lfBtnLost: { color: '#FF453A', background: 'rgba(255,69,58,0.15)', border: '1px solid rgba(255,69,58,0.3)' },
+  lfBtnFound: { color: '#32D74B', background: 'rgba(50,215,75,0.15)', border: '1px solid rgba(50,215,75,0.3)' },
+  smartInputWrap: { display: 'flex', alignItems: 'center', background: 'var(--create-surface-elevated)', border: '1px solid var(--create-border)', borderRadius: 12, padding: '0 12px' },
+  smartInput: { flex: 1, border: 'none', background: 'transparent', color: '#fff', padding: '12px 8px', fontSize: 15, outline: 'none' },
+  eventRow: { display: 'flex', gap: 8 },
+  eventBtn: { flex: 1, border: 'none', borderRadius: 12, background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', padding: '10px 4px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  eventBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  eventPicker: { flex: 1, position: 'relative' },
+  hiddenDateInput: { position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' },
+  confessionBlock: { display: 'flex', gap: 12, alignItems: 'center', padding: '12px 16px', borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16 },
+  confessionTitle: { fontSize: 14, fontWeight: 700, color: 'var(--create-primary)' },
+  confessionText: { fontSize: 12, color: 'var(--create-text-muted)', marginTop: 2, lineHeight: 1.3 },
+  reqSection: { marginBottom: 16 },
+  reqLabel: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff', fontSize: 13, fontWeight: 600, marginBottom: 8 },
+  reqInput: { width: '100%', borderRadius: 12, border: '1px solid var(--create-border)', background: 'var(--create-surface-elevated)', color: '#fff', padding: '12px 14px', fontSize: 14, outline: 'none', boxSizing: 'border-box' },
+  reqTextarea: { width: '100%', borderRadius: 12, border: '1px solid var(--create-border)', background: 'var(--create-surface-elevated)', color: '#fff', padding: '12px 14px', fontSize: 14, lineHeight: 1.45, resize: 'vertical', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
+  reqTimeRow: { display: 'flex', gap: 8, marginBottom: 8 },
+  reqTimeBtn: { flex: 1, borderRadius: 10, border: '1px solid var(--create-border)', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', fontSize: 13, fontWeight: 600, padding: '10px 8px', cursor: 'pointer' },
+  reqTimeBtnActive: { flex: 1, borderRadius: 10, border: '1px solid var(--create-primary)', background: 'var(--create-primary)', color: '#000', fontSize: 13, fontWeight: 700, padding: '10px 8px', cursor: 'pointer' },
+  reqTagsQuick: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  reqQuickTagBtn: {
+    borderRadius: 16,
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(255,255,255,0.08)',
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    cursor: 'pointer',
   },
-  charCount: { fontSize: theme.fontSize.xs, fontWeight: theme.fontWeight.normal, display: 'flex', alignItems: 'center', gap: 4 },
-  categoriesGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: theme.spacing.sm, marginBottom: theme.spacing.md,
+  reqTagInputWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 14,
+    border: '1px solid var(--create-border)',
+    background: 'rgba(0,0,0,0.4)',
+    padding: '8px 12px',
   },
-  categoryButton: {
-    padding: `${theme.spacing.sm}px ${theme.spacing.xs}px`,
-    background: theme.colors.bgSecondary, 
-    borderWidth: '2px',
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    color: theme.colors.text,
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    gap: theme.spacing.xs, fontSize: theme.fontSize.xs, fontWeight: theme.fontWeight.medium,
-    cursor: 'pointer', transition: 'all 0.2s ease',
+  reqTagInput: { flex: 1, border: 'none', background: 'transparent', color: '#fff', fontSize: 14, outline: 'none' },
+  reqTagAdd: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    border: 'none',
+    background: 'var(--create-surface-elevated)',
+    color: 'var(--create-text-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
   },
-  categoryIcon: { fontSize: 20 },
-  categoryLabel: { fontSize: theme.fontSize.xs },
-  
-  inputWrapper: { position: 'relative' },
-  
-  input: {
-    width: '100%', padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    background: theme.colors.bgSecondary, 
-    borderWidth: 2, borderStyle: 'solid', borderColor: theme.colors.border,
-    borderRadius: theme.radius.md, color: theme.colors.text, fontSize: theme.fontSize.md,
-    outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s ease',
+  bottomDock: { position: 'sticky', bottom: 0, display: 'flex', flexDirection: 'column', zIndex: 3 },
+  popupPanel: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    zIndex: 10,
+    padding: '16px',
+    background: 'rgba(28,28,30,0.95)',
+    backdropFilter: 'blur(20px)',
+    borderTop: '1px solid rgba(255,255,255,0.1)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
   },
-  textarea: {
-    width: '100%', padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    background: theme.colors.bgSecondary, 
-    borderWidth: 2, borderStyle: 'solid', borderColor: theme.colors.border,
-    borderRadius: theme.radius.md, color: theme.colors.text, fontSize: theme.fontSize.md,
-    outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5,
-    boxSizing: 'border-box', transition: 'border-color 0.2s ease',
+  popupHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  popupCaption: { fontSize: 13, fontWeight: 700, color: 'var(--create-text-muted)', letterSpacing: '0.5px' },
+  popupOptionRow: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 },
+  smartOptionBtn: {
+    flex: 1,
+    minWidth: 84,
+    padding: '10px 4px',
+    borderRadius: 12,
+    border: '1px solid transparent',
+    background: 'rgba(255,255,255,0.05)',
+    color: 'var(--create-text-muted)',
+    fontWeight: 600,
+    fontSize: 13,
+    cursor: 'pointer',
   },
-  inputCheckIcon: {
-    position: 'absolute', right: theme.spacing.md, top: '50%', transform: 'translateY(-50%)',
-    color: theme.colors.success,
+  smartOptionBtnActive: {
+    background: 'rgba(212,255,0,0.1)',
+    border: '1px solid var(--create-primary)',
+    color: 'var(--create-primary)',
   },
-  textareaCheckIcon: {
-    position: 'absolute', right: theme.spacing.md, top: theme.spacing.md, color: theme.colors.success,
+  deadlineCustomBtn: { flex: 1.2 },
+  popupInput: {
+    width: '100%',
+    background: 'rgba(0,0,0,0.4)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 14,
+    color: '#fff',
+    fontSize: 15,
+    padding: '12px',
+    outline: 'none',
+    boxSizing: 'border-box',
   },
-
-  confessionHint: {
-    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
-    borderRadius: theme.radius.sm,
-    background: `${theme.colors.confessions}15`,
-    border: `1px solid ${theme.colors.confessions}30`,
-    color: theme.colors.textSecondary,
-    fontSize: theme.fontSize.xs,
-    lineHeight: 1.5,
-    display: 'flex', alignItems: 'center'
+  tagSuggestions: { display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 12 },
+  tagSuggestionBtn: { padding: '6px 12px', borderRadius: 16, border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 },
+  noSuggestions: { color: 'rgba(255,255,255,0.4)', fontSize: 13, padding: '6px 0' },
+  tagInputRow: { display: 'flex', gap: 8, alignItems: 'center' },
+  tagInputWrap: { flex: 1, display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '8px 12px' },
+  tagInput: { flex: 1, marginLeft: 8, border: 'none', background: 'transparent', color: '#fff', fontSize: 15, outline: 'none' },
+  tagAddBtn: { width: 38, height: 38, borderRadius: 19, border: 'none', background: 'rgba(255,255,255,0.1)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  tagAddBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  toolbar: { padding: '10px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', borderTop: '1px solid var(--create-border)', background: 'var(--create-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 20 },
+  toolGroup: { display: 'flex', gap: 8 },
+  toolBtn: { width: 40, height: 40, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
+  toolBtnDisabled: { opacity: 0.5 },
+  sendBtn: { width: 40, height: 40, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  sendBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  pickerOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: getOverlayZIndex(Z_MODAL_CREATE_POST) + 3,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
   },
-
-  toggleWrapper: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing.sm },
-  toggleButton: {
-      padding: theme.spacing.md, 
-      borderWidth: 2, borderStyle: 'solid', borderColor: theme.colors.border,
-      borderRadius: theme.radius.md,
-      background: theme.colors.bgSecondary, color: theme.colors.text, cursor: 'pointer', fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium, transition: 'all 0.2s ease'
+  pickerBackdrop: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    backdropFilter: 'blur(2px)',
+    transition: 'opacity 0.3s',
   },
-  toggleButtonActive: { borderColor: theme.colors.primary, background: `${theme.colors.primary}15`, color: theme.colors.primary },
-
-  featureBtn: {
-      width: '100%',
-      padding: '12px',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-      borderWidth: '2px', borderStyle: 'solid', borderColor: theme.colors.border,
-      borderRadius: theme.radius.md,
-      background: 'transparent',
-      color: theme.colors.textSecondary,
-      fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium,
-      cursor: 'pointer',
-      marginBottom: theme.spacing.md,
-      transition: 'all 0.2s ease'
+  pickerSheet: {
+    position: 'relative',
+    background: 'var(--create-surface)',
+    borderTop: '1px solid var(--create-border)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: '24px 16px calc(var(--screen-bottom-offset) + 16px)',
+    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
   },
-
-  optionsGrid: {
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: theme.spacing.sm,
-      marginBottom: theme.spacing.md,
-  },
-
-  pollEditorWrapper: {
-      background: `${theme.colors.bgSecondary}80`, border: `1px solid ${theme.colors.border}`,
-      borderRadius: theme.radius.lg, padding: theme.spacing.lg, backdropFilter: 'blur(8px)',
-  },
-
-  imagesPreview: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
-  imagePreviewItem: { position: 'relative', paddingTop: '100%', borderRadius: theme.radius.md, overflow: 'hidden', backgroundColor: theme.colors.bgSecondary },
-  previewImage: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' },
-  removeImageButton: {
-    position: 'absolute', top: theme.spacing.xs, right: theme.spacing.xs,
-    padding: theme.spacing.xs, background: 'rgba(0,0,0,0.7)', border: 'none',
-    borderRadius: theme.radius.sm, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10
-  },
-  loadingOverlay: {
-    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    background: `${theme.colors.bgSecondary}CC`,
-    zIndex: 5
-  },
-  loadingPercent: {
-    fontSize: theme.fontSize.xs, fontWeight: theme.fontWeight.bold,
-    color: theme.colors.textSecondary, marginTop: 4
-  },
-  addImagePlaceholder: {
-    paddingTop: '100%', position: 'relative', border: `2px dashed ${theme.colors.border}`,
-    borderRadius: theme.radius.md, background: theme.colors.bgSecondary,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.colors.textTertiary,
-    cursor: 'pointer', transition: 'all 0.2s ease', padding: 0
-  },
-  addImageButton: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm, padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    border: `2px dashed ${theme.colors.border}`, borderRadius: theme.radius.md, background: 'transparent',
-    color: theme.colors.textSecondary, cursor: 'pointer', fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium,
-    transition: 'all 0.2s ease', width: '100%', justifyContent: 'center'
-  },
-
-  quickTagsWrapper: { display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, marginBottom: theme.spacing.sm },
-  quickTagBtn: {
-    padding: `8px 16px`,
-    background: theme.colors.bgSecondary,
-    border: `1px solid ${theme.colors.border}`, borderRadius: theme.radius.sm,
-    color: theme.colors.textSecondary, fontSize: theme.fontSize.sm, cursor: 'pointer', transition: 'all 0.2s ease'
-  },
-  tagInputWrapper: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm,
-    padding: `${theme.spacing.md}px ${theme.spacing.md}px`, background: theme.colors.bgSecondary,
-    border: `2px solid ${theme.colors.border}`, borderRadius: theme.radius.md, transition: 'border-color 0.2s ease',
-  },
-  tagInput: { flex: 1, background: 'transparent', border: 'none', color: theme.colors.text, fontSize: theme.fontSize.md, outline: 'none' },
-  addTagButton: { 
-      padding: `${theme.spacing.sm}px`, background: theme.colors.bgTertiary, border: 'none', 
-      borderRadius: theme.radius.sm, color: theme.colors.textTertiary, cursor: 'pointer', 
-      display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', opacity: 0.5 
-  },
-  tagsList: { display: 'flex', flexWrap: 'wrap', gap: theme.spacing.xs, marginTop: theme.spacing.sm },
-  tag: {
-    display: 'inline-flex', alignItems: 'center', gap: theme.spacing.sm,
-    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`, background: `${theme.colors.primary}15`,
-    color: theme.colors.primary, borderRadius: theme.radius.sm, fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.medium, animation: 'tagAppear 0.3s ease',
-  },
-  tagRemove: { background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-
-  quickDateButtons: { display: 'flex', gap: theme.spacing.xs, marginBottom: theme.spacing.sm },
-  
-  quickDateBtn: {
-    flex: 1, 
-    padding: `12px 14px`,
-    background: theme.colors.bgSecondary, 
-    borderWidth: '1px',
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.sm, 
-    color: theme.colors.textSecondary, 
-    fontSize: theme.fontSize.sm,
-    cursor: 'pointer', 
-    transition: 'all 0.2s ease',
-  },
-  quickDateBtnActive: {
-      flex: 1,
-      padding: `12px 14px`,
-      background: theme.colors.primary,
-      borderWidth: '1px',
-      borderStyle: 'solid',
-      borderColor: theme.colors.primary, 
-      borderRadius: theme.radius.sm,
-      color: '#fff',
-      fontSize: theme.fontSize.sm,
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-  },
-
-  errorAlert: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm,
-    padding: theme.spacing.md, background: `${theme.colors.error}15`,
-    border: `1px solid ${theme.colors.error}`, borderRadius: theme.radius.md,
-    color: theme.colors.error, fontSize: theme.fontSize.sm, margin: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`,
-    animation: 'shake 0.3s ease',
-  },
-  footer: { padding: theme.spacing.lg, borderTop: `1px solid ${theme.colors.border}`, flexShrink: 0 },
-  publishButton: {
-    width: '100%', padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
-    borderRadius: theme.radius.md, fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.bold,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm,
-    transition: 'all 0.2s ease',
-  },
-  spinner: {
-    width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)',
-    borderTop: '2px solid #fff', borderRadius: '50%', animation: 'spin 0.6s linear infinite',
-  },
-
-  confirmationOverlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
-    backdropFilter: 'blur(4px)', zIndex: Z_MODAL_CREATE_POST,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease',
-  },
-  confirmationDialog: {
-    background: theme.colors.bg, borderRadius: theme.radius.xl,
-    padding: theme.spacing.xl, margin: theme.spacing.lg, maxWidth: 340, width: '100%',
-  },
-  confirmationTitle: { fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold, color: theme.colors.text, margin: `0 0 ${theme.spacing.sm}px` },
-  confirmationText: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, margin: `0 0 ${theme.spacing.lg}px` },
-  confirmationButtons: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing.sm },
-  confirmationCancel: {
-    padding: theme.spacing.md, background: theme.colors.bgSecondary,
-    border: `2px solid ${theme.colors.border}`, borderRadius: theme.radius.md,
-    color: theme.colors.text, fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.semibold, cursor: 'pointer', transition: 'all 0.2s ease',
-  },
-  confirmationConfirm: {
-    padding: theme.spacing.md, background: theme.colors.error, border: 'none',
-    borderRadius: theme.radius.md, color: '#fff', fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.semibold, cursor: 'pointer', transition: 'all 0.2s ease',
-  },
+  errorBar: { position: 'absolute', left: 16, right: 16, bottom: 'calc(76px + var(--screen-bottom-offset))', borderRadius: 12, border: '1px solid rgba(255,69,58,0.35)', background: 'rgba(255,69,58,0.14)', color: '#ff9d98', padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, fontWeight: 500 },
 };
 
-const keyframesStyles = `
-  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes tagAppear { from { opacity: 0; transform: scale(0.8) translateY(-10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+const keyframeStyles = `
+:root {
+  --create-primary: ${theme.colors.premium.primary};
+  --create-surface: ${theme.colors.premium.surfaceElevated};
+  --create-surface-elevated: ${theme.colors.premium.surfaceHover};
+  --create-border: ${theme.colors.premium.border};
+  --create-text-muted: ${theme.colors.premium.textMuted};
+}
+
+.create-spring-btn {
+  transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s;
+}
+
+.create-spring-btn:active {
+  transform: scale(0.92);
+  opacity: 0.85;
+}
+
+.hide-scroll::-webkit-scrollbar { display: none; }
+.hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+.smart-block { animation: createSlideDown 0.26s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+
+@keyframes createSlideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.create-grow-wrap { display: grid; position: relative; }
+.create-grow-wrap::after {
+  content: attr(data-replicated-value) " ";
+  white-space: pre-wrap;
+  visibility: hidden;
+  min-height: 76px;
+}
+.create-grow-wrap > textarea,
+.create-grow-wrap::after {
+  grid-area: 1 / 1 / 2 / 2;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 0;
+  font-family: inherit;
+  word-break: break-word;
+}
+
+.create-post-input::placeholder {
+  color: #666;
+  -webkit-text-fill-color: #666;
+}
 `;
 
 export default CreateContentModal;
+

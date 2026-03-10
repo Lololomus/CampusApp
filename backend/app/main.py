@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from app import models, schemas, crud
 from app.database import engine, get_db, init_db
 from app.utils import (
@@ -23,6 +23,7 @@ from app.config import get_settings
 from app.rate_limiter import close_redis
 from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
+import re
 from pydantic import ValidationError
 from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router
 import os
@@ -30,6 +31,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
+
+TITLE_PARSE_LIMIT = 70
+POST_BODY_MIN_LEN = 10
 
 
 def _parse_json_list_form_field(raw_value: Optional[str], field_name: str) -> List:
@@ -57,6 +61,42 @@ def _parse_json_list_form_field(raw_value: Optional[str], field_name: str) -> Li
             }],
         )
     return parsed
+
+
+def _parse_post_title_and_body(raw_text: Optional[str]) -> Tuple[Optional[str], str]:
+    """
+    Extract title/body from a single text field:
+    - First line before '\n' is title when <= TITLE_PARSE_LIMIT
+    - If there is no '\n', first sentence (.?!…) is title when <= TITLE_PARSE_LIMIT
+    - Otherwise title=None and body=full text
+    Safety: rollback to full text when extracted body is too short.
+    """
+    normalized = str(raw_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    full_text = normalized.strip()
+    if not full_text:
+        return None, ""
+
+    if "\n" in normalized:
+        first_line_raw, rest_raw = normalized.split("\n", 1)
+        first_line = first_line_raw.strip()
+        rest_text = rest_raw.strip()
+        if first_line and len(first_line) <= TITLE_PARSE_LIMIT:
+            if len(rest_text) >= POST_BODY_MIN_LEN:
+                return first_line, rest_text
+            return None, full_text
+        return None, full_text
+
+    sentence_match = re.search("[.!?\u2026]", full_text)
+    if sentence_match:
+        sentence_end = sentence_match.end()
+        first_sentence = full_text[:sentence_end].strip()
+        rest_text = full_text[sentence_end:].strip()
+        if first_sentence and len(first_sentence) <= TITLE_PARSE_LIMIT:
+            if len(rest_text) >= POST_BODY_MIN_LEN:
+                return first_sentence, rest_text
+            return None, full_text
+
+    return None, full_text
 
 
 @asynccontextmanager
@@ -483,13 +523,29 @@ async def create_post_endpoint(
     poll_data: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db)
 ):
+    raw_title = title
+    raw_body = body
+
+    if category != "polls":
+        incoming_title = (title or "").strip()
+        if incoming_title:
+            title = incoming_title
+            body = (body or "").strip()
+        else:
+            title, body = _parse_post_title_and_body(body)
+    else:
+        title = (title or "").strip() or None
+        body = (body or "").strip()
+
     # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ
     print(f"\n{'='*60}")
     print(f"🔍 POST CREATE REQUEST")
     print(f"{'='*60}")
     print(f"category: {category!r}")
-    print(f"title: {title!r}")
-    print(f"body: {body!r}")
+    print(f"title(raw): {raw_title!r}")
+    print(f"body(raw): {raw_body!r}")
+    print(f"title(parsed): {title!r}")
+    print(f"body(parsed): {body!r}")
     print(f"is_anonymous: {is_anonymous}")
     print(f"images raw list length: {len(images)}")
     

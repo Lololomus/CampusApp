@@ -5,6 +5,7 @@ import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem } from '../../api';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
+import OverflowMenuButton from '../shared/OverflowMenuButton';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { toast } from '../shared/Toast';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
@@ -118,12 +119,6 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
       toggleMarketFavoriteOptimistic(item.id, !newState);
       toast.error('Не удалось обновить избранное');
     }
-  };
-
-  const handleMenuClick = (e) => {
-    e.stopPropagation();
-    hapticFeedback('light');
-    setIsMenuOpen(true);
   };
 
   const handleEdit = () => {
@@ -267,13 +262,14 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
           <div style={styles.topRow}>
             <div style={styles.price}>{formatPrice(item.price)} ₽</div>
             
-            <button 
+            <OverflowMenuButton
               ref={menuButtonRef}
-              style={styles.menuButton} 
-              onClick={handleMenuClick}
-            >
-              <span style={styles.menuIcon}>⋯</span>
-            </button>
+              isOpen={isMenuOpen}
+              onToggle={() => setIsMenuOpen((prev) => !prev)}
+              icon={<span style={styles.menuIcon}>⋯</span>}
+              style={styles.menuButton}
+              activeBorderColor={theme.colors.border}
+            />
           </div>
 
           <div style={styles.title}>{item.title}</div>
@@ -468,7 +464,7 @@ const styles = {
 
   menuButton: {
     background: 'transparent',
-    border: 'none',
+    border: '1px solid transparent',
     width: 40,
     height: 40,
     color: theme.colors.textTertiary,

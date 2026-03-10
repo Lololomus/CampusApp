@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import PostCard from './posts/PostCard';
 import RequestsFeed from './requests/RequestsFeed';
-import CreateContentModal from './shared/CreateContentModal';
 import FiltersModal from './shared/FiltersModal';
 import { getPosts, getAdsForFeed } from '../api';
 import { useStore } from '../store';
@@ -23,7 +22,6 @@ function Feed() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [requestsCategory, setRequestsCategory] = useState('all');
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const postsOffsetRef = useRef(0);
   const postsLoadingRef = useRef(false);
@@ -498,15 +496,6 @@ function Feed() {
           />
         )}
       </div>
-
-      {showCreateModal && (
-        <CreateContentModal 
-          onClose={() => {
-            setShowCreateModal(false);
-            loadPosts(true);
-          }} 
-        />
-      )}
 
       {showFiltersModal && (
         <FiltersModal

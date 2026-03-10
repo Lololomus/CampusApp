@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { getMyRequests, deleteRequest } from '../../api';
+import { getMyRequests, deleteRequest, getRequestById } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
@@ -77,9 +77,15 @@ function UserRequests() {
     }
   };
 
-  const handleEditRequest = (request) => {
+  const handleEditRequest = async (request) => {
     hapticFeedback('light');
-    setEditingRequest(request);
+    try {
+      const fullRequest = await getRequestById(request.id);
+      setEditingRequest(fullRequest);
+    } catch (error) {
+      console.error('Request load error before edit:', error);
+      toast.error('Не удалось загрузить запрос для редактирования');
+    }
   };
 
   const handleDeleteRequest = (request) => {

@@ -8,7 +8,6 @@ import {
   Link,
   Lock,
   MessageSquare,
-  MoreVertical,
   Pencil,
   Trash2,
   User,
@@ -29,10 +28,12 @@ import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
+import OverflowMenuButton from '../shared/OverflowMenuButton';
 import { toast } from '../shared/Toast';
 import { getEntityActionSet, isEntityOwner } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate } from '../../utils/datetime';
+import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 import { useSwipe } from '../../hooks/useSwipe';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
@@ -75,6 +76,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionScrollState, setDescriptionScrollState] = useState({
     isTop: true,
@@ -85,7 +87,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const authorAvatarRef = useRef(null);
   const sheetRef = useRef(null);
   const descriptionRef = useRef(null);
-  const scrollTouchStateRef = useRef({ startY: 0, shouldSwipe: false });
+  const isClosingRef = useRef(false);
 
   const safeRequest = request || currentRequest;
   const categoryConfig = CATEGORY_CONFIG[safeRequest?.category] || CATEGORY_CONFIG.study;
@@ -130,6 +132,13 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   }, [safeRequest?.id]);
 
   useEffect(() => {
+    isClosingRef.current = false;
+    setIsVisible(false);
+    const timer = setTimeout(() => setIsVisible(true), 20);
+    return () => clearTimeout(timer);
+  }, [safeRequest?.id]);
+
+  useEffect(() => {
     if (!descriptionExpanded) return;
     const timer = setTimeout(() => {
       updateDescriptionScrollState();
@@ -141,38 +150,18 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
     elementRef: sheetRef,
     onSwipeDown: () => handleClose(),
     isModal: true,
-    threshold: 110,
+    threshold: 120,
   });
 
-  const handleScrollAreaTouchStart = (e) => {
-    e.stopPropagation();
-    const atTop = e.currentTarget.scrollTop <= 0;
-    scrollTouchStateRef.current.startY = e.touches?.[0]?.clientY || 0;
-    scrollTouchStateRef.current.shouldSwipe = atTop;
-    if (atTop) {
-      swipeHandlers.onTouchStart(e);
-    }
-  };
-
-  const handleScrollAreaTouchMove = (e) => {
-    e.stopPropagation();
-    if (!scrollTouchStateRef.current.shouldSwipe) return;
-
-    const currentY = e.touches?.[0]?.clientY || 0;
-    const deltaY = currentY - scrollTouchStateRef.current.startY;
-
-    // Swipe-to-close only for downward gesture from top of scroll.
-    if (deltaY <= 0) return;
-
-    e.preventDefault();
-    swipeHandlers.onTouchMove(e);
-  };
-
-  const handleScrollAreaTouchEnd = (e) => {
-    e.stopPropagation();
-    if (!scrollTouchStateRef.current.shouldSwipe) return;
-    swipeHandlers.onTouchEnd(e);
-    scrollTouchStateRef.current.shouldSwipe = false;
+  const closeWithAnimation = () => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    hapticFeedback('light');
+    setIsVisible(false);
+    setTimeout(() => {
+      setCurrentRequest(null);
+      onClose();
+    }, 280);
   };
 
   const loadRequestData = async () => {
@@ -314,9 +303,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   };
   const handleClose = () => {
     if (isPhotoViewerJustClosed || isDropdownJustClosed) return;
-    hapticFeedback('light');
-    setCurrentRequest(null);
-    onClose();
+    closeWithAnimation();
   };
 
   const handleImageClick = (e, index) => {
@@ -453,7 +440,8 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
 
   if (!safeRequest) return null;
 
-  const descriptionLong = (safeRequest.body || '').length > 150;
+  const descriptionText = stripLeadingTitleFromBody(safeRequest.title, safeRequest.body);
+  const descriptionLong = descriptionText.length > 150;
   const descriptionTopFadeVisible = descriptionExpanded && !descriptionScrollState.isTop;
   const descriptionBottomFadeVisible = !descriptionExpanded || !descriptionScrollState.isBottom;
   const photoGridColumns = images.length <= 3 ? 3 : 2;
@@ -462,26 +450,22 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
     <>
       <style>{keyframesStyles}</style>
 
-      <div style={styles.overlay} onClick={handleClose}>
+      <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }} onClick={handleClose}>
         <div style={styles.backdrop} />
 
         <div
           ref={sheetRef}
-          {...swipeHandlers}
-          style={styles.sheet}
+          style={{
+            ...styles.sheet,
+            transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
+          }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={styles.dragWrap}>
+          <div style={styles.dragWrap} {...swipeHandlers}>
             <div style={styles.dragHandle} />
           </div>
 
-          <div
-            style={styles.scrollArea}
-            onTouchStart={handleScrollAreaTouchStart}
-            onTouchMove={handleScrollAreaTouchMove}
-            onTouchEnd={handleScrollAreaTouchEnd}
-            onTouchCancel={handleScrollAreaTouchEnd}
-          >
+          <div style={styles.scrollArea}>
             {loading && !request ? <div style={styles.loading}>Загрузка...</div> : null}
 
             <h1 style={styles.title}>{safeRequest.title}</h1>
@@ -534,17 +518,12 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
                 </div>
               </div>
 
-              <button
+              <OverflowMenuButton
                 ref={menuButtonRef}
-                style={styles.menuButton}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  hapticFeedback('light');
-                  setMenuOpen((prev) => !prev);
-                }}
-              >
-                <MoreVertical size={20} />
-              </button>
+                isOpen={menuOpen}
+                onToggle={() => setMenuOpen((prev) => !prev)}
+                style={{ flexShrink: 0 }}
+              />
             </div>
 
             <div style={styles.section}>
@@ -562,7 +541,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
                     overflowY: descriptionExpanded ? 'auto' : 'hidden',
                   }}
                 >
-                  {safeRequest.body}
+                  {descriptionText}
                 </div>
                 {descriptionLong && (
                   <div
@@ -600,7 +579,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
             {safeRequest.tags && safeRequest.tags.length > 0 && (
               <div style={styles.tags}>
                 {safeRequest.tags.map((tag, index) => (
-                  <span key={`${tag}-${index}`} style={styles.tag}>
+                  <span key={`${tag}-${index}`} className="hashtag-chip" style={styles.tagChip}>
                     #{tag}
                   </span>
                 ))}
@@ -757,6 +736,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'flex-end',
+    transition: 'opacity 0.3s ease',
   },
   backdrop: {
     position: 'absolute',
@@ -765,7 +745,6 @@ const styles = {
     background: 'rgba(0,0,0,0.6)',
     backdropFilter: 'blur(4px)',
     WebkitBackdropFilter: 'blur(4px)',
-    animation: 'requestModalFadeIn 0.2s ease forwards',
   },
   sheet: {
     position: 'relative',
@@ -777,14 +756,15 @@ const styles = {
     maxHeight: '90vh',
     display: 'flex',
     flexDirection: 'column',
-    animation: 'requestModalSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
-    transform: 'translate3d(0, 0, 0)',
+    transform: 'translateY(0)',
+    transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
   },
   dragWrap: {
     display: 'flex',
     justifyContent: 'center',
     padding: '10px 0 4px',
     flexShrink: 0,
+    touchAction: 'none',
   },
   dragHandle: {
     width: 40,
@@ -808,6 +788,9 @@ const styles = {
     fontSize: 24,
     lineHeight: 1.2,
     fontWeight: 800,
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
   },
   chipsRow: {
     display: 'flex',
@@ -867,19 +850,6 @@ const styles = {
     color: '#888888',
     fontSize: 13,
     lineHeight: 1.2,
-  },
-  menuButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    border: 'none',
-    background: '#2C2C2E',
-    color: '#FFFFFF',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    flexShrink: 0,
   },
   section: { marginBottom: 24 },
   sectionTitle: {
@@ -958,15 +928,10 @@ const styles = {
     gap: 8,
     marginBottom: 24,
   },
-  tag: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '4px 10px',
-    borderRadius: 999,
-    background: '#2C2C2E',
-    color: '#BDBDBD',
-    fontSize: 12,
-    fontWeight: 600,
+  tagChip: {
+    backgroundColor: '#2C2C2E',
+    border: `1px solid ${theme.colors.premium.border}`,
+    color: '#E5E5E5',
   },
   infoBlock: {
     background: '#2C2C2E',
