@@ -510,6 +510,12 @@ export const useStore = create(
       // NOTIFICATION SETTINGS STATE
       showSettingsModal: false,
       setShowSettingsModal: (show) => set({ showSettingsModal: show }),
+
+      // NOTIFICATIONS INBOX STATE
+      showNotificationsScreen: false,
+      unreadNotificationsCount: 0,
+      setShowNotificationsScreen: (show) => set({ showNotificationsScreen: show }),
+      setUnreadNotificationsCount: (count) => set({ unreadNotificationsCount: count }),
       
       updateAdPost: (adId, updates) => set((state) => ({
         adPosts: state.adPosts.map(ad =>
@@ -570,11 +576,20 @@ export const useStore = create(
           });
         };
 
+        const loadUnreadCount = () => {
+          import('./api').then(({ getUnreadNotificationsCount }) => {
+            getUnreadNotificationsCount()
+              .then(data => set({ unreadNotificationsCount: data.count || 0 }))
+              .catch(() => {});
+          });
+        };
+
         const loadCurrentUserAfterToken = async () => {
           try {
             const me = await getCurrentUser();
             if (me) {
               setRegisteredState(me);
+              loadUnreadCount();
             } else {
               setUnregisteredState();
             }
@@ -600,6 +615,7 @@ export const useStore = create(
 
             if (loginData.user) {
               setRegisteredState(loginData.user);
+              loadUnreadCount();
             } else {
               setUnregisteredState();
             }

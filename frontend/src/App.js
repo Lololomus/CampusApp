@@ -26,6 +26,7 @@ import ToastContainer from './components/shared/Toast';
 
 import AmbassadorPanel from './components/moderation/AmbassadorPanel';
 import AdminPanel from './components/moderation/AdminPanel';
+import NotificationsScreen from './components/notifications/NotificationsScreen';
 import { TelegramScreenProvider } from './components/shared/telegram/TelegramScreenProvider';
 
 import './App.css';
@@ -51,6 +52,7 @@ function App() {
     setUpdatedPost,
     authStatus,
     bootstrapAuth,
+    showNotificationsScreen,
   } = useStore();
 
   useEffect(() => {
@@ -153,6 +155,7 @@ function App() {
         <AuthModal />
         <DevAuthPanel />
         {showEditModal && <EditProfile />}
+        {showNotificationsScreen && <NotificationsScreen />}
         <ToastContainer />
 
         <style>{`

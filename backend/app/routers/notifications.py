@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
-from sqlalchemy import select
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -27,6 +27,77 @@ def _verify_bot(x_bot_secret: str = Header(..., alias="X-Bot-Secret")):
     """Проверка авторизации бота через заголовок (✅ Фаза 0.3)"""
     if x_bot_secret != get_settings().bot_secret:
         raise HTTPException(status_code=403, detail="Invalid bot secret")
+
+
+# =============================================
+# INBOX (для фронтенда)
+# =============================================
+
+@router.get("/inbox")
+async def get_inbox(
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(models.Notification)
+        .where(
+            models.Notification.recipient_id == user.id,
+            models.Notification.status.in_(['sent', 'pending']),
+        )
+        .order_by(models.Notification.created_at.desc())
+        .limit(50)
+    )
+    notifications = res.scalars().all()
+
+    result = []
+    for n in notifications:
+        try:
+            payload = json.loads(n.payload) if isinstance(n.payload, str) else n.payload
+        except json.JSONDecodeError:
+            payload = {}
+        result.append({
+            "id": n.id,
+            "type": n.type,
+            "payload": payload,
+            "is_read": n.is_read,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        })
+
+    return result
+
+
+@router.get("/inbox/unread-count")
+async def get_inbox_unread_count(
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(func.count()).where(
+            models.Notification.recipient_id == user.id,
+            models.Notification.is_read == False,  # noqa: E712
+            models.Notification.status.in_(['sent', 'pending']),
+        )
+    )
+    count = res.scalar() or 0
+    return {"count": count}
+
+
+@router.post("/inbox/read-all")
+async def mark_inbox_read_all(
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    now = datetime.utcnow()
+    res = await db.execute(
+        update(models.Notification)
+        .where(
+            models.Notification.recipient_id == user.id,
+            models.Notification.is_read == False,  # noqa: E712
+        )
+        .values(is_read=True, read_at=now)
+    )
+    await db.commit()
+    return {"updated": res.rowcount}
 
 
 # =============================================

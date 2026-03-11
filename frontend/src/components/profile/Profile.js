@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Grid, ShoppingBag, FileText, Share2, Heart,
   MessageCircle, MapPin, ChevronRight,
-  Shield, Zap, Settings, PencilLine, Check, Barcode
+  Shield, Zap, Settings, PencilLine, Check, Barcode, Bell
 } from 'lucide-react';
 import { HandTap } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -39,7 +39,8 @@ function Profile() {
     setShowUserPosts, setShowUserRequests, setShowUserMarketItems,
     moderationRole, setActiveTab: setNavigationTab,
     setShowSettingsModal, setViewPostId, setCurrentRequest,
-    updatedPostId, updatedPostData, clearUpdatedPost
+    updatedPostId, updatedPostData, clearUpdatedPost,
+    setShowNotificationsScreen, unreadNotificationsCount,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('posts');
@@ -221,6 +222,17 @@ function Profile() {
         {/* ХЕДЕР */}
         <div style={styles.header}>
           <div style={styles.headerTitle}>Профиль</div>
+          <button
+            style={styles.bellButton}
+            onClick={() => { hapticFeedback('light'); setShowNotificationsScreen(true); }}
+          >
+            <Bell size={22} strokeWidth={2} color="#FFF" />
+            {unreadNotificationsCount > 0 && (
+              <div style={styles.bellBadge}>
+                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+              </div>
+            )}
+          </button>
         </div>
 
         {/* CAMPUS ID КАРТА */}
@@ -905,10 +917,27 @@ const styles = {
 
   header: {
     padding: '0 16px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerTitle: {
     fontSize: 28, fontWeight: 800,
     letterSpacing: '-0.5px', color: '#FFF',
+  },
+  bellButton: {
+    position: 'relative',
+    background: 'none', border: 'none',
+    padding: 8, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  bellBadge: {
+    position: 'absolute', top: 2, right: 2,
+    minWidth: 18, height: 18, borderRadius: 9,
+    background: '#FF453A', fontSize: 10, fontWeight: 800, color: '#FFF',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 4px',
   },
 
   cardWrapper: {

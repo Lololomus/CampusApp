@@ -178,3 +178,24 @@ export const POLL_COLORS = {
   secondary: '#A78BFA',
   gradient: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
 };
+
+// ===== TODO: APP CONTACT CONTROL (POST-TG FLOW) =====
+// TODO(APP_CONTROL): Добавить настройку в профиле "Режим входящих":
+// - allow_direct_tg (можно писать сразу в TG)
+// - approval_only (писать только после подтверждения в приложении)
+//
+// TODO(APP_CONTROL): Для market_contact:
+// - если approval_only, создавать inbox-уведомление с действиями "Принять/Отклонить"
+// - "Принять" -> разрешить контакт и отдать TG-ссылку/контакт покупателю
+// - "Отклонить" -> закрыть запрос без передачи контакта
+//
+// TODO(APP_CONTROL): Для request_response:
+// - если approval_only, автор запроса подтверждает отклик в приложении
+// - "Принять" -> открыть контакты/чат между автором и откликнувшимся
+// - "Отклонить" -> оставить отклик в статусе declined
+//
+// TODO(APP_CONTROL): Кнопки в NotificationsScreen должны вызывать backend action API,
+// а не только локально менять состояние карточки.
+//
+// TODO(APP_CONTROL): Протоколировать решения (accepted/declined + timestamp + actor_id),
+// чтобы считать конверсию и видеть в истории сделки/запроса.

@@ -17,6 +17,18 @@ const api = axios.create({
 let accessToken = null;
 let refreshPromise = null;
 let registrationPromptTs = 0;
+const IS_DEV = import.meta.env.DEV;
+let notificationsMockModulePromise = null;
+
+async function loadNotificationsMockModule() {
+  if (!IS_DEV) return null;
+
+  if (!notificationsMockModulePromise) {
+    notificationsMockModulePromise = import('./components/notifications/notificationsMock');
+  }
+
+  return notificationsMockModulePromise;
+}
 
 export function setAccessToken(token) {
   accessToken = token || null;
@@ -1378,6 +1390,51 @@ export async function updateNotificationSettings(settings) {
   }
 }
 
+/** Получить уведомления из inbox */
+export async function getNotifications() {
+  if (IS_DEV) {
+    try {
+      const { getDevMockNotifications } = await loadNotificationsMockModule();
+      return getDevMockNotifications();
+    } catch (error) {
+      console.warn('Notifications mock load failed, falling back to API:', error);
+    }
+  }
+
+  const response = await api.get('/notifications/inbox');
+  return response.data;
+}
+
+/** Получить количество непрочитанных уведомлений */
+export async function getUnreadNotificationsCount() {
+  if (IS_DEV) {
+    try {
+      const { getDevMockUnreadNotificationsCount } = await loadNotificationsMockModule();
+      return getDevMockUnreadNotificationsCount();
+    } catch (error) {
+      console.warn('Notifications mock load failed, falling back to API:', error);
+    }
+  }
+
+  const response = await api.get('/notifications/inbox/unread-count');
+  return response.data;
+}
+
+/** Отметить все уведомления как прочитанные */
+export async function markAllNotificationsRead() {
+  if (IS_DEV) {
+    try {
+      const { markAllDevMockNotificationsRead } = await loadNotificationsMockModule();
+      return markAllDevMockNotificationsRead();
+    } catch (error) {
+      console.warn('Notifications mock load failed, falling back to API:', error);
+    }
+  }
+
+  const response = await api.post('/notifications/inbox/read-all');
+  return response.data;
+}
+
 
 // ===== CAMPUS MANAGEMENT =====
 
@@ -1425,4 +1482,3 @@ export async function unbindUserFromCampus(userId) {
 
 
 export { api };
-

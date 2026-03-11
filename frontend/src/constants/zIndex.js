@@ -48,6 +48,7 @@ export const Z_MODAL_REQUEST_DETAIL = 2450;
 // ========== MODALS - Profile (2500-2699) ==========
 export const Z_MODAL_PROFILE_MENU = 2500;
 export const Z_MODAL_USER_POSTS = 2550;
+export const Z_MODAL_NOTIFICATIONS_SCREEN = 2551;
 export const Z_MODAL_USER_MARKET_ITEMS = 2560;
 export const Z_MODAL_EDIT_PROFILE = 2600;
 
@@ -158,6 +159,7 @@ export const zIndex = {
   // Modals - Profile
   modalProfileMenu: Z_MODAL_PROFILE_MENU,
   modalUserPosts: Z_MODAL_USER_POSTS,
+  modalNotificationsScreen: Z_MODAL_NOTIFICATIONS_SCREEN,
   modalUserMarketItems: Z_MODAL_USER_MARKET_ITEMS,
   modalEditProfile: Z_MODAL_EDIT_PROFILE,
   

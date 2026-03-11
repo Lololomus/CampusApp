@@ -20,6 +20,7 @@ function Navigation() {
     feedSubTab,
     isRegistered,
     setShowAuthModal,
+    unreadNotificationsCount,
   } = useStore();
 
   const [isBouncing, setIsBouncing] = useState(false);
@@ -125,7 +126,19 @@ function Navigation() {
                       boxShadow: '0 4px 12px rgba(255,255,255,0.4)',
                     }} />
                   )}
-                  <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+                  {tab.id === 'profile' && unreadNotificationsCount > 0 ? (
+                    <div style={{ position: 'relative' }}>
+                      <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+                      <div style={{
+                        position: 'absolute', top: -2, right: -3,
+                        width: 8, height: 8, borderRadius: 4,
+                        background: '#FF453A',
+                        border: '1.5px solid #2C2C2E',
+                      }} />
+                    </div>
+                  ) : (
+                    <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+                  )}
                 </button>
 
                 {/* Пустое место для центральной кнопки (после 2-го таба) */}

@@ -852,6 +852,9 @@ class Notification(Base):
     sent_at = Column(DateTime, nullable=True)
     error = Column(String(500), nullable=True)
 
+    is_read = Column(Boolean, default=False, nullable=False, server_default='false')
+    read_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
 
     recipient = relationship('User', foreign_keys=[recipient_id])
