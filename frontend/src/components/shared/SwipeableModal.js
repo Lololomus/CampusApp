@@ -37,9 +37,16 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
   if (!isVisible) return null;
 
   return createPortal(
-    <div 
+    <div
       style={{
-        ...theme.modals.backdrop,
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.62)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
         opacity: isOpen ? 1 : 0,
         transition: 'opacity 0.3s ease',
         zIndex: 9999,
@@ -54,19 +61,18 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
         style={{
           width: '100%',
           maxWidth: '600px',
-          backgroundColor: theme.colors.bg,
-          borderTopLeftRadius: theme.radius.xl,
-          borderTopRightRadius: theme.radius.xl,
-          boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
-          transform: isAnimating ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)', // ✅ translate3d
-          transition: isAnimating 
-            ? 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
-            : 'transform 0.2s ease-in',
+          backgroundColor: '#151516',
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
+          transform: isAnimating ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
+          transition: isAnimating
+            ? 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)'
+            : 'transform 0.25s ease-in',
           touchAction: 'none',
           display: 'flex',
           flexDirection: 'column',
           maxHeight: '85vh',
-          // ✅ ANTI-BLUR FIXES
           backfaceVisibility: 'hidden',
           WebkitBackfaceVisibility: 'hidden',
           WebkitFontSmoothing: 'antialiased',
@@ -76,9 +82,9 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
       >
         {/* Drag Handle */}
         <div style={{
-          width: 40,
+          width: 36,
           height: 4,
-          backgroundColor: theme.colors.border,
+          backgroundColor: 'rgba(255,255,255,0.2)',
           borderRadius: 2,
           margin: '12px auto 0 auto',
           flexShrink: 0,
@@ -88,13 +94,13 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
         {title && (
           <div style={{
             padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
-            borderBottom: `1px solid ${theme.colors.border}`,
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
             flexShrink: 0,
           }}>
-            <h3 style={{ 
+            <h3 style={{
               margin: 0,
               textAlign: 'center',
-              color: theme.colors.text,
+              color: '#FFFFFF',
               fontSize: theme.fontSize.lg,
               fontWeight: theme.fontWeight.semibold,
             }}>

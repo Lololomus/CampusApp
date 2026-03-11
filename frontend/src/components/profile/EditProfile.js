@@ -158,13 +158,17 @@ function EditProfile() {
     return JSON.stringify(initialProfileState) !== JSON.stringify(currentProfileState);
   }, [currentProfileState, initialProfileState]);
 
+  const [isExiting, setIsExiting] = useState(false);
+
   const handleClose = useCallback(() => {
+    if (isExiting) return;
     hapticFeedback('light');
-    setShowEditModal(false);
-  }, [setShowEditModal]);
+    setIsExiting(true);
+    setTimeout(() => setShowEditModal(false), 340);
+  }, [isExiting, setShowEditModal]);
 
   const handleBack = useCallback(() => {
-    if (loading) return;
+    if (loading || isExiting) return;
 
     hapticFeedback('light');
 
@@ -174,7 +178,7 @@ function EditProfile() {
     }
 
     handleClose();
-  }, [handleClose, loading, showCampusPicker]);
+  }, [handleClose, isExiting, loading, showCampusPicker]);
 
   const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
@@ -300,7 +304,7 @@ function EditProfile() {
 
   if (showCampusPicker) {
     return (
-      <div style={styles.overlay}>
+      <div style={{ ...styles.overlay, animation: isExiting ? 'epSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards' : 'epSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards' }}>
         <div style={styles.container}>
           <DrilldownHeader title="Выбор ВУЗа" onBack={handleBack} />
 
@@ -355,6 +359,10 @@ function EditProfile() {
             </button>
           </div>
         </div>
+        <style>{`
+          @keyframes epSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+          @keyframes epSlideOut { from { transform: translateX(0); } to { transform: translateX(100%); } }
+        `}</style>
       </div>
     );
   }
@@ -362,8 +370,8 @@ function EditProfile() {
 
   // ============ РЕНДЕР: основная форма ============
   return (
-    <div style={styles.overlay}>
-      <div style={styles.container} className="slide-in-right">
+    <div style={{ ...styles.overlay, animation: isExiting ? 'epSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards' : 'epSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards' }}>
+      <div style={styles.container}>
 
         {/* HEADER */}
         <DrilldownHeader title="Редактирование" onBack={handleBack} />
@@ -380,7 +388,7 @@ function EditProfile() {
               )}
               <label style={styles.cameraButton}>
                 <input type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
-                <Camera size={20} color="#fff" />
+                <Camera size={20} color="#000" />
               </label>
             </div>
             <div style={styles.avatarHint}>Нажмите для изменения</div>
@@ -403,9 +411,9 @@ function EditProfile() {
             <div style={styles.divider} />
 
             <div style={styles.inputGroup}>
-              <div style={styles.inputIcon}><AtSign size={18} color={theme.colors.primary} /></div>
+              <div style={styles.inputIcon}><AtSign size={18} color="#D4FF00" /></div>
               <input
-                style={{ ...styles.input, color: theme.colors.primary, fontWeight: theme.fontWeight.medium }}
+                style={{ ...styles.input, color: '#D4FF00', fontWeight: theme.fontWeight.medium }}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="username"
@@ -553,10 +561,10 @@ function EditProfile() {
       </div>
 
       <style>{`
-        .slide-in-right { animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes epSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes epSlideOut { from { transform: translateX(0); } to { transform: translateX(100%); } }
         select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
-        select option { background-color: ${theme.colors.card}; color: ${theme.colors.text}; padding: 10px; }
+        select option { background-color: #1C1C1E; color: #fff; padding: 10px; }
       `}</style>
     </div>
   );
@@ -566,13 +574,13 @@ function EditProfile() {
 const styles = {
   overlay: {
     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: '#000000',
     zIndex: Z_EDIT_PROFILE,
     display: 'flex', flexDirection: 'column',
   },
   container: {
     flex: 1, display: 'flex', flexDirection: 'column',
-    backgroundColor: theme.colors.bg, height: '100%',
+    backgroundColor: '#000000', height: '100%',
   },
   scrollContent: {
     flex: 1,
@@ -586,27 +594,28 @@ const styles = {
   // Avatar
   avatarSection: { display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: theme.spacing.xxxl },
   avatarWrapper: { position: 'relative', width: 100, height: 100 },
-  avatarImg: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${theme.colors.border}` },
+  avatarImg: { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.1)' },
   avatarPlaceholder: {
     width: '100%', height: '100%', borderRadius: '50%',
-    backgroundColor: theme.colors.border, display: 'flex', alignItems: 'center',
-    justifyContent: 'center', fontSize: 40, color: theme.colors.textDisabled, fontWeight: theme.fontWeight.bold,
+    backgroundColor: '#2C2C2E', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', fontSize: 40, color: '#8E8E93', fontWeight: theme.fontWeight.bold,
   },
   cameraButton: {
     position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: '50%',
-    backgroundColor: theme.colors.primary, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    border: `3px solid ${theme.colors.bg}`, cursor: 'pointer', boxShadow: theme.shadows.md,
+    backgroundColor: '#D4FF00', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: '3px solid #000000', cursor: 'pointer', boxShadow: theme.shadows.md,
   },
-  avatarHint: { marginTop: theme.spacing.md, fontSize: theme.fontSize.sm, color: theme.colors.textDisabled },
+  avatarHint: { marginTop: theme.spacing.md, fontSize: theme.fontSize.sm, color: '#8E8E93' },
 
   // Sections
   sectionTitle: {
     fontSize: theme.fontSize.xs, fontWeight: theme.fontWeight.bold,
-    color: theme.colors.textDisabled, marginBottom: 8, paddingLeft: 12, letterSpacing: 0.5,
+    color: '#8E8E93', marginBottom: 8, paddingLeft: 12, letterSpacing: 0.5,
   },
   card: {
-    backgroundColor: theme.colors.card, borderRadius: theme.radius.lg,
+    backgroundColor: '#1C1C1E', borderRadius: theme.radius.lg,
     overflow: 'hidden', marginBottom: theme.spacing.xxl,
+    border: '1px solid rgba(255,255,255,0.06)',
   },
 
   // Inputs
@@ -617,42 +626,42 @@ const styles = {
   },
   inputIcon: { marginRight: 12, display: 'flex', alignItems: 'center' },
   input: {
-    flex: 1, background: 'transparent', border: 'none', color: theme.colors.text,
+    flex: 1, background: 'transparent', border: 'none', color: '#FFFFFF',
     fontSize: theme.fontSize.lg, height: '100%', outline: 'none', padding: '12px 0',
   },
-  divider: { height: 1, backgroundColor: theme.colors.border, marginLeft: 46 },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginLeft: 46 },
 
   // Campus picker
   searchWrapper: {
     display: 'flex', alignItems: 'center', gap: 10,
     padding: `${theme.spacing.md}px ${theme.spacing.lg}px`,
-    borderRadius: theme.radius.md, border: `1.5px solid ${theme.colors.border}`,
-    backgroundColor: theme.colors.card, marginBottom: theme.spacing.lg,
+    borderRadius: theme.radius.md, border: '1px solid rgba(255,255,255,0.08)',
+    backgroundColor: '#1C1C1E', marginBottom: theme.spacing.lg,
   },
   searchInput: {
     flex: 1, background: 'none', border: 'none',
-    color: theme.colors.text, fontSize: theme.fontSize.lg, outline: 'none',
+    color: '#FFFFFF', fontSize: theme.fontSize.lg, outline: 'none',
   },
   clearBtn: { background: 'none', border: 'none', padding: 4, cursor: 'pointer', display: 'flex' },
   campusRow: {
     display: 'flex', alignItems: 'center', gap: theme.spacing.md,
     padding: theme.spacing.lg, borderRadius: theme.radius.md,
-    border: `1.5px solid ${theme.colors.border}`, backgroundColor: theme.colors.card,
+    border: '1px solid rgba(255,255,255,0.08)', backgroundColor: '#1C1C1E',
     marginBottom: theme.spacing.sm, cursor: 'pointer', width: '100%',
     textAlign: 'left', transition: `all ${theme.transitions.normal}`,
   },
   campusIconWrap: {
     width: 40, height: 40, borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.primaryLight,
+    backgroundColor: 'rgba(212,255,0,0.1)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  campusRowName: { fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.semibold, color: theme.colors.text, marginBottom: 2 },
-  campusRowCity: { fontSize: theme.fontSize.sm, color: theme.colors.textTertiary },
-  emptySearch: { textAlign: 'center', padding: '32px 16px', color: theme.colors.textTertiary, fontSize: theme.fontSize.md },
+  campusRowName: { fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.semibold, color: '#FFFFFF', marginBottom: 2 },
+  campusRowCity: { fontSize: theme.fontSize.sm, color: '#8E8E93' },
+  emptySearch: { textAlign: 'center', padding: '32px 16px', color: '#8E8E93', fontSize: theme.fontSize.md },
   customBtn: {
     width: '100%', padding: theme.spacing.lg, borderRadius: theme.radius.md,
-    border: `2px dashed ${theme.colors.border}`, backgroundColor: 'transparent',
-    color: theme.colors.textSecondary, fontSize: theme.fontSize.md,
+    border: '2px dashed rgba(255,255,255,0.15)', backgroundColor: 'transparent',
+    color: '#8E8E93', fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.medium, cursor: 'pointer',
     marginTop: theme.spacing.md,
   },
@@ -661,28 +670,28 @@ const styles = {
   chipsWrap: { display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm },
   chip: {
     padding: `${theme.spacing.sm}px ${theme.spacing.md}px`, borderRadius: theme.radius.full,
-    border: `1.5px solid ${theme.colors.border}`, backgroundColor: theme.colors.bg,
-    color: theme.colors.textSecondary, fontSize: theme.fontSize.sm,
+    border: '1px solid rgba(255,255,255,0.08)', backgroundColor: '#2C2C2E',
+    color: '#8E8E93', fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium, cursor: 'pointer',
     transition: `all ${theme.transitions.normal}`,
   },
   chipActive: {
-    borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryLight,
-    color: theme.colors.primary,
+    borderColor: '#D4FF00', backgroundColor: 'rgba(212,255,0,0.1)',
+    color: '#D4FF00',
   },
 
   // Course
   courseRow: { display: 'flex', gap: theme.spacing.sm },
   courseChip: {
     flex: 1, padding: `${theme.spacing.sm}px 0`, borderRadius: theme.radius.sm,
-    border: `1.5px solid ${theme.colors.border}`, backgroundColor: theme.colors.bg,
-    color: theme.colors.textSecondary, fontSize: theme.fontSize.lg,
+    border: '1px solid rgba(255,255,255,0.08)', backgroundColor: '#2C2C2E',
+    color: '#8E8E93', fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.bold, cursor: 'pointer', textAlign: 'center',
     transition: `all ${theme.transitions.normal}`,
   },
   courseChipActive: {
-    borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryLight,
-    color: theme.colors.primary,
+    borderColor: '#D4FF00', backgroundColor: 'rgba(212,255,0,0.1)',
+    color: '#D4FF00',
   },
 
 };

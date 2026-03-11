@@ -253,54 +253,28 @@ function SettingsModal() {
                 <div style={styles.frequencyRow}>
                   <span style={styles.frequencyLabel}>Частота:</span>
                   <div style={styles.frequencyButtons}>
-                    <button
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderStyle: 'solid',
-                        borderColor: settings.digest_frequency === 'daily' 
-                          ? theme.colors.primary 
-                          : theme.colors.border,
-                        background: settings.digest_frequency === 'daily'
-                          ? theme.colors.primaryLight
-                          : 'transparent',
-                        color: settings.digest_frequency === 'daily'
-                          ? theme.colors.primary
-                          : theme.colors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                      onClick={() => handleDigestFrequency('daily')}
-                    >
-                      Ежедневно
-                    </button>
-                    <button
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderStyle: 'solid',
-                        borderColor: settings.digest_frequency === 'weekly' 
-                          ? theme.colors.primary 
-                          : theme.colors.border,
-                        background: settings.digest_frequency === 'weekly'
-                          ? theme.colors.primaryLight
-                          : 'transparent',
-                        color: settings.digest_frequency === 'weekly'
-                          ? theme.colors.primary
-                          : theme.colors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                      onClick={() => handleDigestFrequency('weekly')}
-                    >
-                      Еженедельно
-                    </button>
+                    {['daily', 'weekly'].map((freq) => {
+                      const isActive = settings.digest_frequency === freq;
+                      return (
+                        <button
+                          key={freq}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: 8,
+                            border: `1px solid ${isActive ? 'rgba(212,255,0,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                            background: isActive ? 'rgba(212,255,0,0.1)' : 'transparent',
+                            color: isActive ? '#D4FF00' : '#8E8E93',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                          }}
+                          onClick={() => handleDigestFrequency(freq)}
+                        >
+                          {freq === 'daily' ? 'Ежедневно' : 'Еженедельно'}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -341,13 +315,13 @@ const Toggle = ({ value }) => (
     position: 'relative',
     flexShrink: 0,
     transition: 'background 0.2s',
-    background: value ? theme.colors.primary : theme.colors.border,
+    background: value ? '#D4FF00' : 'rgba(255,255,255,0.12)',
   }}>
     <div style={{
       width: 20,
       height: 20,
       borderRadius: 10,
-      background: '#fff',
+      background: value ? '#000' : '#fff',
       position: 'absolute',
       top: 2,
       left: 2,
@@ -384,7 +358,7 @@ const styles = {
     gap: 8,
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
+    color: '#FFFFFF',
   },
 
   headerEmoji: {
@@ -411,15 +385,15 @@ const styles = {
     height: 32,
     borderWidth: 3,
     borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderTopColor: theme.colors.primary,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: '#D4FF00',
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
 
   loadingText: {
     fontSize: 14,
-    color: theme.colors.textTertiary,
+    color: '#8E8E93',
   },
 
   // Мастер-переключатель текст
@@ -433,12 +407,12 @@ const styles = {
   muteTitle: {
     fontSize: 15,
     fontWeight: 700,
-    color: theme.colors.text,
+    color: '#FFFFFF',
   },
 
   muteSubtitle: {
     fontSize: 12,
-    color: theme.colors.textTertiary,
+    color: '#8E8E93',
   },
 
   // Секции
@@ -447,11 +421,11 @@ const styles = {
   },
 
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: 700,
-    color: theme.colors.textTertiary,
+    color: '#8E8E93',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: 10,
     paddingLeft: 4,
   },
@@ -463,20 +437,18 @@ const styles = {
     gap: 12,
     padding: '12px 14px',
     borderRadius: 14,
-    background: theme.colors.card,
+    background: '#1C1C1E',
     marginBottom: 6,
     cursor: 'pointer',
     transition: 'background 0.15s',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.borderLight,
+    border: '1px solid rgba(255,255,255,0.06)',
   },
 
   toggleRowIcon: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    background: theme.colors.elevated,
+    background: '#2C2C2E',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -493,12 +465,12 @@ const styles = {
   toggleRowLabel: {
     fontSize: 14,
     fontWeight: 600,
-    color: theme.colors.text,
+    color: '#FFFFFF',
   },
 
   toggleRowDesc: {
     fontSize: 12,
-    color: theme.colors.textTertiary,
+    color: '#8E8E93',
   },
 
   // Дайджест частота
@@ -508,16 +480,14 @@ const styles = {
     justifyContent: 'space-between',
     padding: '10px 14px',
     borderRadius: 14,
-    background: theme.colors.card,
+    background: '#1C1C1E',
     marginBottom: 6,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.borderLight,
+    border: '1px solid rgba(255,255,255,0.06)',
   },
 
   frequencyLabel: {
     fontSize: 13,
-    color: theme.colors.textSecondary,
+    color: '#8E8E93',
     fontWeight: 500,
   },
 
@@ -533,15 +503,13 @@ const styles = {
     gap: 10,
     padding: '12px 14px',
     borderRadius: 14,
-    background: theme.colors.card,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.borderLight,
+    background: '#1C1C1E',
+    border: '1px solid rgba(255,255,255,0.06)',
   },
 
   infoText: {
     fontSize: 13,
-    color: theme.colors.textTertiary,
+    color: '#8E8E93',
   },
 };
 

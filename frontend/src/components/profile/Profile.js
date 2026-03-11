@@ -1,19 +1,20 @@
 // ===== FILE: frontend/src/components/profile/Profile.js =====
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { 
-  Edit2, Grid, ShoppingBag, FileText, Share2, Heart, 
-  MessageCircle, Calendar, Building2, Users, Award, ChevronRight,
-  Shield, Zap, TrendingUp, Settings
+import {
+  Grid, ShoppingBag, FileText, Share2, Heart,
+  MessageCircle, MapPin, ChevronRight,
+  Shield, Zap, Settings, PencilLine, Check, Barcode
 } from 'lucide-react';
+import { HandTap } from '@phosphor-icons/react';
+import { QRCodeSVG } from 'qrcode.react';
 
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
-import { 
-  getUserPosts, getMyRequests, getMyMarketItems, 
+import {
+  getUserPosts, getMyRequests, getMyMarketItems,
   getMyDatingProfile, getUserStats, deleteMarketItem, deleteRequest, getRequestById
 } from '../../api';
-import theme from '../../theme';
 import { toast } from '../shared/Toast';
 import { getCampusDisplayName } from '../../constants/universityData';
 
@@ -32,34 +33,18 @@ import { buildFeedSections } from '../../utils/feedDateSections';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
-const formatDate = (dateString) => {
-  if (!dateString) return '01.01.24';
-  const date = new Date(dateString);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = String(date.getFullYear()).slice(-2);
-  return `${day}.${month}.${year}`;
-};
-
-const TAB_COLORS = {
-  posts: theme.colors.primary,
-  requests: theme.colors.primary,
-  market: theme.colors.market,
-};
-
 function Profile() {
-  const { 
-    user, datingProfile, setDatingProfile, setShowEditModal, 
+  const {
+    user, datingProfile, setDatingProfile, setShowEditModal,
     setShowUserPosts, setShowUserRequests, setShowUserMarketItems,
     moderationRole, setActiveTab: setNavigationTab,
     setShowSettingsModal, setViewPostId, setCurrentRequest,
     updatedPostId, updatedPostData, clearUpdatedPost
   } = useStore();
-  
+
   const [activeTab, setActiveTab] = useState('posts');
-  const [loading, setLoading] = useState(false);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
-  
+
   const [posts, setPosts] = useState([]);
   const [marketItems, setMarketItems] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -69,16 +54,14 @@ function Profile() {
   const [editingMarketItem, setEditingMarketItem] = useState(null);
   const [marketItemToDelete, setMarketItemToDelete] = useState(null);
   const [selectedMarketItem, setSelectedMarketItem] = useState(null);
-  const [stats, setStats] = useState({ 
-    posts_count: 0, 
-    comments_count: 0, 
+  const [stats, setStats] = useState({
+    posts_count: 0,
+    comments_count: 0,
     likes_count: 0
   });
 
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true);
-      
       try {
         const postsData = await getUserPosts(user.id, 3);
         const marketData = await getMyMarketItems(10);
@@ -91,17 +74,15 @@ function Profile() {
         setRequests(requestsData);
         setStats(userStats);
         if (datingData) setDatingProfile(datingData);
-        
+
       } catch (error) {
         console.error('Profile load error:', error);
         if (error.response?.status === 404) {
           toast.error('Пользователь не найден. Перелогиньтесь.');
         }
-      } finally {
-        setLoading(false);
       }
     };
-    
+
     if (user?.id) {
       loadData();
     }
@@ -122,8 +103,6 @@ function Profile() {
     }
   }, [updatedPostId, updatedPostData, clearUpdatedPost]);
 
-  const heroImage = user?.avatar;
-
   const tabs = [
     { id: 'posts', label: 'Посты', icon: <Grid size={16} /> },
     { id: 'requests', label: 'Запросы', icon: <FileText size={16} /> },
@@ -131,7 +110,6 @@ function Profile() {
   ];
 
   const activeTabIndex = tabs.findIndex(t => t.id === activeTab);
-  const activeColor = TAB_COLORS[activeTab];
 
   const previewPostsRows = useMemo(
     () => buildFeedSections(posts, (post) => post.created_at, { getItemKey: (post) => post.id }),
@@ -156,34 +134,15 @@ function Profile() {
     [marketItems]
   );
 
-  const handleOpenMyPosts = () => {
-    hapticFeedback('medium');
-    setShowUserPosts(true);
-  };
+  const handleOpenMyPosts = () => { hapticFeedback('medium'); setShowUserPosts(true); };
+  const handleOpenMyRequests = () => { hapticFeedback('medium'); setShowUserRequests(true); };
+  const handleOpenMyMarketItems = () => { hapticFeedback('medium'); setShowUserMarketItems(true); };
 
-  const handleOpenMyRequests = () => {
-    hapticFeedback('medium');
-    setShowUserRequests(true);
-  };
-
-  const handleOpenMyMarketItems = () => {
-    hapticFeedback('medium');
-    setShowUserMarketItems(true);
-  };
-
-  const handleEditMarketItem = (item) => {
-    hapticFeedback('light');
-    setEditingMarketItem(item);
-  };
-
-  const handleDeleteMarketItem = (itemId) => {
-    hapticFeedback('medium');
-    setMarketItemToDelete(itemId);
-  };
+  const handleEditMarketItem = (item) => { hapticFeedback('light'); setEditingMarketItem(item); };
+  const handleDeleteMarketItem = (itemId) => { hapticFeedback('medium'); setMarketItemToDelete(itemId); };
 
   const confirmDeleteMarketItem = async () => {
     if (!marketItemToDelete) return;
-
     try {
       await deleteMarketItem(marketItemToDelete);
       setMarketItems(prev => prev.filter(i => i.id !== marketItemToDelete));
@@ -208,14 +167,10 @@ function Profile() {
     }
   };
 
-  const handleDeleteRequest = (request) => {
-    hapticFeedback('medium');
-    setRequestToDelete(request);
-  };
+  const handleDeleteRequest = (request) => { hapticFeedback('medium'); setRequestToDelete(request); };
 
   const confirmDeleteRequest = async () => {
     if (!requestToDelete?.id) return;
-
     try {
       await deleteRequest(requestToDelete.id);
       setRequests(prev => prev.filter(r => r.id !== requestToDelete.id));
@@ -249,10 +204,7 @@ function Profile() {
     }
   };
 
-  const handlePostClick = (postId) => {
-    hapticFeedback('light');
-    setViewPostId(postId);
-  };
+  const handlePostClick = (postId) => { hapticFeedback('light'); setViewPostId(postId); };
 
   const handleRequestClick = (request) => {
     hapticFeedback('light');
@@ -260,106 +212,102 @@ function Profile() {
     setShowRequestDetail(true);
   };
 
-  const handleMarketItemOpen = (item) => {
-    hapticFeedback('light');
-    setSelectedMarketItem(item);
-  };
+  const handleMarketItemOpen = (item) => { hapticFeedback('light'); setSelectedMarketItem(item); };
 
   return (
     <div style={styles.container}>
-      
-      <div style={styles.heroBackground}>
-        {heroImage ? (
-          <img src={heroImage} alt="" style={styles.heroImageBlur} />
-        ) : (
-          <div style={styles.heroGradient} />
-        )}
-        <div style={styles.heroOverlay} />
-      </div>
-
       <div style={styles.contentWrapper}>
-        
-        <div style={styles.cardWrapper} className="fade-in-up">
-          <StudentIDCard 
+
+        {/* ХЕДЕР */}
+        <div style={styles.header}>
+          <div style={styles.headerTitle}>Профиль</div>
+        </div>
+
+        {/* CAMPUS ID КАРТА */}
+        <div style={styles.cardWrapper}>
+          <CampusIDCard
             key={user.avatar}
-            user={user} 
+            user={user}
             onAvatarClick={handleAvatarClick}
           />
         </div>
 
-        <div style={styles.actionsContainer}>
-          <button 
-            style={styles.editButton} 
+        {/* КНОПКИ ДЕЙСТВИЙ */}
+        <div style={styles.actionsRow}>
+          <button
+            style={styles.primaryAction}
+            onClick={handleShareProfile}
+          >
+            <Share2 size={18} />
+            <span>Поделиться ID</span>
+          </button>
+          <button
+            style={styles.iconAction}
             onClick={() => { hapticFeedback('light'); setShowEditModal(true); }}
           >
-            <Edit2 size={18} />
-            <span>Редактировать профиль</span>
+            <PencilLine size={20} />
           </button>
+          <button
+            style={styles.iconAction}
+            onClick={() => { hapticFeedback('light'); setShowSettingsModal(true); }}
+          >
+            <Settings size={20} />
+          </button>
+        </div>
 
-          {/* Кнопки модерации — видны только по роли */}
-          {moderationRole?.can_moderate && (
-            <button 
-              style={styles.moderationButton} 
+        {/* КНОПКИ МОДЕРАЦИИ */}
+        {moderationRole?.can_moderate && (
+          <div style={styles.modSection}>
+            <button
+              style={styles.modButton}
               onClick={() => { hapticFeedback('medium'); setNavigationTab('ambassador'); }}
             >
-              <div style={styles.modButtonIcon}>
+              <div style={styles.modIcon}>
                 <Shield size={18} color="#fff" />
               </div>
-              <div style={styles.modButtonText}>
-                <span style={styles.modButtonTitle}>Панель модерации</span>
-                <span style={styles.modButtonSubtitle}>Жалобы и очередь</span>
+              <div style={styles.modText}>
+                <span style={styles.modTitle}>Панель модерации</span>
+                <span style={styles.modSubtitle}>Жалобы и очередь</span>
               </div>
               {moderationRole?.pending_reports > 0 && (
                 <div style={styles.modBadge}>
                   {moderationRole.pending_reports > 99 ? '99+' : moderationRole.pending_reports}
                 </div>
               )}
-              <ChevronRight size={18} color={theme.colors.textTertiary} />
-            </button>
-          )}
-
-          {moderationRole?.can_admin && (
-            <button 
-              style={styles.adminButton} 
-              onClick={() => { hapticFeedback('medium'); setNavigationTab('admin'); }}
-            >
-              <div style={styles.adminButtonIcon}>
-                <Zap size={18} color="#fff" />
-              </div>
-              <div style={styles.modButtonText}>
-                <span style={styles.modButtonTitle}>Админ-панель</span>
-                <span style={styles.modButtonSubtitle}>Статистика и контроль</span>
-              </div>
-              <ChevronRight size={18} color={theme.colors.textTertiary} />
-            </button>
-          )}
-          
-          <div style={styles.secondaryButtons}>
-            <button style={styles.secondaryButton} onClick={handleShareProfile}>
-              <Share2 size={18} />
-              <span>Поделиться</span>
-            </button>
-            <button style={styles.secondaryButton} onClick={() => {
-              hapticFeedback('light');
-              setShowSettingsModal(true);
-            }}>
-              <Settings size={18} />
-              <span>Настройки</span>
+              <ChevronRight size={18} color="#8E8E93" />
             </button>
           </div>
-        </div>
+        )}
 
-        {/* Статистика в виде квадратов */}
+        {moderationRole?.can_admin && (
+          <div style={{ padding: '0 16px', marginBottom: 8 }}>
+            <button
+              style={styles.adminButton}
+              onClick={() => { hapticFeedback('medium'); setNavigationTab('admin'); }}
+            >
+              <div style={styles.adminIcon}>
+                <Zap size={18} color="#fff" />
+              </div>
+              <div style={styles.modText}>
+                <span style={styles.modTitle}>Админ-панель</span>
+                <span style={styles.modSubtitle}>Статистика и контроль</span>
+              </div>
+              <ChevronRight size={18} color="#8E8E93" />
+            </button>
+          </div>
+        )}
+
+        {/* СТАТИСТИКА */}
         <StatsGrid stats={stats} />
 
+        {/* ТАБЫ */}
         <div style={styles.tabsContainer}>
           <div style={styles.tabsWrapper}>
-            <div 
+            <div
               style={{
                 ...styles.activeIndicator,
                 transform: `translateX(${activeTabIndex * 100}%)`,
-                background: activeColor,
-              }} 
+              }}
             />
             {tabs.map((tab) => {
               const isActive = activeTab === tab.id;
@@ -369,7 +317,7 @@ function Profile() {
                   onClick={() => { hapticFeedback('selection'); setActiveTab(tab.id); }}
                   style={{
                     ...styles.tabButton,
-                    color: isActive ? '#fff' : theme.colors.textSecondary,
+                    color: isActive ? '#000000' : '#8E8E93',
                   }}
                 >
                   {tab.label}
@@ -379,20 +327,19 @@ function Profile() {
           </div>
         </div>
 
+        {/* КОНТЕНТ ТАБОВ */}
         <div style={styles.feedContainer}>
-            
+
           {activeTab === 'posts' && (
             <div className="fade-in">
-              <div style={{padding: '0 16px', marginBottom: 16}}>
-                <ActionCard 
+              <div style={{ padding: '0 16px', marginBottom: 16 }}>
+                <ActionCard
                   icon={<FileText size={20} color="#fff" />}
                   title="Мои публикации"
                   subtitle={`${stats.posts_count} постов`}
-                  gradient={`linear-gradient(135deg, ${theme.colors.primary}, #6366f1)`}
                   onClick={handleOpenMyPosts}
                 />
               </div>
-              
               {posts.length > 0 ? (
                 <div style={styles.listGap}>
                   {previewPostsRows.map((row) => (
@@ -403,9 +350,7 @@ function Profile() {
                         key={row.key}
                         post={row.item}
                         onClick={handlePostClick}
-                        onPostDeleted={(postId) => {
-                          setPosts(prev => prev.filter(p => p.id !== postId));
-                        }}
+                        onPostDeleted={(postId) => setPosts(prev => prev.filter(p => p.id !== postId))}
                       />
                     )
                   ))}
@@ -415,19 +360,17 @@ function Profile() {
               )}
             </div>
           )}
-          
+
           {activeTab === 'requests' && (
             <div className="fade-in">
-              <div style={{padding: '0 16px', marginBottom: 16}}>
-                <ActionCard 
+              <div style={{ padding: '0 16px', marginBottom: 16 }}>
+                <ActionCard
                   icon={<FileText size={20} color="#fff" />}
                   title="Мои запросы"
                   subtitle={`${requests.length} активных`}
-                  gradient={`linear-gradient(135deg, ${theme.colors.primary}, #6366f1)`}
                   onClick={handleOpenMyRequests}
                 />
               </div>
-              
               {requests.length > 0 ? (
                 <div style={styles.listGap}>
                   {previewRequestsRows.map((row) => (
@@ -453,16 +396,14 @@ function Profile() {
 
           {activeTab === 'market' && (
             <div className="fade-in">
-              <div style={{padding: '0 16px', marginBottom: 16}}>
-                <ActionCard 
+              <div style={{ padding: '0 16px', marginBottom: 16 }}>
+                <ActionCard
                   icon={<ShoppingBag size={20} color="#fff" />}
                   title="Мои товары"
                   subtitle={`${marketItems.length} объявлений`}
-                  gradient={`linear-gradient(135deg, ${theme.colors.market}, #14b8a6)`}
                   onClick={handleOpenMyMarketItems}
                 />
               </div>
-
               {marketItems.length > 0 ? (
                 <div style={styles.listGap}>
                   {previewMarketRows.map((row) => (
@@ -484,13 +425,13 @@ function Profile() {
               )}
             </div>
           )}
-          
+
           <div style={{ height: 100 }} />
         </div>
       </div>
 
       {showPhotoViewer && user.avatar && (
-        <PhotoViewer 
+        <PhotoViewer
           images={[user.avatar]}
           initialIndex={0}
           onClose={() => setShowPhotoViewer(false)}
@@ -524,10 +465,7 @@ function Profile() {
 
       {showRequestDetail && (
         <RequestDetailModal
-          onClose={() => {
-            setShowRequestDetail(false);
-            setCurrentRequest(null);
-          }}
+          onClose={() => { setShowRequestDetail(false); setCurrentRequest(null); }}
           onEdit={(request) => {
             setShowRequestDetail(false);
             setCurrentRequest(null);
@@ -580,134 +518,155 @@ function Profile() {
       />
 
       <style>{`
-        .fade-in-up { 
-          animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; 
-          opacity: 0; 
-          transform: translateY(20px); 
-        }
-        .fade-in { 
-          animation: fadeIn 0.3s ease forwards; 
-        }
-        
-        @keyframes fadeInUp { 
-          to { opacity: 1; transform: translateY(0); } 
-        }
-        @keyframes fadeIn { 
-          from { opacity: 0; } 
-          to { opacity: 1; } 
-        }
-        
-        @media (hover: hover) and (pointer: fine) {
-          button:hover {
-            transform: translateY(-2px);
-          }
-        }
+        .fade-in { animation: fadeIn 0.25s ease forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
     </div>
   );
 }
 
-const StudentIDCard = ({ user, onAvatarClick }) => {
-  const campusLabel = getCampusDisplayName(user);
+// ===== CAMPUS ID CARD =====
+const CampusIDCard = ({ user, onAvatarClick }) => {
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [copiedUsername, setCopiedUsername] = useState(false);
 
-  // Собираем строку "2 курс · ИСА" с null-guard
+  const campusLabel = getCampusDisplayName(user);
+  const profileQrUrl = `https://t.me/MyCampusBot?start=profile_${user.telegram_id}`;
+
   const courseInstituteParts = [];
   if (user.course) courseInstituteParts.push(`${user.course} курс`);
   if (user.institute) courseInstituteParts.push(user.institute);
   const courseInstituteText = courseInstituteParts.join(' · ') || null;
 
-  return (
-    <div style={styles.studentCard}>
-      <div style={styles.cardHeader}>
-        <div style={styles.universityLogo}>
-          <Award size={20} color={theme.colors.primary} />
-          <span style={styles.universityName}>{campusLabel}</span>
-        </div>
-        <div style={styles.studentBadge}>STUDENT ID</div>
-      </div>
+  const handleCopyUsername = (e) => {
+    e.stopPropagation();
+    const text = user.username ? `@${user.username}` : `#${user.telegram_id}`;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedUsername(true);
+      setTimeout(() => setCopiedUsername(false), 2000);
+    });
+  };
 
-      <div style={styles.cardBody}>
-        <div style={styles.photoSection}>
-          <div 
-            style={styles.photoWrapper}
-            onClick={onAvatarClick}
-          >
-            {user.avatar ? (
-              <img src={user.avatar} style={styles.photoImg} alt="Avatar" />
-            ) : (
-              <div style={styles.photoPlaceholder}>
-                {getInitials(user.name)}
+  return (
+    <div style={cardStyles.flipContainer}>
+      <div
+        style={{
+          ...cardStyles.flipInner,
+          transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+        onClick={() => setIsFlipped(!isFlipped)}
+      >
+        {/* ЛИЦЕВАЯ СТОРОНА */}
+        <div style={cardStyles.flipFront}>
+          {/* Glow-blob */}
+          <div style={cardStyles.glowBlob} />
+
+          {/* Подсказка тапа */}
+          <div style={cardStyles.tapHint}>
+            <HandTap size={20} weight="duotone" color="#FFF" />
+          </div>
+
+          {/* Шапка: университет */}
+          <div style={cardStyles.cardHeader}>
+            <div style={cardStyles.uniRow}>
+              <div style={cardStyles.uniIconWrap}>
+                <MapPin size={14} weight="duotone" color="#fff" />
+              </div>
+              <span style={cardStyles.uniName}>{campusLabel}</span>
+            </div>
+          </div>
+
+          {/* Тело: аватар + инфо */}
+          <div style={cardStyles.cardBody}>
+            <div
+              style={cardStyles.avatarWrap}
+              onClick={(e) => { e.stopPropagation(); onAvatarClick(); }}
+            >
+              {user.avatar ? (
+                <img src={user.avatar} style={cardStyles.avatarImg} alt="avatar" />
+              ) : (
+                <div style={cardStyles.avatarPlaceholder}>
+                  {getInitials(user.name)}
+                </div>
+              )}
+            </div>
+
+            <div style={cardStyles.infoBlock}>
+              <div style={cardStyles.userName}>{user.name}</div>
+
+              <div
+                style={{
+                  ...cardStyles.usernameRow,
+                  color: copiedUsername ? '#32D74B' : '#D4FF00',
+                  background: copiedUsername ? 'rgba(50,215,75,0.1)' : 'rgba(212,255,0,0.06)',
+                }}
+                onClick={handleCopyUsername}
+              >
+                {copiedUsername ? (
+                  <><Check size={13} />&nbsp;Скопировано</>
+                ) : (
+                  user.username ? `@${user.username}` : `ID #${user.telegram_id}`
+                )}
+              </div>
+
+              {courseInstituteText && (
+                <div style={cardStyles.metaRow}>
+                  <span style={cardStyles.metaText}>{courseInstituteText}</span>
+                </div>
+              )}
+
+              {user.group && (
+                <div style={cardStyles.metaRow}>
+                  <span style={cardStyles.metaText}>Группа {user.group}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Разделитель */}
+          <div style={cardStyles.dashedSep} />
+
+          {/* Футер: ID + бейдж достижения */}
+          <div style={cardStyles.cardFooter}>
+            <div style={cardStyles.idRow}>
+              <Barcode size={20} color="#fff" />
+              <span style={cardStyles.idText}>ID:{user.telegram_id}</span>
+            </div>
+
+            {/* Бейдж достижения — показываем если есть данные */}
+            {user.achievement && (
+              <div style={cardStyles.achieveBadge}>
+                {user.achievement.title}
               </div>
             )}
           </div>
         </div>
 
-        <div style={styles.infoSection}>
-          <div style={styles.studentName}>{user.name}</div>
-          
-          {user.username ? (
-            <div style={styles.username}>@{user.username}</div>
-          ) : (
-            <div style={styles.usernameHint}>Добавьте никнейм в профиле</div>
-          )}
-          
-          {courseInstituteText && (
-            <div style={styles.infoRow}>
-              <Building2 size={14} color={theme.colors.textSecondary} />
-              <span style={styles.infoText}>{courseInstituteText}</span>
-            </div>
-          )}
-          
-          {user.group && (
-            <div style={styles.infoRow}>
-              <Users size={14} color={theme.colors.textSecondary} />
-              <span style={styles.infoText}>Группа: {user.group}</span>
-            </div>
-          )}
+        {/* ОБРАТНАЯ СТОРОНА */}
+        <div style={cardStyles.flipBack}>
+          <div style={cardStyles.qrWrap}>
+            <QRCodeSVG
+              value={profileQrUrl}
+              size={120}
+              bgColor="#FFFFFF"
+              fgColor="#000000"
+              level="M"
+            />
+          </div>
+          <div style={cardStyles.qrTitle}>МОЙ QR-КОД</div>
+          <div style={cardStyles.qrSubtitle}>Покажи для добавления</div>
         </div>
       </div>
-
-      <div style={styles.cardFooter}>
-        <div style={styles.idNumber}>
-          ID: #{user.telegram_id}
-        </div>
-        <div style={styles.joinDate}>
-          <Calendar size={12} color={theme.colors.textTertiary} />
-          <span>С {formatDate(user.created_at)}</span>
-        </div>
-      </div>
-
-      <div style={styles.magneticStripe} />
     </div>
   );
 };
 
+// ===== STATS GRID =====
 const StatsGrid = ({ stats }) => {
   const statCards = [
-    {
-      icon: Grid,
-      label: 'Постов',
-      value: stats.posts_count || 0,
-      color: '#3b82f6',
-      gradient: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08))',
-      borderColor: 'rgba(59, 130, 246, 0.3)',
-    },
-    {
-      icon: MessageCircle,
-      label: 'Комментов',
-      value: stats.comments_count || 0,
-      color: '#8b5cf6',
-      gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.08))',
-      borderColor: 'rgba(139, 92, 246, 0.3)',
-    },
-    {
-      icon: Heart,
-      label: 'Лайков',
-      value: stats.likes_count || 0,
-      color: '#ef4444',
-      gradient: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))',
-      borderColor: 'rgba(239, 68, 68, 0.3)',
-    },
+    { icon: Grid, label: 'Постов', value: stats.posts_count || 0, color: '#4DA6FF' },
+    { icon: MessageCircle, label: 'Комментов', value: stats.comments_count || 0, color: '#A78BFA' },
+    { icon: Heart, label: 'Лайков', value: stats.likes_count || 0, color: '#FF453A' },
   ];
 
   return (
@@ -715,18 +674,9 @@ const StatsGrid = ({ stats }) => {
       {statCards.map((card) => {
         const Icon = card.icon;
         return (
-          <div
-            key={card.label}
-            style={{
-              ...styles.statCard,
-              background: card.gradient,
-              borderColor: card.borderColor,
-            }}
-          >
-            <div style={{ ...styles.statIconWrap, backgroundColor: `${card.color}20` }}>
-              <Icon size={18} color={card.color} />
-            </div>
-            <div style={{ ...styles.statValue, color: card.color }}>{card.value}</div>
+          <div key={card.label} style={styles.statCard}>
+            <Icon size={20} color={card.color} style={{ marginBottom: 8, opacity: 0.9 }} />
+            <div style={{ ...styles.statValue, color: '#FFFFFF' }}>{card.value}</div>
             <div style={styles.statLabel}>{card.label}</div>
           </div>
         );
@@ -735,256 +685,283 @@ const StatsGrid = ({ stats }) => {
   );
 };
 
-const ActionCard = ({ icon, title, subtitle, gradient, onClick }) => (
-  <div 
-    style={{
-      background: gradient,
-      borderRadius: 16, 
-      padding: '16px', 
-      display: 'flex', 
-      alignItems: 'center', 
-      gap: 12,
-      cursor: 'pointer',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-      transition: 'all 0.3s ease',
-    }}
+// ===== ACTION CARD =====
+const ActionCard = ({ icon, title, subtitle, onClick }) => (
+  <div
+    style={styles.actionCard}
     onClick={onClick}
   >
-    <div style={{
-      width: 48, 
-      height: 48, 
-      borderRadius: 12, 
-      background: 'rgba(255,255,255,0.2)',
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      backdropFilter: 'blur(10px)',
-    }}>
-      {icon}
-    </div>
+    <div style={styles.actionCardIcon}>{icon}</div>
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 2 }}>{title}</div>
-      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)' }}>{subtitle}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 2 }}>{title}</div>
+      <div style={{ fontSize: 13, color: '#8E8E93' }}>{subtitle}</div>
     </div>
-    <ChevronRight size={24} color="rgba(255,255,255,0.8)" />
+    <ChevronRight size={20} color="#8E8E93" />
   </div>
 );
 
+// ===== EMPTY STATE =====
 const EmptyState = ({ text, icon }) => (
   <div style={{ padding: '60px 20px', textAlign: 'center', opacity: 0.5 }}>
     <div style={{ fontSize: 48, marginBottom: 12 }}>{icon}</div>
-    <div style={{ fontSize: 15, color: theme.colors.textSecondary }}>{text}</div>
+    <div style={{ fontSize: 15, color: '#8E8E93' }}>{text}</div>
   </div>
 );
 
-const styles = {
-  container: { 
-    minHeight: '100vh', 
-    background: theme.colors.bg, 
-    position: 'relative', 
-    overflow: 'hidden' 
+// ===== СТИЛИ FLIP-КАРТЫ =====
+const cardStyles = {
+  flipContainer: {
+    perspective: '1200px',
   },
-  
-  heroBackground: { 
-    position: 'absolute', 
-    top: 0, left: 0, right: 0, height: '200px', 
-    zIndex: 0, overflow: 'hidden'
+  flipInner: {
+    position: 'relative',
+    width: '100%',
+    transition: 'transform 0.6s cubic-bezier(0.4, 0.2, 0.1, 1)',
+    transformStyle: 'preserve-3d',
+    cursor: 'pointer',
+    // Высота определяется контентом лицевой стороны
   },
-  heroImageBlur: { 
-    width: '100%', height: '100%', objectFit: 'cover', 
-    filter: 'blur(40px) brightness(0.4)', transform: 'scale(1.2)' 
-  },
-  heroGradient: { 
-    width: '100%', height: '100%', 
-    background: `linear-gradient(135deg, ${theme.colors.gradientStart}, ${theme.colors.gradientEnd})`
-  },
-  heroOverlay: { 
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
-    background: `linear-gradient(to bottom, transparent 0%, ${theme.colors.bg} 100%)` 
-  },
-  
-  contentWrapper: { position: 'relative', zIndex: 2, paddingTop: 40 },
-  
-  cardWrapper: { padding: '0 16px', marginBottom: 16 },
-  
-  studentCard: {
-    background: theme.colors.card,
-    borderRadius: 20,
+  flipFront: {
+    background: '#0A0A0C',
+    borderRadius: 24,
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: '0 24px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
+    padding: 24,
     overflow: 'hidden',
-    boxShadow: theme.shadows.lg,
-    border: `1px solid ${theme.colors.border}`,
+    position: 'relative',
+    WebkitBackfaceVisibility: 'hidden',
+    backfaceVisibility: 'hidden',
   },
-  
-  cardHeader: {
-    padding: '12px 16px',
-    background: theme.colors.primaryLight,
-    borderBottom: `1px solid ${theme.colors.border}`,
+  flipBack: {
+    background: '#0A0A0C',
+    borderRadius: 24,
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: '0 24px 48px rgba(0,0,0,0.6)',
     display: 'flex',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: '48px 24px',
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    transform: 'rotateY(180deg)',
+    WebkitBackfaceVisibility: 'hidden',
+    backfaceVisibility: 'hidden',
   },
-  
-  universityLogo: {
+  glowBlob: {
+    position: 'absolute',
+    top: -50, right: -50,
+    width: 200, height: 200,
+    background: '#D4FF00',
+    filter: 'blur(90px)',
+    opacity: 0.08,
+    pointerEvents: 'none',
+  },
+  tapHint: {
+    position: 'absolute',
+    top: 12, right: 12,
+    opacity: 0.3,
+    pointerEvents: 'none',
+  },
+  cardHeader: {
+    marginBottom: 20,
+    position: 'relative',
+    zIndex: 2,
+  },
+  uniRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
   },
-  
-  universityName: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: theme.colors.text,
-  },
-  
-  studentBadge: {
-    fontSize: 10,
-    fontWeight: 700,
-    color: theme.colors.primary,
-    padding: '4px 10px',
-    background: theme.colors.primaryLight,
+  uniIconWrap: {
+    width: 26, height: 26,
     borderRadius: 8,
-    letterSpacing: '0.5px',
-  },
-  
-  cardBody: {
-    padding: '16px',
-    display: 'flex',
-    gap: 12,
-  },
-  
-  photoSection: {
-    flexShrink: 0,
-  },
-  
-  photoWrapper: {
-    cursor: 'pointer',
-    transition: 'transform 0.2s',
-  },
-  
-  photoImg: {
-    width: 140,
-    height: 140,
-    borderRadius: 12,
-    objectFit: 'cover',
-    border: `2px solid ${theme.colors.borderLight}`,
-    boxShadow: theme.shadows.md,
-  },
-  
-  photoPlaceholder: {
-    width: 140,
-    height: 140,
-    borderRadius: 12,
-    background: `linear-gradient(135deg, ${theme.colors.gradientStart}, ${theme.colors.gradientEnd})`,
+    background: 'rgba(255,255,255,0.1)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 48,
-    fontWeight: 800,
-    color: '#fff',
-    border: `2px solid ${theme.colors.borderLight}`,
-    boxShadow: theme.shadows.md,
+    flexShrink: 0,
   },
-  
-  infoSection: {
+  uniName: {
+    fontSize: 14, fontWeight: 700, color: '#FFF',
+  },
+  cardBody: {
+    display: 'flex',
+    gap: 20,
+    alignItems: 'flex-start',
+    marginBottom: 20,
+    position: 'relative',
+    zIndex: 2,
+  },
+  avatarWrap: {
+    width: 96, height: 96,
+    borderRadius: 28,
+    overflow: 'hidden',
+    flexShrink: 0,
+    cursor: 'pointer',
+  },
+  avatarImg: {
+    width: '100%', height: '100%',
+    objectFit: 'cover',
+  },
+  avatarPlaceholder: {
+    width: '100%', height: '100%',
+    background: 'linear-gradient(135deg, #FF4D85, #7A5CFF)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 38, fontWeight: 800, color: '#FFF',
+  },
+  infoBlock: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
-    paddingTop: 2,
+    gap: 4,
+    paddingTop: 4,
   },
-  
-  studentName: {
-    fontSize: 20,
-    fontWeight: 800,
-    color: theme.colors.text,
-    lineHeight: 1.2,
+  userName: {
+    fontSize: 22, fontWeight: 800, color: '#FFF',
+    letterSpacing: '-0.5px', lineHeight: 1.2,
   },
-  
-  username: {
-    fontSize: 13,
-    color: theme.colors.primary,
-    fontWeight: 600,
+  usernameRow: {
+    fontSize: 14, fontWeight: 600,
+    display: 'flex', alignItems: 'center',
+    padding: '3px 6px', marginLeft: -6,
+    borderRadius: 6,
+    transition: 'all 0.2s',
+    cursor: 'pointer',
+    width: 'max-content',
   },
-  usernameHint: {
-    fontSize: 13,
-    color: theme.colors.textTertiary,
-    fontWeight: 500,
-    fontStyle: 'italic',
-  },
-  
-  infoRow: {
+  metaRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
+    marginTop: 4,
   },
-  
-  infoText: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    fontWeight: 500,
+  metaText: {
+    fontSize: 13, color: '#8E8E93', fontWeight: 500,
   },
-  
+  dashedSep: {
+    borderTop: '1px dashed rgba(255,255,255,0.15)',
+    marginBottom: 14,
+    position: 'relative',
+    zIndex: 2,
+  },
   cardFooter: {
-    padding: '10px 16px',
-    borderTop: `1px solid ${theme.colors.border}`,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    background: theme.colors.bgSecondary,
+    position: 'relative',
+    zIndex: 2,
   },
-  
-  idNumber: {
-    fontSize: 12,
-    fontWeight: 600,
-    color: theme.colors.textSecondary,
-    fontFamily: 'monospace',
-  },
-  
-  joinDate: {
+  idRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 4,
-    fontSize: 11,
-    color: theme.colors.textTertiary,
-  },
-  
-  magneticStripe: {
-    height: 8,
-    background: `linear-gradient(90deg, ${theme.colors.gradientStart}, ${theme.colors.gradientEnd}, ${theme.colors.gradientStart})`,
-    opacity: 0.3,
-  },
-
-  actionsContainer: { 
-    padding: '0 16px', 
-    marginBottom: 20,
-    display: 'flex',
-    flexDirection: 'column',
     gap: 8,
   },
-  
-  editButton: {
-    width: '100%', 
-    padding: '14px', 
-    background: `linear-gradient(135deg, ${theme.colors.primary}, #6366f1)`,
-    border: 'none',
-    borderRadius: 16, 
-    color: '#fff', 
-    fontSize: 15, 
-    fontWeight: 700,
-    display: 'flex', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 8, 
-    cursor: 'pointer',
-    boxShadow: `0 4px 16px ${theme.colors.primaryGlow}`,
-    transition: 'all 0.3s',
+  idText: {
+    fontSize: 13, fontWeight: 700,
+    fontFamily: 'monospace',
+    letterSpacing: '2px',
+    color: '#FFF',
+  },
+  achieveBadge: {
+    background: 'rgba(212,255,0,0.15)',
+    border: '1px solid rgba(212,255,0,0.4)',
+    color: '#D4FF00',
+    padding: '4px 10px',
+    borderRadius: 8,
+    fontSize: 11, fontWeight: 800,
+    letterSpacing: '0.5px',
+  },
+  qrWrap: {
+    background: '#FFF',
+    padding: 14,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+  qrTitle: {
+    fontSize: 16, fontWeight: 800,
+    letterSpacing: '1px', color: '#FFF',
+  },
+  qrSubtitle: {
+    fontSize: 13, color: '#8E8E93', marginTop: 4,
+  },
+};
+
+// ===== ГЛАВНЫЕ СТИЛИ =====
+const styles = {
+  container: {
+    minHeight: '100vh',
+    background: '#000000',
+    position: 'relative',
   },
 
-  moderationButton: {
+  contentWrapper: {
+    position: 'relative',
+    zIndex: 2,
+    paddingTop: 'calc(var(--safe-area-top, 20px) + 16px)',
+  },
+
+  header: {
+    padding: '0 16px 16px',
+  },
+  headerTitle: {
+    fontSize: 28, fontWeight: 800,
+    letterSpacing: '-0.5px', color: '#FFF',
+  },
+
+  cardWrapper: {
+    padding: '0 16px',
+    marginBottom: 16,
+  },
+
+  actionsRow: {
+    padding: '0 16px',
+    marginBottom: 12,
+    display: 'flex',
+    gap: 10,
+    alignItems: 'stretch',
+  },
+  primaryAction: {
+    flex: 1,
+    background: '#D4FF00',
+    color: '#000',
+    border: 'none',
+    borderRadius: 16,
+    padding: '14px 16px',
+    fontSize: 15, fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    boxShadow: '0 8px 24px rgba(212,255,0,0.15)',
+    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
+  },
+  iconAction: {
+    width: 52, height: 52,
+    background: '#2C2C2E',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#FFF',
+    cursor: 'pointer',
+    flexShrink: 0,
+    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
+  },
+
+  modSection: {
+    padding: '0 16px',
+    marginBottom: 8,
+  },
+  modButton: {
     width: '100%',
     padding: '12px 14px',
-    background: theme.colors.card,
-    border: `1.5px solid ${theme.colors.border}`,
+    background: '#1C1C1E',
+    border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: 14,
     display: 'flex',
     alignItems: 'center',
@@ -992,23 +969,17 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.2s',
   },
-
-  modButtonIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  modIcon: {
+    width: 36, height: 36, borderRadius: 10,
     background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-
   adminButton: {
     width: '100%',
     padding: '12px 14px',
-    background: theme.colors.card,
-    border: `1.5px solid ${theme.colors.border}`,
+    background: '#1C1C1E',
+    border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: 14,
     display: 'flex',
     alignItems: 'center',
@@ -1016,76 +987,25 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.2s',
   },
-
-  adminButtonIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  adminIcon: {
+    width: 36, height: 36, borderRadius: 10,
     background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-
-  modButtonText: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 2,
+  modText: {
+    flex: 1, display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start',
   },
-
-  modButtonTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: theme.colors.text,
-  },
-
-  modButtonSubtitle: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    fontWeight: 500,
-  },
-
+  modTitle: { fontSize: 14, fontWeight: 700, color: '#FFF' },
+  modSubtitle: { fontSize: 12, color: '#8E8E93', fontWeight: 500 },
   modBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#ef4444',
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: 700,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '0 6px',
-    lineHeight: 1,
-  },
-  
-  secondaryButtons: {
-    display: 'flex',
-    gap: 8,
-  },
-  
-  secondaryButton: {
-    flex: 1,
-    padding: '12px',
-    background: 'transparent',
-    border: `1.5px solid ${theme.colors.border}`,
-    borderRadius: 12,
-    color: theme.colors.textSecondary,
-    fontSize: 14,
-    fontWeight: 600,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    cursor: 'pointer',
-    transition: 'all 0.2s',
+    minWidth: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#ef4444', color: '#fff',
+    fontSize: 11, fontWeight: 700,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 6px', lineHeight: 1,
   },
 
-  // Статистика
   statsGrid: {
     padding: '0 16px',
     marginBottom: 16,
@@ -1093,90 +1013,94 @@ const styles = {
     gridTemplateColumns: 'repeat(3, 1fr)',
     gap: 8,
   },
-
   statCard: {
-    borderRadius: 14,
-    padding: '14px 10px',
-    border: '1px solid',
+    borderRadius: 16,
+    padding: '14px 8px',
+    background: 'rgba(28,28,30,0.4)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
+    border: '1px solid rgba(255,255,255,0.05)',
+    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.03)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 6,
-    backdropFilter: 'blur(10px)',
   },
-
-  statIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   statValue: {
-    fontSize: 22,
-    fontWeight: 800,
-    lineHeight: 1,
+    fontSize: 22, fontWeight: 800, lineHeight: 1,
   },
-
   statLabel: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
+    fontSize: 11, fontWeight: 600,
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    marginTop: 6,
   },
 
   tabsContainer: {
-    padding: '0 16px', 
-    marginBottom: 16, 
-    position: 'sticky', 
-    top: 10, 
-    zIndex: 10
+    padding: '0 16px',
+    marginBottom: 16,
+    position: 'sticky',
+    top: 10,
+    zIndex: 10,
   },
-  
   tabsWrapper: {
-    display: 'flex', 
-    background: 'rgba(255, 255, 255, 0.05)', 
-    borderRadius: 12, 
-    padding: 3, 
-    position: 'relative', 
-    height: 40,
-    backdropFilter: 'blur(10px)',
-    border: `1px solid ${theme.colors.borderLight}`,
+    display: 'flex',
+    background: '#1C1C1E',
+    borderRadius: 14,
+    padding: 0,
+    position: 'relative',
+    height: 42,
+    overflow: 'hidden',
+    border: '1px solid rgba(255,255,255,0.06)',
   },
-  
   activeIndicator: {
-    position: 'absolute', 
-    top: 3, bottom: 3, left: 3, 
-    width: 'calc((100% - 6px) / 3)', 
-    borderRadius: 10,
-    boxShadow: theme.shadows.md, 
-    transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s', 
+    position: 'absolute',
+    top: 0, bottom: 0, left: 0,
+    width: 'calc(100% / 3)',
+    background: '#D4FF00',
+    borderRadius: 14,
+    boxShadow: '0 2px 10px rgba(212,255,0,0.2)',
+    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
     zIndex: 1,
   },
-  
   tabButton: {
-    flex: 1, 
-    background: 'transparent', 
-    border: 'none', 
-    fontSize: 13, 
-    fontWeight: 600, 
-    cursor: 'pointer', 
-    position: 'relative', 
-    zIndex: 2, 
+    flex: 1,
+    background: 'transparent',
+    border: 'none',
+    fontSize: 13, fontWeight: 700,
+    cursor: 'pointer',
+    position: 'relative',
+    zIndex: 2,
     transition: 'color 0.2s',
   },
 
-  feedContainer: { 
-    paddingTop: 0 
+  feedContainer: { paddingTop: 0 },
+
+  listGap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    padding: '0 16px',
   },
-  
-  listGap: { 
-    display: 'flex', 
-    flexDirection: 'column', 
-    gap: 12, 
-    padding: '0 16px' 
+
+  actionCard: {
+    background: '#1C1C1E',
+    borderRadius: 16,
+    padding: '14px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    cursor: 'pointer',
+    border: '1px solid rgba(255,255,255,0.06)',
+    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1)',
+  },
+  actionCardIcon: {
+    width: 44, height: 44,
+    borderRadius: 12,
+    background: 'rgba(212,255,0,0.12)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 };
 

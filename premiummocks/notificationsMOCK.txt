@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus - Notifications (Chronicle)</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #050505;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        --success: #32D74B;
+        --error: #FF453A;
+        
+        /* Цвета бейджей для разных типов событий */
+        --badge-dating: #FF2D55;
+        --badge-market: #32D74B;
+        --badge-comment: #A78BFA;
+        --badge-request: #4DA6FF;
+        
+        --safe-area-top: env(safe-area-inset-top, 20px);
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: var(--bg); 
+        color: var(--text); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden; 
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.94); opacity: 0.8; }
+      
+      /* Анимация появления для Quick Actions */
+      @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .quick-actions { animation: slideDown 0.3s ease forwards; }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        ChevronLeft, Heart, ShoppingBag, MessageCircle, 
+        LifeBuoy, Target, Check, X, Image as ImageIcon, Flame
+      } from 'lucide-react';
+
+      // === МОК ДАННЫЕ (Летопись) ===
+      const MOCK_NOTIFICATIONS = [
+        { 
+          id: 1, type: 'market', isUnread: true, group: 'today', time: '2м назад',
+          user: { name: 'Артем', letter: 'А', color: '#4DA6FF', course: '4 курс' },
+          text: 'хочет забрать твой "Конспект по Вышмату"',
+          hasActions: true,
+          thumbnail: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=100&h=100' // Книга
+        },
+        { 
+          id: 2, type: 'match', isUnread: true, group: 'today', time: '1ч назад',
+          user: { name: 'Вика', letter: 'В', color: '#FF4D85', course: '2 курс' },
+          text: 'Взаимная симпатия! Напиши ей первым, пока она онлайн.'
+        },
+        { 
+          id: 3, type: 'achievement', isUnread: false, group: 'today', time: '3ч назад',
+          title: 'Уфф, горячо! 🔥', 
+          text: 'Твой пост разрывает ленту — уже собрал 50 лайков.'
+        },
+        { 
+          id: 4, type: 'comment', isUnread: false, group: 'yesterday', time: 'Вчера, 14:20',
+          user: { name: 'Макс', letter: 'М', color: '#A78BFA' },
+          text: 'ответил на твой комментарий: "Согл, препод вообще жестит на сессии..."',
+          thumbnail: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=100&h=100' // Студенты
+        },
+        { 
+          id: 5, type: 'request', isUnread: false, group: 'yesterday', time: 'Вчера, 09:15',
+          user: { name: 'Егор', letter: 'Е', color: '#32D74B' },
+          text: 'откликнулся на твой горящий запрос "Нужен зарядник Type-C на пару"'
+        },
+        { 
+          id: 6, type: 'market', isUnread: false, group: 'last_week', time: '12 Окт',
+          user: { name: 'Саша', letter: 'С', color: '#FF9F0A' },
+          text: 'оставил(а) отзыв ⭐️ 5.0 после покупки свитшота.'
+        }
+      ];
+
+      // === КАСТОМНЫЕ КОМПОНЕНТЫ ===
+
+      const FilterChip = ({ label, active, onClick }) => (
+        <button className="spring-btn" onClick={onClick} style={{
+          padding: '10px 16px', borderRadius: '14px', fontSize: '14px', fontWeight: 700, flexShrink: 0,
+          background: active ? 'var(--primary)' : 'var(--surface)',
+          color: active ? '#000' : 'var(--text-muted)',
+          border: 'none',
+          boxShadow: active ? '0 4px 12px rgba(212, 255, 0, 0.2)' : 'none',
+          transition: 'all 0.2s ease'
+        }}>
+          {label}
+        </button>
+      );
+
+      // Анатомия одного уведомления
+      const NotificationItem = ({ data }) => {
+        const [resolved, setResolved] = useState(false); // Состояние для Quick Actions
+
+        // Конфигурация бейджей
+        const getBadgeConfig = (type) => {
+          switch(type) {
+            case 'market': return { icon: ShoppingBag, color: 'var(--badge-market)' };
+            case 'match': return { icon: Heart, color: 'var(--badge-dating)' };
+            case 'comment': return { icon: MessageCircle, color: 'var(--badge-comment)' };
+            case 'request': return { icon: LifeBuoy, color: 'var(--badge-request)' };
+            default: return null;
+          }
+        };
+
+        const badge = getBadgeConfig(data.type);
+
+        return (
+          <div className="spring-btn" style={{ 
+            position: 'relative', 
+            padding: '16px', 
+            background: data.isUnread ? 'rgba(212, 255, 0, 0.03)' : 'transparent',
+            borderLeft: data.isUnread ? '3px solid var(--primary)' : '3px solid transparent',
+            display: 'flex', gap: '14px',
+            borderBottom: '1px solid var(--border)',
+            transition: 'background 0.3s'
+          }}>
+            
+            {/* ЛЕВЫЙ ЯКОРЬ: Аватар + Микро-бейдж */}
+            <div style={{ position: 'relative', width: '48px', height: '48px', flexShrink: 0 }}>
+              {data.type === 'achievement' ? (
+                // Ачивка: Градиентный круг с иконкой
+                <div style={{ width: '100%', height: '100%', borderRadius: '16px', background: 'linear-gradient(135deg, #FF9F0A, #FF4D85)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(255, 159, 10, 0.3)' }}>
+                  <Flame size={24} color="#FFF" />
+                </div>
+              ) : (
+                // Обычный юзер: Аватарка
+                <div style={{ width: '100%', height: '100%', borderRadius: '16px', background: data.user.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 800, color: '#FFF' }}>
+                  {data.user.letter}
+                </div>
+              )}
+
+              {/* Микро-бейдж (если есть) */}
+              {badge && (
+                <div style={{ 
+                  position: 'absolute', bottom: '-4px', right: '-4px', 
+                  width: '20px', height: '20px', borderRadius: '8px', 
+                  background: badge.color, border: '2px solid var(--bg)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <badge.icon size={10} color="#FFF" strokeWidth={3} />
+                </div>
+              )}
+            </div>
+
+            {/* ЦЕНТР: Текст + Кнопки */}
+            <div style={{ flex: 1, minWidth: 0, paddingTop: '2px' }}>
+              
+              {data.type === 'achievement' ? (
+                <div style={{ fontSize: '15px', fontWeight: 800, color: '#FFF', marginBottom: '2px' }}>
+                  {data.title}
+                </div>
+              ) : (
+                <div style={{ fontSize: '15px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  <span style={{ fontWeight: 800, color: '#FFF' }}>{data.user.name} </span> 
+                  {data.text}
+                </div>
+              )}
+
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '6px', opacity: 0.7 }}>
+                {data.time}
+              </div>
+
+              {/* QUICK ACTIONS (Инлайн кнопки) */}
+              {data.hasActions && !resolved && (
+                <div className="quick-actions" style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                  <button onClick={(e) => { e.stopPropagation(); setResolved(true); }} className="spring-btn" style={{ 
+                    flex: 1, background: 'var(--primary)', color: '#000', 
+                    border: 'none', borderRadius: '10px', padding: '10px', 
+                    fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                  }}>
+                    <Check size={16} strokeWidth={3} /> Принять
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); setResolved(true); }} className="spring-btn" style={{ 
+                    flex: 1, background: 'var(--surface-elevated)', color: '#FFF', 
+                    border: 'none', borderRadius: '10px', padding: '10px', 
+                    fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                  }}>
+                    <X size={16} strokeWidth={3} /> Отказать
+                  </button>
+                </div>
+              )}
+
+              {/* Состояние после ответа */}
+              {data.hasActions && resolved && (
+                <div className="quick-actions" style={{ marginTop: '10px', fontSize: '13px', fontWeight: 600, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Check size={14} strokeWidth={3} /> Заявка одобрена
+                </div>
+              )}
+            </div>
+
+            {/* ПРАВЫЙ ЯКОРЬ: Thumbnail изображения */}
+            {data.thumbnail && (
+              <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, opacity: 0.8 }}>
+                <img src={data.thumbnail} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            )}
+
+          </div>
+        );
+      };
+
+      // === ГЛАВНАЯ СЦЕНА ===
+      function App() {
+        const [activeFilter, setActiveFilter] = useState('Все');
+        const filters = ['Все', '🔥 Матчи', '💬 Комменты', '🛒 Маркет', '🆘 Запросы'];
+
+        // Группировка уведомлений для рендера
+        const groupedData = {
+          today: MOCK_NOTIFICATIONS.filter(n => n.group === 'today'),
+          yesterday: MOCK_NOTIFICATIONS.filter(n => n.group === 'yesterday'),
+          older: MOCK_NOTIFICATIONS.filter(n => n.group === 'last_week'),
+        };
+
+        const renderGroup = (title, items) => {
+          if (items.length === 0) return null;
+          return (
+            <div style={{ marginBottom: '8px' }}>
+              <div style={{ 
+                padding: '16px 16px 8px', fontSize: '12px', fontWeight: 800, 
+                color: 'var(--text-muted)', letterSpacing: '1px', textTransform: 'uppercase' 
+              }}>
+                {title}
+              </div>
+              <div style={{ background: 'var(--bg)' }}>
+                {items.map(item => <NotificationItem key={item.id} data={item} />)}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: 'var(--bg)', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {/* Notch */}
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            {/* ХЕДЕР */}
+            <div style={{ 
+              padding: 'calc(var(--safe-area-top) + 24px) 16px 16px', 
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'rgba(5, 5, 5, 0.8)', backdropFilter: 'blur(20px)',
+              position: 'relative', zIndex: 10, borderBottom: '1px solid var(--border)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button className="spring-btn" style={{ background: 'var(--surface)', border: 'none', width: 40, height: 40, borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                  <ChevronLeft size={24} style={{ marginLeft: '-2px' }} />
+                </button>
+                <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-0.5px' }}>Уведомления</h1>
+              </div>
+              {/* Кнопка "Прочитать всё" */}
+              <button className="spring-btn" style={{ background: 'transparent', border: 'none', color: 'var(--primary)', fontSize: '14px', fontWeight: 700 }}>
+                Прочитать всё
+              </button>
+            </div>
+
+            {/* SMART FILTERS */}
+            <div style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)', position: 'relative', zIndex: 9 }}>
+              <div className="hide-scroll" style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '12px 16px' }}>
+                {filters.map(f => (
+                  <FilterChip key={f} label={f} active={activeFilter === f} onClick={() => setActiveFilter(f)} />
+                ))}
+              </div>
+            </div>
+
+            {/* ЛЕТОПИСЬ (Скролл-зона) */}
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: '40px' }}>
+              {renderGroup('Сегодня', groupedData.today)}
+              {renderGroup('Вчера', groupedData.yesterday)}
+              {renderGroup('На прошлой неделе', groupedData.older)}
+              
+              {/* Конец ленты */}
+              <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600 }}>
+                Ты просмотрел(а) все уведомления 👀
+              </div>
+            </div>
+
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

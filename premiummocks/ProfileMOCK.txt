@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus - Profile Modes</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #050505;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        --success: #32D74B;
+        --error: #FF453A;
+        --safe-area-top: env(safe-area-inset-top, 20px);
+        --safe-area-bottom: env(safe-area-inset-bottom, 20px);
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: #111;
+        color: var(--text); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+      }
+      
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.94); opacity: 0.8; }
+
+      .glass-card {
+        background: rgba(28, 28, 30, 0.4);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+      }
+
+      /* Flip Animation */
+      .flip-container { perspective: 1200px; margin-bottom: 16px; }
+      .flip-inner {
+        position: relative; width: 100%; transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.1, 1);
+        transform-style: preserve-3d;
+      }
+      .flip-inner.is-flipped { transform: rotateY(180deg); }
+      .flip-front, .flip-back {
+        width: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 24px;
+      }
+      .flip-back {
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0; transform: rotateY(180deg);
+        background: #0A0A0C; border: 1px solid var(--border);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "@phosphor-icons/react": "https://esm.sh/@phosphor-icons/react@2.0.15?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        MapPin, PencilSimple, ShareNetwork, Gear, 
+        SquaresFour, ChatCircle, Heart, FileText, 
+        CaretRight, CaretLeft, Camera, Bell, User, 
+        Target, Barcode, X, Lifebuoy, SignOut, 
+        CheckCircle, Fire, Briefcase, Lightning, 
+        Lock, Star, Check, QrCode, HandTap, PaperPlaneRight, UserPlus, Sparkle,
+        DotsThree
+      } from '@phosphor-icons/react';
+
+      // === МОК ДАННЫЕ ===
+      const ACHIEVEMENTS = [
+        { id: 'fire', title: 'Огонь-пожар', desc: 'Твой пост собрал 50+ лайков.', icon: Fire, color: '#FF453A', gradient: 'radial-gradient(circle at top left, #FF453A, #FF9F0A)', progress: 50, total: 50, unlocked: true },
+      ];
+
+      // === БАЗОВЫЕ КОМПОНЕНТЫ ===
+      const BottomSheet = ({ isOpen, onClose, children }) => {
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: isOpen ? 'auto' : 'none', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+            <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', opacity: isOpen ? 1 : 0, transition: 'opacity 0.3s ease' }} />
+            <div style={{ position: 'relative', background: '#151516', borderTopLeftRadius: '32px', borderTopRightRadius: '32px', transform: isOpen ? 'translateY(0)' : 'translateY(100%)', transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)', maxHeight: '90%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '24px 16px 16px', display: 'flex', justifyContent: 'flex-end', position: 'absolute', right: 0, top: 0, zIndex: 10 }}>
+                <button onClick={onClose} className="spring-btn" style={{ background: 'rgba(255,255,255,0.05)', border: 'none', width: 32, height: 32, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                  <X size={16} weight="bold" />
+                </button>
+              </div>
+              <div className="hide-scroll" style={{ overflowY: 'auto', padding: '24px 16px calc(var(--safe-area-bottom) + 16px)' }}>
+                {children}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // === ЭКРАН: ПРОФИЛЬ (УНИВЕРСАЛЬНЫЙ) ===
+      const ProfileView = ({ isMe, onOpenSettings, pinnedData }) => {
+        const [contentTab, setContentTab] = useState('posts');
+        const [isFlipped, setIsFlipped] = useState(false);
+        const [copiedUser, setCopiedUser] = useState(false);
+        const [copiedId, setCopiedId] = useState(false);
+        const [isFollowing, setIsFollowing] = useState(false);
+
+        const PinnedIcon = pinnedData?.icon || Target;
+        const badgeColor = pinnedData?.color || 'var(--primary)';
+
+        const handleCopy = (e, text, type) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(text);
+          if (type === 'user') {
+            setCopiedUser(true); setTimeout(() => setCopiedUser(false), 2000);
+          } else {
+            setCopiedId(true); setTimeout(() => setCopiedId(false), 2000);
+          }
+        };
+
+        const handleFlip = () => {
+          if (isMe) setIsFlipped(!isFlipped);
+        };
+
+        return (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            
+            {/* ХЕДЕР */}
+            <div style={{ padding: 'calc(var(--safe-area-top) + 24px) 16px 12px', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              {isMe ? (
+                <div style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.5px' }}>Профиль</div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <button className="spring-btn glass-card" style={{ border: 'none', width: 40, height: 40, borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                    <CaretLeft size={20} weight="bold" style={{ marginLeft: '-2px' }} />
+                  </button>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#FFF' }}>@dasdsaddasd</div>
+                  <button className="spring-btn" style={{ border: 'none', background: 'transparent', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                    <DotsThree size={28} weight="bold" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 16px', paddingBottom: '120px' }}>
+              
+              {/* ========================================================
+                  ВЕТВЛЕНИЕ: МОЙ ПРОФИЛЬ (Паспорт) VS ЧУЖОЙ ПРОФИЛЬ (Визитка)
+                  ======================================================== */}
+              
+              {isMe ? (
+                <>
+                  {/* ЦИФРОВОЙ СТУДАК (CAMPUS ID) - Только для меня */}
+                  <div className="flip-container">
+                    <div className={`flip-inner ${isFlipped ? 'is-flipped' : ''}`} onClick={handleFlip} style={{ cursor: 'pointer' }}>
+                      <div className="flip-front" style={{ 
+                        position: 'relative', background: '#0A0A0C', padding: '24px',
+                        border: `1px solid rgba(255, 255, 255, 0.08)`, 
+                        boxShadow: `0 24px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{ position: 'absolute', top: -50, right: -50, width: 200, height: 200, background: 'var(--primary)', filter: 'blur(90px)', opacity: 0.1, pointerEvents: 'none' }} />
+                        <div style={{ position: 'absolute', top: 12, right: 12, opacity: 0.3 }}><HandTap size={20} weight="duotone" color="#FFF" /></div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', position: 'relative', zIndex: 2 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '14px', color: '#FFF' }}>
+                            <div style={{width: 28, height: 28, borderRadius: '8px', background: 'rgba(255, 255, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                              <MapPin size={16} weight="duotone" color="#FFF"/>
+                            </div>
+                            РУК — Москва
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '24px', position: 'relative', zIndex: 2 }}>
+                          <div style={{ width: 96, height: 96, borderRadius: '28px', background: 'linear-gradient(135deg, #FF4D85, #7A5CFF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px', fontWeight: 800, color: '#FFF' }}>D</div>
+                          <div style={{ flex: 1 }}>
+                            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: '#FFF', letterSpacing: '-0.5px' }}>dasdssadsad</h2>
+                            <div onClick={(e) => handleCopy(e, '@dasdsaddasd', 'user')} style={{ color: copiedUser ? 'var(--success)' : 'var(--text-muted)', fontSize: '15px', fontWeight: 700, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', width: 'max-content', padding: '2px 6px', marginLeft: '-6px', borderRadius: '6px', background: copiedUser ? 'rgba(50, 215, 75, 0.1)' : 'transparent', transition: 'all 0.2s' }}>
+                              {copiedUser ? <><Check size={14} weight="bold"/> Скопировано</> : '@dasdsaddasd'}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontSize: '13px', marginTop: '12px', fontWeight: 500 }}>
+                              <FileText size={16} weight="duotone" /> 1 курс • ИСА
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 2 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Barcode size={24} weight="duotone" color={copiedId ? 'var(--success)' : '#FFF'} />
+                            <span style={{ fontSize: '14px', fontWeight: 700, fontFamily: 'monospace', letterSpacing: '2px', color: copiedId ? 'var(--success)' : '#FFF' }}>
+                              ID:999998
+                            </span>
+                          </div>
+                          <div style={{ background: badgeColor + '20', border: `1px solid ${badgeColor}50`, color: badgeColor, padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px', letterSpacing: '0.5px' }}>
+                             <PinnedIcon size={12} weight="duotone" /> {pinnedData?.title || 'Без титула'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flip-back">
+                        <div style={{ background: '#FFF', padding: '16px', borderRadius: '24px', marginBottom: '16px' }}><QrCode size={120} color="#000" weight="regular" /></div>
+                        <div style={{ fontSize: '16px', fontWeight: 800, letterSpacing: '1px' }}>МОЙ QR-КОД</div>
+                        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>Покажи для добавления</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Текстовый статус для "Меня" */}
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+                    <div className="glass-card spring-btn" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <Sparkle size={16} weight="duotone" color="var(--primary)" />
+                      <span style={{ fontSize: '14px', fontWeight: 600, color: '#EAEAEA', letterSpacing: '0.2px' }}>🔋 Ботаю вышмат, не беспокоить</span>
+                    </div>
+                  </div>
+
+                  {/* Кнопки действий для "Меня" */}
+                  <div style={{ display: 'flex', gap: '12px', marginBottom: '32px' }}>
+                    <button className="spring-btn" style={{ flex: 1, background: 'var(--primary)', color: '#000', border: 'none', borderRadius: '16px', padding: '16px', fontSize: '16px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 8px 24px rgba(212, 255, 0, 0.15)' }}>
+                      <ShareNetwork size={20} weight="bold" /> Поделиться ID
+                    </button>
+                    <button onClick={onOpenSettings} className="spring-btn" style={{ width: '56px', background: 'var(--surface-elevated)', color: '#FFF', border: '1px solid var(--border)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Gear size={24} weight="duotone" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* ========================================================
+                      КОМПАКТНАЯ ВИЗИТКА - ДЛЯ ЧУЖОГО ПРОФИЛЯ
+                      (Без штрихкодов, без QR, без рамок)
+                      ======================================================== */}
+                  <div style={{ padding: '8px 0 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    
+                    {/* Аватар + Титул */}
+                    <div style={{ position: 'relative', marginBottom: '16px' }}>
+                      <div style={{ width: 100, height: 100, borderRadius: '32px', background: 'linear-gradient(135deg, #FF4D85, #7A5CFF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', fontWeight: 800, color: '#FFF', boxShadow: '0 12px 32px rgba(122, 92, 255, 0.3)' }}>
+                        D
+                      </div>
+                      {/* Бейдж титула прямо на аватарке (экономим место) */}
+                      <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: '#111', border: `1px solid ${badgeColor}50`, color: badgeColor, padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px', letterSpacing: '0.5px', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                         <PinnedIcon size={12} weight="fill" /> {pinnedData?.title || 'Без титула'}
+                      </div>
+                    </div>
+
+                    {/* Имя и Универ */}
+                    <h2 style={{ margin: '8px 0 4px', fontSize: '24px', fontWeight: 800, color: '#FFF', letterSpacing: '-0.5px' }}>dasdssadsad</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontSize: '14px', fontWeight: 500 }}>
+                      <MapPin size={14} weight="fill" /> РУК • ИСА (1 курс)
+                    </div>
+
+                    {/* Статус под инфой */}
+                    <div style={{ marginTop: '16px', background: 'rgba(255,255,255,0.03)', padding: '8px 16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '14px', color: '#EAEAEA', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Sparkle size={16} weight="duotone" color="var(--primary)" />
+                      🔋 Ботаю вышмат, не беспокоить
+                    </div>
+                  </div>
+
+                  {/* Кнопки действий для "Чужого" (Высоко, без скролла) */}
+                  <div style={{ display: 'flex', gap: '12px', marginBottom: '32px' }}>
+                    <button className="spring-btn" style={{ flex: 1, background: 'var(--primary)', color: '#000', border: 'none', borderRadius: '16px', padding: '14px', fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 8px 24px rgba(212, 255, 0, 0.15)' }}>
+                      <PaperPlaneRight size={20} weight="bold" /> Написать
+                    </button>
+                    <button onClick={() => setIsFollowing(!isFollowing)} className="spring-btn" style={{ flex: 1, background: isFollowing ? 'transparent' : 'var(--surface-elevated)', color: isFollowing ? 'var(--text-muted)' : '#FFF', border: `1px solid ${isFollowing ? 'var(--border)' : 'transparent'}`, borderRadius: '16px', padding: '14px', fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s' }}>
+                      {isFollowing ? (
+                        <><Check size={20} weight="bold" /> Подписаны</>
+                      ) : (
+                        <><UserPlus size={20} weight="bold" /> Подписаться</>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* СТАТИСТИКА (Общая для всех) */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+                {[ 
+                  { val: 12, lbl: 'Постов', icon: SquaresFour, color: '#4DA6FF' }, 
+                  { val: 45, lbl: 'Комментов', icon: ChatCircle, color: '#A78BFA' }, 
+                  { val: 128, lbl: 'Лайков', icon: Heart, color: '#FF453A' } 
+                ].map((stat, i) => {
+                  const Icon = stat.icon;
+                  return (
+                    <div key={i} className="glass-card" style={{ flex: 1, borderRadius: '16px', padding: '14px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <Icon size={20} weight="duotone" color={stat.color} style={{ marginBottom: '8px', opacity: 0.9 }} />
+                      <div style={{ fontSize: '22px', fontWeight: 800, color: '#FFF', lineHeight: 1 }}>{stat.val}</div>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginTop: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{stat.lbl}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* ВОЗВРАТ КЛАССИЧЕСКИХ ТАБОВ (КОНТЕНТ) */}
+              <div style={{ display: 'flex', background: 'var(--surface)', borderRadius: '16px', padding: '4px', marginBottom: '16px' }}>
+                {['Посты', 'Запросы', 'Товары'].map(t => {
+                  const isActive = contentTab === t.toLowerCase();
+                  return (
+                    <button key={t} onClick={() => setContentTab(t.toLowerCase())} className="spring-btn" style={{ 
+                      flex: 1, padding: '10px 0', background: isActive ? 'var(--surface-elevated)' : 'transparent', 
+                      border: 'none', borderRadius: '12px', color: isActive ? '#FFF' : 'var(--text-muted)', 
+                      fontWeight: 800, fontSize: '14px', transition: 'all 0.2s', boxShadow: isActive ? '0 2px 8px rgba(0,0,0,0.2)' : 'none'
+                    }}>
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {/* Контент Плейсхолдер */}
+              <div style={{ width: '100%', background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '16px', padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '12px' }}>
+                  <FileText size={32} weight="duotone" opacity={0.5} />
+                  <span style={{ fontSize: '14px', fontWeight: 600 }}>Здесь будут {contentTab} пользователя</span>
+              </div>
+
+            </div>
+          </div>
+        );
+      };
+
+      // === МЕНЕДЖЕР ЭКРАНОВ ===
+      function App() {
+        const [viewMode, setViewMode] = useState('other'); 
+        const [settingsOpen, setSettingsOpen] = useState(false);
+
+        const pinnedData = ACHIEVEMENTS.find(a => a.id === 'fire');
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: 'var(--bg)', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            {/* ПЛАВАЮЩИЙ ПУЛЬТ */}
+            <div style={{ 
+              position: 'absolute', bottom: '24px', left: '50%', transform: 'translateX(-50%)', 
+              background: 'rgba(28, 28, 30, 0.8)', backdropFilter: 'blur(12px)', 
+              padding: '6px', borderRadius: '24px', display: 'flex', gap: '4px', zIndex: 2000,
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <button 
+                onClick={() => setViewMode('me')} 
+                style={{ padding: '8px 16px', borderRadius: '18px', border: 'none', fontWeight: 700, fontSize: '13px', background: viewMode === 'me' ? 'var(--primary)' : 'transparent', color: viewMode === 'me' ? '#000' : '#FFF', cursor: 'pointer', transition: 'all 0.2s' }}
+              >
+                Мой профиль
+              </button>
+              <button 
+                onClick={() => setViewMode('other')} 
+                style={{ padding: '8px 16px', borderRadius: '18px', border: 'none', fontWeight: 700, fontSize: '13px', background: viewMode === 'other' ? 'var(--primary)' : 'transparent', color: viewMode === 'other' ? '#000' : '#FFF', cursor: 'pointer', transition: 'all 0.2s' }}
+              >
+                Чужой профиль
+              </button>
+            </div>
+
+            <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+              <ProfileView isMe={viewMode === 'me'} onOpenSettings={() => setSettingsOpen(true)} pinnedData={pinnedData} />
+
+              <BottomSheet isOpen={settingsOpen && viewMode === 'me'} onClose={() => setSettingsOpen(false)}>
+                <h2 style={{ margin: '0 0 24px 0', fontSize: '22px', fontWeight: 800 }}>Настройки</h2>
+                <div style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '20px' }}>
+                  Здесь находятся настройки уведомлений, системы и выход из аккаунта.
+                </div>
+                <button onClick={() => setSettingsOpen(false)} className="spring-btn" style={{ width: '100%', padding: '16px', background: 'var(--surface-elevated)', borderRadius: '16px', border: 'none', color: '#FFF', fontWeight: 700, fontSize: '16px' }}>Закрыть</button>
+              </BottomSheet>
+            </div>
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
