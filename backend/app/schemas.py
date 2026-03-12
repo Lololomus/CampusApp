@@ -61,53 +61,53 @@ def _to_naive_utc(dt_value: Optional[datetime]) -> Optional[datetime]:
 
 class UserBase(BaseModel):
     """Базовые поля пользователя"""
-    name: str
-    university: str
-    institute: Optional[str] = None
-    course: Optional[int] = None
+    name: str = Field(..., max_length=100)
+    university: str = Field(..., max_length=200)
+    institute: Optional[str] = Field(None, max_length=200)
+    course: Optional[int] = Field(None, ge=1, le=10)
 
 class UserCreate(UserBase):
     """Создание нового пользователя"""
     telegram_id: int
-    username: Optional[str] = None
-    age: Optional[int] = None
-    group: Optional[str] = None
-    bio: Optional[str] = None
-    campus_id: Optional[str] = None
-    city: Optional[str] = None
-    custom_university: Optional[str] = None
-    custom_city: Optional[str] = None
-    custom_faculty: Optional[str] = None
+    username: Optional[str] = Field(None, max_length=64)
+    age: Optional[int] = Field(None, ge=14, le=100)
+    group: Optional[str] = Field(None, max_length=50)
+    bio: Optional[str] = Field(None, max_length=500)
+    campus_id: Optional[str] = Field(None, max_length=100)
+    city: Optional[str] = Field(None, max_length=100)
+    custom_university: Optional[str] = Field(None, max_length=200)
+    custom_city: Optional[str] = Field(None, max_length=100)
+    custom_faculty: Optional[str] = Field(None, max_length=200)
 
 
 class UserRegister(UserBase):
     """Регистрация пользователя в auth-потоке (telegram_id берется из токена)"""
-    username: Optional[str] = None
-    age: Optional[int] = None
-    group: Optional[str] = None
-    bio: Optional[str] = None
-    campus_id: Optional[str] = None
-    city: Optional[str] = None
-    custom_university: Optional[str] = None
-    custom_city: Optional[str] = None
-    custom_faculty: Optional[str] = None
+    username: Optional[str] = Field(None, max_length=64)
+    age: Optional[int] = Field(None, ge=14, le=100)
+    group: Optional[str] = Field(None, max_length=50)
+    bio: Optional[str] = Field(None, max_length=500)
+    campus_id: Optional[str] = Field(None, max_length=100)
+    city: Optional[str] = Field(None, max_length=100)
+    custom_university: Optional[str] = Field(None, max_length=200)
+    custom_city: Optional[str] = Field(None, max_length=100)
+    custom_faculty: Optional[str] = Field(None, max_length=200)
 
 class UserUpdate(BaseModel):
     """Обновление профиля"""
-    username: Optional[str] = None
-    name: Optional[str] = None
-    age: Optional[int] = None
-    bio: Optional[str] = None
-    avatar: Optional[str] = None
-    university: Optional[str] = None
-    institute: Optional[str] = None
-    course: Optional[int] = None
-    group: Optional[str] = None
-    campus_id: Optional[str] = None
-    city: Optional[str] = None
-    custom_university: Optional[str] = None
-    custom_city: Optional[str] = None
-    custom_faculty: Optional[str] = None
+    username: Optional[str] = Field(None, max_length=64)
+    name: Optional[str] = Field(None, max_length=100)
+    age: Optional[int] = Field(None, ge=14, le=100)
+    bio: Optional[str] = Field(None, max_length=500)
+    avatar: Optional[str] = Field(None, max_length=500)
+    university: Optional[str] = Field(None, max_length=200)
+    institute: Optional[str] = Field(None, max_length=200)
+    course: Optional[int] = Field(None, ge=1, le=10)
+    group: Optional[str] = Field(None, max_length=50)
+    campus_id: Optional[str] = Field(None, max_length=100)
+    city: Optional[str] = Field(None, max_length=100)
+    custom_university: Optional[str] = Field(None, max_length=200)
+    custom_city: Optional[str] = Field(None, max_length=100)
+    custom_faculty: Optional[str] = Field(None, max_length=200)
     interests: Optional[List[str]] = None
     show_profile: Optional[bool] = None
     show_telegram_id: Optional[bool] = None
@@ -141,12 +141,30 @@ class UserResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     last_profile_edit: Optional[datetime] = None
+    can_edit_edu: bool = True
+    edu_cooldown_days: int = 0
 
     # ✅ Фаза 5.1: единый coerce
     @field_validator('interests', mode='before')
     @classmethod
     def coerce_interests(cls, v):
         return _coerce_json_list(v)
+
+    @model_validator(mode='after')
+    def compute_edu_cooldown(self):
+        if self.last_profile_edit is None:
+            self.can_edit_edu = True
+            self.edu_cooldown_days = 0
+        else:
+            days_passed = (datetime.utcnow() - self.last_profile_edit).days
+            remaining = 30 - days_passed
+            if remaining <= 0:
+                self.can_edit_edu = True
+                self.edu_cooldown_days = 0
+            else:
+                self.can_edit_edu = False
+                self.edu_cooldown_days = remaining
+        return self
 
     model_config = ConfigDict(from_attributes=True)
 

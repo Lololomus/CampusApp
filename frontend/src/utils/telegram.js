@@ -147,10 +147,24 @@ function setButtonText(button, text) {
   button.setText?.(text);
 }
 
+// Вычисляет luma hex-цвета и возвращает контрастный текст (#000 или #fff)
+function contrastTextColor(hex) {
+  const c = hex.replace('#', '');
+  if (c.length !== 6) return '#ffffff';
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luma > 0.5 ? '#000000' : '#ffffff';
+}
+
 function applyButtonParams(button, params) {
   if (!button?.setParams || !params) return;
   try {
-    button.setParams(params);
+    const enriched = params.color
+      ? { ...params, text_color: params.text_color || contrastTextColor(params.color) }
+      : params;
+    button.setParams(enriched);
   } catch (error) {
     console.error('Telegram button setParams failed:', error);
   }

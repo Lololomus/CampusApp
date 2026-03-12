@@ -57,7 +57,6 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
     >
       <div
         ref={contentRef}
-        {...swipeHandlers}
         style={{
           width: '100%',
           maxWidth: '600px',
@@ -69,7 +68,6 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
           transition: isAnimating
             ? 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)'
             : 'transform 0.25s ease-in',
-          touchAction: 'none',
           display: 'flex',
           flexDirection: 'column',
           maxHeight: '85vh',
@@ -81,14 +79,31 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
         }}
       >
         {/* Drag Handle */}
-        <div style={{
-          width: 36,
-          height: 4,
-          backgroundColor: 'rgba(255,255,255,0.2)',
-          borderRadius: 2,
-          margin: '12px auto 0 auto',
-          flexShrink: 0,
-        }} />
+        <div
+          {...swipeHandlers}
+          style={{
+            height: 48,
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'none',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            cursor: 'grab',
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 6,
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              borderRadius: 999,
+              flexShrink: 0,
+            }}
+          />
+        </div>
         
         {/* Header */}
         {title && (

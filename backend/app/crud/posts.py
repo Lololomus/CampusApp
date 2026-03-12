@@ -412,11 +412,12 @@ async def vote_poll(db: AsyncSession, poll_id: int, user_id: int, option_indices
     if poll.closes_at and poll.closes_at < datetime.utcnow():
         raise ValueError("Опрос закрыт")
 
+    # with_for_update() блокирует строку, исключая race condition при параллельных запросах
     existing_vote_result = await db.execute(
         select(models.PollVote).where(
             models.PollVote.poll_id == poll_id,
             models.PollVote.user_id == user_id
-        )
+        ).with_for_update()
     )
     if existing_vote_result.scalar_one_or_none():
         raise ValueError("Вы уже проголосовали")

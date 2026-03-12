@@ -652,9 +652,9 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
       <style>{keyframeStyles}</style>
       <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}>
         <div style={styles.backdrop} onClick={handleClose} />
-        <div ref={sheetRef} {...swipeHandlers} style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }} onClick={(e) => e.stopPropagation()}>
+        <div ref={sheetRef} style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }} onClick={(e) => e.stopPropagation()}>
           {isSubmitting ? <div style={{ ...styles.progress, width: `${uploadProgress}%` }} /> : null}
-          <div style={styles.handleWrap}>
+          <div style={styles.handleWrap} {...swipeHandlers}>
             <div style={styles.handle} />
           </div>
 
@@ -1002,8 +1002,20 @@ const styles = {
     boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
   },
   progress: { position: 'absolute', top: 0, left: 0, height: 3, background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)' },
-  handleWrap: { display: 'flex', justifyContent: 'center', padding: '12px 16px', borderBottom: '1px solid var(--create-border)' },
-  handle: { width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' },
+  handleWrap: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 48,
+    width: '100%',
+    padding: '0 16px',
+    borderBottom: '1px solid var(--create-border)',
+    touchAction: 'none',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    cursor: 'grab',
+  },
+  handle: { width: 64, height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.2)' },
   content: { flex: 1, padding: 16, overflowY: 'auto', overflowX: 'hidden', color: '#fff', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' },
   textarea: {
     width: '100%',

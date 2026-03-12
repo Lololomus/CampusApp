@@ -39,10 +39,11 @@ function AuthModal() {
           className="auth-sheet-slide"
           style={styles.sheet}
           onClick={(e) => e.stopPropagation()}
-          {...swipeHandlers}
         >
           {/* Drag handle */}
-          <div style={styles.handle} />
+          <div style={styles.handleZone} {...swipeHandlers}>
+            <div style={styles.handle} />
+          </div>
 
           {/* Icon */}
           <div style={styles.iconBox}>
@@ -91,17 +92,28 @@ const styles = {
     alignItems: 'center',
     textAlign: 'center',
     boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
-    touchAction: 'none',
     willChange: 'transform',
     backfaceVisibility: 'hidden',
     WebkitBackfaceVisibility: 'hidden',
   },
+  handleZone: {
+    width: '100%',
+    height: 48,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    touchAction: 'none',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    cursor: 'grab',
+    flexShrink: 0,
+    marginBottom: 16,
+  },
   handle: {
-    width: 40,
-    height: 5,
-    borderRadius: 2.5,
+    width: 64,
+    height: 6,
+    borderRadius: 999,
     background: 'rgba(255,255,255,0.2)',
-    marginBottom: 32,
     flexShrink: 0,
   },
   iconBox: {

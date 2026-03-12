@@ -19,12 +19,21 @@ function ActionButton({ config, isSingle, kind }) {
   const disabled = enabled === false || loading;
 
   const defaultBackground = kind === 'main' ? theme.colors.primary : theme.colors.bgSecondary;
+  const bg = color || defaultBackground;
+
+  // Контрастный текст: лайм (#D4FF00) → чёрный, тёмные фоны → белый
+  const getTextColor = (hex) => {
+    const c = (hex || '').replace('#', '');
+    if (c.length !== 6) return '#ffffff';
+    const luma = (0.299 * parseInt(c.slice(0,2),16) + 0.587 * parseInt(c.slice(2,4),16) + 0.114 * parseInt(c.slice(4,6),16)) / 255;
+    return luma > 0.5 ? '#000000' : '#ffffff';
+  };
 
   const style = {
     ...styles.button,
     ...(isSingle ? styles.buttonSingle : {}),
-    background: color || defaultBackground,
-    color: kind === 'main' ? '#fff' : theme.colors.text,
+    background: bg,
+    color: kind === 'main' ? getTextColor(bg) : theme.colors.text,
     opacity: disabled ? 0.6 : 1,
     border: kind === 'secondary' ? `1px solid ${theme.colors.border}` : 'none',
     cursor: disabled ? 'not-allowed' : 'pointer',

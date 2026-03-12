@@ -36,7 +36,7 @@ class Settings(BaseModel):
     jwt_alg: str = Field(default="HS256")
     access_ttl_min: int = Field(default=15)
     refresh_ttl_days: int = Field(default=30)
-    auth_max_skew_seconds: int = Field(default=1800)
+    auth_max_skew_seconds: int = Field(default=300)
 
     # --- Настройки фронтенда и CORS ---
     cors_origins: List[str] = Field(default_factory=list)
@@ -94,6 +94,13 @@ def get_settings() -> Settings:
     if is_prod_env and dev_auth_enabled:
         raise RuntimeError("DEV_AUTH_ENABLED must be false when APP_ENV is production")
 
+    cookie_secure = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+    cookie_samesite = os.getenv("COOKIE_SAMESITE", "lax")
+    if is_prod_env and not cookie_secure:
+        raise RuntimeError("COOKIE_SECURE must be true when APP_ENV=prod")
+    if is_prod_env and cookie_samesite not in ("strict", "lax"):
+        raise RuntimeError("COOKIE_SAMESITE must be 'strict' or 'lax' when APP_ENV=prod")
+
     return Settings(
         app_env=app_env,
         database_url=os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/campus_app_dev"),
@@ -107,11 +114,11 @@ def get_settings() -> Settings:
         jwt_alg=os.getenv("JWT_ALG", "HS256"),
         access_ttl_min=int(os.getenv("ACCESS_TTL_MIN", "15")),
         refresh_ttl_days=int(os.getenv("REFRESH_TTL_DAYS", "30")),
-        auth_max_skew_seconds=int(os.getenv("AUTH_MAX_SKEW_SECONDS", "1800")),
+        auth_max_skew_seconds=int(os.getenv("AUTH_MAX_SKEW_SECONDS", "300")),
         
         cors_origins=cors_list,
-        cookie_secure=os.getenv("COOKIE_SECURE", "false").lower() == "true",
-        cookie_samesite=os.getenv("COOKIE_SAMESITE", "lax"),
+        cookie_secure=cookie_secure,
+        cookie_samesite=cookie_samesite,
         
         dev_auth_enabled=dev_auth_enabled,
         dev_telegram_ids=dev_ids_set,

@@ -262,17 +262,21 @@ async def like_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if target_user_id == user.id:
+        raise HTTPException(status_code=400, detail="Нельзя лайкнуть себя")
+
     result = await crud.create_like(db, liker_id=user.id, liked_id=target_user_id)
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error"))
 
     if result.get("is_match"):
+        # with_for_update() предотвращает race condition при одновременных лайках
         res1 = await db.execute(
             select(models.DatingLike).where(
                 models.DatingLike.who_liked_id == user.id,
                 models.DatingLike.whom_liked_id == target_user_id
-            )
+            ).with_for_update()
         )
         like1 = res1.scalar_one_or_none()
 
@@ -280,7 +284,7 @@ async def like_user(
             select(models.DatingLike).where(
                 models.DatingLike.who_liked_id == target_user_id,
                 models.DatingLike.whom_liked_id == user.id
-            )
+            ).with_for_update()
         )
         like2 = res2.scalar_one_or_none()
 

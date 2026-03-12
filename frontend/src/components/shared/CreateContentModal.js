@@ -675,7 +675,6 @@ function CreateContentModal({ onClose }) {
         <div style={{ ...styles.backdrop, opacity: isVisible ? 1 : 0 }} onClick={handleClose} />
         <div
           ref={sheetRef}
-          {...swipeHandlers}
           style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }}
           onClick={(event) => event.stopPropagation()}
         >
@@ -685,7 +684,7 @@ function CreateContentModal({ onClose }) {
             </div>
           )}
 
-          <div style={styles.sheetHeader}>
+          <div style={styles.sheetHeader} {...swipeHandlers}>
             <div style={styles.dragHandle} />
           </div>
 
@@ -1294,8 +1293,21 @@ const styles = {
   },
   topProgressBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.08)', zIndex: 2 },
   topProgressFill: { height: '100%', background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.3s ease' },
-  sheetHeader: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', flexShrink: 0 },
-  dragHandle: { width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' },
+  sheetHeader: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    width: '100%',
+    padding: '0 16px',
+    flexShrink: 0,
+    touchAction: 'none',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    cursor: 'grab',
+  },
+  dragHandle: { width: 64, height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.2)' },
   switcherWrap: { padding: '0 16px 12px', borderBottom: '1px solid var(--create-border)', flexShrink: 0 },
   switcherInner: { display: 'flex', background: 'var(--create-surface-elevated)', borderRadius: 12, padding: 4 },
   switchBtn: {

@@ -44,6 +44,14 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate) -> models.User
     return db_user
 
 
+_ALLOWED_USER_UPDATE_FIELDS = {
+    "username", "name", "age", "bio", "avatar",
+    "university", "institute", "course", "group",
+    "campus_id", "city", "custom_university", "custom_city", "custom_faculty",
+    "interests", "show_profile", "show_telegram_id",
+    "show_in_dating", "hide_course_group",
+}
+
 async def update_user(db: AsyncSession, user_id: int, user_update: schemas.UserUpdate) -> Optional[models.User]:
     """Обновить данные пользователя"""
     db_user = await db.get(models.User, user_id)
@@ -56,7 +64,8 @@ async def update_user(db: AsyncSession, user_id: int, user_update: schemas.UserU
         update_data['interests'] = sanitize_json_field(update_data['interests'])  # ✅ JSONB: list
 
     for key, value in update_data.items():
-        setattr(db_user, key, value)
+        if key in _ALLOWED_USER_UPDATE_FIELDS:
+            setattr(db_user, key, value)
 
     db_user.last_profile_edit = datetime.utcnow()
 
