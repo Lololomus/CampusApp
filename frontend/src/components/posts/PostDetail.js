@@ -19,6 +19,7 @@ import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { toast } from '../shared/Toast'; 
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import EdgeBlur from '../shared/EdgeBlur';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
@@ -448,8 +449,13 @@ function PostDetail() {
       `}</style>
 
       <div style={styles.container}>
+        {/* Верхний блюр — всегда, независимо от скролла */}
+        <EdgeBlur position="top" height={76} zIndex={105} />
+        {/* Нижний блюр — поверх поля комментария */}
+        <EdgeBlur position="bottom" height={90} zIndex={105} />
+
         <div style={{ ...styles.headerWrap, transform: isHeaderHidden ? 'translateY(-100%)' : 'translateY(0)' }}>
-          <DrilldownHeader title="Пост" onBack={closeDetail} />
+          <DrilldownHeader title="Пост" onBack={closeDetail} transparent />
         </div>
 
         <div style={styles.scrollContent} onScroll={handleDetailScroll}>

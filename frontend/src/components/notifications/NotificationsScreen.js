@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 
 import DrilldownHeader from '../shared/DrilldownHeader';
+import EdgeBlur from '../shared/EdgeBlur';
 import { getNotifications, markAllNotificationsRead } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
@@ -440,9 +441,15 @@ function NotificationsScreen() {
         ? 'nsSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards'
         : 'nsSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards',
     }}>
+      {/* Верхний блюр — до нижнего края хедера */}
+      <EdgeBlur position="top" height={76} zIndex={60} />
+      {/* Нижний блюр — плавный фейд у нижнего края экрана */}
+      <EdgeBlur position="bottom" height={60} zIndex={60} />
+
       <DrilldownHeader
         title="Уведомления"
         onBack={handleClose}
+        transparent
         rightSlot={hasUnread ? (
           <button
             onClick={handleMarkAllRead}

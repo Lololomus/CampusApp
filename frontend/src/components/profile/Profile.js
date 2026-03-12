@@ -30,6 +30,7 @@ import RequestDetailModal from '../requests/RequestDetailModal';
 import MarketDetail from '../market/MarketDetail';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
+import EdgeBlur from '../shared/EdgeBlur';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
@@ -60,6 +61,14 @@ function Profile() {
     comments_count: 0,
     likes_count: 0
   });
+
+  // Верхний блюр появляется только после прокрутки карточки профиля
+  const [profileScrolledDown, setProfileScrolledDown] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => setProfileScrolledDown(window.scrollY > 80);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
@@ -217,6 +226,11 @@ function Profile() {
 
   return (
     <div style={styles.container}>
+      {/* Нижний блюр — от края экрана вверх, прозрачный конец совпадает с верхним краем навбара */}
+      <EdgeBlur position="bottom" height={100} zIndex={50} />
+      {/* Верхний блюр — появляется при прокрутке ниже карточки профиля */}
+      <EdgeBlur position="top" height={76} zIndex={50} visible={profileScrolledDown} />
+
       <div style={styles.contentWrapper}>
 
         {/* ХЕДЕР */}

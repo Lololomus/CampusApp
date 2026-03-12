@@ -177,7 +177,7 @@ function App() {
 const styles = {
   app: {
     minHeight: 'var(--tg-app-viewport-stable-height, 100vh)',
-    backgroundColor: '#121212',
+    backgroundColor: '#000000',
     color: '#fff',
     paddingBottom: 'calc(80px + var(--screen-bottom-offset))',
   },

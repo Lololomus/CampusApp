@@ -1,0 +1,442 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Search, X, SlidersHorizontal, 
+  Home, ShoppingBag, Plus, Heart, User, 
+  MoreVertical, Eye, MessageCircle
+} from 'lucide-react';
+
+// === ТОКЕНЫ И ТЕМА ===
+const theme = {
+  bg: '#000000', 
+  primary: '#D4FF00', 
+  primaryText: '#000000',
+  text: '#FFFFFF',
+  textMuted: '#888888',
+  surfaceElevated: '#1C1C1E', // Плотный премиальный цвет кнопок
+  border: 'rgba(255, 255, 255, 0.08)'
+};
+
+// === МОК-ДАННЫЕ ===
+const MOCK_POSTS = [
+  {
+    id: 1,
+    author: 'Алексей Иванов',
+    avatarLetter: 'А',
+    avatarColor: '#4DA6FF',
+    meta: 'ВШЭ • 1к',
+    tag: 'НОВОСТИ',
+    time: 'Только что',
+    text: 'Кто-нибудь знает, где в кампусе на Покровке можно спокойно посидеть с ноутом, где есть розетки? 💻🔌 Обошел уже три этажа в центральном атриуме, всё занято первокурами, которые даже не учатся, а просто смотрят тиктоки. Спасайте, у меня дедлайн!',
+    image: null,
+    likes: 12, comments: 4, views: '142'
+  },
+  {
+    id: 2,
+    author: 'Максим Прокурор',
+    avatarLetter: 'М',
+    avatarColor: theme.primary,
+    meta: 'Юрфак • 3 курс',
+    tag: 'ИНСАЙД',
+    time: '10 минут назад',
+    text: 'Срочная инфа для всех, кто пишет курсач у Смирнова: он сегодня не приедет на консультацию. Только что написал старосте. Можете не бежать на Мясницкую. Радуемся и идем спать.',
+    image: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&q=80&w=600',
+    likes: 84, comments: 22, views: '3.1k'
+  },
+  {
+    id: 3,
+    author: 'Анонимный студент',
+    avatarLetter: '?',
+    avatarColor: '#FF4D4D',
+    meta: 'ФКН',
+    tag: 'ЖИЗА',
+    time: '42 минуты назад',
+    text: 'Отдам даром учебник по эконометрике. Состояние среднее, но все страницы на месте. Самовывоз из общаги в Дубках. Пишите в личку, если нужно. Иначе завтра выброшу. 📚💀',
+    image: null,
+    likes: 5, comments: 0, views: '89'
+  },
+  {
+    id: 4,
+    author: 'Дарья Ковалёва',
+    avatarLetter: 'Д',
+    avatarColor: '#FF69B4',
+    meta: 'Дизайн • 2к',
+    tag: 'МЕМЫ',
+    time: '1 час назад',
+    text: 'Когда преподаватель говорит "это не войдёт в экзамен" а потом первый вопрос в билете именно это 🤡 Кто ещё попался на эту ловушку вчера на матане?',
+    image: null,
+    likes: 203, comments: 47, views: '5.2k'
+  },
+  {
+    id: 5,
+    author: 'Тимур Гафаров',
+    avatarLetter: 'Т',
+    avatarColor: '#00C9A7',
+    meta: 'МИЭМ • 4к',
+    tag: 'УЧЁБА',
+    time: '2 часа назад',
+    text: 'Ребят, кто шарит в нейросетях — нужна помощь с дипломом. Тема: генерация музыки через трансформеры. Есть датасет MIDI, но модель выдаёт какофонию. Может кто-то уже делал похожее? Готов угостить кофе за консультацию ☕',
+    image: null,
+    likes: 31, comments: 12, views: '890'
+  },
+  {
+    id: 6,
+    author: 'Campus Official',
+    avatarLetter: 'C',
+    avatarColor: theme.primary,
+    meta: 'Администрация',
+    tag: 'ВАЖНОЕ',
+    time: '3 часа назад',
+    text: '📢 Внимание! Завтра с 14:00 до 18:00 — День открытых дверей факультета компьютерных наук. Приглашаем всех желающих. Будут мастер-классы по ML, геймдеву и кибербезопасности. Регистрация по ссылке в закрепе.',
+    image: 'https://images.unsplash.com/photo-1523050854058-8df90110c476?auto=format&fit=crop&q=80&w=600',
+    likes: 156, comments: 33, views: '8.4k'
+  },
+  {
+    id: 7,
+    author: 'Олег Петров',
+    avatarLetter: 'О',
+    avatarColor: '#FFA500',
+    meta: 'Экономика • 1к',
+    tag: 'ОБЩАГА',
+    time: '4 часа назад',
+    text: 'В Дубках опять сломался лифт в третьем корпусе. Живу на 14 этаже. Ноги уже не чувствую. Кто-нибудь знает, куда жаловаться, чтобы реально починили, а не "мы в курсе"? 😤',
+    image: null,
+    likes: 67, comments: 28, views: '1.8k'
+  },
+  {
+    id: 8,
+    author: 'Настя Волкова',
+    avatarLetter: 'Н',
+    avatarColor: '#9B59B6',
+    meta: 'Филфак • 3к',
+    tag: 'ЖИЗА',
+    time: '5 часов назад',
+    text: 'Сижу в библиотеке, рядом парень уже 3 часа решает что-то в тетрадке и тихо страдает. Хочу подойти спросить всё ли ок но социальная тревожность не даёт. Если ты это читаешь — ты справишься 💪',
+    image: null,
+    likes: 312, comments: 41, views: '12k'
+  }
+];
+
+// === КАРТОЧКА ПОСТА ===
+const PostCard = ({ post }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isLongText = post.text.length > 110;
+
+  return (
+    <div style={{ padding: '20px 0', borderBottom: `1px solid ${theme.border}` }}>
+      <div style={{ display: 'flex', gap: '12px', padding: '0 16px' }}>
+        <div style={{ 
+          width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+          background: post.avatarColor, display: 'flex', alignItems: 'center', 
+          justifyContent: 'center', fontSize: '18px', fontWeight: 800, 
+          color: post.avatarColor === theme.primary ? '#000' : '#FFF'
+        }}>{post.avatarLetter}</div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+              <span style={{ fontWeight: 700, fontSize: '15px', color: theme.text }}>{post.author}</span>
+              <span style={{ color: theme.textMuted, fontSize: '13px' }}>{post.meta}</span>
+            </div>
+            <span style={{ color: '#4DA6FF', fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px' }}>{post.tag}</span>
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <div style={{ maxHeight: isExpanded ? 'none' : '64px', overflow: 'hidden' }}>
+              <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.45, color: '#EAEAEA' }}>{post.text}</p>
+            </div>
+            {isLongText && !isExpanded && (
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '30px', background: 'linear-gradient(to bottom, transparent, #000)' }} />
+            )}
+          </div>
+          {isLongText && !isExpanded && (
+            <button onClick={() => setIsExpanded(true)} style={{ color: theme.primary, background: 'none', border: 'none', padding: '4px 0', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>Показать всё</button>
+          )}
+        </div>
+      </div>
+
+      {post.image && (
+        <div style={{ marginTop: '12px', borderTop: `1px solid ${theme.border}`, borderBottom: `1px solid ${theme.border}`, overflow: 'hidden' }}>
+          <img src={post.image} alt="" style={{ width: '100%', height: 'auto', display: 'block' }} />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', padding: '0 16px' }}>
+        <span style={{ color: theme.textMuted, fontSize: '12px' }}>{post.time}</span>
+        <div style={{ display: 'flex', gap: '16px', color: theme.textMuted }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}><Eye size={16} /> {post.views}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}><MessageCircle size={16} /> {post.comments}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}><Heart size={16} /> {post.likes}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function FiltersConcept() {
+  const [navTab, setNavTab] = useState('feed');
+  const [feedSubTab, setFeedSubTab] = useState('posts');
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const scrollContainerRef = useRef(null);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = (e) => {
+      const currentScrollY = e.target.scrollTop;
+      if (currentScrollY > lastScrollY.current + 10 && currentScrollY > 50) {
+        setIsHeaderCollapsed(true);
+        setIsSearchExpanded(false);
+      } 
+      if (currentScrollY <= 20) {
+        setIsHeaderCollapsed(false);
+        setIsSearchExpanded(false);
+      }
+      lastScrollY.current = currentScrollY;
+    };
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
+
+  const isActuallyCollapsed = isHeaderCollapsed && !isSearchExpanded;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#050505', fontFamily: 'system-ui, sans-serif' }}>
+      <style>{`
+        .spring-btn:active { transform: scale(0.95); transition: transform 0.1s; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+
+      {/* SVG ФИЛЬТР: Создает физику "слипания" (Gooey Effect) */}
+      <svg width="0" height="0" style={{ position: 'absolute' }}>
+        <defs>
+          <filter id="goo">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
+            <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8" result="goo" />
+            <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+          </filter>
+        </defs>
+      </svg>
+
+      {/* IPHONE FRAME */}
+      <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: '#000', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column', filter: 'blur(0px)' }}>
+        
+        {/* Notch */}
+        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+        {/* =========================================
+            ФОНОВЫЕ БЛЮР-ГРАДИЕНТЫ (Строго ПОД элементами)
+            Плавное затухание (mask-image), чтобы не было "кирпича"
+        ========================================= */}
+        {/* ═══ Верхний блюр — Liquid Glass 2026 ═══ */}
+        {/* Слой 1: Мощный blur + saturate + brightness */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          height: isActuallyCollapsed ? '112px' : '270px',
+          backdropFilter: 'blur(6px) saturate(120%) brightness(1.02)',
+          WebkitBackdropFilter: 'blur(6px) saturate(120%) brightness(1.02)',
+          maskImage: 'linear-gradient(to bottom, black 0%, black 75%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 75%, transparent 100%)',
+          zIndex: 50, pointerEvents: 'none',
+          transition: 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+        }} />
+        {/* Слой 2: Белый тинт (не тёмный!) — суть Liquid Glass */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          height: isActuallyCollapsed ? '112px' : '270px',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.35) 60%, transparent 100%)',
+          maskImage: 'linear-gradient(to bottom, black 0%, black 75%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 75%, transparent 100%)',
+          zIndex: 51, pointerEvents: 'none',
+          transition: 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+        }} />
+        {/* Кромка стекла — specular highlight (белый блик сверху → прозрачный) */}
+        <div style={{
+          position: 'absolute', left: 0, right: 0,
+          top: isActuallyCollapsed ? '105px' : '255px',
+          height: '1.5px',
+          background: 'linear-gradient(to bottom, rgba(255,255,255,0.2), rgba(255,255,255,0.05))',
+          maskImage: 'linear-gradient(to right, transparent 5%, rgba(0,0,0,0.6) 20%, rgba(0,0,0,0.6) 80%, transparent 95%)',
+          WebkitMaskImage: 'linear-gradient(to right, transparent 5%, rgba(0,0,0,0.6) 20%, rgba(0,0,0,0.6) 80%, transparent 95%)',
+          zIndex: 52, pointerEvents: 'none',
+          transition: 'top 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+        }} />
+
+        {/* ═══ Нижний блюр — Liquid Glass 2026 ═══ */}
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: '122px',
+          backdropFilter: 'blur(6px) saturate(120%) brightness(1.02)',
+          WebkitBackdropFilter: 'blur(6px) saturate(120%) brightness(1.02)',
+          maskImage: 'linear-gradient(to top, black 0%, black 75%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to top, black 0%, black 75%, transparent 100%)',
+          zIndex: 50, pointerEvents: 'none'
+        }} />
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: '122px',
+          background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.35) 60%, transparent 100%)',
+          maskImage: 'linear-gradient(to top, black 0%, black 75%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to top, black 0%, black 75%, transparent 100%)',
+          zIndex: 51, pointerEvents: 'none'
+        }} />
+        {/* Specular кромка */}
+        <div style={{
+          position: 'absolute', left: 0, right: 0, bottom: '115px',
+          height: '1.5px',
+          background: 'linear-gradient(to top, rgba(255,255,255,0.2), rgba(255,255,255,0.05))',
+          maskImage: 'linear-gradient(to right, transparent 5%, rgba(0,0,0,0.6) 20%, rgba(0,0,0,0.6) 80%, transparent 95%)',
+          WebkitMaskImage: 'linear-gradient(to right, transparent 5%, rgba(0,0,0,0.6) 20%, rgba(0,0,0,0.6) 80%, transparent 95%)',
+          zIndex: 52, pointerEvents: 'none'
+        }} />
+
+        {/* =========================================
+            ШАПКА (Поверх блюра, плотные элементы)
+        ========================================= */}
+        <header style={{ 
+          position: 'absolute', top: 56, left: 16, right: 16, zIndex: 100,
+          display: 'flex', flexDirection: 'column'
+        }}>
+          
+          {/* Заголовок */}
+          <div style={{ 
+            height: isActuallyCollapsed ? 0 : 32, opacity: isActuallyCollapsed ? 0 : 1, 
+            overflow: 'hidden', display: 'flex', justifyContent: 'center', marginBottom: isActuallyCollapsed ? 0 : 16,
+            transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+          }}>
+            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: '#FFF' }}>Campus.</h1>
+          </div>
+
+          {/* РЯД 1: Физическая анимация Табов и Лупы */}
+          <div style={{ position: 'relative', height: '48px', width: '100%' }}>
+            
+            {/* Слой 1: Жидкие фоны (Gooey effect) */}
+            {/* Этот слой отвечает только за форму фонов, чтобы текст не искажался */}
+            <div style={{ position: 'absolute', inset: 0, filter: "url('#goo')", zIndex: 1, pointerEvents: 'none' }}>
+              {/* Фон табов — glass */}
+              <div style={{
+                position: 'absolute', top: 0, left: 0, height: '48px',
+                width: isActuallyCollapsed ? 'calc(100% - 56px)' : '100%',
+                background: 'rgba(255,255,255,0.08)', borderRadius: '24px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                transition: 'width 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+              }} />
+              {/* Фон лупы — glass */}
+              <div style={{
+                position: 'absolute', top: 0, right: 0, width: '48px', height: '48px',
+                background: 'rgba(255,255,255,0.08)', borderRadius: '24px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                transform: isActuallyCollapsed ? 'translateX(0) scale(1)' : 'translateX(-40px) scale(0.5)',
+                opacity: isActuallyCollapsed ? 1 : 0,
+                transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+              }} />
+            </div>
+
+            {/* Слой 2: Контент табов (Текст, активная плашка) */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, height: '48px',
+              width: isActuallyCollapsed ? 'calc(100% - 56px)' : '100%',
+              display: 'flex', padding: '4px', zIndex: 2,
+              transition: 'width 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+            }}>
+              <div style={{
+                position: 'absolute', top: 4, bottom: 4, width: 'calc(50% - 4px)',
+                background: theme.primary, borderRadius: '20px',
+                transform: `translateX(${feedSubTab === 'posts' ? '0' : '100%'})`,
+                transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)', zIndex: 1, 
+                boxShadow: `0 2px 12px ${theme.primary}40`
+              }} />
+              <button onClick={() => setFeedSubTab('posts')} style={{ flex: 1, position: 'relative', zIndex: 2, background: 'none', border: 'none', color: feedSubTab === 'posts' ? '#000' : '#FFF', fontWeight: 700, fontSize: '15px', cursor: 'pointer', transition: 'color 0.3s' }}>Посты</button>
+              <button onClick={() => setFeedSubTab('requests')} style={{ flex: 1, position: 'relative', zIndex: 2, background: 'none', border: 'none', color: feedSubTab === 'requests' ? '#000' : '#FFF', fontWeight: 700, fontSize: '15px', cursor: 'pointer', transition: 'color 0.3s' }}>Запросы</button>
+            </div>
+
+            {/* Слой 3: Иконка лупы (Появляется поверх выехавшего фона) */}
+            <button
+              onClick={() => setIsSearchExpanded(true)}
+              className="spring-btn"
+              style={{
+                position: 'absolute', top: 0, right: 0, width: '48px', height: '48px',
+                background: 'transparent', border: 'none', color: '#FFF',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                zIndex: 3, cursor: 'pointer',
+                opacity: isActuallyCollapsed ? 1 : 0,
+                transform: isActuallyCollapsed ? 'translateX(0)' : 'translateX(-20px)',
+                pointerEvents: isActuallyCollapsed ? 'auto' : 'none',
+                transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+              }}
+            >
+              <Search size={20} strokeWidth={2.5} />
+            </button>
+          </div>
+
+          {/* РЯД 2: Развернутый Поиск и Теги */}
+          <div style={{
+            overflow: 'hidden', 
+            maxHeight: isActuallyCollapsed ? 0 : 200,
+            opacity: isActuallyCollapsed ? 0 : 1,
+            marginTop: isActuallyCollapsed ? 0 : 12,
+            transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', height: '48px', padding: '0 6px', marginBottom: '12px', background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px) saturate(150%)', WebkitBackdropFilter: 'blur(20px) saturate(150%)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <Search size={18} style={{ margin: '0 8px 0 10px', color: theme.textMuted }} />
+              <input 
+                value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Поиск постов..."
+                style={{ flex: 1, height: '40px', background: 'transparent', border: 'none', color: '#FFF', fontSize: '16px', fontWeight: 500, outline: 'none' }}
+              />
+              {searchQuery && <X size={16} style={{ color: theme.textMuted, cursor: 'pointer', margin: '0 8px' }} onClick={() => setSearchQuery('')} />}
+              <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)', margin: '0 8px' }} />
+              <button className="spring-btn" style={{ width: '40px', height: '40px', borderRadius: '20px', background: 'transparent', border: 'none', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <SlidersHorizontal size={18} />
+              </button>
+            </div>
+
+            <div className="hide-scroll" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+              {['🔥 Популярное', '📚 Учеба', '🤡 Мемы', '🏠 Общага'].map(tag => (
+                <button key={tag} className="spring-btn" style={{ padding: '0 16px', height: '38px', borderRadius: '19px', background: 'rgba(255,255,255,0.08)', color: '#FFF', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.08)' }}>{tag}</button>
+              ))}
+            </div>
+          </div>
+        </header>
+
+        {/* =========================================
+            КОНТЕНТ ЛЕНТЫ
+        ========================================= */}
+        <div ref={scrollContainerRef} className="hide-scroll" style={{ flex: 1, overflowY: 'auto', paddingTop: '220px', paddingBottom: '140px', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', margin: '0 16px 16px' }}>
+            <div style={{ flex: 1, height: '1px', background: theme.border }} />
+            <span style={{ padding: '0 12px', color: theme.textMuted, fontSize: '12px', fontWeight: 600 }}>Сегодня</span>
+            <div style={{ flex: 1, height: '1px', background: theme.border }} />
+          </div>
+
+          {MOCK_POSTS.map(post => (
+            <PostCard key={post.id} post={post} />
+          ))}
+        </div>
+
+        {/* =========================================
+            НИЖНИЙ ТАББАР (Поверх блюра)
+        ========================================= */}
+        <div style={{ position: 'absolute', bottom: '24px', left: '16px', right: '16px', zIndex: 100, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>
+          <nav style={{ background: 'rgba(18,18,20,0.92)', backdropFilter: 'blur(14px) saturate(140%)', WebkitBackdropFilter: 'blur(14px) saturate(140%)', borderRadius: '32px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pointerEvents: 'auto', boxShadow: '0 16px 40px rgba(0,0,0,0.4), inset 0 0.5px 0 rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {[ { id: 'feed', icon: Home }, { id: 'market', icon: ShoppingBag }, { id: 'create', isAction: true }, { id: 'dating', icon: Heart }, { id: 'profile', icon: User } ].map((tab, i) => {
+              if (tab.isAction) return (
+                <button key="create" className="spring-btn" style={{ width: '52px', height: '52px', borderRadius: '20px', background: theme.primary, border: 'none', color: theme.primaryText, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', margin: '0 8px', flexShrink: 0 }}><Plus size={26} strokeWidth={3} /></button>
+              );
+              const Icon = tab.icon;
+              return (
+                <button key={i} className="spring-btn" style={{ flex: 1, height: '52px', background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: i === 0 ? '#FFFFFF' : theme.textMuted, cursor: 'pointer', position: 'relative' }}>
+                  {i === 0 && <div style={{ position: 'absolute', top: -8, width: '32px', height: '4px', borderRadius: '0 0 4px 4px', background: '#FFFFFF', boxShadow: `0 4px 12px rgba(255,255,255,0.4)` }}/>}
+                  <Icon size={24} strokeWidth={i === 0 ? 2.5 : 2} />
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+      </div>
+    </div>
+  );
+}

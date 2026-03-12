@@ -11,6 +11,7 @@ function DrilldownHeader({
   rightSlot = null,
   showBack = true,
   showLocalBackInTelegram = false,
+  transparent = false,
 }) {
   const isDev = import.meta.env.DEV;
   const shouldRenderBack = showBack && (isDev || showLocalBackInTelegram);
@@ -20,15 +21,23 @@ function DrilldownHeader({
     onBack?.();
   };
 
+  const headerStyle = transparent
+    ? { ...styles.header, background: 'transparent', borderBottom: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none' }
+    : styles.header;
+
+  const backButtonStyle = transparent
+    ? { ...styles.backButton, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.12)' }
+    : styles.backButton;
+
   return (
-    <header style={styles.header}>
+    <header style={headerStyle}>
       <div style={styles.inner}>
         <div style={styles.side}>
           {shouldRenderBack ? (
             <button
               type="button"
               onClick={handleBackClick}
-              style={styles.backButton}
+              style={backButtonStyle}
               aria-label="Go back"
             >
               <ArrowLeft size={20} />

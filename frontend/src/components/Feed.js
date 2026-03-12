@@ -12,11 +12,13 @@ import AppHeader from './shared/AppHeader';
 import FeedDateDivider from './shared/FeedDateDivider';
 import { buildFeedSections } from '../utils/feedDateSections';
 import { hapticFeedback } from '../utils/telegram';
+import EdgeBlur from './shared/EdgeBlur';
 
 function Feed() {
   const POSTS_PAGE_SIZE = 20;
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
   const [hasMorePosts, setHasMorePosts] = useState(true);
   const [feedAds, setFeedAds] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -394,16 +396,23 @@ function Feed() {
 
   const postCardWrapperStyle = useMemo(() => ({ marginBottom: 0 }), []);
 
+  // Следим за скроллом для динамической высоты верхнего блюра (синхронно с AppHeader premium)
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 40);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
     <div style={styles.container}>
       
-      {/* Blur-градиенты шапки */}
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 72, background: 'rgba(0,0,0,0.28)', backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', zIndex: 50, pointerEvents: 'none' }} />
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 128, background: 'rgba(0,0,0,0.10)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.34) 42%, rgba(0,0,0,0.08) 78%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.34) 42%, rgba(0,0,0,0.08) 78%, rgba(0,0,0,0) 100%)', zIndex: 51, pointerEvents: 'none' }} />
+      {/* Верхний блюр шапки — высота меняется при сворачивании, анимируем */}
+      <EdgeBlur position="top" height={headerScrolled ? 90 : 160} zIndex={50} animateHeight />
 
-      {/* Blur-градиенты таббара */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 60, background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', zIndex: 50, pointerEvents: 'none' }} />
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 106, background: 'rgba(0,0,0,0.20)', backdropFilter: 'blur(9px)', WebkitBackdropFilter: 'blur(9px)', maskImage: 'linear-gradient(to top, rgba(0,0,0,0.94) 0%, rgba(0,0,0,0.60) 42%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to top, rgba(0,0,0,0.94) 0%, rgba(0,0,0,0.60) 42%, rgba(0,0,0,0.18) 78%, rgba(0,0,0,0) 100%)', zIndex: 51, pointerEvents: 'none' }} />
+      {/* Нижний блюр — от края экрана вверх, прозрачный конец совпадает с верхним краем навбара */}
+      <EdgeBlur position="bottom" height={100} zIndex={50} />
 
       <AppHeader
         title={getDynamicTitle()}
