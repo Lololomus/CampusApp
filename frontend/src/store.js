@@ -571,7 +571,7 @@ export const useStore = create(
             user: {},
             isRegistered: false,
             authStatus: 'ready',
-            showAuthModal: true,
+            showAuthModal: false,
             activeTab: 'feed',
           });
         };
@@ -625,7 +625,7 @@ export const useStore = create(
               user: {},
               isRegistered: false,
               authStatus: 'error',
-              showAuthModal: true,
+              showAuthModal: false,
               activeTab: 'feed',
             });
           }

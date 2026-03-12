@@ -1,14 +1,22 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/AuthModal.js =====
+// ===== FILE: frontend/src/components/AuthModal.js =====
 
-import React from 'react';
-import { Sparkles, UserPlus } from 'lucide-react';
+import { useRef } from 'react';
+import { Zap, ArrowRight } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
-import theme from '../theme';
+import { useSwipe } from '../hooks/useSwipe';
 import { Z_AUTH_MODAL } from '../constants/zIndex';
 
 function AuthModal() {
   const { showAuthModal, setShowAuthModal, startRegistration } = useStore();
+  const sheetRef = useRef(null);
+
+  const swipeHandlers = useSwipe({
+    elementRef: sheetRef,
+    onSwipeDown: () => handleClose(),
+    isModal: true,
+    threshold: 120,
+  });
 
   if (!showAuthModal) return null;
 
@@ -24,30 +32,33 @@ function AuthModal() {
 
   return (
     <>
-      <style>{modalAnimationStyles}</style>
+      <style>{sheetStyles}</style>
       <div style={styles.overlay} onClick={handleClose}>
-        <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-          <div style={styles.iconRow}>
-            <div style={styles.iconWrap}>
-              <UserPlus size={22} />
-            </div>
-            <div style={styles.badge}>
-              <Sparkles size={14} />
-              2 шага
-            </div>
+        <div
+          ref={sheetRef}
+          className="auth-sheet-slide"
+          style={styles.sheet}
+          onClick={(e) => e.stopPropagation()}
+          {...swipeHandlers}
+        >
+          {/* Drag handle */}
+          <div style={styles.handle} />
+
+          {/* Icon */}
+          <div style={styles.iconBox}>
+            <Zap size={40} color="#D4FF00" fill="#D4FF00" />
           </div>
 
-          <h3 style={styles.title}>Зарегистрируйтесь, чтобы действовать</h3>
-          <p style={styles.message}>
-            Просматривайте ленту и маркет без ограничений. Для лайков, комментариев,
-            знакомств и профиля нужна регистрация.
+          <h2 style={styles.title}>Врывайся в Campus!</h2>
+          <p style={styles.subtitle}>
+            Создай профиль за минуту, чтобы лайкать, комментить и знакомиться.
           </p>
 
-          <button type="button" onClick={handleRegister} style={styles.registerButton}>
-            Начать регистрацию
+          <button type="button" style={styles.ctaButton} className="auth-spring-btn" onClick={handleRegister}>
+            Создать профиль <ArrowRight size={20} strokeWidth={3} />
           </button>
-          <button type="button" onClick={handleClose} style={styles.cancelButton}>
-            Продолжить просмотр
+          <button type="button" style={styles.dismissButton} className="auth-spring-btn" onClick={handleClose}>
+            Пока просто посмотрю
           </button>
         </div>
       </div>
@@ -59,114 +70,113 @@ const styles = {
   overlay: {
     position: 'fixed',
     inset: 0,
-    background: theme.colors.overlayDark,
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
     zIndex: Z_AUTH_MODAL,
     display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+    animation: 'authOverlayIn 0.3s ease both',
+  },
+  sheet: {
+    background: '#1C1C1E',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderTop: '1px solid rgba(255,255,255,0.08)',
+    padding: '24px 20px',
+    paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+    display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.xl,
-    opacity: 1,
-    willChange: 'opacity',
-    animation: 'authOverlayIn 0.2s ease-out',
+    textAlign: 'center',
+    boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
+    touchAction: 'none',
+    willChange: 'transform',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
   },
-  modal: {
-    width: '100%',
-    maxWidth: 420,
-    background: `linear-gradient(180deg, ${theme.colors.cardHover} 0%, ${theme.colors.card} 100%)`,
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: theme.radius.xl,
-    boxShadow: theme.shadows.xl,
-    padding: `${theme.spacing.xxl}px ${theme.spacing.xl}px`,
-    transform: 'translate3d(0, 0, 0)',
-    willChange: 'transform, opacity',
-    animation: 'authModalIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
+  handle: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
+    background: 'rgba(255,255,255,0.2)',
+    marginBottom: 32,
+    flexShrink: 0,
   },
-  iconRow: {
+  iconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    background: 'rgba(212,255,0,0.15)',
+    border: '1px solid rgba(212,255,0,0.2)',
+    boxShadow: '0 0 30px rgba(212,255,0,0.1)',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.lg,
-  },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: theme.radius.full,
-    background: theme.colors.primaryLight,
-    color: theme.colors.primary,
-    display: 'flex',
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  badge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-    color: theme.colors.textSecondary,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: theme.radius.full,
-    padding: `6px ${theme.spacing.sm}px`,
-    background: theme.colors.bgSecondary,
+    marginBottom: 24,
+    flexShrink: 0,
   },
   title: {
-    margin: 0,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.xxxl,
-    fontWeight: theme.fontWeight.bold,
-    lineHeight: 1.2,
+    margin: '0 0 12px',
+    fontSize: 26,
+    fontWeight: 800,
+    color: '#FFFFFF',
+    letterSpacing: '-0.5px',
   },
-  message: {
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.xxl,
-    color: theme.colors.textSecondary,
-    lineHeight: 1.55,
-    fontSize: theme.fontSize.md,
+  subtitle: {
+    margin: '0 0 32px',
+    fontSize: 16,
+    color: '#8E8E93',
+    lineHeight: 1.5,
+    maxWidth: 300,
   },
-  registerButton: {
+  ctaButton: {
     width: '100%',
-    height: 50,
+    background: '#D4FF00',
+    color: '#000',
     border: 'none',
-    borderRadius: theme.radius.md,
-    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryHover} 100%)`,
-    color: '#fff',
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
+    padding: 18,
+    borderRadius: 20,
+    fontSize: 17,
+    fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     cursor: 'pointer',
-    boxShadow: `0 10px 24px ${theme.colors.primaryGlow}`,
-    transition: `transform ${theme.transitions.normal}, opacity ${theme.transitions.normal}`,
-    transform: 'translate3d(0, 0, 0)',
-    willChange: 'transform',
   },
-  cancelButton: {
-    width: '100%',
-    height: 44,
-    marginTop: theme.spacing.sm,
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: theme.radius.md,
-    background: theme.colors.bgSecondary,
-    color: theme.colors.textSecondary,
-    fontSize: theme.fontSize.base,
+  dismissButton: {
+    background: 'none',
+    border: 'none',
+    color: '#666666',
+    fontSize: 16,
+    fontWeight: 600,
+    marginTop: 20,
+    padding: '12px 20px',
     cursor: 'pointer',
-    transition: `opacity ${theme.transitions.normal}`,
   },
 };
 
-const modalAnimationStyles = `
+const sheetStyles = `
   @keyframes authOverlayIn {
     from { opacity: 0; }
     to { opacity: 1; }
   }
-
-  @keyframes authModalIn {
-    from {
-      opacity: 0;
-      transform: translate3d(0, 18px, 0) scale(0.98);
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0) scale(1);
-    }
+  @keyframes authSheetSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  .auth-sheet-slide {
+    animation: authSheetSlideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+  .auth-spring-btn {
+    transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .auth-spring-btn:active {
+    transform: scale(0.96);
+    opacity: 0.85;
   }
 `;
 

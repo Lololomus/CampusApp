@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus - Pro Onboarding</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --primary-dim: rgba(212, 255, 0, 0.15);
+        --bg: #000000;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        --text-tertiary: #666666;
+        --error: #FF453A;
+        --success: #32D74B;
+        
+        --easing-spring: cubic-bezier(0.32, 0.72, 0, 1);
+        --easing-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: #0A0A0C; 
+        color: var(--text); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden; 
+        touch-action: pan-y;
+      }
+      
+      #root { 
+        height: 100%; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+      }
+      
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      /* --- ФИЗИКА И ВЗАИМОДЕЙСТВИЯ --- */
+      .spring-btn { 
+        transition: transform 0.15s var(--easing-spring), opacity 0.15s var(--easing-spring), background 0.2s; 
+        cursor: pointer; 
+      }
+      .spring-btn:active { 
+        transform: scale(0.96); 
+        opacity: 0.85; 
+      }
+      .spring-btn:disabled {
+        transform: none;
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      /* --- ИНПУТЫ --- */
+      .ios-input-group {
+        background: var(--surface);
+        border-radius: 20px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+      .ios-input-row {
+        position: relative;
+        display: flex;
+        align-items: center;
+        background: transparent;
+      }
+      .ios-input-row:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 20px;
+        right: 0;
+        height: 1px;
+        background: var(--border);
+      }
+      .ios-input {
+        width: 100%;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font-size: 17px;
+        padding: 18px 20px;
+        font-family: inherit;
+        transition: color 0.2s;
+      }
+      .ios-input::placeholder { color: var(--text-tertiary); font-weight: 400; }
+      
+      .standalone-input {
+        width: 100%;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 17px;
+        padding: 16px 20px 16px 48px;
+        border-radius: 20px;
+        font-family: inherit;
+        transition: border-color 0.2s var(--easing-smooth);
+      }
+      .standalone-input:focus {
+        border-color: var(--primary);
+      }
+      .standalone-input::placeholder { color: var(--text-tertiary); }
+
+      /* --- КАРТОЧКИ УНИВЕРОВ --- */
+      .uni-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background: var(--surface);
+        border-radius: 20px;
+        border: 1px solid var(--border);
+        margin-bottom: 8px;
+        transition: all 0.2s var(--easing-spring);
+      }
+      .uni-card:active { background: var(--surface-elevated); }
+      .uni-avatar {
+        width: 48px; height: 48px; border-radius: 14px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; font-weight: 800; color: #FFF; flex-shrink: 0;
+      }
+      .uni-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .uni-name { font-size: 17px; font-weight: 700; color: #FFF; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .uni-city { font-size: 14px; color: var(--text-muted); }
+
+      /* --- CTA КНОПКА --- */
+      .primary-cta {
+        width: 100%;
+        background: var(--primary);
+        color: #000;
+        border: none;
+        padding: 18px;
+        border-radius: 20px;
+        font-size: 17px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      /* --- АНИМАЦИИ --- */
+      @keyframes slideUpSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+      @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+      @keyframes slideInLeft { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+      @keyframes slideDownToast { from { transform: translate(-50%, -100%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+      /* Используем "both" чтобы предотвратить моргание при animation-delay */
+      .animate-fade { animation: fadeIn 0.3s var(--easing-smooth) both; }
+      .delay-100 { animation-delay: 0.1s; }
+      .animate-slide-up { animation: slideUpSheet 0.4s var(--easing-spring) both; }
+      .animate-scale { animation: scaleIn 0.3s var(--easing-spring) both; }
+      .toast-enter { animation: slideDownToast 0.5s var(--easing-spring) both; }
+      
+      .step-enter-right { animation: slideInRight 0.4s var(--easing-spring) both; }
+      .step-enter-left { animation: slideInLeft 0.4s var(--easing-spring) both; }
+      
+      /* --- ДОФАМИНОВЫЕ АНИМАЦИИ --- */
+      @keyframes spin { 100% { transform: rotate(360deg); } }
+      .spinner {
+        width: 20px; height: 20px;
+        border: 3px solid rgba(0,0,0,0.2);
+        border-top-color: #000;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      .btn-success-state {
+        background: var(--primary) !important;
+        color: #000 !important;
+        transform: scale(1.04) !important;
+        box-shadow: 0 8px 24px rgba(212, 255, 0, 0.3) !important;
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useMemo, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        ChevronLeft, Search, Plus, ArrowRight, User, AtSign, Check, Info, Zap
+      } from 'lucide-react';
+
+      // --- ДОФАМИНОВЫЕ ИСКРЫ (ЧАСТИЦЫ) ---
+      const triggerNeonSparks = (rect) => {
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+
+        // Эмуляция Haptic Feedback (на реальном девайсе использовать Telegram API)
+        if (window.navigator && window.navigator.vibrate) window.navigator.vibrate([30, 50, 30]);
+
+        for (let i = 0; i < 40; i++) {
+          const spark = document.createElement('div');
+          spark.style.position = 'fixed';
+          spark.style.left = x + 'px';
+          spark.style.top = y + 'px';
+          // Микс из точек и коротких линий
+          const isLine = Math.random() > 0.5;
+          spark.style.width = isLine ? (8 + Math.random() * 16) + 'px' : (4 + Math.random() * 5) + 'px';
+          spark.style.height = isLine ? '2px' : spark.style.width;
+          spark.style.backgroundColor = Math.random() > 0.3 ? 'var(--primary)' : '#FFF';
+          spark.style.borderRadius = isLine ? '2px' : '50%';
+          spark.style.pointerEvents = 'none';
+          spark.style.zIndex = '9999';
+          document.body.appendChild(spark);
+
+          const angle = Math.random() * Math.PI * 2;
+          const velocity = 80 + Math.random() * 140;
+          const tx = Math.cos(angle) * velocity;
+          const ty = Math.sin(angle) * velocity;
+          const rot = Math.random() * 360;
+
+          const animation = spark.animate([
+            { transform: `translate(-50%, -50%) rotate(${rot}deg) scale(1)`, opacity: 1 },
+            { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) rotate(${rot + 90}deg) scale(0)`, opacity: 0 }
+          ], {
+            duration: 500 + Math.random() * 500,
+            easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+            fill: 'forwards'
+          });
+
+          animation.onfinish = () => spark.remove();
+        }
+      };
+
+      // --- ПРЕДОХРАНИТЕЛЬ ОТ ЧЕРНОГО ЭКРАНА ---
+      class ErrorBoundary extends React.Component {
+        constructor(props) {
+          super(props);
+          this.state = { hasError: false, error: null };
+        }
+        static getDerivedStateFromError(error) {
+          return { hasError: true, error };
+        }
+        render() {
+          if (this.state.hasError) {
+            return (
+              <div style={{ color: '#FF453A', padding: '20px', fontFamily: 'sans-serif' }}>
+                <h2>Что-то пошло не так:</h2>
+                <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
+              </div>
+            );
+          }
+          return this.props.children;
+        }
+      }
+
+      // --- МОК ДАННЫЕ ВУЗОВ ---
+      const MOCK_UNIVERSITIES = [
+        { id: 1, name: 'ВШЭ', city: 'Москва', full: 'Высшая школа экономики', logo: 'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?w=150&h=150&fit=crop&q=80', color: 'linear-gradient(135deg, #0A84FF, #005BBB)' },
+        { id: 2, name: 'МГУ', city: 'Москва', full: 'МГУ им. Ломоносова', logo: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=150&h=150&fit=crop&q=80', color: 'linear-gradient(135deg, #FF453A, #D70015)' },
+        { id: 3, name: 'ИТМО', city: 'Санкт-Петербург', full: 'НИУ ИТМО', logo: 'https://images.unsplash.com/photo-1562774053-701939374585?w=150&h=150&fit=crop&q=80', color: 'linear-gradient(135deg, #FF9F0A, #FF375F)' },
+        { id: 4, name: 'СПбГУ', city: 'Санкт-Петербург', full: 'Санкт-Петербургский гос. университет', logo: 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=150&h=150&fit=crop&q=80', color: 'linear-gradient(135deg, #32D74B, #30D158)' },
+        { id: 5, name: 'УрФУ', city: 'Екатеринбург', full: 'Уральский федеральный университет', logo: 'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=150&h=150&fit=crop&q=80', color: 'linear-gradient(135deg, #BF5AF2, #5E5CE6)' },
+        { id: 6, name: 'КФУ', city: 'Казань', full: 'Казанский федеральный университет', logo: 'https://images.unsplash.com/photo-1592280771190-3e2e4d571952?w=150&h=150&fit=crop&q=80', color: 'linear-gradient(135deg, #FFD60A, #FF9F0A)' },
+        { id: 7, name: 'РЭУ', city: 'Москва', full: 'РЭУ им. Плеханова', logo: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=150&h=150&fit=crop&q=80', color: 'linear-gradient(135deg, #5E5CE6, #0A84FF)' }
+      ];
+
+      // ==========================================
+      // КОМПОНЕНТ: AUTH BOTTOM SHEET (Предложение)
+      // ==========================================
+      const AuthSheet = ({ onStart, onDismiss }) => {
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+            <div className="animate-fade" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }} onClick={onDismiss} />
+            
+            <div className="animate-slide-up" style={{ 
+              background: 'var(--surface)', 
+              borderTopLeftRadius: '32px', borderTopRightRadius: '32px',
+              borderTop: '1px solid var(--border)',
+              padding: '24px 20px',
+              paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+              position: 'relative',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
+              boxShadow: '0 -10px 40px rgba(0,0,0,0.5)'
+            }}>
+              <div style={{ width: 40, height: 5, borderRadius: 2.5, background: 'rgba(255,255,255,0.2)', marginBottom: '32px' }} />
+              
+              <div style={{ 
+                width: 80, height: 80, borderRadius: '24px', background: 'var(--primary-dim)', 
+                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                marginBottom: '24px', border: '1px solid rgba(212, 255, 0, 0.2)',
+                boxShadow: '0 0 30px rgba(212, 255, 0, 0.1)' 
+              }}>
+                 <Zap size={40} color="var(--primary)" fill="var(--primary)" />
+              </div>
+
+              <h2 style={{ margin: '0 0 12px', fontSize: '26px', fontWeight: 800, color: '#FFF', letterSpacing: '-0.5px' }}>
+                Врывайся в Campus!
+              </h2>
+              <p style={{ margin: '0 0 32px', fontSize: '16px', color: 'var(--text-muted)', lineHeight: 1.5, maxWidth: '300px' }}>
+                Создай профиль за минуту, чтобы лайкать, комментить и знакомиться.
+              </p>
+
+              <button className="spring-btn primary-cta" onClick={onStart}>
+                Создать профиль <ArrowRight size={20} strokeWidth={3} />
+              </button>
+              
+              <button className="spring-btn" onClick={onDismiss} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', fontSize: '16px', fontWeight: 600, marginTop: '20px', padding: '12px' }}>
+                Пока просто посмотрю
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+
+      // ==========================================
+      // КОМПОНЕНТ: ШАГ 1 (ИМЯ И АВАТАР)
+      // ==========================================
+      const StepAboutYou = ({ data, onUpdate, onNext }) => {
+        const [name, setName] = useState(data.name || 'Алексей');
+        const [username, setUsername] = useState(data.username || 'alex_campus');
+        const isValid = name.trim().length >= 2;
+
+        return (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', inset: 0, background: 'var(--bg)' }}>
+            
+            <div style={{ display: 'flex', alignItems: 'center', padding: 'max(16px, env(safe-area-inset-top)) 20px 16px', position: 'relative' }}>
+               <div style={{ width: 40 }}/>
+               <div style={{ flex: 1, textAlign: 'center' }}>
+                 <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '1px', textTransform: 'uppercase' }}>Шаг 1 из 2</span>
+               </div>
+               <div style={{ width: 40 }} />
+            </div>
+
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 20px', display: 'flex', flexDirection: 'column' }}>
+              
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingBottom: '10vh', minHeight: 'min-content' }}>
+                
+                <div style={{ padding: '0 0 40px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <h2 style={{ margin: 0, fontSize: '32px', fontWeight: 800, color: '#FFF', letterSpacing: '-1px', textAlign: 'center' }}>Как тебя зовут?</h2>
+                </div>
+
+                {/* Avatar Zone - Вынесенный Плюсик */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '32px' }}>
+                  <div style={{ position: 'relative' }}>
+                    {/* Контейнер самой фотки с overflow hidden */}
+                    <div className="spring-btn" style={{ width: 110, height: 110, borderRadius: '40px', background: 'var(--surface-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 12px 32px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+                      <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&h=200&fit=crop" alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    {/* Кнопка с плюсом вынесена поверх и сдвинута за края */}
+                    <div className="spring-btn" style={{ position: 'absolute', bottom: -6, right: -6, width: 36, height: 36, borderRadius: '14px', background: 'var(--primary)', border: '4px solid var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                      <Plus size={20} color="#000" strokeWidth={3} />
+                    </div>
+                  </div>
+                  
+                  <div className="animate-fade delay-100" style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(212, 255, 0, 0.1)', padding: '6px 12px', borderRadius: '12px', border: '1px solid rgba(212, 255, 0, 0.2)' }}>
+                    <Check size={14} color="var(--primary)" strokeWidth={3} />
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--primary)' }}>Синхронизировано с Telegram</span>
+                  </div>
+                </div>
+
+                {/* iOS Style Input Group */}
+                <div className="ios-input-group">
+                  <div className="ios-input-row">
+                    <User size={20} color="var(--text-muted)" style={{ position: 'absolute', left: 20 }} />
+                    <input 
+                      type="text" value={name} onChange={e => { setName(e.target.value); onUpdate({ name: e.target.value }); }} 
+                      placeholder="Твоё имя" className="ios-input" style={{ paddingLeft: '52px' }} 
+                    />
+                  </div>
+                  <div className="ios-input-row">
+                    <AtSign size={20} color="var(--primary)" style={{ position: 'absolute', left: 20 }} />
+                    <input 
+                      type="text" value={username} onChange={e => { setUsername(e.target.value); onUpdate({ username: e.target.value }); }} 
+                      placeholder="username (по желанию)" className="ios-input" 
+                      style={{ 
+                        paddingLeft: '52px', 
+                        color: username ? 'var(--primary)' : 'var(--text)', 
+                        fontWeight: username ? 600 : 400 
+                      }} 
+                    />
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 20px', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', background: 'var(--bg)' }}>
+              <button className="spring-btn primary-cta" onClick={onNext} disabled={!isValid}>
+                Дальше
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+
+      // ==========================================
+      // КОМПОНЕНТ: ШАГ 2 (ВУЗ И КУРС)
+      // ==========================================
+      const StepEducation = ({ data, onUpdate, onBack, onFinish }) => {
+        const [query, setQuery] = useState('');
+        const [selectedUni, setSelectedUni] = useState(null);
+        const [course, setCourse] = useState(null);
+        
+        const [isCustomMode, setIsCustomMode] = useState(false);
+        const [customName, setCustomName] = useState('');
+        
+        const [finishStatus, setFinishStatus] = useState('idle');
+
+        const filtered = useMemo(() => {
+           if (!query) return MOCK_UNIVERSITIES;
+           const q = query.toLowerCase();
+           return MOCK_UNIVERSITIES.filter(u => u.name.toLowerCase().includes(q) || u.full.toLowerCase().includes(q) || u.city.toLowerCase().includes(q));
+        }, [query]);
+
+        const isValid = (selectedUni || (isCustomMode && customName.trim().length >= 2)) && course;
+
+        const handleSelectUni = (uni) => {
+          setSelectedUni(uni);
+          setQuery('');
+        };
+
+        const handleResetUni = () => {
+          setSelectedUni(null);
+          setCourse(null);
+        };
+
+        const handleFinishClick = (e) => {
+          if (finishStatus !== 'idle') return;
+          
+          const rect = e.currentTarget.getBoundingClientRect();
+          setFinishStatus('loading');
+          
+          setTimeout(() => {
+            setFinishStatus('success');
+            triggerNeonSparks(rect);
+            
+            // Вызываем коллбек для показа Toast-сообщения
+            onFinish();
+            
+            // Сбрасываем статус кнопки обратно, чтобы можно было понажимать еще раз
+            setTimeout(() => {
+              setFinishStatus('idle');
+            }, 2500);
+          }, 600);
+        };
+
+        return (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'absolute', inset: 0, background: 'var(--bg)' }}>
+            
+            <div style={{ display: 'flex', alignItems: 'center', padding: 'max(16px, env(safe-area-inset-top)) 20px 16px', position: 'relative' }}>
+              <button className="spring-btn" onClick={onBack} style={{ width: 44, height: 44, borderRadius: '22px', background: 'var(--surface)', border: '1px solid var(--border)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ChevronLeft size={24} />
+              </button>
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '1px', textTransform: 'uppercase' }}>Шаг 2 из 2</span>
+              </div>
+              <div style={{ width: 44 }} />
+            </div>
+
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 20px 40px', display: 'flex', flexDirection: 'column' }}>
+              <h2 style={{ margin: '0 0 24px', fontSize: '32px', fontWeight: 800, color: '#FFF', letterSpacing: '-1px' }}>Где ботаешь?</h2>
+
+              {!selectedUni && !isCustomMode && (
+                <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                  <div style={{ position: 'relative', marginBottom: '24px' }}>
+                    <Search size={20} color="var(--text-muted)" style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)' }} />
+                    <input 
+                      type="text" value={query} onChange={e => setQuery(e.target.value)} 
+                      placeholder="Название или город" 
+                      className="standalone-input" 
+                    />
+                  </div>
+
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    {filtered.map(u => (
+                      <div key={u.id} className="uni-card spring-btn" onClick={() => handleSelectUni(u)}>
+                        <div className="uni-avatar" style={{ background: u.color, overflow: 'hidden' }}>
+                          {u.logo ? (
+                            <img src={u.logo} alt={u.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                          ) : (
+                            u.name.charAt(0)
+                          )}
+                        </div>
+                        <div className="uni-info">
+                          <span className="uni-name">{u.name}</span>
+                          <span className="uni-city">{u.full} • {u.city}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(selectedUni || isCustomMode) && (
+                <div className="animate-scale" style={{ display: 'flex', flexDirection: 'column' }}>
+                  
+                  {selectedUni && (
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '24px', padding: '16px', marginBottom: '32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div className="uni-avatar" style={{ background: selectedUni.color, width: 64, height: 64, borderRadius: '18px', fontSize: '20px', overflow: 'hidden' }}>
+                          {selectedUni.logo ? (
+                            <img src={selectedUni.logo} alt={selectedUni.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            selectedUni.name.charAt(0)
+                          )}
+                        </div>
+                        <div className="uni-info">
+                          <span className="uni-name" style={{ fontSize: '20px' }}>{selectedUni.name}</span>
+                          <span className="uni-city">{selectedUni.city}</span>
+                        </div>
+                      </div>
+                      <button className="spring-btn" onClick={handleResetUni} style={{ background: 'var(--surface-elevated)', border: 'none', color: 'var(--text)', padding: '8px 16px', borderRadius: '12px', fontSize: '14px', fontWeight: 600 }}>
+                        Изменить
+                      </button>
+                    </div>
+                  )}
+
+                  {isCustomMode && (
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '24px', padding: '20px', marginBottom: '32px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <span style={{ fontSize: '16px', fontWeight: 700, color: '#FFF' }}>Свой ВУЗ</span>
+                        <button className="spring-btn" onClick={() => setIsCustomMode(false)} style={{ background: 'var(--surface-elevated)', border: 'none', color: 'var(--text)', padding: '8px 16px', borderRadius: '12px', fontSize: '14px', fontWeight: 600 }}>
+                          К списку
+                        </button>
+                      </div>
+                      <input 
+                        type="text" value={customName} onChange={e => setCustomName(e.target.value)} 
+                        placeholder="Краткое название (напр. МГУ)" 
+                        className="standalone-input" style={{ marginBottom: '16px', background: 'var(--bg)', paddingLeft: '20px' }} 
+                        autoFocus
+                      />
+
+                      <div className="animate-fade delay-100" style={{ display: 'flex', gap: '12px', padding: '16px', background: 'rgba(255, 159, 10, 0.1)', borderRadius: '20px', border: '1px solid rgba(255, 159, 10, 0.2)' }}>
+                        <Info size={24} color="#FF9F0A" style={{ flexShrink: 0, marginTop: '2px' }} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '15px', fontWeight: 600, color: '#FFF' }}>Проверка до 72 часов</span>
+                          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>Ты уже можешь зайти в Campus, но умный поиск однокурсников заработает после аппрува ВУЗа.</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="animate-fade delay-100">
+                    <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 700, color: '#FFF' }}>Какой курс?</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                      {['1', '2', '3', '4', '5', '6'].map(c => (
+                        <button 
+                          key={c} className="spring-btn" onClick={() => setCourse(c)}
+                          style={{
+                            padding: '16px 0', borderRadius: '16px', fontSize: '18px', fontWeight: 800,
+                            background: course === c ? 'var(--primary)' : 'var(--surface)',
+                            color: course === c ? '#000' : '#FFF',
+                            border: `1px solid ${course === c ? 'var(--primary)' : 'var(--border)'}`
+                          }}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                      <button 
+                        className="spring-btn" onClick={() => setCourse('Выпускник')}
+                        style={{
+                          gridColumn: 'span 3', padding: '16px 0', borderRadius: '16px', fontSize: '16px', fontWeight: 700,
+                          background: course === 'Выпускник' ? 'var(--primary)' : 'var(--surface)',
+                          color: course === 'Выпускник' ? '#000' : '#FFF',
+                          border: `1px solid ${course === 'Выпускник' ? 'var(--primary)' : 'var(--border)'}`
+                        }}
+                      >
+                        Уже выпускник 🎓
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            <div style={{ padding: '16px 20px', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', background: 'var(--bg)', position: 'relative', zIndex: 10, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              
+              {!selectedUni && !isCustomMode && (
+                <div className="spring-btn" onClick={() => setIsCustomMode(true)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', marginBottom: '16px' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '10px', background: 'var(--surface-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Plus size={18} color="var(--text-muted)" />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 600, color: '#FFF' }}>Нет моего ВУЗа</span>
+                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Ввести вручную (через модерацию)</span>
+                  </div>
+                </div>
+              )}
+
+              <button 
+                className={`spring-btn primary-cta ${finishStatus === 'success' ? 'btn-success-state' : ''}`} 
+                onClick={handleFinishClick} 
+                disabled={!isValid || finishStatus !== 'idle'}
+                style={{ transition: 'all 0.4s var(--easing-spring)' }}
+              >
+                {finishStatus === 'idle' && <><Check size={20} strokeWidth={3} /> Завершить</>}
+                {finishStatus === 'loading' && <div className="spinner" />}
+                {finishStatus === 'success' && <><Zap size={20} fill="#000" /> Готово!</>}
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+
+      // ==========================================
+      // ГЛАВНЫЙ МЕНЕДЖЕР
+      // ==========================================
+      function App() {
+        const [authOpen, setAuthOpen] = useState(true);
+        const [step, setStep] = useState(0); 
+        const [userData, setUserData] = useState({});
+        const [toast, setToast] = useState(null);
+
+        const startRegistration = () => {
+          setAuthOpen(false);
+          setStep(1);
+        };
+
+        const goNext = () => setStep(2);
+        const goBack = () => setStep(1);
+
+        const showSuccessToast = () => {
+          setToast('Профиль успешно создан! ⚡️');
+          setTimeout(() => setToast(null), 3000);
+          // В реальном приложении здесь был бы setStep(0) и редирект на ленту.
+          // В моке мы оставляем пользователя на экране, чтобы он мог понажимать кнопку.
+        };
+
+        return (
+          <div style={{ 
+            position: 'relative', width: '100%', maxWidth: '430px', height: '100%', 
+            backgroundColor: 'var(--bg)', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 0 40px rgba(0,0,0,0.5)'
+          }}>
+            
+            {/* Глобальный премиум Toast */}
+            {toast && (
+              <div className="toast-enter" style={{
+                position: 'absolute', top: 'max(44px, env(safe-area-inset-top))', left: '50%',
+                background: 'var(--surface-elevated)', border: '1px solid var(--primary)',
+                padding: '12px 20px', borderRadius: '24px', color: '#FFF', fontWeight: 600,
+                zIndex: 9999, display: 'flex', alignItems: 'center', gap: '8px',
+                boxShadow: '0 12px 32px rgba(212, 255, 0, 0.15)'
+              }}>
+                <Zap size={18} fill="var(--primary)" color="var(--primary)" />
+                {toast}
+              </div>
+            )}
+
+            <div style={{ flex: 1, padding: 'max(44px, env(safe-area-inset-top)) 20px 80px', display: 'flex', flexDirection: 'column', gap: '16px', filter: authOpen || step > 0 ? 'blur(12px) brightness(0.4)' : 'none', transition: 'filter 0.5s ease' }}>
+              <div style={{ height: '140px', background: 'var(--surface)', borderRadius: '24px', border: '1px solid var(--border)' }} />
+              <div style={{ height: '220px', background: 'var(--surface)', borderRadius: '24px', border: '1px solid var(--border)' }} />
+              <div style={{ height: '120px', background: 'var(--surface)', borderRadius: '24px', border: '1px solid var(--border)' }} />
+            </div>
+
+            {authOpen && <AuthSheet onStart={startRegistration} onDismiss={() => setAuthOpen(false)} />}
+
+            <div style={{ 
+              position: 'absolute', inset: 0, zIndex: 2000, display: 'flex', width: '200%',
+              transform: `translateX(${step === 1 ? '0' : step === 2 ? '-50%' : '100%'})`,
+              transition: 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.4s',
+              opacity: step > 0 ? 1 : 0, pointerEvents: step > 0 ? 'auto' : 'none'
+            }}>
+              <div style={{ width: '50%', height: '100%', position: 'relative' }}>
+                 <StepAboutYou data={userData} onUpdate={d => setUserData({...userData, ...d})} onNext={goNext} />
+              </div>
+              <div style={{ width: '50%', height: '100%', position: 'relative' }}>
+                 <StepEducation data={userData} onUpdate={d => setUserData({...userData, ...d})} onBack={goBack} onFinish={showSuccessToast} />
+              </div>
+            </div>
+
+            {!authOpen && step === 0 && (
+              <div style={{ position: 'absolute', bottom: 40, width: '100%', display: 'flex', justifyContent: 'center' }}>
+                <button className="spring-btn" onClick={() => setAuthOpen(true)} style={{ background: 'var(--surface-elevated)', border: '1px solid var(--border)', color: '#FFF', padding: '14px 28px', borderRadius: '20px', fontWeight: 700, fontSize: '15px' }}>
+                  Открыть заново
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      );
+    </script>
+  </body>
+</html>
