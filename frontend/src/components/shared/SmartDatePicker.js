@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -26,16 +26,30 @@ const clampTimePart = (value, max) => {
   return String(Math.min(parsed, max));
 };
 
-function SmartDatePicker({ initialDate, onSave, onCancel }) {
+function SmartDatePicker({ initialDate, onSave, onCancel, disablePast = true }) {
   const initial = useMemo(() => {
     const parsed = new Date(initialDate || Date.now());
     return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
   }, [initialDate]);
 
-  const [viewDate, setViewDate] = useState(new Date(initial.getFullYear(), initial.getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState(new Date(initial));
-  const [hh, setHh] = useState(String(initial.getHours()).padStart(2, '0'));
-  const [mm, setMm] = useState(String(initial.getMinutes()).padStart(2, '0'));
+  const today = useMemo(() => new Date(), []);
+  // Начало сегодняшнего дня (для сравнения с прошлыми датами)
+  const todayStart = useMemo(
+    () => new Date(today.getFullYear(), today.getMonth(), today.getDate()),
+    [today]
+  );
+
+  const clampToMin = useCallback((date) => {
+    if (!disablePast) return date;
+    return date < todayStart ? new Date(todayStart) : date;
+  }, [disablePast, todayStart]);
+
+  const safeInitial = useMemo(() => clampToMin(initial), [initial, clampToMin]);
+
+  const [viewDate, setViewDate] = useState(new Date(safeInitial.getFullYear(), safeInitial.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(new Date(safeInitial));
+  const [hh, setHh] = useState(String(safeInitial.getHours()).padStart(2, '0'));
+  const [mm, setMm] = useState(String(safeInitial.getMinutes()).padStart(2, '0'));
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -43,7 +57,6 @@ function SmartDatePicker({ initialDate, onSave, onCancel }) {
   const firstDay = new Date(year, month, 1).getDay();
   const startOffset = firstDay === 0 ? 6 : firstDay - 1;
 
-  const today = new Date();
   const isSameDay = (a, b) =>
     a.getDate() === b.getDate() &&
     a.getMonth() === b.getMonth() &&
@@ -65,7 +78,16 @@ function SmartDatePicker({ initialDate, onSave, onCancel }) {
   return (
     <div style={styles.root}>
       <div style={styles.monthRow}>
-        <button type="button" onClick={() => setViewDate(new Date(year, month - 1, 1))} className="create-spring-btn" style={styles.navBtn}>
+        <button
+          type="button"
+          onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          className={disablePast && (year < today.getFullYear() || (year === today.getFullYear() && month <= today.getMonth())) ? undefined : 'create-spring-btn'}
+          disabled={disablePast && (year < today.getFullYear() || (year === today.getFullYear() && month <= today.getMonth()))}
+          style={{
+            ...styles.navBtn,
+            ...(disablePast && (year < today.getFullYear() || (year === today.getFullYear() && month <= today.getMonth())) ? styles.navBtnDisabled : null),
+          }}
+        >
           <ChevronLeft size={18} />
         </button>
         <div style={styles.monthLabel}>{MONTH_NAMES[month]} {year}</div>
@@ -87,15 +109,18 @@ function SmartDatePicker({ initialDate, onSave, onCancel }) {
           const current = new Date(year, month, dayNum);
           const selected = isSameDay(current, selectedDate);
           const now = isSameDay(current, today);
+          const isPast = disablePast && current < todayStart;
           return (
             <button
               key={dayNum}
               type="button"
-              onClick={() => setSelectedDate(current)}
-              className="create-spring-btn"
+              onClick={() => !isPast && setSelectedDate(current)}
+              disabled={isPast}
+              className={isPast ? undefined : 'create-spring-btn'}
               style={{
                 ...styles.dayBtn,
-                ...(selected ? styles.dayBtnActive : null),
+                ...(isPast ? styles.dayBtnPast : null),
+                ...(selected && !isPast ? styles.dayBtnActive : null),
                 ...(now && !selected ? styles.dayBtnToday : null),
               }}
             >
@@ -161,6 +186,11 @@ const styles = {
     justifyContent: 'center',
     cursor: 'pointer',
   },
+  navBtnDisabled: {
+    opacity: 0.2,
+    cursor: 'not-allowed',
+    pointerEvents: 'none',
+  },
   monthLabel: {
     fontWeight: 700,
     fontSize: 15,
@@ -198,6 +228,11 @@ const styles = {
     justifyContent: 'center',
     gap: 2,
     cursor: 'pointer',
+  },
+  dayBtnPast: {
+    opacity: 0.2,
+    cursor: 'not-allowed',
+    pointerEvents: 'none',
   },
   dayBtnActive: {
     background: 'var(--create-primary)',

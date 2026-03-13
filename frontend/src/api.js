@@ -1300,9 +1300,27 @@ export async function downloadAnalyticsReport(reportDate, format = 'json') {
 // РЕКЛАМА (ADS)
 // ========================================
 
-/** Создать рекламный пост */
+/** Создать рекламный пост (multipart/form-data) */
 export async function createAdPost(adData) {
-  const response = await api.post('/ads/create', adData);
+  const formData = new FormData();
+  formData.append('title', adData.title);
+  formData.append('body', adData.body);
+  formData.append('advertiser_name', adData.advertiser_name);
+  formData.append('scope', adData.scope);
+  formData.append('cta_text', adData.cta_text);
+  formData.append('cta_url', adData.cta_url);
+  formData.append('impression_limit', String(adData.impression_limit));
+  formData.append('priority', String(adData.priority));
+  if (adData.ends_at) formData.append('ends_at', adData.ends_at);
+  if (adData.target_university) formData.append('target_university', adData.target_university);
+  if (adData.target_city) formData.append('target_city', adData.target_city);
+  if (adData.daily_impression_cap != null) formData.append('daily_impression_cap', String(adData.daily_impression_cap));
+  if (adData.images && adData.images.length > 0) {
+    adData.images.forEach((file) => formData.append('images', file));
+  }
+  const response = await api.post('/ads/create', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return response.data;
 }
 

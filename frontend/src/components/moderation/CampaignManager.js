@@ -1,11 +1,12 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/moderation/CampaignManager.js =====
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Eye, MousePointerClick, Pause, Play, Trash2,
   CheckCircle, XCircle, ChevronDown, ChevronUp, BarChart3,
-  Globe, Building2, MapPin, ExternalLink
+  Globe, Building2, MapPin, ExternalLink, Calendar, Image as ImageIcon, X as XIcon
 } from 'lucide-react';
+import imageCompression from 'browser-image-compression';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import {
@@ -15,6 +16,12 @@ import {
 } from '../../api';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
+import SmartDatePicker from '../shared/SmartDatePicker';
+
+const AD_IMAGE_SETTINGS = {
+  ALLOWED_FORMATS: ['image/jpeg', 'image/png', 'image/webp'],
+  MAX_COUNT: 3,
+};
 
 const STATUS_MAP = {
   draft:          { label: 'Черновик',    color: theme.colors.textTertiary, bg: theme.colors.bgSecondary },
@@ -146,7 +153,7 @@ function CampaignManager({ isAdmin = false }) {
         </button>
       </div>
 
-      {showCreate && <CreateAdForm onCreated={handleCreated} onCancel={() => setShowCreate(false)} />}
+      {showCreate && <CreateAdForm isAdmin={isAdmin} onCreated={handleCreated} onCancel={() => setShowCreate(false)} />}
 
       {/* Фильтры */}
       <div style={s.chips}>
@@ -277,67 +284,251 @@ function AdCard({ ad, isAdmin, expanded, stats, onToggleStats, onApprove, onReje
 // ==============================
 // Create Form
 // ==============================
-function CreateAdForm({ onCreated, onCancel }) {
+function formatEndsAtLabel(value) {
+  if (!value) return 'Выбрать дату и время';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Выбрать дату и время';
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// CSS для кнопок с пружинной анимацией (инжектируется, если CreateContentModal не открыт)
+const CREATE_SPRING_CSS = `
+.create-spring-btn {
+  transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s;
+}
+.create-spring-btn:active {
+  transform: scale(0.92);
+  opacity: 0.85;
+}
+`;
+
+function CreateAdForm({ isAdmin = false, onCreated, onCancel }) {
   const [form, setForm] = useState({
     title: '', body: '', advertiser_name: '', scope: 'university',
     cta_text: '', cta_url: '', impression_limit: '', ends_at: '', priority: 5,
   });
   const [submitting, setSubmitting] = useState(false);
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  // Фото: [{file, preview}]
+  const [imageFiles, setImageFiles] = useState([]);
+  const [imageUploading, setImageUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const titleOk = form.title.trim().length >= 3;
+  const bodyOk = form.body.trim().length >= 10;
+  const advertiserOk = form.advertiser_name.trim().length >= 2;
+  const ctaTextOk = form.cta_text.trim().length > 0;
+  const ctaUrlOk = form.cta_url.trim().length > 0;
+  const impressionLimitRaw = form.impression_limit.trim();
+  const impressionLimitNum = Number(impressionLimitRaw);
+  const impressionLimitOk =
+    /^\d+$/.test(impressionLimitRaw) &&
+    Number.isFinite(impressionLimitNum) &&
+    impressionLimitNum >= 100 &&
+    impressionLimitNum <= 1000000;
+  const canSubmit = !submitting && !imageUploading && titleOk && bodyOk && advertiserOk && ctaTextOk && ctaUrlOk && impressionLimitOk;
+
+  // Обработка выбора фото: валидация + сжатие
+  const handleImageSelect = useCallback(async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+
+    const remaining = AD_IMAGE_SETTINGS.MAX_COUNT - imageFiles.length;
+    if (remaining <= 0) { toast.error('Максимум 3 фото'); return; }
+
+    setImageUploading(true);
+    const newItems = [];
+    for (const file of files.slice(0, remaining)) {
+      if (!AD_IMAGE_SETTINGS.ALLOWED_FORMATS.includes(file.type)) {
+        toast.error(`Формат не поддерживается: ${file.name}`);
+        continue;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`Файл слишком большой: ${file.name}`);
+        continue;
+      }
+      try {
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1600,
+          useWebWorker: true,
+          initialQuality: 0.8,
+        });
+        const preview = URL.createObjectURL(compressed);
+        newItems.push({ file: compressed, preview });
+      } catch {
+        toast.error(`Ошибка обработки: ${file.name}`);
+      }
+    }
+    setImageFiles((prev) => [...prev, ...newItems]);
+    setImageUploading(false);
+  }, [imageFiles.length]);
+
+  const removeImage = useCallback((idx) => {
+    setImageFiles((prev) => {
+      URL.revokeObjectURL(prev[idx].preview);
+      return prev.filter((_, i) => i !== idx);
+    });
+  }, []);
 
   const submit = async () => {
-    if (form.title.trim().length < 3) { toast.error('Заголовок мин. 3 символа'); return; }
-    if (form.body.trim().length < 10) { toast.error('Текст мин. 10 символов'); return; }
-    if (!form.advertiser_name.trim()) { toast.error('Укажите рекламодателя'); return; }
+    if (!canSubmit) {
+      if (!titleOk) toast.error('Заголовок минимум 3 символа');
+      else if (!bodyOk) toast.error('Текст минимум 10 символов');
+      else if (!advertiserOk) toast.error('Укажите рекламодателя');
+      else if (!ctaTextOk) toast.error('Укажите текст кнопки');
+      else if (!ctaUrlOk) toast.error('Укажите ссылку для кнопки');
+      else if (!impressionLimitOk) toast.error('Лимит показов: от 100 до 1 000 000');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const p = { title: form.title.trim(), body: form.body.trim(), advertiser_name: form.advertiser_name.trim(), scope: form.scope, priority: form.priority };
-      if (form.cta_text.trim()) p.cta_text = form.cta_text.trim();
-      if (form.cta_url.trim()) p.cta_url = form.cta_url.trim();
-      if (form.impression_limit) p.impression_limit = parseInt(form.impression_limit);
+      const p = {
+        title: form.title.trim(),
+        body: form.body.trim(),
+        advertiser_name: form.advertiser_name.trim(),
+        scope: form.scope,
+        priority: form.priority,
+        cta_text: form.cta_text.trim(),
+        cta_url: form.cta_url.trim(),
+        impression_limit: parseInt(form.impression_limit, 10),
+        images: imageFiles.map((i) => i.file),
+      };
       if (form.ends_at) p.ends_at = new Date(form.ends_at).toISOString();
       onCreated(await createAdPost(p));
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Ошибка создания');
-    } finally { setSubmitting(false); }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <div style={s.form}>
-      <input style={s.input} placeholder="Заголовок *" value={form.title} onChange={e => set('title', e.target.value)} maxLength={200} />
-      <textarea style={{ ...s.input, minHeight: 80, resize: 'vertical' }} placeholder="Текст рекламы *" value={form.body} onChange={e => set('body', e.target.value)} maxLength={2000} />
-      <input style={s.input} placeholder="Рекламодатель *" value={form.advertiser_name} onChange={e => set('advertiser_name', e.target.value)} maxLength={200} />
+    <>
+      <style>{CREATE_SPRING_CSS}</style>
+      <div style={s.form}>
+        <input style={s.input} placeholder="Заголовок *" value={form.title} onChange={(e) => set('title', e.target.value)} maxLength={200} />
+        <textarea style={{ ...s.input, minHeight: 80, resize: 'vertical' }} placeholder="Текст рекламы *" value={form.body} onChange={(e) => set('body', e.target.value)} maxLength={2000} />
+        <input style={s.input} placeholder="Рекламодатель *" value={form.advertiser_name} onChange={(e) => set('advertiser_name', e.target.value)} maxLength={200} />
 
-      <div style={s.scopeRow}>
-        {Object.entries(SCOPE_MAP).map(([k, { label, icon: I }]) => (
-          <button key={k} onClick={() => set('scope', k)} style={{
-            ...s.scopeBtn,
-            background: form.scope === k ? theme.colors.primary : theme.colors.bgSecondary,
-            color: form.scope === k ? '#fff' : theme.colors.textSecondary,
-            border: `1px solid ${form.scope === k ? theme.colors.primary : theme.colors.border}`,
-          }}><I size={14} /> {label}</button>
-        ))}
-      </div>
+        <div style={s.scopeRow}>
+          {Object.entries(SCOPE_MAP).map(([k, { label, icon: I }]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => set('scope', k)}
+              style={{
+                ...s.scopeBtn,
+                background: form.scope === k ? theme.colors.premium.primary : '#1C1C1E',
+                color: form.scope === k ? '#000' : theme.colors.textSecondary,
+                border: `1px solid ${form.scope === k ? theme.colors.premium.primary : 'rgba(212,255,0,0.14)'}`,
+              }}
+            >
+              <I size={14} /> {label}
+            </button>
+          ))}
+        </div>
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input style={{ ...s.input, flex: 1 }} placeholder="Текст кнопки" value={form.cta_text} onChange={e => set('cta_text', e.target.value)} />
-        <input style={{ ...s.input, flex: 2 }} placeholder="https://..." value={form.cta_url} onChange={e => set('cta_url', e.target.value)} />
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input style={{ ...s.input, flex: 1 }} placeholder="Лимит показов" type="number" value={form.impression_limit} onChange={e => set('impression_limit', e.target.value)} />
-        <input style={{ ...s.input, flex: 1 }} type="datetime-local" value={form.ends_at} onChange={e => set('ends_at', e.target.value)} />
-      </div>
-      <div style={s.prioRow}>
-        <span style={{ fontSize: 13, color: theme.colors.textSecondary }}>Приоритет: {form.priority}</span>
-        <input type="range" min={1} max={10} value={form.priority} onChange={e => set('priority', +e.target.value)} style={{ flex: 1 }} />
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button style={s.cancelBtn} onClick={onCancel}>Отмена</button>
-        <button style={{ ...s.submitBtn, opacity: submitting ? 0.5 : 1 }} onClick={submit} disabled={submitting}>
-          {submitting ? 'Создание…' : 'Создать'}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input style={{ ...s.input, flex: 1 }} placeholder="Текст кнопки *" value={form.cta_text} onChange={(e) => set('cta_text', e.target.value)} />
+          <input style={{ ...s.input, flex: 2 }} placeholder="https://... *" value={form.cta_url} onChange={(e) => set('cta_url', e.target.value)} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input style={{ ...s.input, flex: 1 }} placeholder="Лимит показов *" type="number" min={100} max={1000000} value={form.impression_limit} onChange={(e) => set('impression_limit', e.target.value)} />
+          <button
+            type="button"
+            className="create-spring-btn"
+            onClick={() => setShowEndPicker(true)}
+            style={{ ...s.input, ...s.dateButton, flex: 1 }}
+          >
+            <Calendar size={14} />
+            <span style={s.dateButtonText}>{formatEndsAtLabel(form.ends_at)}</span>
+          </button>
+        </div>
+        <div style={s.dateHint}>До какого времени будет реклама</div>
+
+        {/* Загрузка фото */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={AD_IMAGE_SETTINGS.ALLOWED_FORMATS.join(',')}
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleImageSelect}
+          disabled={submitting || imageFiles.length >= AD_IMAGE_SETTINGS.MAX_COUNT}
+        />
+        {imageFiles.length > 0 && (
+          <div style={s.imageRow}>
+            {imageFiles.map((img, idx) => (
+              <div key={idx} style={s.imageThumb}>
+                <img src={img.preview} alt="" style={s.imageThumbImg} />
+                <button
+                  type="button"
+                  className="create-spring-btn"
+                  onClick={() => removeImage(idx)}
+                  style={s.imageRemoveBtn}
+                >
+                  <XIcon size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          className="create-spring-btn"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={submitting || imageUploading || imageFiles.length >= AD_IMAGE_SETTINGS.MAX_COUNT}
+          style={{
+            ...s.imageAddBtn,
+            opacity: imageFiles.length >= AD_IMAGE_SETTINGS.MAX_COUNT ? 0.4 : 1,
+          }}
+        >
+          <ImageIcon size={14} />
+          {imageUploading ? 'Обработка…' : `Фото ${imageFiles.length}/${AD_IMAGE_SETTINGS.MAX_COUNT}`}
         </button>
+
+        <div style={s.prioRow}>
+          <span style={{ fontSize: 13, color: theme.colors.textSecondary }}>Приоритет: {form.priority}</span>
+          <input type="range" min={1} max={10} value={form.priority} onChange={(e) => set('priority', +e.target.value)} style={{ flex: 1 }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" style={s.cancelBtn} onClick={onCancel}>Отмена</button>
+          <button type="button" style={canSubmit ? s.submitBtnActive : s.submitBtn} onClick={submit} disabled={!canSubmit}>
+            {submitting ? 'Создание…' : isAdmin ? 'Опубликовать' : 'Отправить'}
+          </button>
+        </div>
       </div>
-    </div>
+
+      <div style={{ ...s.pickerOverlay, pointerEvents: showEndPicker ? 'auto' : 'none' }}>
+        <div style={{ ...s.pickerBackdrop, opacity: showEndPicker ? 1 : 0 }} onClick={() => setShowEndPicker(false)} />
+        <div style={{ ...s.pickerSheet, transform: showEndPicker ? 'translateY(0)' : 'translateY(100%)' }}>
+          {showEndPicker && (
+            <>
+            <div style={s.pickerTitle}>До какого времени будет реклама</div>
+            <SmartDatePicker
+              initialDate={form.ends_at || new Date().toISOString()}
+              onCancel={() => setShowEndPicker(false)}
+              onSave={(value) => {
+                set('ends_at', value);
+                setShowEndPicker(false);
+              }}
+            />
+            </>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -383,13 +574,137 @@ const s = {
   statsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 },
   rejectBox: { marginTop: 8, padding: '8px 10px', borderRadius: 8, background: '#ef444410', fontSize: 12, color: '#ef4444' },
 
-  form: { background: theme.colors.card, borderRadius: 14, padding: 14, border: `1px solid ${theme.colors.border}`, display: 'flex', flexDirection: 'column', gap: 8 },
-  input: { width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${theme.colors.border}`, background: theme.colors.bgSecondary, color: theme.colors.text, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' },
+  form: {
+    background: '#121212',
+    borderRadius: 14,
+    padding: 14,
+    border: '1px solid rgba(212,255,0,0.18)',
+    boxShadow: '0 0 0 1px rgba(212,255,0,0.04) inset',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    '--create-primary': theme.colors.premium.primary,
+    '--create-text-muted': theme.colors.premium.textMuted,
+    '--create-border': theme.colors.premium.border,
+  },
+  input: {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 10,
+    border: '1px solid rgba(212,255,0,0.14)',
+    background: '#1C1C1E',
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'inherit',
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
+  dateButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  dateButtonText: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: '#fff',
+  },
+  dateHint: {
+    fontSize: 12,
+    color: '#9AA086',
+    marginTop: -2,
+  },
+  imageRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  imageThumb: {
+    position: 'relative',
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    overflow: 'hidden',
+    border: '1px solid rgba(212,255,0,0.2)',
+    flexShrink: 0,
+  },
+  imageThumbImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  imageRemoveBtn: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    border: 'none',
+    background: 'rgba(0,0,0,0.65)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: 0,
+  },
+  imageAddBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 12px',
+    borderRadius: 10,
+    border: '1px dashed rgba(212,255,0,0.3)',
+    background: 'transparent',
+    color: '#9AA086',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    width: '100%',
+    justifyContent: 'center',
+  },
   scopeRow: { display: 'flex', gap: 6 },
   scopeBtn: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: 8, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
   prioRow: { display: 'flex', alignItems: 'center', gap: 10 },
-  cancelBtn: { flex: 1, padding: 10, borderRadius: 10, border: `1px solid ${theme.colors.border}`, background: theme.colors.bgSecondary, color: theme.colors.textSecondary, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
-  submitBtn: { flex: 2, padding: 10, borderRadius: 10, border: 'none', background: theme.colors.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
+  cancelBtn: { flex: 1, padding: 10, borderRadius: 10, border: '1px solid rgba(212,255,0,0.14)', background: '#1C1C1E', color: '#AEB58F', fontSize: 14, fontWeight: 600, cursor: 'pointer' },
+  submitBtn: { flex: 2, padding: 10, borderRadius: 10, border: '1px solid rgba(212,255,0,0.18)', background: '#2A2A2A', color: '#7A8065', fontSize: 14, fontWeight: 700, cursor: 'not-allowed' },
+  submitBtnActive: { flex: 2, padding: 10, borderRadius: 10, border: 'none', background: theme.colors.premium.primary, color: '#000', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 20px rgba(212,255,0,0.28)' },
+  pickerOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 5200,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+  },
+  pickerBackdrop: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    backdropFilter: 'blur(2px)',
+    transition: 'opacity 0.3s',
+  },
+  pickerSheet: {
+    position: 'relative',
+    background: theme.colors.premium.surfaceElevated,
+    borderTop: `1px solid ${theme.colors.premium.border}`,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: '24px 16px calc(env(safe-area-inset-bottom, 0px) + 16px)',
+    boxShadow: '0 -20px 48px rgba(0,0,0,0.55)',
+    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+    '--create-surface': theme.colors.premium.surfaceElevated,
+    '--create-primary': theme.colors.premium.primary,
+    '--create-text-muted': theme.colors.premium.textMuted,
+    '--create-border': theme.colors.premium.border,
+  },
+  pickerTitle: { fontSize: 13, fontWeight: 700, color: '#C8D08A', marginBottom: 10, textAlign: 'center' },
 
   empty: { textAlign: 'center', padding: '40px 20px' },
   center: { display: 'flex', justifyContent: 'center', padding: '40px 0' },

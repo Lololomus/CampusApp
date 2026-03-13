@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA - Poll UI (Perfect Match)</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #0A0A0C;
+        --surface: #242426;
+        --surface-input: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --border-dashed: rgba(255, 255, 255, 0.15);
+        --text-main: #FFFFFF;
+        --text-muted: #8E8E93;
+        --error: #FF453A;
+        --error-bg: rgba(255, 69, 58, 0.15);
+        --success: #32D74B;
+        --success-bg: rgba(50, 215, 75, 0.15);
+        --info: #0A84FF;
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: var(--bg); 
+        color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.96); opacity: 0.8; }
+
+      input, textarea { appearance: none; font-family: inherit; }
+      input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+      @keyframes slideInOption {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .poll-option-animate { animation: slideInOption 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+
+      @keyframes fillBar {
+        from { width: 0%; }
+        to { width: var(--target-width); }
+      }
+      .poll-bar-fill { animation: fillBar 0.8s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0",
+          "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.2"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        Plus, X, Circle, CheckCircle2, Users, VenetianMask, 
+        BarChart2, HelpCircle, Settings, Check, HelpCircle as HelpIcon,
+        BadgeCheck, XCircle, ChevronDown, ChevronUp, Lightbulb
+      } from 'lucide-react';
+      import confetti from 'canvas-confetti';
+
+      // ==========================================
+      // 1. КОМПОНЕНТ: СОЗДАТЕЛЬ ОПРОСА (Точная копия скринов)
+      // ==========================================
+      const PollCreatorMock = () => {
+        const [type, setType] = useState('quiz'); // 'regular' | 'quiz'
+        const [options, setOptions] = useState(['Вариант 1', 'Вариант 2', 'Вариант 3']);
+        const [correctOption, setCorrectOption] = useState(0);
+        const [allowMultiple, setAllowMultiple] = useState(false);
+        const [isAnonymous, setIsAnonymous] = useState(true);
+        const [explanation, setExplanation] = useState('');
+        const [showSettings, setShowSettings] = useState(false);
+        const [showExplanationInput, setShowExplanationInput] = useState(false);
+
+        const handleAddOption = () => {
+          if (options.length < 10) setOptions([...options, '']);
+        };
+
+        const handleRemoveOption = (index) => {
+          if (options.length > 2) {
+            setOptions(options.filter((_, i) => i !== index));
+            if (correctOption === index) setCorrectOption(null);
+            else if (correctOption > index) setCorrectOption(correctOption - 1);
+          }
+        };
+
+        return (
+          <div style={{ background: 'var(--surface)', borderRadius: '16px', padding: '16px', width: '100%', border: '1px solid rgba(255,255,255,0.05)' }}>
+            
+            <div style={{ fontSize: '11px', fontWeight: 800, color: type === 'quiz' ? 'var(--info)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>
+              {type === 'quiz' ? 'ВИКТОРИНА' : 'ОПРОС'}
+            </div>
+
+            {/* ВАРИАНТЫ ОТВЕТОВ */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
+              {options.map((opt, index) => {
+                const isCorrect = type === 'quiz' && correctOption === index;
+                return (
+                  <div key={index} className="poll-option-animate" style={{ display: 'flex', alignItems: 'center' }}>
+                    
+                    {/* РАДИО КНОПКА (Викторина) */}
+                    {type === 'quiz' && (
+                      <button 
+                        onClick={() => setCorrectOption(index)}
+                        className="spring-btn"
+                        style={{ background: 'none', border: 'none', padding: 0, display: 'flex', color: isCorrect ? 'var(--success)' : 'var(--text-muted)', marginRight: '12px' }}
+                      >
+                        {isCorrect ? <CheckCircle2 size={22} /> : <Circle size={22} />}
+                      </button>
+                    )}
+
+                    {/* СЕРЫЙ ИНПУТ */}
+                    <div style={{ 
+                      flex: 1, display: 'flex', alignItems: 'center', 
+                      background: 'var(--surface-input)', 
+                      borderRadius: '10px', 
+                      border: '1px solid rgba(255,255,255,0.03)',
+                      padding: '10px 12px'
+                    }}>
+                      <input
+                        type="text"
+                        placeholder={`Вариант ${index + 1}`}
+                        value={opt}
+                        onChange={(e) => {
+                          const next = [...options];
+                          next[index] = e.target.value;
+                          setOptions(next);
+                        }}
+                        style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF', fontSize: '15px', outline: 'none' }}
+                      />
+                    </div>
+
+                    {/* КРЕСТИК УДАЛЕНИЯ "ЗА ГРАНЬЮ" */}
+                    {index > 1 && (
+                      <button 
+                        onClick={() => handleRemoveOption(index)} 
+                        className="spring-btn" 
+                        style={{ 
+                          width: 32, height: 32, borderRadius: 16, border: '1px solid rgba(255,255,255,0.15)', 
+                          background: 'transparent', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', 
+                          justifyContent: 'center', marginLeft: '8px', flexShrink: 0
+                        }}
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ДОБАВИТЬ ВАРИАНТ */}
+            {options.length < 10 && (
+              <div style={{ display: 'flex', gap: '12px' }}>
+                {type === 'quiz' && <div style={{ width: 22 }} />}
+                <button 
+                  onClick={handleAddOption}
+                  className="spring-btn"
+                  style={{ 
+                    flex: 1, background: 'transparent', border: '1px dashed var(--border-dashed)', borderRadius: '10px', 
+                    padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    color: 'var(--primary)', fontSize: '14px', fontWeight: 600
+                  }}
+                >
+                  <Plus size={16} strokeWidth={2.5} /> Добавить вариант
+                </button>
+              </div>
+            )}
+
+            {/* ДОБАВИТЬ ОБЪЯСНЕНИЕ (Только викторина) */}
+            {type === 'quiz' && (
+              <div style={{ marginTop: '12px', paddingLeft: '34px' }}>
+                {!showExplanationInput && !explanation ? (
+                  <button 
+                    onClick={() => setShowExplanationInput(true)}
+                    className="spring-btn"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 0', cursor: 'pointer' }}
+                  >
+                    <Plus size={14} strokeWidth={2.5} /> Добавить объяснение
+                  </button>
+                ) : (
+                  <div className="poll-option-animate" style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ flex: 1, background: 'rgba(212, 255, 0, 0.03)', border: '1px solid rgba(212, 255, 0, 0.15)', borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <Lightbulb size={16} color="var(--primary)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <textarea
+                        placeholder="Объяснение правильного ответа. Появится после голосования..."
+                        value={explanation}
+                        onChange={(e) => setExplanation(e.target.value)}
+                        autoFocus
+                        style={{ width: '100%', background: 'transparent', border: 'none', color: '#FFF', fontSize: '14px', lineHeight: 1.4, minHeight: '60px', resize: 'vertical', outline: 'none' }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ПУНКТИРНЫЙ РАЗДЕЛИТЕЛЬ */}
+            <div style={{ borderTop: '1px dashed var(--border-dashed)', margin: '16px 0' }} />
+
+            {/* НАСТРОЙКИ ОПРОСА */}
+            <div>
+              <div 
+                onClick={() => setShowSettings(!showSettings)}
+                className="spring-btn"
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showSettings ? '12px' : '0', cursor: 'pointer', padding: '4px 0' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: showSettings ? '#FFF' : 'var(--text-muted)', fontSize: '13px', fontWeight: 600, transition: 'color 0.2s' }}>
+                  <Settings size={14} /> Настройки {type === 'quiz' ? 'викторины' : 'опроса'}
+                </div>
+                {/* Иконки всегда видны, если опции активны */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)' }}>
+                  {type === 'regular' && <BarChart2 size={14} color="var(--primary)" />}
+                  {type === 'quiz' && <HelpCircle size={14} color="var(--primary)" />}
+                  {allowMultiple && type === 'regular' && <Users size={14} color="var(--primary)" />}
+                  {isAnonymous && <VenetianMask size={14} color="var(--primary)" />}
+                  <span style={{ marginLeft: '4px' }}>
+                    {showSettings ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </span>
+                </div>
+              </div>
+
+              {/* РАСКРЫВАЮЩИЕСЯ НАСТРОЙКИ */}
+              {showSettings && (
+                <div className="poll-option-animate">
+                  {/* ПЕРЕКЛЮЧАТЕЛЬ ТИПА */}
+                  <div style={{ display: 'flex', background: 'var(--surface-input)', borderRadius: '10px', padding: '4px', marginBottom: '10px' }}>
+                    <button 
+                      onClick={() => setType('regular')}
+                      className="spring-btn"
+                      style={{ flex: 1, padding: '8px', background: type === 'regular' ? '#181818' : 'transparent', color: type === 'regular' ? '#FFF' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
+                      <BarChart2 size={14} /> Опрос
+                    </button>
+                    <button 
+                      onClick={() => { setType('quiz'); setAllowMultiple(false); }}
+                      className="spring-btn"
+                      style={{ flex: 1, padding: '8px', background: type === 'quiz' ? '#181818' : 'transparent', color: type === 'quiz' ? '#FFF' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
+                      <HelpCircle size={14} /> Викторина
+                    </button>
+                  </div>
+
+                  {/* ФЛАГИ (Сетка) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <button 
+                      onClick={() => setAllowMultiple(!allowMultiple)}
+                      disabled={type === 'quiz'}
+                      className="spring-btn"
+                      style={{
+                        background: allowMultiple ? 'rgba(212,255,0,0.1)' : 'var(--surface-input)',
+                        border: `1px solid ${allowMultiple ? 'var(--primary)' : 'transparent'}`,
+                        color: allowMultiple ? 'var(--primary)' : 'var(--text-muted)',
+                        opacity: type === 'quiz' ? 0.4 : 1, padding: '10px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}
+                    >
+                      <Users size={16} /> Мультивыбор
+                    </button>
+                    <button 
+                      onClick={() => setIsAnonymous(!isAnonymous)}
+                      className="spring-btn"
+                      style={{
+                        background: isAnonymous ? 'rgba(212,255,0,0.05)' : 'var(--surface-input)',
+                        border: `1px solid ${isAnonymous ? 'var(--primary)' : 'transparent'}`,
+                        color: isAnonymous ? 'var(--primary)' : 'var(--text-muted)',
+                        padding: '10px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}
+                    >
+                      <VenetianMask size={16} /> Анонимно
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+          </div>
+        );
+      };
+
+      // ==========================================
+      // 2. УНИВЕРСАЛЬНЫЙ VIEWER (Опрос и Викторина в одном стиле)
+      // ==========================================
+      const PollViewer = ({ poll }) => {
+        const [hasVoted, setHasVoted] = useState(false);
+        const [selectedOption, setSelectedOption] = useState(null);
+
+        const isQuiz = poll.type === 'quiz';
+        
+        // Фейковые данные для демо
+        const totalVotes = hasVoted ? 325 : 324;
+        const mockPercentages = isQuiz 
+          ? poll.options.map((_, i) => i === poll.correctOption ? 75 : 25 / Math.max(1, poll.options.length - 1))
+          : poll.options.map((_, i) => i === 0 ? 60 : 40 / Math.max(1, poll.options.length - 1));
+
+        const handleVote = (index) => {
+          if (hasVoted) return;
+
+          // В викторине клик по варианту сразу отправляет голос
+          if (isQuiz) {
+            setSelectedOption(index);
+            setHasVoted(true);
+            if (index === poll.correctOption) {
+              confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 }, colors: ['#D4FF00', '#32D74B', '#FFFFFF'] });
+            }
+          } else {
+            // В обычном опросе юзер просто выбирает вариант (до нажатия "Голосовать")
+            setSelectedOption(index);
+          }
+        };
+
+        const submitRegularVote = () => {
+          if (selectedOption !== null) {
+            setHasVoted(true);
+          }
+        }
+
+        return (
+          <div style={{ background: 'var(--bg)', borderRadius: '16px', padding: '16px', width: '100%', border: '1px solid var(--border)' }}>
+            
+            {/* ШАПКА: БЕЙДЖ И ВОПРОС */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <span style={{ 
+                background: isQuiz ? 'rgba(10, 132, 255, 0.15)' : 'rgba(212, 255, 0, 0.15)', 
+                color: isQuiz ? 'var(--info)' : 'var(--primary)', 
+                padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px' 
+              }}>
+                {isQuiz ? 'ВИКТОРИНА' : 'ОПРОС'}
+              </span>
+              {poll.isAnonymous && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Анонимно</span>}
+            </div>
+            
+            <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: 700, color: '#FFF' }}>{poll.question}</h3>
+            
+            {/* СПИСОК ВАРИАНТОВ */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {poll.options.map((opt, i) => {
+                const isSelected = selectedOption === i;
+                const isCorrect = isQuiz && i === poll.correctOption;
+                
+                // === ЛОГИКА ОТОБРАЖЕНИЯ ПОСЛЕ ГОЛОСОВАНИЯ ===
+                if (hasVoted) {
+                  let bgColor = 'var(--surface-input)';
+                  let borderColor = 'transparent';
+                  let fillBg = 'rgba(255,255,255,0.08)';
+                  let textColor = '#FFF';
+                  let Icon = null;
+
+                  if (isQuiz) {
+                    if (isCorrect) {
+                      borderColor = 'var(--success)';
+                      fillBg = 'var(--success-bg)';
+                      textColor = 'var(--success)';
+                      Icon = <CheckCircle2 size={18} color="var(--success)" />;
+                    } else if (isSelected && !isCorrect) {
+                      borderColor = 'var(--error)';
+                      fillBg = 'var(--error-bg)';
+                      textColor = 'var(--error)';
+                      Icon = <XCircle size={18} color="var(--error)" />;
+                    }
+                  } else {
+                    // Обычный опрос (результаты)
+                    if (isSelected) {
+                      borderColor = 'var(--primary)';
+                      fillBg = 'rgba(212, 255, 0, 0.15)';
+                      textColor = 'var(--primary)';
+                      Icon = <CheckCircle2 size={18} color="var(--primary)" />;
+                    }
+                  }
+
+                  return (
+                    <div key={i} style={{ position: 'relative', height: '48px', borderRadius: '10px', background: bgColor, border: `1px solid ${borderColor}`, overflow: 'hidden', display: 'flex', alignItems: 'center', padding: '0 12px', transition: 'all 0.3s ease' }}>
+                      <div className="poll-bar-fill" style={{ position: 'absolute', top: 0, left: 0, bottom: 0, background: fillBg, '--target-width': `${mockPercentages[i]}%` }} />
+                      <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {Icon}
+                          <span style={{ fontSize: '14px', fontWeight: (isSelected || isCorrect) ? 600 : 500, color: textColor }}>{opt}</span>
+                        </div>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: textColor }}>{Math.round(mockPercentages[i])}%</span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // === ЛОГИКА ОТОБРАЖЕНИЯ ДО ГОЛОСОВАНИЯ ===
+                let preVoteBg = 'var(--surface-input)';
+                let preVoteBorder = 'transparent';
+                
+                if (!isQuiz && isSelected) {
+                  preVoteBg = 'rgba(212, 255, 0, 0.05)';
+                  preVoteBorder = 'var(--primary)';
+                }
+
+                return (
+                  <div key={i} onClick={() => handleVote(i)} className="spring-btn" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 12px', borderRadius: '10px', background: preVoteBg, border: `1px solid ${preVoteBorder}`, cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                    {!isQuiz && (
+                       <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? 'var(--primary)' : 'transparent' }}>
+                         {isSelected && <Check size={12} color="#000" strokeWidth={3} />}
+                       </div>
+                    )}
+                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#FFF' }}>{opt}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ОБЪЯСНЕНИЕ ВИКТОРИНЫ (После ответа) */}
+            {hasVoted && isQuiz && poll.explanation && (
+              <div className="poll-option-animate" style={{ marginTop: '16px', paddingLeft: '12px', borderLeft: `2px solid ${selectedOption === poll.correctOption ? 'var(--success)' : 'var(--error)'}` }}>
+                 <div style={{ fontSize: '13px', fontWeight: 700, color: selectedOption === poll.correctOption ? 'var(--success)' : 'var(--error)', marginBottom: '4px' }}>
+                   {selectedOption === poll.correctOption ? '🎉 Правильно!' : '💡 Ошибочка!'}
+                 </div>
+                 <div style={{ fontSize: '13px', color: '#EAEAEA', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>
+                   {poll.explanation}
+                 </div>
+              </div>
+            )}
+
+            {/* ФУТЕР С ИНФОЙ И КНОПКОЙ */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{totalVotes} голосов</span>
+              
+              {/* Кнопка "Голосовать" (Только для обычного опроса, если еще не голосовали) */}
+              {!hasVoted && !isQuiz && (
+                <button 
+                  onClick={submitRegularVote} 
+                  className="spring-btn" 
+                  style={{ 
+                    background: selectedOption !== null ? 'var(--primary)' : 'rgba(255,255,255,0.1)', 
+                    color: selectedOption !== null ? '#000' : 'var(--text-muted)', 
+                    border: 'none', padding: '8px 20px', borderRadius: '12px', fontSize: '13px', fontWeight: 700, 
+                    pointerEvents: selectedOption !== null ? 'auto' : 'none' 
+                  }}
+                >
+                  Голосовать
+                </button>
+              )}
+            </div>
+
+          </div>
+        );
+      };
+
+      // === ГЛАВНЫЙ АПП (Управление экранами) ===
+      function App() {
+        const [tab, setTab] = useState('creator'); // 'creator' | 'regular' | 'quiz'
+
+        // Демо данные для опроса
+        const demoRegularPoll = {
+          type: 'regular',
+          question: 'Где лучше всего готовиться к сессии?',
+          options: ['В коворкинге', 'В библиотеке', 'Дома'],
+          isAnonymous: true,
+        };
+
+        // Демо данные для викторины
+        const demoQuizPoll = {
+          type: 'quiz',
+          question: 'Какое сочетание клавиш отменяет последнее действие в редакторах?',
+          options: ['Ctrl + C', 'Ctrl + Z', 'Alt + F4'],
+          correctOption: 1,
+          explanation: 'Ctrl + Z (от англ. Undo) используется почти во всех текстовых и графических редакторах для отмены последнего действия. А вот Alt + F4 закроет приложение 😅',
+          isAnonymous: true,
+        };
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: '#000', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            <header style={{ paddingTop: '60px', paddingBottom: '16px', paddingLeft: '16px', paddingRight: '16px', borderBottom: `1px solid var(--border)`, background: '#050505', zIndex: 100 }}>
+              <div style={{ display: 'flex', background: 'var(--surface-input)', borderRadius: '12px', padding: '4px', overflowX: 'auto' }}>
+                <button onClick={() => setTab('creator')} className="spring-btn" style={{ flex: 1, padding: '8px 12px', background: tab === 'creator' ? 'var(--surface)' : 'transparent', color: tab === 'creator' ? '#FFF' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontWeight: 600, fontSize: '13px', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
+                  Создание
+                </button>
+                <button onClick={() => setTab('regular')} className="spring-btn" style={{ flex: 1, padding: '8px 12px', background: tab === 'regular' ? 'var(--primary)' : 'transparent', color: tab === 'regular' ? '#000' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontWeight: 600, fontSize: '13px', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
+                  Опрос (Лента)
+                </button>
+                <button onClick={() => setTab('quiz')} className="spring-btn" style={{ flex: 1, padding: '8px 12px', background: tab === 'quiz' ? 'var(--primary)' : 'transparent', color: tab === 'quiz' ? '#000' : 'var(--text-muted)', borderRadius: '8px', border: 'none', fontWeight: 600, fontSize: '13px', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
+                  Квиз (Лента)
+                </button>
+              </div>
+            </header>
+
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', background: '#0A0A0C' }}>
+              {tab === 'creator' && <PollCreatorMock />}
+              
+              {tab !== 'creator' && (
+                <div style={{ paddingBottom: '40px' }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #7A5CFF, #4DA6FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 800, color: '#FFF' }}>
+                      C
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 700, fontSize: '15px', color: '#FFF' }}>Campus IT</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>Официальный канал • 2ч</span>
+                    </div>
+                  </div>
+                  
+                  {/* Универсальный компонент отображения */}
+                  {tab === 'regular' && <PollViewer poll={demoRegularPoll} />}
+                  {tab === 'quiz' && <PollViewer poll={demoQuizPoll} />}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

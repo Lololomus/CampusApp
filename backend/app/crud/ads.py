@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, func, or_, update as sa_update
 from typing import Optional, List
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
@@ -23,7 +23,8 @@ async def create_ad_post(
     ad_data: schemas.AdPostCreate,
     creator_id: int,
     creator_role: str,
-    creator_university: str
+    creator_university: str,
+    images_meta: Optional[List[dict]] = None,
 ) -> models.AdPost:
     """Создать рекламный пост."""
     db_post = models.Post(
@@ -32,7 +33,7 @@ async def create_ad_post(
         title=ad_data.title,
         body=ad_data.body,
         tags=sanitize_json_field([]),
-        images=sanitize_json_field([]),
+        images=sanitize_json_field(images_meta or []),
         is_anonymous=False,
         likes_count=0,
         comments_count=0,
@@ -63,8 +64,8 @@ async def create_ad_post(
     )
     db.add(db_ad)
     await db.commit()
-    await db.refresh(db_ad)
-    return db_ad
+    loaded = await get_ad_post(db, db_ad.id)
+    return loaded or db_ad
 
 
 async def get_ad_posts(
@@ -76,27 +77,33 @@ async def get_ad_posts(
     limit: int = 20,
 ) -> dict:
     """Получить список рекламных постов с фильтрацией (для админки)"""
-    query = (
+    # Отдельный count-запрос без selectinload (избегаем проблем с subquery + loader options)
+    count_query = select(func.count(models.AdPost.id))
+    if status:
+        count_query = count_query.where(models.AdPost.status == status)
+    if scope:
+        count_query = count_query.where(models.AdPost.scope == scope)
+    if creator_id:
+        count_query = count_query.where(models.AdPost.created_by == creator_id)
+
+    total = await db.scalar(count_query)
+
+    data_query = (
         select(models.AdPost)
         .options(
             selectinload(models.AdPost.creator),
             selectinload(models.AdPost.post),
         )
     )
-
     if status:
-        query = query.where(models.AdPost.status == status)
+        data_query = data_query.where(models.AdPost.status == status)
     if scope:
-        query = query.where(models.AdPost.scope == scope)
+        data_query = data_query.where(models.AdPost.scope == scope)
     if creator_id:
-        query = query.where(models.AdPost.created_by == creator_id)
-
-    total = await db.scalar(
-        select(func.count()).select_from(query.subquery())
-    )
+        data_query = data_query.where(models.AdPost.created_by == creator_id)
 
     result = await db.execute(
-        query.order_by(models.AdPost.created_at.desc()).offset(skip).limit(limit)
+        data_query.order_by(models.AdPost.created_at.desc()).offset(skip).limit(limit)
     )
     items = result.scalars().all()
 
@@ -145,8 +152,7 @@ async def update_ad_post(db: AsyncSession, ad_id: int, update_data: schemas.AdPo
 
     db_ad.updated_at = datetime.utcnow()
     await db.commit()
-    await db.refresh(db_ad)
-    return db_ad
+    return await get_ad_post(db, ad_id)
 
 
 async def approve_ad_post(db: AsyncSession, ad_id: int, reviewer_id: int) -> Optional[models.AdPost]:
@@ -171,8 +177,7 @@ async def approve_ad_post(db: AsyncSession, ad_id: int, reviewer_id: int) -> Opt
         db_ad.status = 'approved'
 
     await db.commit()
-    await db.refresh(db_ad)
-    return db_ad
+    return await get_ad_post(db, ad_id)
 
 
 async def reject_ad_post(db: AsyncSession, ad_id: int, reviewer_id: int, reason: Optional[str] = None) -> Optional[models.AdPost]:
@@ -193,8 +198,7 @@ async def reject_ad_post(db: AsyncSession, ad_id: int, reviewer_id: int, reason:
     db_ad.reject_reason = reason
 
     await db.commit()
-    await db.refresh(db_ad)
-    return db_ad
+    return await get_ad_post(db, ad_id)
 
 
 async def pause_ad_post(db: AsyncSession, ad_id: int) -> Optional[models.AdPost]:
@@ -210,8 +214,7 @@ async def pause_ad_post(db: AsyncSession, ad_id: int) -> Optional[models.AdPost]
         return None
     db_ad.status = 'paused'
     await db.commit()
-    await db.refresh(db_ad)
-    return db_ad
+    return await get_ad_post(db, ad_id)
 
 
 async def resume_ad_post(db: AsyncSession, ad_id: int) -> Optional[models.AdPost]:
@@ -227,8 +230,7 @@ async def resume_ad_post(db: AsyncSession, ad_id: int) -> Optional[models.AdPost
         return None
     db_ad.status = 'active'
     await db.commit()
-    await db.refresh(db_ad)
-    return db_ad
+    return await get_ad_post(db, ad_id)
 
 
 async def delete_ad_post(db: AsyncSession, ad_id: int) -> bool:
@@ -334,12 +336,15 @@ async def track_ad_impression(db: AsyncSession, ad_post_id: int, user_id: int) -
     result = await db.execute(stmt)
     is_new_unique = result.scalar_one_or_none() is not None
 
-    # Атомарные счётчики через SQL expression
+    # Атомарные счётчики: инкрементируем только при первом показе
+    if not is_new_unique:
+        await db.commit()
+        return False
+
     update_values = {
         'impressions_count': models.AdPost.impressions_count + 1,
+        'unique_views_count': models.AdPost.unique_views_count + 1,
     }
-    if is_new_unique:
-        update_values['unique_views_count'] = models.AdPost.unique_views_count + 1
 
     await db.execute(
         sa_update(models.AdPost)

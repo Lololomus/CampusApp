@@ -2,13 +2,16 @@
 #
 # ✅ Фаза 3.8: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Optional
+from datetime import datetime
 from app.database import get_db
 from app.auth_service import require_user
 from app import crud, schemas, models
 from app.time_utils import normalize_datetime_payload, to_iso_z
 from app.services.analytics_service import record_server_event
+from app.utils import process_uploaded_files, delete_images
 
 router = APIRouter(prefix="/ads", tags=["ads"])
 
@@ -20,20 +23,78 @@ router = APIRouter(prefix="/ads", tags=["ads"])
 
 @router.post("/create", response_model=schemas.AdPostResponse)
 async def create_ad(
-    ad_data: schemas.AdPostCreate,
+    title: str = Form(...),
+    body: str = Form(...),
+    advertiser_name: str = Form(...),
+    scope: str = Form(default='university'),
+    cta_text: str = Form(...),
+    cta_url: str = Form(...),
+    impression_limit: int = Form(...),
+    priority: int = Form(default=5),
+    ends_at: Optional[str] = Form(None),
+    target_university: Optional[str] = Form(None),
+    target_city: Optional[str] = Form(None),
+    daily_impression_cap: Optional[int] = Form(None),
+    images: List[UploadFile] = File(default=[]),
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
     if user.role not in ('ambassador', 'superadmin'):
         raise HTTPException(403, "Только амбассадоры и админы могут создавать рекламу")
 
-    db_ad = await crud.create_ad_post(
-        db=db,
-        ad_data=ad_data,
-        creator_id=user.id,
-        creator_role=user.role,
-        creator_university=user.university,
-    )
+    valid_images = [img for img in (images or []) if img.filename and len(img.filename) > 0]
+    if len(valid_images) > 3:
+        raise HTTPException(400, "Максимум 3 изображения")
+
+    images_meta: List[dict] = []
+    try:
+        if valid_images:
+            images_meta = await process_uploaded_files(valid_images)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    ends_at_dt: Optional[datetime] = None
+    if ends_at:
+        try:
+            parsed = datetime.fromisoformat(ends_at.replace('Z', '+00:00'))
+            # Колонка TIMESTAMP WITHOUT TIME ZONE — убираем tzinfo, оставляем UTC
+            ends_at_dt = parsed.replace(tzinfo=None)
+        except ValueError:
+            delete_images(images_meta)
+            raise HTTPException(400, "Неверный формат даты ends_at")
+
+    try:
+        ad_data = schemas.AdPostCreate(
+            title=title,
+            body=body,
+            advertiser_name=advertiser_name,
+            scope=scope,
+            cta_text=cta_text,
+            cta_url=cta_url,
+            impression_limit=impression_limit,
+            priority=priority,
+            ends_at=ends_at_dt,
+            target_university=target_university,
+            target_city=target_city,
+            daily_impression_cap=daily_impression_cap,
+        )
+    except Exception as exc:
+        delete_images(images_meta)
+        raise HTTPException(422, str(exc))
+
+    try:
+        db_ad = await crud.create_ad_post(
+            db=db,
+            ad_data=ad_data,
+            creator_id=user.id,
+            creator_role=user.role,
+            creator_university=user.university,
+            images_meta=images_meta,
+        )
+    except Exception as exc:
+        delete_images(images_meta)
+        raise HTTPException(500, f"Ошибка создания: {str(exc)}")
+
     return _ad_to_response(db_ad)
 
 

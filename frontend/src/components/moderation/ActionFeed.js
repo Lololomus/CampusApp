@@ -6,6 +6,7 @@ import {
   Filter, RefreshCw, AlertTriangle, Clock, Shield
 } from 'lucide-react';
 import { getModerationLogs } from '../../api';
+import { useStore } from '../../store';
 import { toast } from '../shared/Toast';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
@@ -24,6 +25,7 @@ const ACTION_CONFIG = {
 };
 
 function ActionFeed({ onReverse }) {
+  const { user } = useStore();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -182,6 +184,9 @@ function ActionFeed({ onReverse }) {
             }
 
             const log = row.item;
+            const moderatorId = log?.moderator?.id ?? log?.moderator_id ?? null;
+            const moderatorName = log?.moderator?.name || log?.moderator_name || (moderatorId ? `Модератор #${moderatorId}` : 'Модератор');
+            const isCurrentModerator = moderatorId !== null && user?.id === moderatorId;
             const cfg = ACTION_CONFIG[log.action] || {
               icon: Clock, label: log.action, color: '#6b7280', heavy: false
             };
@@ -202,7 +207,8 @@ function ActionFeed({ onReverse }) {
                   <div style={styles.feedMod}>
                     <Shield size={14} color={theme.colors.primary} />
                     <span style={styles.modName}>
-                      {log.moderator_name || `Модератор #${log.moderator_id}`}
+                      {moderatorName}
+                      {isCurrentModerator ? ' (Вы)' : ''}
                     </span>
                   </div>
                   <span style={styles.feedTime}>{formatTime(log.created_at)}</span>
