@@ -4,17 +4,51 @@ import { createPortal } from 'react-dom';
 import { useSwipe } from '../../hooks/useSwipe';
 import theme from '../../theme';
 
-const SwipeableModal = ({ isOpen, onClose, children, title }) => {
+// Счётчик открытых модалок — чтобы не снимать лок раньше времени
+let openModalCount = 0;
+// Сохраняем исходное значение overflow до блокировки (фикс edge case #3)
+let savedBodyOverflow = '';
+
+// Фикс edge case #4: при HMR сбрасываем состояние модуля
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (openModalCount > 0) {
+      document.body.style.overflow = savedBodyOverflow;
+    }
+    openModalCount = 0;
+  });
+}
+
+const SwipeableModal = ({ isOpen, onClose, children, title, footer }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const contentRef = useRef(null);
+
+  // Блокировка скролла фона
+  useEffect(() => {
+    if (isOpen) {
+      openModalCount++;
+      if (openModalCount === 1) {
+        savedBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+      }
+    }
+    return () => {
+      if (isOpen) {
+        openModalCount--;
+        if (openModalCount === 0) {
+          document.body.style.overflow = savedBodyOverflow;
+        }
+      }
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     let timer;
     if (isOpen) {
       setIsVisible(true);
       setIsAnimating(false);
-      
+
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true);
@@ -125,18 +159,32 @@ const SwipeableModal = ({ isOpen, onClose, children, title }) => {
         )}
 
         {/* Scrollable Content */}
-        <div 
-          style={{ 
+        <div
+          style={{
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: `${theme.spacing.md}px ${theme.spacing.xl}px calc(${theme.spacing.xl}px + var(--screen-bottom-offset))`,
+            padding: footer
+              ? `${theme.spacing.md}px ${theme.spacing.xl}px ${theme.spacing.xl}px`
+              : `${theme.spacing.md}px ${theme.spacing.xl}px calc(${theme.spacing.xl}px + var(--screen-bottom-offset))`,
           }}
-          onTouchStart={(e) => e.stopPropagation()} 
+          onTouchStart={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {children}
         </div>
+
+        {/* Footer — вне скролла, всегда приклеен к низу */}
+        {footer && (
+          <div style={{
+            flexShrink: 0,
+            padding: `${theme.spacing.lg}px ${theme.spacing.xl}px`,
+            paddingBottom: `calc(${theme.spacing.lg}px + var(--screen-bottom-offset))`,
+            backgroundColor: '#151516',
+          }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body

@@ -1246,6 +1246,55 @@ export async function getAdminStats() {
   return response.data;
 }
 
+/** Analytics: latest generated report metadata */
+export async function getAnalyticsLatestReport() {
+  const response = await api.get('/analytics/reports/latest');
+  return response.data;
+}
+
+/** Analytics: JSON report for a specific date (YYYY-MM-DD) */
+export async function getAnalyticsReport(reportDate) {
+  const response = await api.get(`/analytics/reports/${reportDate}`);
+  return response.data;
+}
+
+/** Analytics: rebuild daily report for a specific date (admin-only) */
+export async function rebuildAnalyticsReport(reportDate) {
+  const response = await api.post('/analytics/reports/rebuild', null, {
+    params: { date: reportDate }
+  });
+  return response.data;
+}
+
+/** Analytics: ingest and quality health status */
+export async function getAnalyticsHealth() {
+  const response = await api.get('/analytics/health');
+  return response.data;
+}
+
+/** Analytics: download JSON or CSV zip report file */
+export async function downloadAnalyticsReport(reportDate, format = 'json') {
+  const normalizedFormat = format === 'csv' ? 'csv' : 'json';
+  const response = await api.get(`/analytics/reports/${reportDate}/download`, {
+    params: { format: normalizedFormat },
+    responseType: 'blob'
+  });
+
+  const ext = normalizedFormat === 'csv' ? 'zip' : 'json';
+  const blob = new Blob([response.data], {
+    type: response.headers?.['content-type'] || (normalizedFormat === 'csv' ? 'application/zip' : 'application/json')
+  });
+  const url = window.URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `campus_analytics_${reportDate}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 
 // ========================================
 // РЕКЛАМА (ADS)

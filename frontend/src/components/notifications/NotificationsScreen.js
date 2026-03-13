@@ -485,10 +485,13 @@ function NotificationsScreen() {
       </div>
 
       {/* Скролл-зона */}
-      <div style={{
-        flex: 1, overflowY: 'auto',
-        msOverflowStyle: 'none', scrollbarWidth: 'none',
-      }}>
+      <div
+        className="custom-scroll"
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+        }}
+      >
         {loading ? (
           <div style={{ padding: '60px 16px', textAlign: 'center', color: COLORS.muted, fontSize: 15 }}>
             Загрузка...

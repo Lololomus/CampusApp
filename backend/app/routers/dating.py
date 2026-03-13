@@ -14,6 +14,7 @@ import re
 
 from app.database import get_db
 from app import models, schemas, crud
+from app.services.analytics_service import record_server_event
 from app.utils import (
     delete_images,
     get_image_urls,
@@ -270,6 +271,14 @@ async def like_user(
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error"))
 
+    await record_server_event(
+        db,
+        user.id,
+        "dating_like",
+        entity_type="user",
+        entity_id=target_user_id,
+    )
+
     if result.get("is_match"):
         # with_for_update() предотвращает race condition при одновременных лайках
         res1 = await db.execute(
@@ -304,6 +313,14 @@ async def like_user(
     }
 
     if result.get("is_match") and result.get("matched_user"):
+        await record_server_event(
+            db,
+            user.id,
+            "dating_match",
+            entity_type="match",
+            entity_id=result.get("match_id"),
+            properties_json={"matched_user_id": target_user_id},
+        )
         response["matched_user"] = schemas.UserShort.from_orm(result["matched_user"])
 
     return response

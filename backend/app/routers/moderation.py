@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from app.database import get_db
 from app import models, schemas
 from app.services import notification_service as notif
+from app.services.analytics_service import record_server_event
 from app.utils import delete_images
 
 router = APIRouter(tags=["moderation"])
@@ -488,6 +489,13 @@ async def create_report(
     await notif.notify_admin_report(db, report)
     await db.commit()
     await db.refresh(report)
+    await record_server_event(
+        db,
+        reporter.id,
+        "report_create",
+        entity_type="report",
+        entity_id=report.id,
+    )
 
     return {"success": True, "report_id": report.id}
 
@@ -613,6 +621,14 @@ async def review_report(
     )
 
     await db.commit()
+    await record_server_event(
+        db,
+        moderator.id,
+        "report_reviewed",
+        entity_type="report",
+        entity_id=report.id,
+        properties_json={"status": normalized_status},
+    )
     return {"success": True}
 
 

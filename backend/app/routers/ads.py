@@ -8,6 +8,7 @@ from app.database import get_db
 from app.auth_service import require_user
 from app import crud, schemas, models
 from app.time_utils import normalize_datetime_payload, to_iso_z
+from app.services.analytics_service import record_server_event
 
 router = APIRouter(prefix="/ads", tags=["ads"])
 
@@ -250,6 +251,14 @@ async def track_impression(
     db: AsyncSession = Depends(get_db),
 ):
     success = await crud.track_ad_impression(db, ad_id, user.id)
+    if success:
+        await record_server_event(
+            db,
+            user.id,
+            "ad_impression",
+            entity_type="ad",
+            entity_id=ad_id,
+        )
     return {"tracked": success}
 
 
@@ -260,6 +269,14 @@ async def track_click(
     db: AsyncSession = Depends(get_db),
 ):
     success = await crud.track_ad_click(db, ad_id, user.id)
+    if success:
+        await record_server_event(
+            db,
+            user.id,
+            "ad_click",
+            entity_type="ad",
+            entity_id=ad_id,
+        )
     return {"tracked": success}
 
 

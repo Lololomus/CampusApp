@@ -280,6 +280,16 @@ const FiltersModal = ({ onClose, onApply }) => {
           )}
         </div>
       }
+      footer={
+        <div style={styles.footer}>
+          <button onClick={handleReset} style={styles.resetButton}>
+            Сбросить
+          </button>
+          <button onClick={handleApply} style={styles.applyButton}>
+            Применить{activeCount > 0 ? ` (${activeCount})` : ''}
+          </button>
+        </div>
+      }
     >
       <div style={styles.container}>
         {/* Локация */}
@@ -399,15 +409,6 @@ const FiltersModal = ({ onClose, onApply }) => {
           </>
         )}
 
-        {/* Footer */}
-        <div style={styles.footer}>
-          <button onClick={handleReset} style={styles.resetButton}>
-            Сбросить
-          </button>
-          <button onClick={handleApply} style={styles.applyButton}>
-            Применить{activeCount > 0 ? ` (${activeCount})` : ''}
-          </button>
-        </div>
       </div>
     </SwipeableModal>
   );
@@ -560,16 +561,8 @@ const styles = {
   },
 
   footer: {
-    position: 'sticky',
-    bottom: 0,
     display: 'flex',
     gap: theme.spacing.md,
-    marginTop: theme.spacing.md,
-    marginBottom: `calc(-1 * var(--screen-bottom-offset))`,
-    paddingTop: theme.spacing.lg,
-    paddingBottom: `calc(${theme.spacing.md}px + var(--screen-bottom-offset))`,
-    background: theme.colors.bg,
-    borderTop: `1px solid ${theme.colors.border}`,
   },
 
   resetButton: {

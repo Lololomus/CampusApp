@@ -7,6 +7,9 @@ import { hapticFeedback } from '../../utils/telegram';
 import { toast } from './Toast';
 import { theme } from '../../theme';
 
+const DEV_ADMIN_TELEGRAM_ID = 999999;
+const DEV_AMBASSADOR_TELEGRAM_ID = 999998;
+
 function DevAuthPanel() {
   const { setUser, setOnboardingStep, setOnboardingData, logout } = useStore();
   const [busy, setBusy] = useState(false);
@@ -109,17 +112,17 @@ function DevAuthPanel() {
           ×
         </button>
       </div>
-      <button type="button" style={styles.button} onClick={() => handleLoginAs(999999)} disabled={busy}>
-        Login Test #1
+      <button type="button" style={styles.button} onClick={() => handleLoginAs(DEV_ADMIN_TELEGRAM_ID)} disabled={busy}>
+        Login Superadmin
       </button>
-      <button type="button" style={styles.button} onClick={() => handleLoginAs(999998)} disabled={busy}>
-        Login Test #2
+      <button type="button" style={styles.button} onClick={() => handleLoginAs(DEV_AMBASSADOR_TELEGRAM_ID)} disabled={busy}>
+        Login Ambassador (РУК Москва)
       </button>
       <button type="button" style={styles.buttonSecondary} onClick={handleLogout} disabled={busy}>
         Logout
       </button>
-      <button type="button" style={styles.buttonDanger} onClick={() => handleResetAndReregister(999999)} disabled={busy}>
-        Reset & Re-register
+      <button type="button" style={styles.buttonDanger} onClick={() => handleResetAndReregister(DEV_ADMIN_TELEGRAM_ID)} disabled={busy}>
+        Reset Admin Profile
       </button>
     </div>
   );

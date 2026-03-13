@@ -72,6 +72,25 @@ function App() {
     return () => setClosingConfirmation(false);
   }, [showCreateModal, showCreateMarketItem, showEditModal, editingContent]);
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const shouldUseCustomScroll = activeTab === 'feed' || activeTab === 'market';
+
+    if (shouldUseCustomScroll) {
+      html.classList.add('custom-scroll');
+      body.classList.add('custom-scroll');
+    } else {
+      html.classList.remove('custom-scroll');
+      body.classList.remove('custom-scroll');
+    }
+
+    return () => {
+      html.classList.remove('custom-scroll');
+      body.classList.remove('custom-scroll');
+    };
+  }, [activeTab]);
+
   const renderContent = () => {
     if (showUserMarketItems) return <UserMarketItems />;
     if (showUserPosts) return <UserPosts />;

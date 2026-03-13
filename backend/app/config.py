@@ -51,6 +51,14 @@ class Settings(BaseModel):
     # --- Redis ---
     redis_url: str = Field(default="redis://localhost:6379/0")
 
+    # --- Analytics ---
+    analytics_salt: str = Field(default="dev-analytics-salt")
+    analytics_reports_dir: str = Field(default="reports")
+    analytics_nightly_enabled: bool = Field(default=True)
+    analytics_nightly_hour_msk: int = Field(default=3)
+    analytics_raw_retention_days: int = Field(default=180)
+    analytics_agg_retention_days: int = Field(default=730)
+
     @property
     def is_prod(self) -> bool:
         return self.app_env.lower() in PROD_ENV_VALUES
@@ -83,6 +91,12 @@ def get_settings() -> Settings:
         if is_prod_env:
             raise RuntimeError("BOT_SECRET must be set when APP_ENV=prod")
         bot_secret = "dev-bot-secret"
+
+    analytics_salt = os.getenv("ANALYTICS_SALT")
+    if not analytics_salt:
+        if is_prod_env:
+            raise RuntimeError("ANALYTICS_SALT must be set when APP_ENV=prod")
+        analytics_salt = "dev-analytics-salt"
 
     sql_echo_raw = os.getenv("SQL_ECHO")
     if sql_echo_raw is None:
@@ -124,4 +138,10 @@ def get_settings() -> Settings:
         dev_telegram_ids=dev_ids_set,
         sql_echo=sql_echo,
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        analytics_salt=analytics_salt,
+        analytics_reports_dir=os.getenv("ANALYTICS_REPORTS_DIR", str(project_root / "reports")),
+        analytics_nightly_enabled=os.getenv("ANALYTICS_NIGHTLY_ENABLED", "true").lower() in {"1", "true", "yes", "on"},
+        analytics_nightly_hour_msk=max(0, min(23, int(os.getenv("ANALYTICS_NIGHTLY_HOUR_MSK", "3")))),
+        analytics_raw_retention_days=max(1, int(os.getenv("ANALYTICS_RAW_RETENTION_DAYS", "180"))),
+        analytics_agg_retention_days=max(1, int(os.getenv("ANALYTICS_AGG_RETENTION_DAYS", "730"))),
     )

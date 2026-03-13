@@ -17,6 +17,7 @@ from app.database import get_db
 from app import models, schemas, crud
 from app.auth_service import require_user
 from app.config import get_settings
+from app.services.analytics_service import record_server_event
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,15 @@ async def mark_inbox_read_all(
         .values(is_read=True, read_at=now)
     )
     await db.commit()
+    if (res.rowcount or 0) > 0:
+        await record_server_event(
+            db,
+            user.id,
+            "notification_open",
+            entity_type="notification",
+            entity_id=0,
+            properties_json={"acted": True, "read_count": int(res.rowcount or 0)},
+        )
     return {"updated": res.rowcount}
 
 

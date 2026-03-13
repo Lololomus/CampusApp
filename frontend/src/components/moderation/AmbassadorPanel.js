@@ -1,7 +1,7 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/moderation/AmbassadorPanel.js =====
+// ===== FILE: AmbassadorPanel.js =====
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, BarChart3, Layers, Megaphone, Clock, Building2 } from 'lucide-react';
+import { ArrowLeft, BarChart3, Layers, Megaphone, Clock, Building2, TrendingUp } from 'lucide-react';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { getReports, getAdminStats } from '../../api';
@@ -14,12 +14,15 @@ import ModerationHistory from './ModerationHistory';
 import CampaignManager from './CampaignManager';
 import CampusManager from './CampusManager';
 
+const P = theme.colors.premium;
+
 const TABS = [
   { id: 'dashboard', label: 'Обзор', icon: BarChart3 },
   { id: 'reports', label: 'Жалобы', icon: Layers },
   { id: 'campuses', label: 'Кампусы', icon: Building2 },
   { id: 'campaigns', label: 'Реклама', icon: Megaphone },
   { id: 'history', label: 'История', icon: Clock },
+  { id: 'kpi', label: 'KPI', icon: TrendingUp },
 ];
 
 function AmbassadorPanel() {
@@ -65,27 +68,26 @@ function AmbassadorPanel() {
     setReports(prev => prev.filter(r => r.id !== reportId));
   };
 
-  // Защита: обычный юзер не попадёт сюда
   if (!canModerate) {
     return (
       <div style={styles.container}>
         <div style={styles.accessDenied}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🚫</div>
-          <div style={{ fontSize: 16, color: theme.colors.textSecondary }}>Нет доступа</div>
+          <div style={{ fontSize: 16, color: P.textMuted }}>Нет доступа</div>
         </div>
       </div>
     );
   }
 
   const pendingCount = reports.length;
-  const activeTabIndex = TABS.findIndex(t => t.id === tab);
+  const tabSlots = [...TABS, ...Array(Math.max(0, 6 - TABS.length)).fill(null)];
 
   return (
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
         <button style={styles.backButton} onClick={handleBack}>
-          <ArrowLeft size={22} color={theme.colors.text} />
+          <ArrowLeft size={22} color="#fff" />
         </button>
         <div style={styles.headerTitle}>
           <span>🛡️ Модерация</span>
@@ -99,14 +101,10 @@ function AmbassadorPanel() {
       {/* Tabs */}
       <div style={styles.tabsContainer}>
         <div style={styles.tabsWrapper}>
-          <div
-            style={{
-              ...styles.tabIndicator,
-              width: `${100 / TABS.length}%`,
-              transform: `translateX(${activeTabIndex * 100}%)`,
-            }}
-          />
-          {TABS.map((t) => {
+          {tabSlots.map((t, index) => {
+            if (!t) {
+              return <div key={`empty-${index}`} style={styles.tabSlotPlaceholder} />;
+            }
             const Icon = t.icon;
             const isActive = tab === t.id;
             return (
@@ -115,7 +113,7 @@ function AmbassadorPanel() {
                 onClick={() => { hapticFeedback('selection'); setTab(t.id); }}
                 style={{
                   ...styles.tabButton,
-                  color: isActive ? '#fff' : theme.colors.textSecondary,
+                  ...(isActive ? styles.tabButtonActive : null),
                 }}
               >
                 <Icon size={14} />
@@ -137,6 +135,7 @@ function AmbassadorPanel() {
         {tab === 'campuses' && <CampusManager isAdmin={false} />}
         {tab === 'campaigns' && <CampaignManager isAdmin={false} />}
         {tab === 'history' && <ModerationHistory />}
+        {tab === 'kpi' && <AmbassadorKpiSection stats={stats} loading={loading} />}
       </div>
     </div>
   );
@@ -149,12 +148,18 @@ function ReportsTab({ reports, loading, onProcessed, onRefresh }) {
     <div>
       <div style={{ display: 'flex', gap: 6, padding: '0 16px 10px' }}>
         {[{ id: 'queue', l: 'Очередь' }, { id: 'list', l: 'Все жалобы' }].map(v => (
-          <button key={v.id} onClick={() => { hapticFeedback('selection'); setView(v.id); }} style={{
-            flex: 1, padding: 7, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            background: view === v.id ? theme.colors.primary : theme.colors.bgSecondary,
-            color: view === v.id ? '#fff' : theme.colors.textSecondary,
-            border: `1px solid ${view === v.id ? theme.colors.primary : theme.colors.border}`,
-          }}>{v.l}</button>
+          <button
+            key={v.id}
+            onClick={() => { hapticFeedback('selection'); setView(v.id); }}
+            style={{
+              flex: 1, padding: 7, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              background: view === v.id ? P.primary : P.surfaceElevated,
+              color: view === v.id ? P.primaryText : P.textMuted,
+              border: `1px solid ${view === v.id ? 'transparent' : P.border}`,
+            }}
+          >
+            {v.l}
+          </button>
         ))}
       </div>
       {view === 'queue'
@@ -165,10 +170,65 @@ function ReportsTab({ reports, loading, onProcessed, onRefresh }) {
   );
 }
 
+function AmbassadorKpiSection({ stats, loading }) {
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%',
+          border: `3px solid ${P.border}`,
+          borderTopColor: P.primary,
+          animation: 'spin 0.8s linear infinite',
+        }} />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div style={{ textAlign: 'center', padding: 24, color: P.textMuted }}>
+        KPI недоступны
+      </div>
+    );
+  }
+
+  const cards = [
+    { label: 'DAU', value: stats.dau || 0, color: '#4DA6FF' },
+    { label: 'WAU', value: stats.wau || 0, color: P.primary },
+    { label: 'MAU', value: stats.mau || 0, color: P.primary },
+    { label: 'Жалоб сегодня', value: stats.reports_today || 0, color: '#f59e0b' },
+    { label: 'Обработано', value: stats.reports_processed || 0, color: '#22c55e' },
+    { label: 'Просрочено >24ч', value: stats.reports_overdue || 0, color: '#ef4444' },
+  ];
+
+  return (
+    <div style={{ padding: '0 16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {cards.map((card) => (
+          <div key={card.label} style={{
+            background: P.surfaceElevated,
+            borderRadius: 14,
+            border: `1px solid ${P.border}`,
+            padding: '16px 14px',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: card.color, lineHeight: 1, marginBottom: 4 }}>
+              {card.value}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: P.textMuted }}>
+              {card.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const styles = {
   container: {
     minHeight: '100vh',
-    background: theme.colors.bg,
+    background: P.bg,
     paddingBottom: 100,
   },
 
@@ -178,8 +238,8 @@ const styles = {
     justifyContent: 'space-between',
     padding: '12px 16px',
     paddingTop: 'calc(env(safe-area-inset-top) + 12px)',
-    background: theme.colors.bgSecondary,
-    borderBottom: `1px solid ${theme.colors.border}`,
+    background: '#0A0A0A',
+    borderBottom: `1px solid ${P.border}`,
     position: 'sticky',
     top: 0,
     zIndex: 20,
@@ -200,7 +260,7 @@ const styles = {
   headerTitle: {
     fontSize: 18,
     fontWeight: 800,
-    color: theme.colors.text,
+    color: '#fff',
     display: 'flex',
     alignItems: 'center',
     gap: 8,
@@ -225,45 +285,49 @@ const styles = {
     position: 'sticky',
     top: 64,
     zIndex: 19,
-    background: theme.colors.bg,
+    background: P.bg,
   },
 
   tabsWrapper: {
-    display: 'flex',
-    background: theme.colors.bgSecondary,
-    borderRadius: 12,
-    padding: 3,
-    position: 'relative',
-    height: 38,
-    border: `1px solid ${theme.colors.borderLight}`,
-  },
-
-  tabIndicator: {
-    position: 'absolute',
-    top: 3,
-    bottom: 3,
-    left: 3,
-    borderRadius: 10,
-    background: theme.colors.primary,
-    boxShadow: theme.shadows.md,
-    transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    zIndex: 1,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 6,
+    background: P.surfaceElevated,
+    borderRadius: 14,
+    padding: 6,
+    border: `1px solid ${P.border}`,
   },
 
   tabButton: {
-    flex: 1,
+    width: '100%',
+    minHeight: 38,
     background: 'transparent',
-    border: 'none',
-    fontSize: 12,
+    border: `1px solid ${P.border}`,
+    borderRadius: 10,
+    fontSize: 11,
     fontWeight: 600,
     cursor: 'pointer',
-    position: 'relative',
-    zIndex: 2,
-    transition: 'color 0.2s',
+    transition: 'all 0.2s',
+    color: P.textMuted,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+  },
+
+  tabButtonActive: {
+    color: P.primaryText,
+    border: '1px solid transparent',
+    background: P.primary,
+    boxShadow: '0 2px 12px rgba(212, 255, 0, 0.2)',
+  },
+
+  tabSlotPlaceholder: {
+    minHeight: 38,
+    borderRadius: 10,
+    border: `1px dashed ${P.border}`,
+    background: 'transparent',
+    opacity: 0.4,
   },
 
   content: {

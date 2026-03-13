@@ -28,3 +28,7 @@ venv/
 
 # Uploads file
 backend/uploads/
+
+# Analytics reports
+reports/
+backend/reports/

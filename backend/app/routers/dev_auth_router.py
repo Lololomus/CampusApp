@@ -13,12 +13,85 @@ from app.database import get_db
 
 router = APIRouter(prefix="/dev/auth", tags=["dev-auth"])
 
+DEV_SUPERADMIN_ID = 999999
+DEV_AMBASSADOR_ID = 999998
+
+
+DEV_PROFILE_PRESETS = {
+    DEV_SUPERADMIN_ID: {
+        "name": "Dev Superadmin",
+        "username": "dev_superadmin",
+        "role": "superadmin",
+        "campus_id": "ruk_moscow",
+        "university": "РУК",
+        "city": "Москва",
+        "institute": "Администрирование",
+    },
+    DEV_AMBASSADOR_ID: {
+        "name": "Dev Ambassador RUK Moscow",
+        "username": "dev_ambassador",
+        "role": "ambassador",
+        "campus_id": "ruk_moscow",
+        "university": "РУК",
+        "city": "Москва",
+        "institute": "Экономический факультет",
+    },
+}
+
 
 def _ensure_dev_mode():
     settings = get_settings()
     if settings.is_prod or settings.app_env.lower() != "dev" or not settings.dev_auth_enabled:
         raise HTTPException(status_code=404, detail="Not found")
     return settings
+
+
+def _apply_preset_user_profile(user: models.User, preset: dict, telegram_id: int) -> None:
+    user.name = preset["name"]
+    user.username = preset["username"]
+    user.role = preset["role"]
+    user.campus_id = preset["campus_id"]
+    user.university = preset["university"]
+    user.city = preset["city"]
+    user.institute = preset["institute"]
+    user.custom_university = None
+    user.custom_city = None
+    user.custom_faculty = None
+    user.show_profile = True
+    user.show_telegram_id = False
+    user.show_in_dating = False
+
+    if user.bio is None:
+        user.bio = f"Dev profile #{telegram_id}"
+
+
+async def _ensure_preset_dev_user(db: AsyncSession, telegram_id: int, user: models.User | None) -> models.User | None:
+    preset = DEV_PROFILE_PRESETS.get(telegram_id)
+    if not preset:
+        return user
+
+    if user is None:
+        user = models.User(
+            telegram_id=telegram_id,
+            name=preset["name"],
+            username=preset["username"],
+            role=preset["role"],
+            campus_id=preset["campus_id"],
+            university=preset["university"],
+            city=preset["city"],
+            institute=preset["institute"],
+            bio=f"Dev profile #{telegram_id}",
+            show_profile=True,
+            show_telegram_id=False,
+            show_in_dating=False,
+        )
+        db.add(user)
+        await db.flush()
+        return user
+
+    _apply_preset_user_profile(user, preset, telegram_id)
+    await db.flush()
+    return user
 
 
 @router.post("/login-as", response_model=schemas.AuthLoginResponse)
@@ -36,6 +109,7 @@ async def dev_login_as(
         select(models.User).where(models.User.telegram_id == payload.telegram_id)
     )
     user = result.scalar_one_or_none()
+    user = await _ensure_preset_dev_user(db, payload.telegram_id, user)
 
     access_token, refresh_token, _ = await create_auth_session(
         db=db,

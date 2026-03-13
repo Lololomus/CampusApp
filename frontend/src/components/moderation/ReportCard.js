@@ -12,6 +12,7 @@ import {
   shadowBanUser
 } from '../../api';
 import { toast } from '../shared/Toast';
+import { useStore } from '../../store';
 import theme from '../../theme';
 
 const REASON_LABELS = {
@@ -47,6 +48,7 @@ const TARGET_ICONS = {
 };
 
 function ReportCard({ report, onProcessed, compact = false }) {
+  const { user } = useStore();
   const [actionMode, setActionMode] = useState(null); // 'delete' | 'timeout' | 'permaban'
   const [reason, setReason] = useState('');
   const [banDays, setBanDays] = useState(3);
@@ -58,7 +60,9 @@ function ReportCard({ report, onProcessed, compact = false }) {
   const reportCount = report.report_count || 1;
   const isContentTarget = ['post', 'comment', 'request', 'market_item'].includes(targetType);
   const targetUserId = report.target_user_id || (targetType === 'user' ? report.target_id : null);
-  const canBanTarget = Boolean(targetUserId);
+  // Защита: нельзя применять санкции к самому себе
+  const isSelf = Boolean(targetUserId && user?.id && targetUserId === user.id);
+  const canBanTarget = Boolean(targetUserId) && !isSelf;
 
   // === ACTIONS ===
 
@@ -83,6 +87,11 @@ function ReportCard({ report, onProcessed, compact = false }) {
   };
 
   const handleDelete = async () => {
+    if (isSelf) {
+      hapticFeedback('error');
+      toast.error('Нельзя удалять собственный контент через модерацию');
+      return;
+    }
     if (!reason.trim()) {
       hapticFeedback('error');
       toast.error('Укажите причину удаления');
@@ -113,6 +122,11 @@ function ReportCard({ report, onProcessed, compact = false }) {
   };
 
   const handleBan = async (permanent = false) => {
+    if (isSelf) {
+      hapticFeedback('error');
+      toast.error('Нельзя забанить себя');
+      return;
+    }
     if (!reason.trim()) {
       hapticFeedback('error');
       toast.error('Укажите причину бана');
@@ -212,7 +226,10 @@ function ReportCard({ report, onProcessed, compact = false }) {
             <span style={styles.authorName}>
               {report.target_user_name || `Пользователь #${targetUserId || report.target_id || '?'}`}
             </span>
-            {report.target_user_ban_count > 0 && (
+            {isSelf && (
+              <span style={styles.selfBadge}>это вы</span>
+            )}
+            {!isSelf && report.target_user_ban_count > 0 && (
               <span style={styles.banHistory}>
                 ⚠️ {report.target_user_ban_count} бан(ов)
               </span>
@@ -294,7 +311,7 @@ function ReportCard({ report, onProcessed, compact = false }) {
                 style={{ ...styles.actionBtn, ...styles.deleteBtn }}
                 onClick={() => { setActionMode('delete'); hapticFeedback('light'); }}
                 disabled={processing}
-                hidden={!isContentTarget}
+                hidden={!isContentTarget || isSelf}
               >
                 <Trash2 size={16} />
                 <span>Удалить</span>
@@ -437,6 +454,15 @@ const styles = {
     fontSize: 11,
     fontWeight: 600,
     color: '#ef4444',
+  },
+
+  selfBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: theme.colors.primary,
+    background: theme.colors.primaryLight,
+    padding: '2px 8px',
+    borderRadius: 6,
   },
 
   // Inline action panel

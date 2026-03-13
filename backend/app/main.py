@@ -1,6 +1,7 @@
 # ===== 📄 ФАЙЛ: backend/app/main.py =====
 
 from contextlib import asynccontextmanager
+import asyncio
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +26,8 @@ from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
 import re
 from pydantic import ValidationError
-from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router
+from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router, analytics
+from app.services import analytics_service
 import os
 import logging
 from datetime import datetime, timedelta, timezone
@@ -101,18 +103,30 @@ def _parse_post_title_and_body(raw_text: Optional[str]) -> Tuple[Optional[str], 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Запуск приложения...")
+    logger.info("Application startup...")
     await init_db()
-    logger.info("База данных инициализирована")
+    logger.info("Database initialized")
+    runtime_settings = get_settings()
+    stop_event = asyncio.Event()
+    nightly_task = None
+    if runtime_settings.analytics_nightly_enabled:
+        nightly_task = asyncio.create_task(analytics_service.run_nightly_rebuild_loop(stop_event))
+    app.state.analytics_stop_event = stop_event
+    app.state.analytics_nightly_task = nightly_task
     yield
+    stop_event.set()
+    if nightly_task:
+        try:
+            await asyncio.wait_for(nightly_task, timeout=5)
+        except asyncio.TimeoutError:
+            nightly_task.cancel()
     await engine.dispose()
     await close_redis()
-    
     logger.info("Engines disposed")
 
 app = FastAPI(
     title="Campus App API",
-    description="Backend API для студенческой социальной сети",
+    description="Backend API for campus social app",
     version="2.2.0",
     lifespan=lifespan,
 )
@@ -124,6 +138,7 @@ app.include_router(dating.router)
 app.include_router(moderation.router)
 app.include_router(ads.router)
 app.include_router(notifications.router)
+app.include_router(analytics.router)
 app.include_router(auth_router.router)
 if not settings.is_prod and settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
     app.include_router(dev_auth_router.router)
@@ -274,7 +289,7 @@ async def update_current_user(
             days_left = await crud.get_cooldown_days_left(db, user.id)
             raise HTTPException(
                 status_code=403,
-                detail=f"Можно изменить через {days_left} дней (cooldown 30 дней)"
+                detail=f"Can be changed in {days_left} days (30-day cooldown)"
             )
     
     updated_user = await crud.update_user(db, user.id, user_update)
@@ -314,10 +329,10 @@ async def get_user_posts_endpoint(
         else:
             author_data = schemas.UserShort.from_orm(target_user)
         
-        # === ЛОГИКА ДЛЯ РЕКЛАМЫ ===
+        # === LOGIC FOR AD FIELDS ===
         ad_data = {}
         if post.category == 'ad':
-            # Ищем связанные данные рекламы
+            # Load related ad metadata
             ad_info_result = await db.execute(
                 select(models.AdPost).where(models.AdPost.post_id == post.id)
             )
@@ -361,7 +376,7 @@ async def get_user_posts_endpoint(
             "views_count": post.views_count,
             "created_at": post.created_at,
             "updated_at": post.updated_at,
-            **ad_data # Распаковка данных рекламы
+            **ad_data #   
         }
         result.append(post_dict)
     
@@ -387,22 +402,31 @@ async def get_posts_feed(
     category: Optional[str] = Query(None),
     telegram_id: int = Query(...),
     
-    # ПАРАМЕТРЫ ФИЛЬТРАЦИИ
-    university: Optional[str] = Query(None),      # Фильтр по университету
-    institute: Optional[str] = Query(None),       # Фильтр по институту
-    campus_id: Optional[str] = Query(None),       # Фильтр по кампусу
-    city: Optional[str] = Query(None),            # Фильтр по городу
-    tags: Optional[str] = Query(None),            # Comma-separated: "помощь,срочно"
+    # FILTER PARAMS
+    university: Optional[str] = Query(None),      # Filter by university
+    institute: Optional[str] = Query(None),       # Filter by institute
+    campus_id: Optional[str] = Query(None),       # Filter by campus
+    city: Optional[str] = Query(None),            # Filter by city
+    tags: Optional[str] = Query(None),            # Comma-separated: "help,urgent"
     date_range: Optional[str] = Query(None),      # 'today' | 'week' | 'month'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'popular' | 'discussed'
     
     db: AsyncSession = Depends(get_db)
 ):
-    """Лента постов с фильтрацией"""
+    """Posts feed with filtering."""
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     current_user_id = user.id if user else None
+    if user:
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "feed_open",
+            entity_type="feed",
+            entity_id=0,
+            properties_json={"surface": "posts_feed"},
+        )
 
-    # Передаем все параметры фильтрации в CRUD
+    # Pass all filter params into CRUD
     posts = await crud.get_posts(
         db, 
         skip=skip, 
@@ -546,9 +570,9 @@ async def create_post_endpoint(
         title = (title or "").strip() or None
         body = (body or "").strip()
 
-    # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ
+    # DETAILED DEBUG LOGGING
     print(f"\n{'='*60}")
-    print(f"🔍 POST CREATE REQUEST")
+    print("POST CREATE REQUEST")
     print(f"{'='*60}")
     print(f"category: {category!r}")
     print(f"title(raw): {raw_title!r}")
@@ -558,7 +582,7 @@ async def create_post_endpoint(
     print(f"is_anonymous: {is_anonymous}")
     print(f"images raw list length: {len(images)}")
     
-    # ЛОГИРУЕМ КАЖДЫЙ ФАЙЛ
+    # LOG EACH UPLOADED FILE
     for idx, img in enumerate(images):
         print(f"  Image [{idx}]: filename={img.filename!r}, content_type={img.content_type}")
     
@@ -570,22 +594,22 @@ async def create_post_endpoint(
     
     tags_list = _parse_json_list_form_field(tags, "tags")
     
-    # ФИЛЬТРУЕМ ПУСТЫЕ ФАЙЛЫ (ЭТО КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ!)
+    # FILTER OUT EMPTY FILES (KEY FIX)
     valid_images = [
         img for img in images 
         if img.filename and len(img.filename) > 0
     ]
     
-    print(f"✅ Valid images after filter: {len(valid_images)}")
+    print(f"Valid images after filter: {len(valid_images)}")
     
-    # ПРОВЕРКА ДЛЯ CONFESSIONS (ИСПРАВЛЕНО - БЫЛО ВНЕ IF БЛОКА!)
+    # CONFESSIONS VALIDATION (fixed: moved inside IF block)
     if category == "confessions":
         is_anonymous = True
-        # ❌ ТЕПЕРЬ ПРОВЕРКА ВНУТРИ БЛОКА И ИСПОЛЬЗУЕТ valid_images
+        # Validation is inside the block and uses valid_images
         if len(valid_images) > 0:
             raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
     
-    # ПРОВЕРКА МАКСИМАЛЬНОГО КОЛИЧЕСТВА (ИСПОЛЬЗУЕМ valid_images)
+    # MAX IMAGE COUNT CHECK (use valid_images)
     if len(valid_images) > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
     
@@ -612,7 +636,7 @@ async def create_post_endpoint(
         raise HTTPException(status_code=422, detail=e.errors())
     
     try:
-        # valid_images ВМЕСТО images
+        # valid_images instead of images
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
         post = await crud.create_post(db, post_data, user.id, images_meta=images_meta)
         
@@ -622,10 +646,19 @@ async def create_post_endpoint(
                 poll_schema = schemas.PollCreate(**poll_dict)
                 await crud.create_poll(db, post.id, poll_schema)
             except Exception as e:
-                print(f"⚠️ Ошибка создания опроса: {e}")
+                print(f"   : {e}")
     
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    await analytics_service.record_server_event(
+        db,
+        user.id,
+        "create_success",
+        entity_type="post",
+        entity_id=post.id,
+        properties_json={"category": category},
+    )
     
     return await get_post_endpoint(post.id, telegram_id, db)
 
@@ -639,6 +672,13 @@ async def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Asy
     
     if user:
         await crud.increment_post_views(db, post_id, user.id)
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "post_open",
+            entity_type="post",
+            entity_id=post_id,
+        )
     
     is_liked = await crud.is_post_liked_by_user(db, post_id, user.id) if user else False
     tags = post.tags or []
@@ -827,8 +867,17 @@ async def toggle_post_like_endpoint(
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    return await crud.toggle_post_like(db, post_id, user.id)
+
+    result = await crud.toggle_post_like(db, post_id, user.id)
+    if result.get("is_liked"):
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "post_like",
+            entity_type="post",
+            entity_id=post_id,
+        )
+    return result
 
 # ===== POLL ENDPOINTS (NEW) =====
 
@@ -968,6 +1017,15 @@ async def create_comment_endpoint(
     comment = await crud.create_comment(db, comment_data, user.id)
     if not comment:
         raise HTTPException(status_code=404, detail="Post not found")
+
+    await analytics_service.record_server_event(
+        db,
+        user.id,
+        "comment_create",
+        entity_type="comment",
+        entity_id=comment.id,
+        properties_json={"post_id": post_id},
+    )
     
     author_data = None
     author_id_data = comment.author_id
@@ -1078,7 +1136,7 @@ async def create_request_endpoint(
     tags: Optional[str] = Form(None),
     max_responses: Optional[int] = Form(5),
     
-    # ✅ НОВЫЕ ПОЛЯ
+    # REWARD FIELDS
     reward_type: Optional[str] = Form(None),
     reward_value: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
@@ -1115,6 +1173,15 @@ async def create_request_endpoint(
         request = await crud.create_request(db, request_data, user.id, images_meta=images_meta)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    await analytics_service.record_server_event(
+        db,
+        user.id,
+        "create_success",
+        entity_type="request",
+        entity_id=request.id,
+        properties_json={"category": category},
+    )
     
     images_urls = get_image_urls(request.images) if request.images else []
     
@@ -1154,11 +1221,11 @@ async def get_requests_feed_endpoint(
     offset: int = Query(0, ge=0),
     telegram_id: Optional[int] = Query(None),
     
-    # ПАРАМЕТРЫ ФИЛЬТРАЦИИ
-    university: Optional[str] = Query(None),      # Фильтр по университету
-    institute: Optional[str] = Query(None),       # Фильтр по институту
-    campus_id: Optional[str] = Query(None),       # Фильтр по кампусу
-    city: Optional[str] = Query(None),            # Фильтр по городу
+    # FILTER PARAMS
+    university: Optional[str] = Query(None),      # Filter by university
+    institute: Optional[str] = Query(None),       # Filter by institute
+    campus_id: Optional[str] = Query(None),       # Filter by campus
+    city: Optional[str] = Query(None),            # Filter by city
     status: Optional[str] = Query('active'),      # 'active' | 'all'
     has_reward: Optional[str] = Query(None),      # 'with' | 'without'
     urgency: Optional[str] = Query(None),         # 'soon' (<24h) | 'later'
@@ -1166,14 +1233,14 @@ async def get_requests_feed_endpoint(
     
     db: AsyncSession = Depends(get_db)
 ):
-    """Лента запросов с фильтрацией"""
+    """Requests feed with filtering."""
     current_user_id = None
     if telegram_id:
         user = await crud.get_user_by_telegram_id(db, telegram_id)
         if user:
             current_user_id = user.id
 
-    # Передаем все параметры фильтрации в CRUD
+    # Pass all filter params into CRUD
     feed_data = await crud.get_requests_feed(
         db, 
         category, 
@@ -1234,7 +1301,7 @@ async def get_my_requests_endpoint(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db)
 ):
-    """Получить МОИ запросы"""
+    """Get my requests."""
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -1293,6 +1360,15 @@ async def get_request_endpoint(
     request_dict = await crud.get_request_by_id(db, request_id, current_user_id)
     if not request_dict:
         raise HTTPException(status_code=404, detail="Request not found")
+
+    if current_user_id:
+        await analytics_service.record_server_event(
+            db,
+            current_user_id,
+            "request_open",
+            entity_type="request",
+            entity_id=request_id,
+        )
     
     author_data = schemas.UserShort(
         id=request_dict['author'].id,
@@ -1401,6 +1477,15 @@ async def create_response_endpoint(
         response = await crud.create_response(db, request_id, user.id, data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    await analytics_service.record_server_event(
+        db,
+        user.id,
+        "request_response_create",
+        entity_type="request",
+        entity_id=request_id,
+        properties_json={"response_id": response.id},
+    )
     
     author_data = schemas.ResponseAuthor(
         id=user.id,
@@ -1474,11 +1559,11 @@ async def get_unbound_users_endpoint(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db)
 ):
-    """Список юзеров без привязки к кампусу (для амбассадоров и админов)."""
-    # Проверяем права
+    """List users without campus binding (for ambassadors/admins)."""
+    # Access check
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user or user.role not in ('ambassador', 'admin', 'superadmin'):
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403, detail="Access denied")
 
     data = await crud.get_unbound_users(db, search=search, limit=limit, offset=offset)
 
@@ -1511,7 +1596,7 @@ async def bind_user_to_campus_endpoint(
     city: Optional[str] = Body(None),
     db: AsyncSession = Depends(get_db)
 ):
-    """Привязать юзера к кампусу."""
+    """   ."""
     admin = await crud.get_user_by_telegram_id(db, telegram_id)
     if not admin or admin.role not in ('ambassador', 'admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Нет доступа")
@@ -1529,7 +1614,7 @@ async def unbind_user_from_campus_endpoint(
     user_id: int = Body(..., embed=True),
     db: AsyncSession = Depends(get_db)
 ):
-    """Отвязать юзера от кампуса."""
+    """   ."""
     admin = await crud.get_user_by_telegram_id(db, telegram_id)
     if not admin or admin.role not in ('admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Только для админов")
@@ -1695,7 +1780,7 @@ async def get_my_market_items_endpoint(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db)
 ):
-    """Получить МОИ товары (которые Я продаю)"""
+    """Get my market items (items I am selling)."""
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -1753,6 +1838,15 @@ async def get_market_item_endpoint(
     item = await crud.get_market_item(db, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+
+    if user:
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "market_item_open",
+            entity_type="market_item",
+            entity_id=item_id,
+        )
     
     images = get_image_urls(item.images) if item.images else []
     
@@ -1832,6 +1926,15 @@ async def create_market_item_endpoint(
         item = await crud.create_market_item(db, item_data, user.id, images_meta=images_meta)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    await analytics_service.record_server_event(
+        db,
+        user.id,
+        "create_success",
+        entity_type="market_item",
+        entity_id=item.id,
+        properties_json={"category": category},
+    )
     
     images_urls = get_image_urls(item.images) if item.images else []
     
@@ -1986,8 +2089,16 @@ async def toggle_market_favorite_endpoint(
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     result = await crud.toggle_market_favorite(db, item_id, user.id)
+    if result.get("is_favorited"):
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "market_favorite",
+            entity_type="market_item",
+            entity_id=item_id,
+        )
     return result
 
 # ===== DEV ENDPOINTS =====
@@ -1997,7 +2108,7 @@ async def generate_mock_dating_data(
     telegram_id: int = Query(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """⚠️ DEV ONLY: Генерирует mock-анкеты для dating!"""
+    """DEV ONLY: Generate mock dating profiles."""
     if settings.app_env.lower() != "dev":
         raise HTTPException(status_code=404, detail="Not found")
 
@@ -2005,13 +2116,13 @@ async def generate_mock_dating_data(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Моковые пользователи
+    # Mock users
     mock_users = [
         {
             "telegram_id": 999000001,
-            "name": "Алексей",
+            "name": "",
             "age": 19,
-            "bio": "Python-разработчик, люблю программирование",
+            "bio": "Python-,  ",
             "university": user.university,
             "institute": user.institute,
             "course": 2,
@@ -2021,9 +2132,9 @@ async def generate_mock_dating_data(
         },
         {
             "telegram_id": 999000002,
-            "name": "Мария",
+            "name": "",
             "age": 21,
-            "bio": "Обожаю путешествия и искусство. Будем дружить!",
+            "bio": "   .  !",
             "university": user.university,
             "institute": user.institute,
             "course": 3,
@@ -2033,9 +2144,9 @@ async def generate_mock_dating_data(
         },
         {
             "telegram_id": 999000003,
-            "name": "Дмитрий",
+            "name": "",
             "age": 20,
-            "bio": "Увлекаюсь ML и AI",
+            "bio": " ML  AI",
             "university": user.university,
             "institute": user.institute,
             "course": 2,
@@ -2045,9 +2156,9 @@ async def generate_mock_dating_data(
         },
         {
             "telegram_id": 999000004,
-            "name": "Елена",
+            "name": "",
             "age": 22,
-            "bio": "Спортивная, люблю активный отдых. Пойдём бегать!",
+            "bio": ",   .  !",
             "university": user.university,
             "institute": user.institute,
             "course": 4,
@@ -2057,9 +2168,9 @@ async def generate_mock_dating_data(
         },
         {
             "telegram_id": 999000005,
-            "name": "Анна",
+            "name": "",
             "age": 19,
-            "bio": "Люблю читать и пить кофе",
+            "bio": "    ",
             "university": user.university,
             "institute": user.institute,
             "course": 1,
@@ -2109,7 +2220,7 @@ async def generate_mock_dating_data(
     now = datetime.utcnow()
     matches_created = []
     
-    # Матч 1
+    #  1
     user1 = created_users[0]
     match_time_1 = now - timedelta(hours=22)
     user_a_1 = min(user.id, user1.id)
@@ -2150,7 +2261,7 @@ async def generate_mock_dating_data(
         like1b = models.DatingLike(who_liked_id=user1.id, whom_liked_id=user.id, is_like=True, matched_at=match_time_1)
         db.add(like1b)
     
-    # Матч 2
+    #  2
     user2 = created_users[1]
     match_time_2 = now - timedelta(hours=18)
     user_a_2 = min(user.id, user2.id)
@@ -2191,7 +2302,7 @@ async def generate_mock_dating_data(
         like2b = models.DatingLike(who_liked_id=user2.id, whom_liked_id=user.id, is_like=True, matched_at=match_time_2)
         db.add(like2b)
     
-    # Матч 3
+    #  3
     user3 = created_users[2]
     match_time_3 = now - timedelta(hours=9)
     user_a_3 = min(user.id, user3.id)
@@ -2232,7 +2343,7 @@ async def generate_mock_dating_data(
         like3b = models.DatingLike(who_liked_id=user3.id, whom_liked_id=user.id, is_like=True, matched_at=match_time_3)
         db.add(like3b)
     
-    # Обычные лайки (без взаимности)
+    #   ( )
     user4 = created_users[3]
     existing_like_4_result = await db.execute(
         select(models.DatingLike).where(
@@ -2264,5 +2375,6 @@ async def generate_mock_dating_data(
         "message": f"Создано {len(created_profiles)} профилей, {len(matches_created)} матчей",
         "profiles": created_profiles,
         "matches": matches_created,
-        "regular_likes": "2 лайка без взаимности"
+        "regular_likes": "2   "
     }
+

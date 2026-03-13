@@ -9,7 +9,7 @@
 import json
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional, List, Union, Dict, Any
 
 
@@ -1175,3 +1175,53 @@ class NotificationResponse(BaseModel):
 class FollowupAnswer(BaseModel):
     answer: str = Field(..., pattern="^(yes|no|in_progress)$")
 
+
+# ===== ANALYTICS SCHEMAS =====
+
+class AnalyticsEventIn(BaseModel):
+    event_name: str = Field(..., min_length=2, max_length=100)
+    event_ts_utc: Optional[datetime] = None
+    session_id: Optional[str] = Field(None, max_length=128)
+    platform: Optional[str] = Field(None, max_length=32)
+    app_version: Optional[str] = Field(None, max_length=32)
+    screen: Optional[str] = Field(None, max_length=64)
+    entity_type: Optional[str] = Field(None, max_length=64)
+    entity_id: Optional[int] = None
+    properties_json: Dict[str, Any] = Field(default_factory=dict)
+    ingest_source: Optional[str] = Field(default='client', pattern='^(client|server)$')
+    request_id: str = Field(..., min_length=6, max_length=128)
+
+
+class AnalyticsEventsIngestRequest(BaseModel):
+    events: List[AnalyticsEventIn] = Field(..., min_length=1, max_length=500)
+
+
+class AnalyticsEventsIngestResponse(BaseModel):
+    total: int
+    accepted: int
+    deduplicated: int
+    rejected: int
+    event_date_msk: Optional[date] = None
+
+
+class AnalyticsRebuildResponse(BaseModel):
+    date: date
+    report_path: str
+    csv_zip_path: str
+    generated_at_utc: datetime
+
+
+class AnalyticsReportLatestResponse(BaseModel):
+    date: date
+    generated_at_utc: datetime
+    json_path: str
+    csv_zip_path: str
+
+
+class AnalyticsHealthResponse(BaseModel):
+    status: str
+    latest_event_at_utc: Optional[datetime] = None
+    ingest_lag_seconds: Optional[int] = None
+    missing_events_rate: Optional[float] = None
+    late_events_rate: Optional[float] = None
+    metric_drift_rate: Optional[float] = None

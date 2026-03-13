@@ -4,7 +4,7 @@
 # ✅ Фаза 1.3: MarketItem.institute → nullable=True
 # ✅ Фаза 1.4: JSON (Text) → JSONB для всех JSON-полей
 
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, DateTime, ForeignKey, Enum, CheckConstraint, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, DateTime, Date, Float, ForeignKey, Enum, CheckConstraint, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone 
@@ -806,6 +806,71 @@ class AdClick(Base):
     
     __table_args__ = (
         Index('ix_ad_click_ad_user', 'ad_post_id', 'user_id'),
+    )
+
+
+# ========================================
+# ANALYTICS
+# ========================================
+
+
+class AnalyticsEvent(Base):
+    """
+    Raw analytics events (append-only).
+    user_id is never stored here, only anonymized user_hash.
+    """
+    __tablename__ = 'analytics_events'
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_name = Column(String(100), nullable=False, index=True)
+    event_ts_utc = Column(DateTime, nullable=False, index=True)
+    event_date_msk = Column(Date, nullable=False, index=True)
+
+    user_hash = Column(String(64), nullable=False, index=True)
+    session_id = Column(String(128), nullable=True, index=True)
+    platform = Column(String(32), nullable=True)
+    app_version = Column(String(32), nullable=True)
+    screen = Column(String(64), nullable=True)
+    entity_type = Column(String(64), nullable=True)
+    entity_id = Column(Integer, nullable=True)
+    properties_json = Column(JSONB, nullable=False, default=dict)
+    ingest_source = Column(String(16), nullable=False, default='client')
+    request_id = Column(String(128), nullable=False)
+    dedup_key = Column(String(255), nullable=False, unique=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+
+    __table_args__ = (
+        Index('ix_analytics_event_date_name', 'event_date_msk', 'event_name'),
+        Index('ix_analytics_event_user_date', 'user_hash', 'event_date_msk'),
+    )
+
+
+class AnalyticsDailyMetric(Base):
+    """
+    Materialized daily slices for KPI/funnel/retention/module/quality metrics.
+    """
+    __tablename__ = 'analytics_daily_metrics'
+
+    id = Column(Integer, primary_key=True, index=True)
+    date_msk = Column(Date, nullable=False, index=True)
+    slice_name = Column(String(32), nullable=False, index=True)  # kpi_daily, funnel_daily, ...
+    metric_key = Column(String(128), nullable=False, index=True)
+    dimension_key = Column(String(128), nullable=False, default='all', index=True)
+
+    value_num = Column(Float, nullable=False, default=0.0)
+    numerator = Column(Float, nullable=True)
+    denominator = Column(Float, nullable=True)
+    pct_value = Column(Float, nullable=True)
+    calc_status = Column(String(32), nullable=False, default='ok')
+
+    computed_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'date_msk', 'slice_name', 'metric_key', 'dimension_key',
+            name='uq_analytics_daily_metric'
+        ),
+        Index('ix_analytics_daily_slice_date', 'slice_name', 'date_msk'),
     )
 
 
