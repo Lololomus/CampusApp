@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA - Full Width Feed</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #000000;
+        --surface: #0A0A0C;
+        --border: rgba(255, 255, 255, 0.08);
+        --text-main: #FFFFFF;
+        --text-muted: #8E8E93;
+        --text-body: #EAEAEA;
+        --error: #FF453A;
+        --success: #32D74B;
+        --info: #0A84FF;
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: var(--bg); 
+        color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.96); opacity: 0.8; }
+
+      @keyframes fillBar {
+        from { width: 0%; }
+        to { width: var(--target-width); }
+      }
+      .poll-bar-fill { animation: fillBar 0.8s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+      
+      @keyframes slideIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-reveal { animation: slideIn 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0",
+          "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.2"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        CheckCircle2, XCircle, Circle, Check, MoreVertical, 
+        Heart, MessageCircle, Eye 
+      } from 'lucide-react';
+      import confetti from 'canvas-confetti';
+
+      // ==========================================
+      // КОМПОНЕНТ ОПРОСА (ЛЕГКИЙ СТИЛЬ)
+      // ==========================================
+      const FeedPollWidget = ({ poll }) => {
+        const [hasVoted, setHasVoted] = useState(false);
+        const [selectedOption, setSelectedOption] = useState(null);
+        const [showExplanation, setShowExplanation] = useState(false);
+
+        const isQuiz = poll.type === 'quiz';
+        
+        const totalVotes = hasVoted ? 325 : 324;
+        const mockPercentages = isQuiz 
+          ? poll.options.map((_, i) => i === poll.correctOption ? 72 : (i === selectedOption ? 18 : 10))
+          : poll.options.map((_, i) => i === selectedOption ? 55 : 22.5);
+
+        const handleVote = (index) => {
+          if (hasVoted) return;
+
+          if (isQuiz) {
+            setSelectedOption(index);
+            setHasVoted(true);
+            if (index === poll.correctOption) {
+              confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 }, colors: ['#D4FF00', '#32D74B', '#FFFFFF'], disableForReducedMotion: true });
+            }
+            if (poll.explanation) setTimeout(() => setShowExplanation(true), 400);
+          } else {
+            setSelectedOption(index);
+          }
+        };
+
+        const submitRegularVote = () => {
+          if (selectedOption !== null) setHasVoted(true);
+        }
+
+        return (
+          <div style={{ marginBottom: '16px' }}>
+            
+            {/* ШАПКА ОПРОСА */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <span style={{ 
+                background: isQuiz ? 'rgba(10, 132, 255, 0.12)' : 'rgba(212, 255, 0, 0.12)', 
+                color: isQuiz ? 'var(--info)' : 'var(--primary)', 
+                padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px' 
+              }}>
+                {isQuiz ? 'ВИКТОРИНА' : 'ОПРОС'}
+              </span>
+            </div>
+            
+            <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: 700, color: '#FFF', lineHeight: 1.4 }}>
+              {poll.question}
+            </h3>
+            
+            {/* ВАРИАНТЫ ОТВЕТОВ */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {poll.options.map((opt, i) => {
+                const isSelected = selectedOption === i;
+                const isCorrect = isQuiz && i === poll.correctOption;
+                
+                // РЕЖИМ РЕЗУЛЬТАТОВ
+                if (hasVoted) {
+                  // ВОЗДУШНЫЕ ФОНЫ
+                  let bgColor = 'rgba(255,255,255,0.015)'; 
+                  let borderColor = 'rgba(255,255,255,0.03)';
+                  let fillBg = 'rgba(255,255,255,0.05)';
+                  let textColor = '#EAEAEA';
+                  let fontWeight = 400;
+                  let Icon = null;
+
+                  if (isQuiz) {
+                    if (isCorrect) {
+                      borderColor = 'rgba(50, 215, 75, 0.4)'; fillBg = 'rgba(50, 215, 75, 0.15)'; textColor = 'var(--success)'; fontWeight = 700; Icon = <CheckCircle2 size={18} color="var(--success)" />;
+                    } else if (isSelected && !isCorrect) {
+                      borderColor = 'rgba(255, 69, 58, 0.4)'; fillBg = 'rgba(255, 69, 58, 0.15)'; textColor = 'var(--error)'; fontWeight = 700; Icon = <XCircle size={18} color="var(--error)" />;
+                    }
+                  } else {
+                    if (isSelected) {
+                      borderColor = 'rgba(212, 255, 0, 0.4)'; fillBg = 'rgba(212, 255, 0, 0.15)'; textColor = 'var(--primary)'; fontWeight = 700; Icon = <CheckCircle2 size={18} color="var(--primary)" />;
+                    }
+                  }
+
+                  return (
+                    <div key={i} style={{ position: 'relative', height: '44px', borderRadius: '12px', background: bgColor, border: `1px solid ${borderColor}`, overflow: 'hidden', display: 'flex', alignItems: 'center', padding: '0 14px', transition: 'all 0.3s ease' }}>
+                      <div className="poll-bar-fill" style={{ position: 'absolute', top: 0, left: 0, bottom: 0, background: fillBg, '--target-width': `${mockPercentages[i]}%` }} />
+                      <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {Icon}
+                          <span style={{ fontSize: '14px', fontWeight: fontWeight, color: textColor }}>{opt}</span>
+                        </div>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: textColor }}>{Math.round(mockPercentages[i])}%</span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // РЕЖИМ ВЫБОРА
+                let preVoteBg = 'rgba(255,255,255,0.015)';
+                let preVoteBorder = 'rgba(255,255,255,0.03)';
+                let textColor = '#FFF';
+                
+                if (!isQuiz && isSelected) {
+                  preVoteBg = 'rgba(212, 255, 0, 0.05)'; preVoteBorder = 'rgba(212, 255, 0, 0.5)'; textColor = 'var(--primary)';
+                }
+
+                return (
+                  <div key={i} onClick={() => handleVote(i)} className="spring-btn" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '12px', background: preVoteBg, border: `1px solid ${preVoteBorder}`, cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                    {!isQuiz && (
+                       <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${isSelected ? 'var(--primary)' : 'rgba(255,255,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? 'var(--primary)' : 'transparent', transition: 'all 0.2s ease' }}>
+                         {isSelected && <Check size={12} color="#000" strokeWidth={3} />}
+                       </div>
+                    )}
+                    <span style={{ fontSize: '14px', fontWeight: isSelected ? 600 : 500, color: textColor }}>{opt}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ОБЪЯСНЕНИЕ ВИКТОРИНЫ */}
+            {hasVoted && isQuiz && poll.explanation && showExplanation && (
+              <div className="animate-reveal" style={{ marginTop: '16px', paddingLeft: '12px', borderLeft: `2px solid ${selectedOption === poll.correctOption ? 'var(--success)' : 'var(--error)'}` }}>
+                 <div style={{ fontSize: '13px', fontWeight: 700, color: selectedOption === poll.correctOption ? 'var(--success)' : 'var(--error)', marginBottom: '4px' }}>
+                   {selectedOption === poll.correctOption ? '🎉 Правильно!' : '💡 Ошибочка!'}
+                 </div>
+                 <div style={{ fontSize: '13px', color: 'var(--text-body)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                   {poll.explanation}
+                 </div>
+              </div>
+            )}
+
+            {/* ФУТЕР ОПРОСА */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                {totalVotes} голосов {poll.isAnonymous && '• Анонимно'}
+              </span>
+              
+              {!hasVoted && !isQuiz && (
+                <button 
+                  onClick={submitRegularVote} 
+                  className="spring-btn" 
+                  style={{ 
+                    background: selectedOption !== null ? 'var(--primary)' : 'rgba(255,255,255,0.05)', 
+                    color: selectedOption !== null ? '#000' : 'rgba(255,255,255,0.3)', 
+                    border: 'none', padding: '8px 20px', borderRadius: '12px', fontSize: '13px', fontWeight: 700, 
+                    pointerEvents: selectedOption !== null ? 'auto' : 'none', transition: 'all 0.2s'
+                  }}
+                >
+                  Голосовать
+                </button>
+              )}
+            </div>
+
+          </div>
+        );
+      };
+
+      // ==========================================
+      // ПОСТ (ОБНОВЛЕННЫЙ МАКЕТ НА ВСЮ ШИРИНУ)
+      // ==========================================
+      const FullWidthPostCard = ({ author, meta, bodyText, image, poll }) => (
+        <div style={{ borderBottom: '1px solid var(--border)', padding: '20px 0 12px', background: 'var(--surface)' }}>
+          
+          {/* 1. ШАПКА: ТОЛЬКО Аватар, Имя и Меню */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #7A5CFF, #4DA6FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 800, color: '#FFF' }}>
+                {author.charAt(0)}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 700, fontSize: '16px', color: '#FFF', lineHeight: 1.2 }}>{author}</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '2px' }}>{meta}</span>
+              </div>
+            </div>
+            <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: '4px', margin: '-4px' }}>
+              <MoreVertical size={20} />
+            </button>
+          </div>
+
+          {/* 2. КОНТЕНТ: НА ВСЮ ШИРИНУ (Без отступа слева) */}
+          <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+            {bodyText && (
+              <p style={{ margin: '0 0 12px 0', fontSize: '15px', color: 'var(--text-body)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                {bodyText}
+              </p>
+            )}
+            
+            {poll && <FeedPollWidget poll={poll} />}
+          </div>
+
+          {/* КАРТИНКА (Если есть, тоже на всю ширину с отступами) */}
+          {image && (
+             <div style={{ width: 'calc(100% - 32px)', margin: '0 16px 12px', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+               <img src={image} style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '400px', objectFit: 'cover' }} alt="Content" />
+             </div>
+          )}
+
+          {/* 3. ПОДВАЛ (Лайки, Комменты) */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', marginTop: '4px' }}>
+             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>2 часа назад</span>
+             <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(255,255,255,0.4)' }}>
+                  <Eye size={16} strokeWidth={2.5}/> <span style={{ fontSize: '13px', fontWeight: 600 }}>1.2k</span>
+                </div>
+                <div className="spring-btn" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '16px', color: 'var(--text-muted)' }}>
+                  <MessageCircle size={16} strokeWidth={2.5}/> <span style={{ fontSize: '13px', fontWeight: 600 }}>42</span>
+                </div>
+                <div className="spring-btn" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '16px', color: 'var(--text-muted)' }}>
+                  <Heart size={16} strokeWidth={2.5}/> <span style={{ fontSize: '13px', fontWeight: 600 }}>128</span>
+                </div>
+             </div>
+          </div>
+        </div>
+      );
+
+      // === ГЛАВНЫЙ АПП ===
+      function App() {
+        const demoQuizPoll = {
+          type: 'quiz',
+          question: 'Какая сложность алгоритма бинарного поиска?',
+          options: ['O(n)', 'O(log n)', 'O(n^2)'],
+          correctOption: 1,
+          explanation: 'Бинарный поиск делит отсортированный массив пополам на каждом шаге, поэтому его сложность логарифмическая — O(log n).',
+          isAnonymous: true,
+        };
+
+        const demoRegularPoll = {
+          type: 'regular',
+          question: 'Где в итоге встречаемся после пар?',
+          options: ['В коворкинге', 'В библиотеке на Мясницкой', 'Пойдем в бар'],
+          isAnonymous: true,
+        };
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: '#000', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            <header style={{ paddingTop: '60px', paddingBottom: '16px', paddingLeft: '16px', paddingRight: '16px', borderBottom: `1px solid var(--border)`, background: 'var(--surface)', zIndex: 100 }}>
+              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#FFF' }}>Full Width Layout</h1>
+            </header>
+
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', background: '#000' }}>
+              
+              {/* Пост 1: Текст + Викторина */}
+              <FullWidthPostCard 
+                author="Dev Community" 
+                meta="Официальный канал"
+                bodyText="Привет, кодеры! Давайте проверим ваши знания перед алгоритмами. Вопрос с подвохом 😉"
+                poll={demoQuizPoll}
+              />
+
+              {/* Пост 2: Длинный текст + Картинка */}
+              <FullWidthPostCard 
+                author="Алексей Иванов" 
+                meta="ФКН • 3 курс"
+                bodyText="Ребят, я тут собрал крутой гайд по тому, как не вылететь на третьем курсе. Читайте, сохраняйте, пересылайте!\n\nИ да, фотка для привлечения внимания."
+                image="https://images.unsplash.com/photo-1555949963-aa79dcee981c?auto=format&fit=crop&q=80&w=600"
+              />
+
+              {/* Пост 3: Обычный Опрос */}
+              <FullWidthPostCard 
+                author="Студсовет" 
+                meta="Анонсы и события"
+                poll={demoRegularPoll}
+              />
+
+              <div style={{ height: '40px' }} />
+            </div>
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

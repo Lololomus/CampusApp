@@ -224,7 +224,8 @@ class Poll(Base):
     
     type = Column(String(20), default="regular")  # "regular" | "quiz"
     correct_option = Column(Integer, nullable=True)
-    
+    explanation = Column(String(1000), nullable=True)
+
     allow_multiple = Column(Boolean, default=False)
     is_anonymous = Column(Boolean, default=True)
     

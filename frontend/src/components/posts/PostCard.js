@@ -370,86 +370,84 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
 
       <div style={styles.card} onClick={handleCardClick}>
 
-        {/* === HEADER + BODY (в одной flex-строке с аватаром) === */}
+        {/* === HEADER: аватар + имя + меню (одна строка) === */}
         <div style={styles.header}>
-          {/* Аватар */}
-          {isAd ? (
-            <div style={{ ...styles.avatar, background: '#EEF2FF' }}>
-              {headerInfo.avatarUrl ? (
-                <img
-                  src={headerInfo.avatarUrl}
-                  alt=""
-                  style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                  loading="lazy"
-                  decoding="async"
-                />
-              ) : (
-                <Megaphone size={18} color={theme.colors.primary} />
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            {/* Аватар */}
+            {isAd ? (
+              <div style={{ ...styles.avatar, background: '#EEF2FF' }}>
+                {headerInfo.avatarUrl ? (
+                  <img
+                    src={headerInfo.avatarUrl}
+                    alt=""
+                    style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <Megaphone size={18} color={theme.colors.primary} />
+                )}
+              </div>
+            ) : (
+              <Avatar
+                ref={avatarRef}
+                user={headerInfo.author}
+                size={44}
+                onClick={() => !post.is_anonymous && post.author?.show_profile && setProfileOpen(true)}
+                showProfile={post.author?.show_profile}
+                isAnonymous={post.is_anonymous}
+              />
+            )}
+            {/* Имя + подзаголовок */}
+            <div style={styles.nameMetaBlock}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={styles.authorName}>{headerInfo.name}</span>
+                {post.is_important && !isAd && <span style={styles.pinned}>📌</span>}
+              </div>
+              {headerInfo.subtitle && (
+                <span style={styles.authorMeta}>{headerInfo.subtitle}</span>
               )}
             </div>
-          ) : (
-            <Avatar
-              ref={avatarRef}
-              user={headerInfo.author}
-              size={44}
-              onClick={() => !post.is_anonymous && post.author?.show_profile && setProfileOpen(true)}
-              showProfile={post.author?.show_profile}
-              isAnonymous={post.is_anonymous}
-            />
-          )}
+          </div>
 
-          {/* Info-колонка */}
-          <div style={styles.authorInfo}>
-            {/* Строка: имя/мета слева, бейдж+меню справа */}
-            <div style={styles.nameRow}>
-              <div style={styles.nameMetaBlock}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={styles.authorName}>{headerInfo.name}</span>
-                  {post.is_important && !isAd && <span style={styles.pinned}>📌</span>}
-                </div>
-                {headerInfo.subtitle && (
-                  <span style={styles.authorMeta}>{headerInfo.subtitle}</span>
-                )}
-              </div>
-
-              <div style={styles.headerRight}>
-                {isAd && (
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-                    color: '#888', background: '#F0F0F0', padding: '3px 6px', borderRadius: 4,
-                  }}>
-                    Реклама
-                  </span>
-                )}
-                {!isAd && (
-                  <span style={{ ...styles.categoryBadge, color: catInfo.color, background: catInfo.bg }}>
-                    {catInfo.label}
-                  </span>
-                )}
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <OverflowMenuButton
-                    ref={menuButtonRef}
-                    isOpen={menuOpen}
-                    onToggle={() => setMenuOpen((prev) => !prev)}
-                  />
-                  <DropdownMenu
-                    isOpen={menuOpen}
-                    onClose={() => setMenuOpen(false)}
-                    anchorRef={menuButtonRef}
-                    items={menuItems}
-                  />
-                </div>
-              </div>
+          <div style={styles.headerRight}>
+            {isAd && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                color: '#888', background: '#F0F0F0', padding: '3px 6px', borderRadius: 4,
+              }}>
+                Реклама
+              </span>
+            )}
+            {!isAd && (
+              <span style={{ ...styles.categoryBadge, color: catInfo.color, background: catInfo.bg }}>
+                {catInfo.label}
+              </span>
+            )}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <OverflowMenuButton
+                ref={menuButtonRef}
+                isOpen={menuOpen}
+                onToggle={() => setMenuOpen((prev) => !prev)}
+              />
+              <DropdownMenu
+                isOpen={menuOpen}
+                onClose={() => setMenuOpen(false)}
+                anchorRef={menuButtonRef}
+                items={menuItems}
+              />
             </div>
+          </div>
+        </div>
 
-            {/* Заголовок (если есть) */}
+        {/* === КОНТЕНТ: текст + опрос === */}
+        {(post.title || displayBody || specialMetaItems.length > 0 || post.poll) && (
+          <div style={styles.content}>
             {post.title && post.category !== 'polls' && (
               <h3 style={styles.title}>{post.title}</h3>
             )}
-
-            {/* Текст поста — внутри info-колонки (как в моке) */}
             {displayBody && (
-              <div style={{ marginTop: 4 }}>
+              <div style={{ marginTop: post.title ? 4 : 0 }}>
                 <p style={{
                   ...styles.body,
                   WebkitLineClamp: isBodyExpanded ? 'unset' : 4,
@@ -465,7 +463,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
                 )}
               </div>
             )}
-
             {specialMetaItems.length > 0 && (
               <div style={styles.specialBlock}>
                 {specialMetaItems.map((meta) => (
@@ -476,12 +473,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
                 ))}
               </div>
             )}
-          </div>
-        </div>
-
-        {post.poll && (
-          <div style={styles.pollWrapper} onClick={e => e.stopPropagation()}>
-            <PollWidget poll={post.poll} postId={post.id} />
+            {post.poll && (
+              <div style={{ marginTop: 12 }} onClick={e => e.stopPropagation()}>
+                <PollWidget poll={post.poll} postId={post.id} showQuestion={post.category === 'polls'} />
+              </div>
+            )}
           </div>
         )}
         {images.length > 0 && (
@@ -643,9 +639,10 @@ const styles = {
   },
   header: {
     display: 'flex',
-    gap: 12,
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: '0 16px',
-    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   avatar: {
     width: 44,
@@ -711,6 +708,7 @@ const styles = {
   },
   content: {
     padding: '0 16px',
+    marginBottom: 12,
   },
   title: {
     fontSize: 17,
@@ -757,7 +755,7 @@ const styles = {
   imageContainer: {
     position: 'relative',
     backgroundColor: theme.colors.bg,
-    margin: '12px 16px 10px',
+    margin: '0 16px 12px',
     width: 'calc(100% - 32px)',
     borderRadius: 16,
     overflow: 'hidden',

@@ -532,7 +532,7 @@ function PostDetail() {
 
                 {post.poll && (
                   <div style={styles.pollWrapper}>
-                    <PollView poll={post.poll} onVoteUpdate={refreshPost} />
+                    <PollView poll={post.poll} onVoteUpdate={refreshPost} showQuestion={post.category === 'polls'} />
                   </div>
                 )}
 
@@ -1296,6 +1296,5 @@ const styles = {
 };
 
 export default PostDetail;
-
 
 

@@ -217,6 +217,7 @@ class PollCreate(BaseModel):
     options: List[str]
     type: str = "regular"
     correct_option: Optional[int] = None
+    explanation: Optional[str] = None
     allow_multiple: bool = False
     is_anonymous: bool = True
     closes_at: Optional[datetime] = None
@@ -261,6 +262,7 @@ class PollResponse(BaseModel):
     options: List[PollOptionResponse]
     type: str
     correct_option: Optional[int] = None
+    explanation: Optional[str] = None
     allow_multiple: bool
     is_anonymous: bool
     closes_at: Optional[datetime] = None

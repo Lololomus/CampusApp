@@ -9,11 +9,6 @@ import {
   Send,
   Plus,
   Hash,
-  Settings,
-  Users,
-  CheckCircle,
-  Circle,
-  HelpCircle,
   AlertCircle,
   Gift,
   Clock,
@@ -27,6 +22,7 @@ import theme from '../../theme';
 import { Z_MODAL_CREATE_POST, getOverlayZIndex } from '../../constants/zIndex';
 import { REWARD_TYPES } from '../../types';
 import { POST_LIMITS, REQUEST_LIMITS, IMAGE_SETTINGS } from '../../constants/contentConstants';
+import PollCreator from '../posts/PollCreator';
 import {
   CREATE_CONTENT_CATEGORY_CAPABILITIES,
   CREATE_CONTENT_POST_CATEGORIES,
@@ -143,11 +139,11 @@ function CreateContentModal({ onClose }) {
 
   const [hasPoll, setHasPoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(['', '']);
-  const [showPollSettings, setShowPollSettings] = useState(false);
   const [pollType, setPollType] = useState('regular');
   const [pollCorrectOption, setPollCorrectOption] = useState(null);
   const [pollMulti, setPollMulti] = useState(false);
   const [pollAnon, setPollAnon] = useState(true);
+  const [pollExplanation, setPollExplanation] = useState(null);
 
   const [reqCategory, setReqCategory] = useState(CREATE_CONTENT_REQUEST_CATEGORIES[0]?.value || 'help');
   const [reqText, setReqText] = useState('');
@@ -283,7 +279,7 @@ function CreateContentModal({ onClose }) {
     setShowTagTool(false);
     setHasPoll(false);
     setPollOptions(['', '']);
-    setShowPollSettings(false);
+
     setPollType('regular');
     setPollCorrectOption(null);
     setPollMulti(false);
@@ -490,9 +486,19 @@ function CreateContentModal({ onClose }) {
       options,
       type: pollType,
       correct_option: pollType === 'quiz' ? (pollCorrectOption ?? 0) : null,
+      explanation: pollType === 'quiz' ? (pollExplanation || null) : null,
       allow_multiple: pollType === 'quiz' ? false : pollMulti,
       is_anonymous: pollAnon || isAnonymous,
     };
+  };
+
+  const handlePollChange = (data) => {
+    setPollOptions(data.options);
+    setPollType(data.type);
+    setPollCorrectOption(data.correctOption);
+    setPollMulti(data.allowMultiple);
+    setPollAnon(data.isAnonymous);
+    setPollExplanation(data.explanation);
   };
 
   const handleSubmit = async () => {
@@ -793,97 +799,18 @@ function CreateContentModal({ onClose }) {
 
                     {pollVisible && (
                       <div className="smart-block" style={styles.pollCard}>
-                        <div style={styles.pollHead}>
-                          <span style={styles.pollCaption}>ОПРОС</span>
-                          {postCategory !== 'polls' && (
-                            <button type="button" onClick={() => setHasPoll(false)} style={styles.pollX} className="create-spring-btn" disabled={isSubmitting}>
-                              <X size={16} />
-                            </button>
-                          )}
-                        </div>
-
-                        <div style={styles.pollOptions}>
-                          {pollOptions.map((opt, i) => (
-                            <div key={`opt-${i}`} style={styles.pollOptionRow}>
-                              {pollType === 'quiz' && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPollCorrectOption(i)}
-                                  style={{ ...styles.quizSelect, color: pollCorrectOption === i ? '#32D74B' : 'var(--create-text-muted)' }}
-                                  className="create-spring-btn"
-                                  disabled={isSubmitting}
-                                >
-                                  {pollCorrectOption === i ? <CheckCircle size={20} /> : <Circle size={20} />}
-                                </button>
-                              )}
-
-                              <input
-                                value={opt}
-                                onChange={(e) => {
-                                  const next = [...pollOptions];
-                                  next[i] = e.target.value;
-                                  setPollOptions(next);
-                                }}
-                                placeholder={`Вариант ${i + 1}`}
-                                style={styles.pollOptionInput}
-                                disabled={isSubmitting}
-                              />
-
-                              {i > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPollOptions((prev) => prev.filter((_, idx) => idx !== i))}
-                                  style={styles.pollRemove}
-                                  className="create-spring-btn"
-                                  disabled={isSubmitting}
-                                >
-                                  <X size={14} />
-                                </button>
-                              )}
-                            </div>
-                          ))}
-
-                          {pollOptions.length < 5 && (
-                            <button type="button" onClick={() => setPollOptions((prev) => [...prev, ''])} style={styles.addPollOption} className="create-spring-btn" disabled={isSubmitting}>
-                              <Plus size={16} /> Добавить вариант
-                            </button>
-                          )}
-                        </div>
-
-                        <div style={styles.pollSettingsWrap}>
-                          <div style={styles.pollSettingsTop}>
-                            <button type="button" onClick={() => setShowPollSettings((prev) => !prev)} style={styles.pollSettingsBtn} className="create-spring-btn" disabled={isSubmitting}>
-                              <Settings size={14} /> Настройки опроса
-                            </button>
-                            <div style={styles.pollIndicators}>
-                              {pollAnon && <VenetianMask size={14} />}
-                              {pollMulti && <Users size={14} />}
-                              {pollType === 'quiz' && <HelpCircle size={14} />}
-                            </div>
-                          </div>
-
-                          {showPollSettings && (
-                            <div className="smart-block" style={styles.pollSettingsPanel}>
-                              <div style={styles.pollTypeRow}>
-                                <button type="button" onClick={() => { setPollType('regular'); setPollCorrectOption(null); }} style={pollType === 'regular' ? { ...styles.pollTypeBtn, ...styles.pollTypeBtnActive } : styles.pollTypeBtn} className="create-spring-btn" disabled={isSubmitting}>
-                                  <BarChart2 size={14} /> Опрос
-                                </button>
-                                <button type="button" onClick={() => { setPollType('quiz'); setPollCorrectOption(0); setPollMulti(false); }} style={pollType === 'quiz' ? { ...styles.pollTypeBtn, ...styles.pollTypeBtnActive } : styles.pollTypeBtn} className="create-spring-btn" disabled={isSubmitting}>
-                                  <HelpCircle size={14} /> Викторина
-                                </button>
-                              </div>
-
-                              <div style={styles.pollFlags}>
-                                <button type="button" onClick={() => setPollMulti((prev) => !prev)} style={pollMulti ? { ...styles.flagBtn, ...styles.flagBtnActive } : styles.flagBtn} className="create-spring-btn" disabled={isSubmitting || pollType === 'quiz'}>
-                                  <Users size={14} /> Мультивыбор
-                                </button>
-                                <button type="button" onClick={() => setPollAnon((prev) => !prev)} style={pollAnon ? { ...styles.flagBtn, ...styles.flagBtnActive } : styles.flagBtn} className="create-spring-btn" disabled={isSubmitting}>
-                                  <VenetianMask size={14} /> Анонимно
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <PollCreator
+                          pollData={{
+                            options: pollOptions,
+                            type: pollType,
+                            correctOption: pollCorrectOption,
+                            allowMultiple: pollMulti,
+                            isAnonymous: pollAnon,
+                            explanation: pollExplanation,
+                          }}
+                          onChange={handlePollChange}
+                          onClose={postCategory !== 'polls' && !isSubmitting ? () => setHasPoll(false) : undefined}
+                        />
                       </div>
                     )}
 
@@ -1430,9 +1357,8 @@ const styles = {
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
   },
   processingPlaceholder: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--create-primary)', fontSize: 13, fontWeight: 600 },
-  pollCard: { background: 'var(--create-surface-elevated)', border: '1px solid var(--create-border)', borderRadius: 16, padding: 16, marginBottom: 16 },
-  pollHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  pollCaption: { fontSize: 13, fontWeight: 700, color: 'var(--create-text-muted)', letterSpacing: '0.5px' },
+  pollCard: { marginBottom: 16 },
+  pollCloseRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   pollX: {
     width: 24,
     height: 24,

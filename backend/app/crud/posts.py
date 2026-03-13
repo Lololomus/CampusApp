@@ -391,6 +391,7 @@ async def create_poll(db: AsyncSession, post_id: int, poll_data: schemas.PollCre
         options=options_json,
         type=poll_data.type,
         correct_option=poll_data.correct_option if poll_data.type == 'quiz' else None,
+        explanation=poll_data.explanation if poll_data.type == 'quiz' else None,
         allow_multiple=poll_data.allow_multiple,
         is_anonymous=poll_data.is_anonymous,
         closes_at=poll_data.closes_at,
