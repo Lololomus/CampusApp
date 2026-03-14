@@ -49,7 +49,15 @@ export const DragHandle = ({ handlers = {}, gap = 12 }) => (
   </div>
 );
 
-const SwipeableModal = ({ isOpen, onClose, children, title, footer, zIndex = 9999 }) => {
+const SwipeableModal = ({
+  isOpen,
+  onClose,
+  children,
+  title,
+  footer,
+  zIndex = 9999,
+  showHeaderDivider = true,
+}) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const contentRef = useRef(null);
@@ -148,7 +156,7 @@ const SwipeableModal = ({ isOpen, onClose, children, title, footer, zIndex = 999
         {title && (
           <div style={{
             padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: showHeaderDivider ? '1px solid rgba(255,255,255,0.08)' : 'none',
             flexShrink: 0,
           }}>
             <h3 style={{

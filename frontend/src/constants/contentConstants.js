@@ -6,6 +6,7 @@
 
 export const POST_CATEGORIES = [
   { value: 'news', label: 'Новости', icon: '📰', color: '#3b82f6' },
+  { value: 'memes', label: 'Мемы', icon: '🤡', color: '#f97316' },
   { value: 'events', label: 'События', icon: '🎉', color: '#f59e0b' },
   { value: 'confessions', label: 'Признания', icon: '💭', color: '#ec4899' },
   { value: 'lost_found', label: 'Находки', icon: '🔍', color: '#10b981' }
@@ -13,6 +14,7 @@ export const POST_CATEGORIES = [
 
 export const POST_CATEGORY_LABELS = {
   news: 'Новости',
+  memes: 'Мемы',
   events: 'События',
   confessions: 'Признания',
   lost_found: 'Находки'

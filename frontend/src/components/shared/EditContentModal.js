@@ -62,6 +62,8 @@ const normalizeTag = (raw) =>
     .replace(/\s+/g, '_')
     .replace(/[^a-zа-яё0-9_-]/gi, '');
 
+const countLetters = (raw) => (String(raw || '').match(/[a-zа-яё]/gi) || []).length;
+
 const parseArrayField = (value) => {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string') return [];
@@ -345,6 +347,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
 
   const isPostValid = () => {
     if (postCategory === 'polls') return postText.trim().length >= 3;
+    if (postCategory === 'memes') return photos.length > 0 || countLetters(postText) >= 3;
     if (postText.trim().length < POST_LIMITS.BODY_MIN) return false;
     if (postCategory === 'lost_found') return location.trim().length >= 3;
     if (postCategory === 'events') {
@@ -553,7 +556,10 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
       if (isPost) {
         const parsed = postCategory === 'polls'
           ? { title: postText.trim().slice(0, POST_LIMITS.TITLE_MAX), body: postText.trim() }
-          : parsePostSingleText(postText, { titleMax: POST_LIMITS.TITLE_MAX, bodyMin: POST_LIMITS.BODY_MIN });
+          : parsePostSingleText(postText, {
+              titleMax: POST_LIMITS.TITLE_MAX,
+              bodyMin: postCategory === 'memes' ? 3 : POST_LIMITS.BODY_MIN,
+            });
         const formData = new FormData();
         formData.append('category', postCategory);
         formData.append('title', parsed.title || '');

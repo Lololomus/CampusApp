@@ -54,6 +54,7 @@ function Feed() {
   const postCategories = [
     { id: 'all', label: 'Все', emoji: '' },
     { id: 'news', label: 'Новости', emoji: '📰' },
+    { id: 'memes', label: 'Мемы', emoji: '🤡' },
     { id: 'events', label: 'События', emoji: '🎉' },
     { id: 'confessions', label: 'Признания', emoji: '💭' },
     { id: 'lost_found', label: 'Находки', emoji: '🔍' },

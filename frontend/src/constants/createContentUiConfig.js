@@ -2,6 +2,7 @@ import theme from '../theme';
 
 export const CREATE_CONTENT_POST_CATEGORIES = [
   { value: 'news', label: 'Новости', icon: '📰', color: theme.colors.premium.primary },
+  { value: 'memes', label: 'Мемы', icon: '🤡', color: theme.colors.premium.primary },
   { value: 'confessions', label: 'Признания', icon: '💭', color: theme.colors.premium.primary },
   { value: 'polls', label: 'Опросы', icon: '📊', color: theme.colors.premium.primary },
   { value: 'events', label: 'События', icon: '🎉', color: theme.colors.premium.primary },
@@ -28,6 +29,12 @@ export const CREATE_CONTENT_CATEGORY_CAPABILITIES = {
   news: {
     allowImages: true,
     allowPoll: true,
+    forceAnonymous: false,
+    allowAnonymousToggle: true,
+  },
+  memes: {
+    allowImages: true,
+    allowPoll: false,
     forceAnonymous: false,
     allowAnonymousToggle: true,
   },
@@ -59,6 +66,7 @@ export const CREATE_CONTENT_CATEGORY_CAPABILITIES = {
 
 export const CREATE_CONTENT_POST_PLACEHOLDERS = {
   news: 'Заголовок поста\nРаскрой детали...',
+  memes: 'Поделись мемом\nДобавь фото или подпись...',
   events: 'Название события\nДата, место, детали...',
   confessions: 'Коротко о главном\nВыскажи всё, что на душе...',
   lost_found: 'Что случилось\nПодробно опиши вещь...',

@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 TITLE_PARSE_LIMIT = 70
 POST_BODY_MIN_LEN = 10
+MEMES_MIN_LETTERS = 3
+MEMES_LETTERS_RE = re.compile(r"[A-Za-zА-Яа-яЁё]")
 
 
 def _parse_json_list_form_field(raw_value: Optional[str], field_name: str) -> List:
@@ -99,6 +101,10 @@ def _parse_post_title_and_body(raw_text: Optional[str]) -> Tuple[Optional[str], 
             return None, full_text
 
     return None, full_text
+
+
+def _count_letters(value: Optional[str]) -> int:
+    return len(MEMES_LETTERS_RE.findall(str(value or "")))
 
 
 @asynccontextmanager
@@ -612,6 +618,15 @@ async def create_post_endpoint(
     # MAX IMAGE COUNT CHECK (use valid_images)
     if len(valid_images) > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
+
+    if category == "memes":
+        has_images = len(valid_images) > 0
+        has_text = _count_letters(body) >= MEMES_MIN_LETTERS
+        if not has_images and not has_text:
+            raise HTTPException(
+                status_code=400,
+                detail="Для категории Мемы нужно добавить фото или текст от 3 букв",
+            )
     
     try:
         post_data = schemas.PostCreate(

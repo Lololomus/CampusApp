@@ -153,7 +153,7 @@ class Post(Base):
     author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
     category = Column(
-        Enum('general', 'confessions', 'lost_found', 'news', 'events', 'polls', 'ad', name='post_category_enum'),
+        Enum('general', 'confessions', 'lost_found', 'news', 'events', 'polls', 'memes', 'ad', name='post_category_enum'),
         nullable=False,
         index=True
     )

@@ -166,6 +166,7 @@ export const POLL_TYPE_LABELS = {
 // ========== КАТЕГОРИИ ПОСТОВ ==========
 export const CATEGORIES = [
   { value: 'news', label: 'Новости', icon: '📰' },
+  { value: 'memes', label: 'Мемы', icon: '🤡' },
   { value: 'events', label: 'События', icon: '🎉' },
   { value: 'confessions', label: 'Признания', icon: '💭' },
   { value: 'lost_found', label: 'Находки', icon: '🔍' },

@@ -66,6 +66,40 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
     return resolveImageUrl(filename, 'images');
   };
 
+  const currentImageUrl = useMemo(
+    () => getImageUrl(images[currentImageIndex]),
+    [images, currentImageIndex]
+  );
+  const adImageUrl = useMemo(
+    () => getImageUrl(images[0]),
+    [images]
+  );
+  const [loadedImageMap, setLoadedImageMap] = useState({});
+  const [failedImageMap, setFailedImageMap] = useState({});
+
+  const markImageLoaded = (url) => {
+    if (!url) return;
+    const key = `${post.id}:${url}`;
+    setLoadedImageMap((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+    setFailedImageMap((prev) => (prev[key] ? { ...prev, [key]: false } : prev));
+  };
+
+  const markImageFailed = (url) => {
+    if (!url) return;
+    const key = `${post.id}:${url}`;
+    setFailedImageMap((prev) => ({ ...prev, [key]: true }));
+  };
+
+  const mainImageStateKey = currentImageUrl ? `${post.id}:${currentImageUrl}` : '';
+  const isMainImageLoaded = mainImageStateKey ? Boolean(loadedImageMap[mainImageStateKey]) : false;
+  const isMainImageError = !currentImageUrl || Boolean(failedImageMap[mainImageStateKey]);
+  const isMainImageLoading = Boolean(currentImageUrl) && !isMainImageLoaded && !isMainImageError;
+
+  const adImageStateKey = adImageUrl ? `${post.id}:${adImageUrl}` : '';
+  const isAdImageLoaded = adImageStateKey ? Boolean(loadedImageMap[adImageStateKey]) : false;
+  const isAdImageError = !adImageUrl || Boolean(failedImageMap[adImageStateKey]);
+  const isAdImageLoading = Boolean(adImageUrl) && !isAdImageLoaded && !isAdImageError;
+
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
 
   const isLiked = likedPosts[post.id] ?? post.is_liked ?? false;
@@ -191,6 +225,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
     if (isAd) return { label: 'Реклама', color: theme.colors.textTertiary, bg: 'rgba(150,150,150,0.15)' };
     switch(post.category) {
       case 'news':        return { label: 'Новости',     ...tc.news };
+      case 'memes':       return { label: 'Мем',         ...tc.memes };
       case 'events':      return { label: 'Событие',     ...tc.events };
       case 'confessions': return { label: 'Подслушано',  ...tc.confessions };
       case 'lost_found':  return { label: 'Бюро',        ...tc.lostFound };
@@ -431,6 +466,10 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
           40% { transform: scale(1.25); }
           100% { transform: scale(1); }
         }
+        @keyframes imageShimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
       `}</style>
 
       <div ref={cardRef} style={styles.card} onClick={handleCardClick}>
@@ -551,23 +590,39 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
         {images.length > 0 && (
           isAd ? (
             // Для рекламы: простая картинка с отступами и скруглением по моку
-            <div style={{ width: 'calc(100% - 32px)', margin: '0 16px 16px', borderRadius: 16, overflow: 'hidden', border: `1px solid ${theme.colors.border}` }}>
+            <div style={styles.adImageContainer}>
+              {isAdImageLoading && <div style={styles.imageSkeleton} />}
+              {isAdImageError && <div style={styles.imageFallback}>Фото недоступно</div>}
               <img
-                src={getImageUrl(images[0])}
+                src={adImageUrl}
                 alt=""
-                style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'cover' }}
+                style={{
+                  ...styles.adImage,
+                  opacity: (isAdImageLoading || isAdImageError) ? 0 : 1,
+                  transition: 'opacity 0.2s ease',
+                }}
                 loading="lazy"
                 decoding="async"
+                onLoad={() => markImageLoaded(adImageUrl)}
+                onError={() => markImageFailed(adImageUrl)}
               />
             </div>
           ) : (
             <div style={{...styles.imageContainer, aspectRatio: `${safeRatio}`}} onClick={handleImageClick}>
+              {isMainImageLoading && <div style={styles.imageSkeleton} />}
+              {isMainImageError && <div style={styles.imageFallback}>Фото недоступно</div>}
               <img
-                src={getImageUrl(images[currentImageIndex])}
+                src={currentImageUrl}
                 alt=""
-                style={styles.image}
+                style={{
+                  ...styles.image,
+                  opacity: (isMainImageLoading || isMainImageError) ? 0 : 1,
+                  transition: 'opacity 0.2s ease',
+                }}
                 loading="lazy"
                 decoding="async"
+                onLoad={() => markImageLoaded(currentImageUrl)}
+                onError={() => markImageFailed(currentImageUrl)}
               />
 
               {images.length > 1 && (
@@ -842,7 +897,38 @@ const styles = {
     overflow: 'hidden',
     border: `1px solid ${theme.colors.premium.border}`,
   },
+  adImageContainer: {
+    position: 'relative',
+    width: 'calc(100% - 32px)',
+    margin: '0 16px 16px',
+    borderRadius: 16,
+    overflow: 'hidden',
+    border: `1px solid ${theme.colors.border}`,
+    background: theme.colors.surfaceElevated,
+    minHeight: 160,
+  },
   image: { width: '100%', height: '100%', objectFit: 'cover' },
+  adImage: { width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'cover' },
+  imageSkeleton: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(110deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.12) 45%, rgba(255,255,255,0.04) 65%)',
+    backgroundSize: '200% 100%',
+    animation: 'imageShimmer 1.25s linear infinite',
+    zIndex: 1,
+  },
+  imageFallback: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: theme.colors.premium.textMuted,
+    fontSize: 13,
+    fontWeight: 600,
+    background: theme.colors.surfaceElevated,
+    zIndex: 1,
+  },
   imageCounter: {
     position: 'absolute',
     top: 12, right: 12,

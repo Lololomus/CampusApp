@@ -55,6 +55,8 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [loadedImageMap, setLoadedImageMap] = useState({});
+  const [failedImageMap, setFailedImageMap] = useState({});
 
   const menuButtonRef = useRef(null);
   const avatarRef = useRef(null);
@@ -99,6 +101,19 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
     () => images.map((img) => getImageUrl(img)),
     [images]
   );
+
+  const markImageLoaded = (url) => {
+    if (!url) return;
+    const key = `${request.id}:${url}`;
+    setLoadedImageMap((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+    setFailedImageMap((prev) => (prev[key] ? { ...prev, [key]: false } : prev));
+  };
+
+  const markImageFailed = (url) => {
+    if (!url) return;
+    const key = `${request.id}:${url}`;
+    setFailedImageMap((prev) => ({ ...prev, [key]: true }));
+  };
 
   const authorName = request.author?.username || request.author?.name || 'Аноним';
   const authorMeta = [
@@ -427,14 +442,37 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
           <div style={styles.imagesWrap}>
             <div style={styles.imagesGrid}>
               {previewImages.map((img, index) => (
-                <button
-                  key={`${request.id}-img-${index}`}
-                  type="button"
-                  onClick={(e) => handleImageClick(e, index)}
-                  style={styles.imageButton}
-                >
-                  <img src={getImageUrl(img)} alt="" style={styles.image} loading="lazy" />
-                </button>
+                (() => {
+                  const imageUrl = getImageUrl(img);
+                  const imageStateKey = imageUrl ? `${request.id}:${imageUrl}` : '';
+                  const isLoaded = imageStateKey ? Boolean(loadedImageMap[imageStateKey]) : false;
+                  const isFailed = !imageUrl || Boolean(failedImageMap[imageStateKey]);
+                  return (
+                    <button
+                      key={`${request.id}-img-${index}`}
+                      type="button"
+                      onClick={(e) => handleImageClick(e, index)}
+                      style={styles.imageButton}
+                    >
+                      {!isLoaded && !isFailed && <div style={styles.imageSkeleton} />}
+                      {isFailed && <div style={styles.imageFallback}>Нет фото</div>}
+                      {imageUrl && (
+                        <img
+                          src={imageUrl}
+                          alt=""
+                          style={{
+                            ...styles.image,
+                            opacity: isLoaded && !isFailed ? 1 : 0,
+                            transition: 'opacity 0.2s ease',
+                          }}
+                          loading="lazy"
+                          onLoad={() => markImageLoaded(imageUrl)}
+                          onError={() => markImageFailed(imageUrl)}
+                        />
+                      )}
+                    </button>
+                  );
+                })()
               ))}
               {remainingImages > 0 && (
                 <button
@@ -655,6 +693,26 @@ const styles = {
     height: '100%',
     objectFit: 'cover',
   },
+  imageSkeleton: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(110deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.16) 45%, rgba(255,255,255,0.05) 65%)',
+    backgroundSize: '200% 100%',
+    animation: 'imageShimmer 1.25s linear infinite',
+    zIndex: 1,
+  },
+  imageFallback: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#A0A0A0',
+    background: '#1C1C1E',
+    zIndex: 1,
+  },
   imageOverlay: {
     position: 'absolute',
     inset: 0,
@@ -736,6 +794,11 @@ const keyframesStyles = `
     0% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.8); }
     50% { box-shadow: 0 0 0 10px rgba(255, 69, 58, 0); }
     100% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0); }
+  }
+
+  @keyframes imageShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 
   .burning-dot {

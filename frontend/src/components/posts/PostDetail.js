@@ -196,6 +196,7 @@ function PostDetail() {
     if (!post) return { label: '', color: theme.colors.text };
     switch(post.category) {
       case 'news': return { label: 'Новости', color: theme.colors.news };
+      case 'memes': return { label: 'Мем', color: theme.colors.memes };
       case 'events': return { label: 'Событие', color: theme.colors.events };
       case 'confessions': return { label: 'Подслушано', color: theme.colors.confessions };
       case 'lost_found': return { label: 'Бюро', color: theme.colors.lostFound };
@@ -1296,5 +1297,4 @@ const styles = {
 };
 
 export default PostDetail;
-
 

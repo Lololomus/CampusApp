@@ -330,7 +330,7 @@ class PostCreate(BaseModel):
     @classmethod
     def validate_body(cls, v, info):
         category = info.data.get('category')
-        if category != 'polls' and (not v or len(v.strip()) < 10):
+        if category not in ('polls', 'memes') and (not v or len(v.strip()) < 10):
             raise ValueError('Описание обязательно (мин. 10 символов)')
         return v
     

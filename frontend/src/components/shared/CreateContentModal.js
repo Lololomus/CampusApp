@@ -53,6 +53,8 @@ const normalizeTag = (raw) =>
     .replace(/\s+/g, '_')
     .replace(/[^a-zа-яё0-9_-]/gi, '');
 
+const countLetters = (raw) => (String(raw || '').match(/[a-zа-яё]/gi) || []).length;
+
 const formatCustomDate = (value) => {
   if (!value) return 'Выбрать 📅';
   const d = new Date(value);
@@ -360,6 +362,7 @@ function CreateContentModal({ onClose }) {
   const isPostFormValid = () => {
     const textValid = postText.trim().length >= POST_LIMITS.BODY_MIN;
     if (postCategory === 'polls') return postText.trim().length >= 3 && isPollValid();
+    if (postCategory === 'memes') return photos.length > 0 || countLetters(postText) >= 3;
     if (!textValid) return false;
     if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
     if (postCategory === 'lost_found') return location.trim().length >= 3;
@@ -510,6 +513,7 @@ function CreateContentModal({ onClose }) {
       if (!isPostFormValid()) {
         hapticFeedback('error');
         if (postCategory === 'polls') setError('Введите текст вопроса и минимум 2 варианта ответа');
+        else if (postCategory === 'memes') setError('Для категории Мемы добавьте фото или текст от 3 букв');
         else if (postCategory === 'lost_found') setError('Укажите место для категории Находки');
         else if (postCategory === 'events') setError('Укажите дату и место события');
         else setError(`Минимум ${POST_LIMITS.BODY_MIN} символов текста`);
@@ -530,7 +534,7 @@ function CreateContentModal({ onClose }) {
         } else {
           const parsedPost = parsePostSingleText(postText, {
             titleMax: POST_LIMITS.TITLE_MAX,
-            bodyMin: POST_LIMITS.BODY_MIN,
+            bodyMin: postCategory === 'memes' ? 3 : POST_LIMITS.BODY_MIN,
           });
           formData.append('title', parsedPost.title || '');
           formData.append('body', parsedPost.body || '');
@@ -1584,4 +1588,3 @@ const keyframeStyles = `
 `;
 
 export default CreateContentModal;
-

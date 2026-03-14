@@ -272,6 +272,7 @@ const FiltersModal = ({ onClose, onApply }) => {
     <SwipeableModal
       isOpen={true}
       onClose={onClose}
+      showHeaderDivider={false}
       title={
         <div style={styles.titleWrapper}>
           <span>Фильтры {isPostsMode ? 'постов' : 'запросов'}</span>
