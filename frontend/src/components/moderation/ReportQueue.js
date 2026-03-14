@@ -1,68 +1,35 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/moderation/ReportQueue.js =====
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { RefreshCw, Inbox } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
+import { useSwipe } from '../../hooks/useSwipe';
 import ReportCard from './ReportCard';
 
 function ReportQueue({ reports, loading, onProcessed, onRefresh }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const [swiping, setSwiping] = useState(false);
-  const touchStartX = useRef(0);
-  const touchStartY = useRef(0);
-  const isHorizontalSwipe = useRef(null);
+  const cardRef = useRef(null);
 
-  const currentReport = reports[currentIndex];
-  const remaining = reports.length - currentIndex;
-
-  const goNext = useCallback(() => {
-    setSwipeOffset(0);
-    setCurrentIndex(prev => Math.min(prev + 1, reports.length));
-  }, [reports.length]);
+  const currentReport = reports[0];
+  const remaining = reports.length;
 
   const handleProcessed = useCallback((reportId, action) => {
     onProcessed?.(reportId);
-    // Не двигаем индекс — массив reports сам уменьшится через родителя
   }, [onProcessed]);
 
-  // === SWIPE ===
-  const handleTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-    isHorizontalSwipe.current = null;
-    setSwiping(true);
-  };
+  const handleSkip = useCallback(() => {
+    if (!currentReport) return;
+    hapticFeedback('light');
+    handleProcessed(currentReport.id, 'skipped');
+  }, [currentReport, handleProcessed]);
 
-  const handleTouchMove = (e) => {
-    if (!swiping) return;
-    const dx = e.touches[0].clientX - touchStartX.current;
-    const dy = e.touches[0].clientY - touchStartY.current;
-
-    // Определяем направление свайпа
-    if (isHorizontalSwipe.current === null) {
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-        isHorizontalSwipe.current = Math.abs(dx) > Math.abs(dy);
-      }
-    }
-
-    if (isHorizontalSwipe.current) {
-      e.preventDefault();
-      setSwipeOffset(dx);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    setSwiping(false);
-    if (Math.abs(swipeOffset) > 100) {
-      // Свайп влево — skip (пропустить)
-      hapticFeedback('light');
-      handleProcessed(currentReport?.id, 'skipped');
-    }
-    setSwipeOffset(0);
-    isHorizontalSwipe.current = null;
-  };
+  const swipeHandlers = useSwipe({
+    elementRef: cardRef,
+    onSwipeLeft: handleSkip,
+    onSwipeRight: handleSkip,
+    isModal: false,
+    threshold: 80,
+  });
 
   if (loading) {
     return (
@@ -89,9 +56,6 @@ function ReportQueue({ reports, loading, onProcessed, onRefresh }) {
     );
   }
 
-  const opacity = 1 - Math.abs(swipeOffset) / 300;
-  const rotate = swipeOffset * 0.05;
-
   return (
     <div style={styles.container}>
       {/* Counter */}
@@ -105,36 +69,11 @@ function ReportQueue({ reports, loading, onProcessed, onRefresh }) {
       </div>
 
       {/* Card with swipe */}
-      <div
-        style={styles.cardWrapper}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        <div
-          style={{
-            ...styles.swipeCard,
-            transform: `translateX(${swipeOffset}px) rotate(${rotate}deg)`,
-            opacity: Math.max(opacity, 0.3),
-            transition: swiping ? 'none' : 'transform 0.3s ease, opacity 0.3s ease',
-          }}
-        >
-          <ReportCard
-            report={currentReport}
-            onProcessed={handleProcessed}
-          />
-        </div>
-
-        {/* Swipe hints */}
-        {Math.abs(swipeOffset) > 50 && (
-          <div style={{
-            ...styles.swipeHint,
-            left: swipeOffset < 0 ? 'auto' : 20,
-            right: swipeOffset < 0 ? 20 : 'auto',
-          }}>
-            {swipeOffset < 0 ? '⏭️ Пропустить' : '⏭️ Пропустить'}
-          </div>
-        )}
+      <div ref={cardRef} style={styles.swipeCard} {...swipeHandlers}>
+        <ReportCard
+          report={currentReport}
+          onProcessed={handleProcessed}
+        />
       </div>
 
       {/* Progress dots */}
@@ -187,24 +126,12 @@ const styles = {
     cursor: 'pointer',
   },
 
-  cardWrapper: {
-    position: 'relative',
-    touchAction: 'pan-y',
-  },
-
   swipeCard: {
-    willChange: 'transform, opacity',
-  },
-
-  swipeHint: {
-    position: 'absolute',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    fontSize: 14,
-    fontWeight: 700,
-    color: theme.colors.textTertiary,
-    pointerEvents: 'none',
-    zIndex: 10,
+    willChange: 'transform',
+    touchAction: 'pan-y',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    cursor: 'grab',
   },
 
   dotsRow: {

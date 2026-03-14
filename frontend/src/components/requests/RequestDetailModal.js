@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Calendar,
   Clock,
@@ -34,9 +33,9 @@ import { getEntityActionSet, isEntityOwner } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
-import { useSwipe } from '../../hooks/useSwipe';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
+import SwipeableModal from '../shared/SwipeableModal';
 
 const CATEGORY_CONFIG = {
   study: {
@@ -76,7 +75,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionScrollState, setDescriptionScrollState] = useState({
     isTop: true,
@@ -85,9 +83,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
 
   const menuButtonRef = useRef(null);
   const authorAvatarRef = useRef(null);
-  const sheetRef = useRef(null);
   const descriptionRef = useRef(null);
-  const isClosingRef = useRef(false);
 
   const safeRequest = request || currentRequest;
   const categoryConfig = CATEGORY_CONFIG[safeRequest?.category] || CATEGORY_CONFIG.study;
@@ -132,13 +128,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   }, [safeRequest?.id]);
 
   useEffect(() => {
-    isClosingRef.current = false;
-    setIsVisible(false);
-    const timer = setTimeout(() => setIsVisible(true), 20);
-    return () => clearTimeout(timer);
-  }, [safeRequest?.id]);
-
-  useEffect(() => {
     if (!descriptionExpanded) return;
     const timer = setTimeout(() => {
       updateDescriptionScrollState();
@@ -146,22 +135,11 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
     return () => clearTimeout(timer);
   }, [descriptionExpanded]);
 
-  const swipeHandlers = useSwipe({
-    elementRef: sheetRef,
-    onSwipeDown: () => handleClose(),
-    isModal: true,
-    threshold: 120,
-  });
-
-  const closeWithAnimation = () => {
-    if (isClosingRef.current) return;
-    isClosingRef.current = true;
+  const handleClose = () => {
+    if (isPhotoViewerJustClosed || isDropdownJustClosed) return;
     hapticFeedback('light');
-    setIsVisible(false);
-    setTimeout(() => {
-      setCurrentRequest(null);
-      onClose();
-    }, 280);
+    setCurrentRequest(null);
+    onClose();
   };
 
   const loadRequestData = async () => {
@@ -300,10 +278,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
       isTop: scrollTop <= 1,
       isBottom: scrollTop + clientHeight >= scrollHeight - 1,
     });
-  };
-  const handleClose = () => {
-    if (isPhotoViewerJustClosed || isDropdownJustClosed) return;
-    closeWithAnimation();
   };
 
   const handleImageClick = (e, index) => {
@@ -446,231 +420,222 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const descriptionBottomFadeVisible = !descriptionExpanded || !descriptionScrollState.isBottom;
   const photoGridColumns = images.length <= 3 ? 3 : 2;
 
-  return createPortal(
+  const footer = (
     <>
-      <style>{keyframesStyles}</style>
-
-      <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }} onClick={handleClose}>
-        <div style={styles.backdrop} />
-
-        <div
-          ref={sheetRef}
-          style={{
-            ...styles.sheet,
-            transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
-          }}
-          onClick={(e) => e.stopPropagation()}
+      {isOwner ? (
+        <button
+          type="button"
+          onClick={handleCloseRequest}
+          style={styles.ownerFooterButton}
+          disabled={safeRequest.status === 'closed'}
         >
-          <div style={styles.dragWrap} {...swipeHandlers}>
-            <div style={styles.dragHandle} />
+          {safeRequest.status === 'closed' ? 'Запрос закрыт' : 'Закрыть таску (Решено)'}
+        </button>
+      ) : safeRequest.has_responded ? (
+        <button type="button" style={styles.disabledFooterButton} disabled>
+          Вы уже откликнулись
+        </button>
+      ) : datesInfo?.isExpired || safeRequest.status !== 'active' ? (
+        <button type="button" style={styles.disabledFooterButton} disabled>
+          <Lock size={18} /> Запрос недоступен
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={handleRespond}
+          style={styles.primaryFooterButton}
+          disabled={responding}
+        >
+          <MessageSquare size={20} strokeWidth={2.4} />
+          {responding ? 'Отправка...' : 'Откликнуться'}
+        </button>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <style>{cssStyles}</style>
+
+      <SwipeableModal
+        isOpen={!!currentRequest}
+        onClose={handleClose}
+        zIndex={Z_MODAL_REQUEST_DETAIL}
+        footer={footer}
+      >
+        {loading && !request ? <div style={styles.loading}>Загрузка...</div> : null}
+
+        <h1 style={styles.title}>{safeRequest.title}</h1>
+
+        <div style={styles.chipsRow}>
+          <div style={{ ...styles.chip, color: categoryConfig.color, background: categoryConfig.bg }}>
+            {categoryConfig.label}
           </div>
-
-          <div style={styles.scrollArea}>
-            {loading && !request ? <div style={styles.loading}>Загрузка...</div> : null}
-
-            <h1 style={styles.title}>{safeRequest.title}</h1>
-
-            <div style={styles.chipsRow}>
-              <div style={{ ...styles.chip, color: categoryConfig.color, background: categoryConfig.bg }}>
-                {categoryConfig.label}
-              </div>
-              {rewardText && (
-                <div style={{ ...styles.chip, color: '#32D74B', background: 'rgba(50, 215, 75, 0.12)' }}>
-                  <Gift size={14} />
-                  {rewardText}
-                </div>
-              )}
-              <div style={{ ...styles.chip, color: timeState.color, background: timeState.bg }}>
-                {timeState.burning ? (
-                  <span className="burning-dot" />
-                ) : timeState.urgent ? (
-                  <Zap size={14} strokeWidth={2.8} />
-                ) : (
-                  <Clock size={14} />
-                )}
-                {timeState.text}
-              </div>
+          {rewardText && (
+            <div style={{ ...styles.chip, color: '#32D74B', background: 'rgba(50, 215, 75, 0.12)' }}>
+              <Gift size={14} />
+              {rewardText}
             </div>
-
-            <div style={styles.authorRow}>
-              <div style={styles.authorLeft}>
-                <Avatar
-                  ref={authorAvatarRef}
-                  user={safeRequest.author}
-                  size={48}
-                  onClick={() => safeRequest.author?.show_profile && setProfileOpen(true)}
-                  showProfile={safeRequest.author?.show_profile}
-                />
-                <div style={styles.authorInfo}>
-                  <div style={styles.authorNameWrap}>
-                    <span style={styles.authorName}>
-                      {safeRequest.author?.username || safeRequest.author?.name || 'Аноним'}
-                    </span>
-                    {isOwner && <span style={styles.ownerBadge}>ЭТО ВЫ</span>}
-                  </div>
-                  <div style={styles.authorMeta}>
-                    {[
-                      safeRequest.author?.course && `${safeRequest.author.course} курс`,
-                      safeRequest.author?.university,
-                      safeRequest.author?.institute,
-                    ].filter(Boolean).join(' • ')}
-                  </div>
-                </div>
-              </div>
-
-              <OverflowMenuButton
-                ref={menuButtonRef}
-                isOpen={menuOpen}
-                onToggle={() => setMenuOpen((prev) => !prev)}
-                style={{ flexShrink: 0 }}
-              />
-            </div>
-
-            <div style={styles.section}>
-              <h4 style={styles.sectionTitle}>ОПИСАНИЕ</h4>
-              <div style={styles.descriptionWrap}>
-                {descriptionLong && (
-                  <div style={{ ...styles.descriptionTopFade, opacity: descriptionTopFadeVisible ? 1 : 0 }} />
-                )}
-                <div
-                  ref={descriptionRef}
-                  onScroll={updateDescriptionScrollState}
-                  style={{
-                    ...styles.description,
-                    maxHeight: descriptionExpanded ? 220 : 96,
-                    overflowY: descriptionExpanded ? 'auto' : 'hidden',
-                  }}
-                >
-                  {descriptionText}
-                </div>
-                {descriptionLong && (
-                  <div
-                    style={{
-                      ...styles.descriptionBottomFade,
-                      opacity: descriptionBottomFadeVisible ? 1 : 0,
-                    }}
-                  />
-                )}
-              </div>
-              {descriptionLong && !descriptionExpanded && (
-                <button type="button" onClick={() => setDescriptionExpanded(true)} style={styles.expandButton}>
-                  Показать ещё
-                </button>
-              )}
-            </div>
-            {images.length > 0 && (
-              <div style={styles.section}>
-                <h4 style={styles.sectionTitle}>ФОТО ({images.length})</h4>
-                <div style={{ ...styles.imagesGrid, gridTemplateColumns: `repeat(${photoGridColumns}, 1fr)` }}>
-                  {images.map((img, index) => (
-                    <button
-                      key={`${safeRequest.id}-image-${index}`}
-                      type="button"
-                      style={styles.imageButton}
-                      onClick={(e) => handleImageClick(e, index)}
-                    >
-                      <img src={getImageUrl(img)} alt="" style={styles.image} loading="lazy" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {safeRequest.tags && safeRequest.tags.length > 0 && (
-              <div style={styles.tags}>
-                {safeRequest.tags.map((tag, index) => (
-                  <span key={`${tag}-${index}`} className="hashtag-chip" style={styles.tagChip}>
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {datesInfo && (
-              <div style={styles.infoBlock}>
-                <div style={styles.infoRow}>
-                  <Calendar size={16} />
-                  <span>Создано: {datesInfo.created}</span>
-                </div>
-                <div style={styles.infoRow}>
-                  <Clock size={16} />
-                  <span>
-                    Актуально до:{' '}
-                    <span style={{ color: datesInfo.deadlineColor, fontWeight: 700 }}>
-                      {datesInfo.deadline}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {isOwner && responses.length > 0 && (
-              <div style={styles.section}>
-                <h4 style={styles.sectionTitle}>ОТКЛИКИ ({responses.length})</h4>
-                <div style={styles.responsesList}>
-                  {responses.map((response) => (
-                    <div key={response.id} style={styles.responseCard}>
-                      <div style={styles.responseHeader}>
-                        <div style={styles.responseAvatar}>
-                          {response.author?.name?.[0]?.toUpperCase() || 'A'}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={styles.responseName}>{response.author?.name || 'Аноним'}</div>
-                          <div style={styles.responseTime}>{formatRuDateTime(response.created_at)}</div>
-                        </div>
-                      </div>
-                      {response.message && (
-                        <div style={styles.responseMessage}>{response.message}</div>
-                      )}
-                      {response.telegram_contact && (
-                        <button
-                          type="button"
-                          onClick={() => openTelegramChat(response.telegram_contact)}
-                          style={styles.telegramButton}
-                        >
-                          <User size={16} />
-                          Написать в Telegram
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div style={styles.stickyFooter}>
-            {isOwner ? (
-              <button
-                type="button"
-                onClick={handleCloseRequest}
-                style={styles.ownerFooterButton}
-                disabled={safeRequest.status === 'closed'}
-              >
-                {safeRequest.status === 'closed' ? 'Запрос закрыт' : 'Закрыть таску (Решено)'}
-              </button>
-            ) : safeRequest.has_responded ? (
-              <button type="button" style={styles.disabledFooterButton} disabled>
-                Вы уже откликнулись
-              </button>
-            ) : datesInfo?.isExpired || safeRequest.status !== 'active' ? (
-              <button type="button" style={styles.disabledFooterButton} disabled>
-                <Lock size={18} /> Запрос недоступен
-              </button>
+          )}
+          <div style={{ ...styles.chip, color: timeState.color, background: timeState.bg }}>
+            {timeState.burning ? (
+              <span className="burning-dot" />
+            ) : timeState.urgent ? (
+              <Zap size={14} strokeWidth={2.8} />
             ) : (
-              <button
-                type="button"
-                onClick={handleRespond}
-                style={styles.primaryFooterButton}
-                disabled={responding}
-              >
-                <MessageSquare size={20} strokeWidth={2.4} />
-                {responding ? 'Отправка...' : 'Откликнуться'}
-              </button>
+              <Clock size={14} />
             )}
+            {timeState.text}
           </div>
         </div>
-      </div>
+
+        <div style={styles.authorRow}>
+          <div style={styles.authorLeft}>
+            <Avatar
+              ref={authorAvatarRef}
+              user={safeRequest.author}
+              size={48}
+              onClick={() => safeRequest.author?.show_profile && setProfileOpen(true)}
+              showProfile={safeRequest.author?.show_profile}
+            />
+            <div style={styles.authorInfo}>
+              <div style={styles.authorNameWrap}>
+                <span style={styles.authorName}>
+                  {safeRequest.author?.username || safeRequest.author?.name || 'Аноним'}
+                </span>
+                {isOwner && <span style={styles.ownerBadge}>ЭТО ВЫ</span>}
+              </div>
+              <div style={styles.authorMeta}>
+                {[
+                  safeRequest.author?.course && `${safeRequest.author.course} курс`,
+                  safeRequest.author?.university,
+                  safeRequest.author?.institute,
+                ].filter(Boolean).join(' • ')}
+              </div>
+            </div>
+          </div>
+
+          <OverflowMenuButton
+            ref={menuButtonRef}
+            isOpen={menuOpen}
+            onToggle={() => setMenuOpen((prev) => !prev)}
+            style={{ flexShrink: 0 }}
+          />
+        </div>
+
+        <div style={styles.section}>
+          <h4 style={styles.sectionTitle}>ОПИСАНИЕ</h4>
+          <div style={styles.descriptionWrap}>
+            {descriptionLong && (
+              <div style={{ ...styles.descriptionTopFade, opacity: descriptionTopFadeVisible ? 1 : 0 }} />
+            )}
+            <div
+              ref={descriptionRef}
+              onScroll={updateDescriptionScrollState}
+              style={{
+                ...styles.description,
+                maxHeight: descriptionExpanded ? 220 : 96,
+                overflowY: descriptionExpanded ? 'auto' : 'hidden',
+              }}
+            >
+              {descriptionText}
+            </div>
+            {descriptionLong && (
+              <div
+                style={{
+                  ...styles.descriptionBottomFade,
+                  opacity: descriptionBottomFadeVisible ? 1 : 0,
+                }}
+              />
+            )}
+          </div>
+          {descriptionLong && !descriptionExpanded && (
+            <button type="button" onClick={() => setDescriptionExpanded(true)} style={styles.expandButton}>
+              Показать ещё
+            </button>
+          )}
+        </div>
+
+        {images.length > 0 && (
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>ФОТО ({images.length})</h4>
+            <div style={{ ...styles.imagesGrid, gridTemplateColumns: `repeat(${photoGridColumns}, 1fr)` }}>
+              {images.map((img, index) => (
+                <button
+                  key={`${safeRequest.id}-image-${index}`}
+                  type="button"
+                  style={styles.imageButton}
+                  onClick={(e) => handleImageClick(e, index)}
+                >
+                  <img src={getImageUrl(img)} alt="" style={styles.image} loading="lazy" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {safeRequest.tags && safeRequest.tags.length > 0 && (
+          <div style={styles.tags}>
+            {safeRequest.tags.map((tag, index) => (
+              <span key={`${tag}-${index}`} className="hashtag-chip" style={styles.tagChip}>
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {datesInfo && (
+          <div style={styles.infoBlock}>
+            <div style={styles.infoRow}>
+              <Calendar size={16} />
+              <span>Создано: {datesInfo.created}</span>
+            </div>
+            <div style={styles.infoRow}>
+              <Clock size={16} />
+              <span>
+                Актуально до:{' '}
+                <span style={{ color: datesInfo.deadlineColor, fontWeight: 700 }}>
+                  {datesInfo.deadline}
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {isOwner && responses.length > 0 && (
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>ОТКЛИКИ ({responses.length})</h4>
+            <div style={styles.responsesList}>
+              {responses.map((response) => (
+                <div key={response.id} style={styles.responseCard}>
+                  <div style={styles.responseHeader}>
+                    <div style={styles.responseAvatar}>
+                      {response.author?.name?.[0]?.toUpperCase() || 'A'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={styles.responseName}>{response.author?.name || 'Аноним'}</div>
+                      <div style={styles.responseTime}>{formatRuDateTime(response.created_at)}</div>
+                    </div>
+                  </div>
+                  {response.message && (
+                    <div style={styles.responseMessage}>{response.message}</div>
+                  )}
+                  {response.telegram_contact && (
+                    <button
+                      type="button"
+                      onClick={() => openTelegramChat(response.telegram_contact)}
+                      style={styles.telegramButton}
+                    >
+                      <User size={16} />
+                      Написать в Telegram
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </SwipeableModal>
 
       <DropdownMenu
         isOpen={menuOpen}
@@ -723,66 +688,11 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
         sourceType="request"
         sourceId={safeRequest.id}
       />
-    </>,
-    document.body
+    </>
   );
 }
 
 const styles = {
-  overlay: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 9999,
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-end',
-    transition: 'opacity 0.3s ease',
-  },
-  backdrop: {
-    position: 'absolute',
-    inset: 0,
-    zIndex: Z_MODAL_REQUEST_DETAIL,
-    background: 'rgba(0,0,0,0.6)',
-    backdropFilter: 'blur(4px)',
-    WebkitBackdropFilter: 'blur(4px)',
-  },
-  sheet: {
-    position: 'relative',
-    zIndex: Z_MODAL_REQUEST_DETAIL + 1,
-    background: '#1C1C1E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTop: `1px solid ${theme.colors.premium.border}`,
-    maxHeight: '90vh',
-    display: 'flex',
-    flexDirection: 'column',
-    transform: 'translateY(0)',
-    transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
-  },
-  dragWrap: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: 48,
-    width: '100%',
-    padding: '0 16px',
-    flexShrink: 0,
-    touchAction: 'none',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
-    cursor: 'grab',
-  },
-  dragHandle: {
-    width: 64,
-    height: 6,
-    borderRadius: 999,
-    background: 'rgba(255,255,255,0.2)',
-  },
-  scrollArea: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '12px 20px 24px',
-  },
   loading: {
     color: '#888888',
     fontSize: 14,
@@ -881,7 +791,7 @@ const styles = {
     left: 0,
     right: 0,
     height: 24,
-    background: 'linear-gradient(to top, transparent, #1C1C1E)',
+    background: 'linear-gradient(to top, transparent, #151516)',
     pointerEvents: 'none',
     zIndex: 2,
     transition: 'opacity 0.25s ease',
@@ -892,7 +802,7 @@ const styles = {
     right: 0,
     bottom: 0,
     height: 42,
-    background: 'linear-gradient(to bottom, rgba(28,28,30,0), #1C1C1E 70%)',
+    background: 'linear-gradient(to bottom, rgba(21,21,22,0), #151516 70%)',
     pointerEvents: 'none',
     zIndex: 2,
     transition: 'opacity 0.25s ease',
@@ -1009,7 +919,7 @@ const styles = {
     minHeight: 42,
     borderRadius: 10,
     border: 'none',
-    background: '#1C1C1E',
+    background: 'rgba(255,255,255,0.06)',
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: 700,
@@ -1018,12 +928,6 @@ const styles = {
     justifyContent: 'center',
     gap: 8,
     cursor: 'pointer',
-  },
-  stickyFooter: {
-    borderTop: `1px solid ${theme.colors.premium.border}`,
-    background: '#1C1C1E',
-    padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
-    flexShrink: 0,
   },
   primaryFooterButton: {
     width: '100%',
@@ -1068,17 +972,7 @@ const styles = {
   },
 };
 
-const keyframesStyles = `
-  @keyframes requestModalFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  @keyframes requestModalSlideUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
-  }
-
+const cssStyles = `
   @keyframes pulseGlow {
     0% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.8); }
     50% { box-shadow: 0 0 0 10px rgba(255, 69, 58, 0); }

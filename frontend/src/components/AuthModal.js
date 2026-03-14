@@ -1,24 +1,13 @@
 // ===== FILE: frontend/src/components/AuthModal.js =====
 
-import { useRef } from 'react';
 import { Zap, ArrowRight } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
-import { useSwipe } from '../hooks/useSwipe';
 import { Z_AUTH_MODAL } from '../constants/zIndex';
+import SwipeableModal from './shared/SwipeableModal';
 
 function AuthModal() {
   const { showAuthModal, setShowAuthModal, startRegistration } = useStore();
-  const sheetRef = useRef(null);
-
-  const swipeHandlers = useSwipe({
-    elementRef: sheetRef,
-    onSwipeDown: () => handleClose(),
-    isModal: true,
-    threshold: 120,
-  });
-
-  if (!showAuthModal) return null;
 
   const handleRegister = () => {
     hapticFeedback('medium');
@@ -32,20 +21,9 @@ function AuthModal() {
 
   return (
     <>
-      <style>{sheetStyles}</style>
-      <div style={styles.overlay} onClick={handleClose}>
-        <div
-          ref={sheetRef}
-          className="auth-sheet-slide"
-          style={styles.sheet}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Drag handle */}
-          <div style={styles.handleZone} {...swipeHandlers}>
-            <div style={styles.handle} />
-          </div>
-
-          {/* Icon */}
+      <style>{buttonStyles}</style>
+      <SwipeableModal isOpen={showAuthModal} onClose={handleClose} zIndex={Z_AUTH_MODAL}>
+        <div style={styles.content}>
           <div style={styles.iconBox}>
             <Zap size={40} color="#D4FF00" fill="#D4FF00" />
           </div>
@@ -62,59 +40,18 @@ function AuthModal() {
             Пока просто посмотрю
           </button>
         </div>
-      </div>
+      </SwipeableModal>
     </>
   );
 }
 
 const styles = {
-  overlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0,0,0,0.6)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    zIndex: Z_AUTH_MODAL,
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-end',
-    animation: 'authOverlayIn 0.3s ease both',
-  },
-  sheet: {
-    background: '#1C1C1E',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    borderTop: '1px solid rgba(255,255,255,0.08)',
-    padding: '24px 20px',
-    paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+  content: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
-    boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
-    willChange: 'transform',
-    backfaceVisibility: 'hidden',
-    WebkitBackfaceVisibility: 'hidden',
-  },
-  handleZone: {
-    width: '100%',
-    height: 48,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    touchAction: 'none',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
-    cursor: 'grab',
-    flexShrink: 0,
-    marginBottom: 16,
-  },
-  handle: {
-    width: 64,
-    height: 6,
-    borderRadius: 999,
-    background: 'rgba(255,255,255,0.2)',
-    flexShrink: 0,
+    paddingTop: 30,
   },
   iconBox: {
     width: 80,
@@ -170,18 +107,7 @@ const styles = {
   },
 };
 
-const sheetStyles = `
-  @keyframes authOverlayIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes authSheetSlideUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
-  }
-  .auth-sheet-slide {
-    animation: authSheetSlideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
-  }
+const buttonStyles = `
   .auth-spring-btn {
     transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s;
     -webkit-tap-highlight-color: transparent;

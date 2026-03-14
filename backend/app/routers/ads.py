@@ -9,9 +9,10 @@ from datetime import datetime
 from app.database import get_db
 from app.auth_service import require_user
 from app import crud, schemas, models
+from app.config import get_settings
 from app.time_utils import normalize_datetime_payload, to_iso_z
 from app.services.analytics_service import record_server_event
-from app.utils import process_uploaded_files, delete_images
+from app.utils import process_uploaded_files, delete_images, get_image_urls
 
 router = APIRouter(prefix="/ads", tags=["ads"])
 
@@ -261,18 +262,20 @@ async def get_ads_for_feed(
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
+    is_dev = get_settings().app_env.lower() == "dev"
     ads = await crud.get_active_ads_for_user(
         db=db,
         user_university=user.university,
         user_city=None,
         limit=limit,
-        exclude_seen_by_user_id=user.id,
+        exclude_seen_by_user_id=None if is_dev else user.id,
+        include_all_for_dev=is_dev,
     )
 
     result = []
     for ad in ads:
         post = ad.post
-        images_raw = post.images or []
+        images_raw = get_image_urls(post.images) if post and post.images else []
 
         result.append({
             'ad_id': ad.id,
@@ -341,6 +344,28 @@ async def track_click(
     return {"tracked": success}
 
 
+@router.post("/{ad_id}/hide")
+async def hide_ad(
+    ad_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Скрыть рекламное объявление для текущего пользователя."""
+    await crud.hide_ad(db, ad_id, user.id)
+    return {"hidden": True}
+
+
+@router.delete("/{ad_id}/hide")
+async def unhide_ad(
+    ad_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отменить скрытие рекламного объявления."""
+    await crud.unhide_ad(db, ad_id, user.id)
+    return {"hidden": False}
+
+
 # ========================================
 # СТАТИСТИКА
 # ========================================
@@ -383,9 +408,7 @@ async def get_overview_stats(
 
 def _ad_to_response(db_ad: models.AdPost) -> dict:
     post = db_ad.post
-    images_raw = []
-    if post and post.images:
-        images_raw = post.images if isinstance(post.images, list) else []
+    images_raw = get_image_urls(post.images) if post and post.images else []
 
     creator = db_ad.creator
     creator_short = None

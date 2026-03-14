@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { useSwipe } from '../../hooks/useSwipe';
+import { DragHandle } from './SwipeableModal';
 import { updatePost, updateRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
@@ -654,9 +655,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
         <div style={styles.backdrop} onClick={handleClose} />
         <div ref={sheetRef} style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }} onClick={(e) => e.stopPropagation()}>
           {isSubmitting ? <div style={{ ...styles.progress, width: `${uploadProgress}%` }} /> : null}
-          <div style={styles.handleWrap} {...swipeHandlers}>
-            <div style={styles.handle} />
-          </div>
+          <DragHandle handlers={swipeHandlers} gap={6} />
 
           <div className="hide-scroll" style={styles.content}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--create-text-muted)', marginBottom: 10 }}>
@@ -1002,21 +1001,7 @@ const styles = {
     boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
   },
   progress: { position: 'absolute', top: 0, left: 0, height: 3, background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)' },
-  handleWrap: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: 48,
-    width: '100%',
-    padding: '0 16px',
-    borderBottom: '1px solid var(--create-border)',
-    touchAction: 'none',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
-    cursor: 'grab',
-  },
-  handle: { width: 64, height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.2)' },
-  content: { flex: 1, padding: 16, overflowY: 'auto', overflowX: 'hidden', color: '#fff', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' },
+  content: { flex: 1, padding: '0 16px 16px', overflowY: 'auto', overflowX: 'hidden', color: '#fff', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' },
   textarea: {
     width: '100%',
     minHeight: 84,

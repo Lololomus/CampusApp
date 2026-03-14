@@ -22,7 +22,7 @@
  *   {moderationModals}
  */
 
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useStore } from '../../store';
 import {
   moderateDeletePost,
@@ -35,6 +35,7 @@ import {
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from './Toast';
 import ConfirmationDialog from './ConfirmationDialog';
+import SwipeableModal from './SwipeableModal';
 import theme from '../../theme';
 
 // Action types для DropdownMenu (цвета акцентов)
@@ -330,25 +331,6 @@ const deleteStyles = {
 
 /** Шторка бана (bottom-sheet) */
 function BanSheet({ isOpen, form, onChange, onConfirm, onCancel, isProcessing }) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      requestAnimationFrame(() => setIsVisible(true));
-    } else {
-      setIsVisible(false);
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleClose = () => {
-    setIsVisible(false);
-    setTimeout(() => { document.body.style.overflow = ''; onCancel(); }, 250);
-  };
-
   const durations = [
     { value: 1, label: '1 день' },
     { value: 7, label: '7 дней' },
@@ -356,95 +338,84 @@ function BanSheet({ isOpen, form, onChange, onConfirm, onCancel, isProcessing })
     { value: null, label: 'Навсегда' },
   ];
 
+  const footer = (
+    <div style={banStyles.actions}>
+      <button style={banStyles.cancelBtn} onClick={onCancel}>
+        Отмена
+      </button>
+      <button
+        style={{
+          ...banStyles.confirmBtn,
+          opacity: isProcessing || form.reason.trim().length < 3
+            || (!form.ban_posts && !form.ban_comments) ? 0.4 : 1,
+        }}
+        disabled={isProcessing || form.reason.trim().length < 3
+          || (!form.ban_posts && !form.ban_comments)}
+        onClick={onConfirm}
+      >
+        {isProcessing ? 'Применение...' : 'Забанить'}
+      </button>
+    </div>
+  );
+
   return (
-    <>
-      <div
-        style={{ ...banStyles.overlay, opacity: isVisible ? 1 : 0 }}
-        onClick={handleClose}
-      />
-
-      <div style={{
-        ...banStyles.sheet,
-        transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
-      }}>
-        <div style={banStyles.handle} />
-
-        <div style={banStyles.header}>
-          <span style={{ fontSize: 24 }}>🚫</span>
-          <h3 style={banStyles.title}>Теневой бан</h3>
-        </div>
-        <p style={banStyles.desc}>
-          Забаненный пользователь видит свой контент, но другие — нет.
-        </p>
-
-        {/* Scope toggles */}
-        <div style={banStyles.toggleRow}>
-          <ToggleChip
-            label="Посты"
-            active={form.ban_posts}
-            onClick={() => onChange({ ...form, ban_posts: !form.ban_posts })}
-          />
-          <ToggleChip
-            label="Комментарии"
-            active={form.ban_comments}
-            onClick={() => onChange({ ...form, ban_comments: !form.ban_comments })}
-          />
-        </div>
-
-        {/* Duration */}
-        <label style={banStyles.label}>Срок</label>
-        <div style={banStyles.durationRow}>
-          {durations.map((d) => (
-            <button
-              key={String(d.value)}
-              style={{
-                ...banStyles.durationBtn,
-                borderColor: form.duration_days === d.value
-                  ? theme.colors.error : theme.colors.border,
-                background: form.duration_days === d.value
-                  ? `${theme.colors.error}18` : 'transparent',
-                color: form.duration_days === d.value
-                  ? theme.colors.error : theme.colors.textSecondary,
-                fontWeight: form.duration_days === d.value
-                  ? theme.fontWeight.semibold : theme.fontWeight.normal,
-              }}
-              onClick={() => onChange({ ...form, duration_days: d.value })}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Reason */}
-        <label style={banStyles.label}>Причина</label>
-        <textarea
-          style={banStyles.textarea}
-          value={form.reason}
-          onChange={(e) => onChange({ ...form, reason: e.target.value.slice(0, 500) })}
-          placeholder="Причина бана..."
-          rows={2}
-        />
-
-        {/* Actions */}
-        <div style={banStyles.actions}>
-          <button style={banStyles.cancelBtn} onClick={handleClose}>
-            Отмена
-          </button>
-          <button
-            style={{
-              ...banStyles.confirmBtn,
-              opacity: isProcessing || form.reason.trim().length < 3
-                || (!form.ban_posts && !form.ban_comments) ? 0.4 : 1,
-            }}
-            disabled={isProcessing || form.reason.trim().length < 3
-              || (!form.ban_posts && !form.ban_comments)}
-            onClick={onConfirm}
-          >
-            {isProcessing ? 'Применение...' : 'Забанить'}
-          </button>
-        </div>
+    <SwipeableModal isOpen={isOpen} onClose={onCancel} zIndex={5099} footer={footer}>
+      <div style={banStyles.header}>
+        <span style={{ fontSize: 24 }}>🚫</span>
+        <h3 style={banStyles.title}>Теневой бан</h3>
       </div>
-    </>
+      <p style={banStyles.desc}>
+        Забаненный пользователь видит свой контент, но другие — нет.
+      </p>
+
+      {/* Scope toggles */}
+      <div style={banStyles.toggleRow}>
+        <ToggleChip
+          label="Посты"
+          active={form.ban_posts}
+          onClick={() => onChange({ ...form, ban_posts: !form.ban_posts })}
+        />
+        <ToggleChip
+          label="Комментарии"
+          active={form.ban_comments}
+          onClick={() => onChange({ ...form, ban_comments: !form.ban_comments })}
+        />
+      </div>
+
+      {/* Duration */}
+      <label style={banStyles.label}>Срок</label>
+      <div style={banStyles.durationRow}>
+        {durations.map((d) => (
+          <button
+            key={String(d.value)}
+            style={{
+              ...banStyles.durationBtn,
+              borderColor: form.duration_days === d.value
+                ? theme.colors.error : theme.colors.border,
+              background: form.duration_days === d.value
+                ? `${theme.colors.error}18` : 'transparent',
+              color: form.duration_days === d.value
+                ? theme.colors.error : theme.colors.textSecondary,
+              fontWeight: form.duration_days === d.value
+                ? theme.fontWeight.semibold : theme.fontWeight.normal,
+            }}
+            onClick={() => onChange({ ...form, duration_days: d.value })}
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Reason */}
+      <label style={banStyles.label}>Причина</label>
+      <textarea
+        style={banStyles.textarea}
+        value={form.reason}
+        onChange={(e) => onChange({ ...form, reason: e.target.value.slice(0, 500) })}
+        placeholder="Причина бана..."
+        rows={2}
+      />
+    </SwipeableModal>
   );
 }
 
@@ -472,26 +443,6 @@ function ToggleChip({ label, active, onClick }) {
 }
 
 const banStyles = {
-  overlay: {
-    position: 'fixed', inset: 0,
-    background: 'rgba(0, 0, 0, 0.85)',
-    backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-    zIndex: 5099, transition: 'opacity 0.25s ease',
-  },
-  sheet: {
-    position: 'fixed', bottom: 0, left: 0, right: 0,
-    background: theme.colors.bg,
-    borderRadius: `${theme.radius.xl}px ${theme.radius.xl}px 0 0`,
-    padding: `${theme.spacing.md}px ${theme.spacing.xl}px`,
-    paddingBottom: `calc(${theme.spacing.xl}px + env(safe-area-inset-bottom))`,
-    zIndex: 5100, maxHeight: '85vh', overflowY: 'auto',
-    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-    boxShadow: '0 -8px 40px rgba(0, 0, 0, 0.4)',
-  },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    background: theme.colors.border, margin: '0 auto 16px',
-  },
   header: {
     display: 'flex', alignItems: 'center', gap: theme.spacing.md,
     marginBottom: theme.spacing.xs,

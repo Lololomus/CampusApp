@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA - Premium Ad UI</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #000000;
+        --surface: #0A0A0C;
+        --surface-elevated: #161618;
+        --border: rgba(255, 255, 255, 0.08);
+        --text-main: #FFFFFF;
+        --text-muted: #8E8E93;
+        --text-body: #EAEAEA;
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: var(--bg); 
+        color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.96); opacity: 0.8; }
+      
+      .ghost-btn {
+        transition: all 0.2s ease;
+      }
+      .ghost-btn:active {
+        background: rgba(255, 255, 255, 0.1) !important;
+        transform: scale(0.96);
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        MoreVertical, Heart, MessageCircle, Eye, Megaphone, ArrowUpRight 
+      } from 'lucide-react';
+
+      // ==========================================
+      // КОМПОНЕНТ: РЕКЛАМНЫЙ ПОСТ (ФИНАЛ)
+      // ==========================================
+      const AdPostCard = ({ advertiser, text, image, ctaText }) => {
+        return (
+          <div style={{ borderBottom: '1px solid var(--border)', padding: '20px 0 24px', background: 'var(--surface)' }}>
+            
+            {/* 1. ШАПКА: Аватар-рупор, Имя, Бейдж "Реклама" */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', marginBottom: '12px' }}>
+              
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--surface-elevated)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Megaphone size={18} color="#FFFFFF" />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontWeight: 700, fontSize: '16px', color: '#FFF', lineHeight: 1.2 }}>{advertiser}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '2px' }}>Спонсировано</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ 
+                  background: 'rgba(255,255,255,0.05)', 
+                  border: '1px solid rgba(255,255,255,0.1)', 
+                  color: 'rgba(255,255,255,0.6)', 
+                  padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px' 
+                }}>
+                  РЕКЛАМА
+                </span>
+                <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: '4px', margin: '-4px' }}>
+                  <MoreVertical size={20} />
+                </button>
+              </div>
+
+            </div>
+
+            {/* 2. ТЕКСТ */}
+            <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+              <p style={{ margin: 0, fontSize: '15px', color: 'var(--text-body)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                {text}
+              </p>
+            </div>
+
+            {/* 3. ИЗОБРАЖЕНИЕ */}
+            {image && (
+               <div style={{ width: 'calc(100% - 32px)', margin: '0 16px 16px', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                 <img src={image} style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '400px', objectFit: 'cover' }} alt="Ad Banner" />
+               </div>
+            )}
+
+            {/* 4. ИДЕАЛЬНАЯ GHOST КНОПКА (CTA) */}
+            <div style={{ padding: '0 16px' }}>
+              <button 
+                className="ghost-btn"
+                style={{ 
+                  width: '100%', 
+                  padding: '14px', 
+                  borderRadius: '14px', 
+                  border: '1px solid rgba(255, 255, 255, 0.12)', 
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  color: '#FFFFFF',
+                  fontSize: '15px', 
+                  fontWeight: 700, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+              >
+                {ctaText} <ArrowUpRight size={18} strokeWidth={2.5} color="rgba(255,255,255,0.7)" />
+              </button>
+            </div>
+
+          </div>
+        );
+      };
+
+      // ==========================================
+      // ОБЫЧНЫЙ ПОСТ (Для визуального сравнения)
+      // ==========================================
+      const RegularPostCard = () => (
+        <div style={{ borderBottom: '1px solid var(--border)', padding: '20px 0 12px', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #7A5CFF, #4DA6FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 800, color: '#FFF' }}>А</div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 700, fontSize: '16px', color: '#FFF', lineHeight: 1.2 }}>Алексей Иванов</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '2px' }}>ФКН • 3 курс</span>
+              </div>
+            </div>
+            <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: '4px', margin: '-4px' }}>
+              <MoreVertical size={20} />
+            </button>
+          </div>
+          <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+            <p style={{ margin: 0, fontSize: '15px', color: 'var(--text-body)', lineHeight: 1.45 }}>Ребят, кто-нибудь находил черные AirPods в коворкинге на Покровке? Оставил вчера вечером.</p>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', marginTop: '4px' }}>
+             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>2 часа назад</span>
+             <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(255,255,255,0.4)' }}>
+                  <Eye size={16} strokeWidth={2.5}/> <span style={{ fontSize: '13px', fontWeight: 600 }}>1.2k</span>
+                </div>
+                <div className="spring-btn" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '16px', color: 'var(--text-muted)' }}>
+                  <MessageCircle size={16} strokeWidth={2.5}/> <span style={{ fontSize: '13px', fontWeight: 600 }}>42</span>
+                </div>
+                <div className="spring-btn" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '16px', color: 'var(--text-muted)' }}>
+                  <Heart size={16} strokeWidth={2.5}/> <span style={{ fontSize: '13px', fontWeight: 600 }}>128</span>
+                </div>
+             </div>
+          </div>
+        </div>
+      );
+
+      // === ГЛАВНЫЙ АПП ===
+      function App() {
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: '#000', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            <header style={{ paddingTop: '60px', paddingBottom: '16px', paddingLeft: '16px', paddingRight: '16px', borderBottom: `1px solid var(--border)`, background: 'var(--surface)', zIndex: 100 }}>
+              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#FFF' }}>Лента</h1>
+            </header>
+
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', background: '#000' }}>
+              
+              <RegularPostCard />
+
+              {/* Нативная реклама (Outline style) */}
+              <AdPostCard 
+                advertiser="Skillbox Edu"
+                text="Освой профессию UX/UI дизайнера с нуля за 6 месяцев. Создавай интерфейсы, которые влюбляют в себя пользователей, и начни зарабатывать от 100 000 ₽."
+                image="https://images.unsplash.com/photo-1561070791-2526d30994b5?auto=format&fit=crop&q=80&w=600"
+                ctaText="Узнать подробнее"
+              />
+              
+              <RegularPostCard />
+
+            </div>
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

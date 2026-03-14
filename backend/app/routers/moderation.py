@@ -468,6 +468,12 @@ async def create_report(
         if target_user.id == reporter.id:
             raise HTTPException(status_code=400, detail="Нельзя отправить жалобу на самого себя")
         content_university = target_user.university
+    elif data.target_type == 'ad':
+        # target_university может быть None для рекламы с scope='all'
+        ad_obj = await db.get(models.AdPost, data.target_id)
+        if not ad_obj:
+            raise HTTPException(status_code=404, detail="Объявление не найдено")
+        content_university = ad_obj.target_university
     else:
         content_university = await _get_content_university(db, data.target_type, data.target_id)
         if content_university is None:
@@ -531,6 +537,9 @@ async def _get_content_university(db: AsyncSession, target_type: str, target_id:
     elif target_type == 'user':
         obj = await db.get(models.User, target_id)
         return obj.university if obj else None
+    elif target_type == 'ad':
+        obj = await db.get(models.AdPost, target_id)
+        return obj.target_university if obj else None
     return None
 
 

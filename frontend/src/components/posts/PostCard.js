@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, ChevronLeft, ChevronRight, Calendar, ExternalLink, Megaphone, Link, Edit2, Trash2, Flag } from 'lucide-react';
+import { Heart, MessageCircle, Eye, MapPin, ChevronLeft, ChevronRight, Calendar, ArrowUpRight, Megaphone, Link, Edit2, Trash2, Flag, EyeOff } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
-import { likePost, deletePost, trackAdImpression, trackAdClick } from '../../api';
+import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd } from '../../api';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
@@ -20,7 +20,7 @@ import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 
-function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
+function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const { likedPosts, setPostLiked, user, setEditingContent } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -33,6 +33,9 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const avatarRef = useRef(null);
+  const cardRef = useRef(null);
+  const impressionTracked = useRef(false);
+  const [adHidden, setAdHidden] = useState(false);
 
   // ✅ Local state для likes_count
   const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
@@ -212,18 +215,46 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
   });
 
   // ===== AD TRACKING =====
+  // Трекаем просмотр только когда реклама реально появляется на экране (≥50% видимости)
   useEffect(() => {
-    if (isAd && post.ad_id) trackAdImpression(post.ad_id);
+    if (!isAd || !post.ad_id || !cardRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !impressionTracked.current) {
+          impressionTracked.current = true;
+          trackAdImpression(post.ad_id);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.5 }
+    );
+
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
   }, [isAd, post.ad_id]);
 
   const handleCtaClick = (e) => {
     e.stopPropagation();
     if (isAd && post.cta_url) {
       hapticFeedback('light');
-      // Если это "настоящая" реклама с ID, трекаем клик
       if (post.ad_id) trackAdClick(post.ad_id);
       window.open(post.cta_url, '_blank');
     }
+  };
+
+  const handleHideAd = async () => {
+    setMenuOpen(false);
+    hapticFeedback('light');
+    setAdHidden(true);
+    if (post.ad_id) await hideAd(post.ad_id);
+    if (onAdHidden) onAdHidden(post.ad_id);
+  };
+
+  const handleUnhideAd = async (e) => {
+    e.stopPropagation();
+    setAdHidden(false);
+    if (post.ad_id) await unhideAd(post.ad_id);
   };
 
   const handleCardClick = () => {
@@ -330,7 +361,26 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     });
   };
 
-  const menuItems = [
+  const menuItems = isAd ? [
+    {
+      label: 'Скопировать ссылку',
+      icon: <Link size={18} />,
+      onClick: handleCopyLink,
+      actionType: MENU_ACTIONS.COPY,
+    },
+    {
+      label: 'Скрыть это объявление',
+      icon: <EyeOff size={18} />,
+      onClick: handleHideAd,
+      actionType: MENU_ACTIONS.HIDE,
+    },
+    {
+      label: 'Пожаловаться на рекламу',
+      icon: <Flag size={18} />,
+      onClick: () => { setMenuOpen(false); setShowReportModal(true); },
+      actionType: MENU_ACTIONS.REPORT,
+    },
+  ] : [
     ...(actionSet.canCopyLink ? [{
       label: 'Скопировать ссылку',
       icon: <Link size={18} />,
@@ -358,6 +408,21 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
     ...moderationMenuItems,
   ];
 
+  // Скрытый баннер для рекламы
+  if (adHidden) {
+    return (
+      <div style={styles.hiddenAdBanner}>
+        <span style={{ fontSize: 14, color: theme.colors.textMuted }}>Объявление скрыто</span>
+        <button
+          onClick={handleUnhideAd}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: theme.colors.premium.primary, fontWeight: 600, padding: '4px 0' }}
+        >
+          Отменить
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       <style>{`
@@ -368,14 +433,14 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
         }
       `}</style>
 
-      <div style={styles.card} onClick={handleCardClick}>
+      <div ref={cardRef} style={styles.card} onClick={handleCardClick}>
 
         {/* === HEADER: аватар + имя + меню (одна строка) === */}
         <div style={styles.header}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             {/* Аватар */}
             {isAd ? (
-              <div style={{ ...styles.avatar, background: '#EEF2FF' }}>
+              <div style={{ ...styles.avatar, background: theme.colors.surfaceElevated, border: '1px solid rgba(255,255,255,0.05)' }}>
                 {headerInfo.avatarUrl ? (
                   <img
                     src={headerInfo.avatarUrl}
@@ -385,7 +450,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
                     decoding="async"
                   />
                 ) : (
-                  <Megaphone size={18} color={theme.colors.primary} />
+                  <Megaphone size={18} color="#FFFFFF" />
                 )}
               </div>
             ) : (
@@ -413,8 +478,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           <div style={styles.headerRight}>
             {isAd && (
               <span style={{
-                fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-                color: '#888', background: '#F0F0F0', padding: '3px 6px', borderRadius: 4,
+                fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px',
+                color: 'rgba(255,255,255,0.6)',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                padding: '4px 8px', borderRadius: 6,
               }}>
                 Реклама
               </span>
@@ -481,39 +549,52 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
           </div>
         )}
         {images.length > 0 && (
-          <div style={{...styles.imageContainer, aspectRatio: `${safeRatio}`}} onClick={handleImageClick}>
-            <img
-              src={getImageUrl(images[currentImageIndex])}
-              alt=""
-              style={styles.image}
-              loading="lazy"
-              decoding="async"
-            />
+          isAd ? (
+            // Для рекламы: простая картинка с отступами и скруглением по моку
+            <div style={{ width: 'calc(100% - 32px)', margin: '0 16px 16px', borderRadius: 16, overflow: 'hidden', border: `1px solid ${theme.colors.border}` }}>
+              <img
+                src={getImageUrl(images[0])}
+                alt=""
+                style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'cover' }}
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          ) : (
+            <div style={{...styles.imageContainer, aspectRatio: `${safeRatio}`}} onClick={handleImageClick}>
+              <img
+                src={getImageUrl(images[currentImageIndex])}
+                alt=""
+                style={styles.image}
+                loading="lazy"
+                decoding="async"
+              />
 
-            {images.length > 1 && (
-              <>
-                <div style={styles.imageCounter}>{currentImageIndex + 1}/{images.length}</div>
-                <button onClick={(e) => { handlePrevImage(e); }} style={{...styles.navBtn, left: 10}}>
-                  <ChevronLeft size={20}/>
-                </button>
-                <button onClick={(e) => { handleNextImage(e); }} style={{...styles.navBtn, right: 10}}>
-                  <ChevronRight size={20}/>
-                </button>
-                <div style={styles.dots}>
-                  {images.map((_, i) => (
-                    <div key={i} style={{...styles.dot, opacity: i === currentImageIndex ? 1 : 0.4}} />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+              {images.length > 1 && (
+                <>
+                  <div style={styles.imageCounter}>{currentImageIndex + 1}/{images.length}</div>
+                  <button onClick={(e) => { handlePrevImage(e); }} style={{...styles.navBtn, left: 10}}>
+                    <ChevronLeft size={20}/>
+                  </button>
+                  <button onClick={(e) => { handleNextImage(e); }} style={{...styles.navBtn, right: 10}}>
+                    <ChevronRight size={20}/>
+                  </button>
+                  <div style={styles.dots}>
+                    {images.map((_, i) => (
+                      <div key={i} style={{...styles.dot, opacity: i === currentImageIndex ? 1 : 0.4}} />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )
         )}
 
         {/* === CTA BUTTON (AD ONLY) === */}
         {isAd && post.cta_text && (
           <div style={{ padding: '4px 16px 14px' }}>
             <button onClick={handleCtaClick} style={styles.ctaButton}>
-              {post.cta_text} <ExternalLink size={16} />
+              {post.cta_text} <ArrowUpRight size={18} strokeWidth={2.5} color="rgba(255,255,255,0.7)" />
             </button>
           </div>
         )}
@@ -586,8 +667,8 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted }) {
       <ReportModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
-        targetType="post"
-        targetId={post.id}
+        targetType={isAd ? 'ad' : 'post'}
+        targetId={isAd ? post.ad_id : post.id}
       />
       <ReportModal
         isOpen={showUserReportModal}
@@ -834,21 +915,27 @@ const styles = {
   },
   ctaButton: {
     width: '100%',
-    padding: '12px 16px',
-    borderRadius: 12,
-    background: `linear-gradient(135deg, ${theme.colors.primary}, ${theme.colors.primaryHover})`,
-    color: '#fff',
+    padding: '14px',
+    borderRadius: 14,
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: 700,
-    border: 'none',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    boxShadow: '0 4px 12px rgba(135, 116, 225, 0.25)',
-    transition: 'transform 0.1s, box-shadow 0.1s',
-  }
+    gap: 6,
+    transition: 'background 0.2s ease, transform 0.15s cubic-bezier(0.32, 0.72, 0, 1)',
+  },
+  hiddenAdBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
+  },
 };
 
 export default PostCard;

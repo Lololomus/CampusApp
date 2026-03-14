@@ -182,11 +182,11 @@ const AppHeader = ({
       backgroundColor: transparent 
         ? 'rgba(26, 26, 26, 0.8)' 
         : theme.colors.bgSecondary,
-      backdropFilter: transparent ? 'blur(20px)' : 'none',
-      WebkitBackdropFilter: transparent ? 'blur(20px)' : 'none',
+      backdropFilter: transparent ? 'blur(20px)' : 'blur(0px)',
+      WebkitBackdropFilter: transparent ? 'blur(20px)' : 'blur(0px)',
       borderBottom: `1px solid ${theme.colors.border}`,
       paddingTop: 'var(--screen-top-offset)',
-      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+      transition: 'background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), backdrop-filter 0.3s cubic-bezier(0.4, 0, 0.2, 1), -webkit-backdrop-filter 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     },
     
     titleRow: {

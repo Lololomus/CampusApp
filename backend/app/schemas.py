@@ -615,11 +615,12 @@ REPORT_REASONS_BY_TARGET = {
     'market_item': ['spam', 'scam', 'inappropriate', 'fake', 'other'],
     'dating_profile': ['spam', 'inappropriate', 'fake', 'harassment', 'other'],
     'user': ['spam', 'abuse', 'inappropriate', 'scam', 'nsfw', 'harassment', 'misinformation', 'other'],
+    'ad': ['misleading', 'inappropriate', 'spam', 'scam', 'other'],
 }
 
 class ReportCreate(BaseModel):
     """Создание жалобы"""
-    target_type: str = Field(..., pattern="^(post|comment|request|market_item|dating_profile|user)$")
+    target_type: str = Field(..., pattern="^(post|comment|request|market_item|dating_profile|user|ad)$")
     target_id: int
     reason: str
     description: Optional[str] = Field(None, max_length=1000)

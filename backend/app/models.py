@@ -797,16 +797,31 @@ class AdImpression(Base):
 class AdClick(Base):
     """Клик по CTA рекламного поста"""
     __tablename__ = 'ad_clicks'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     ad_post_id = Column(Integer, ForeignKey('ad_posts.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     clicked_at = Column(DateTime, default=lambda: datetime.utcnow())
-    
+
     ad_post = relationship('AdPost', back_populates='clicks')
-    
+
     __table_args__ = (
         Index('ix_ad_click_ad_user', 'ad_post_id', 'user_id'),
+    )
+
+
+class AdHidden(Base):
+    """Скрытые пользователем рекламные объявления"""
+    __tablename__ = 'ad_hidden'
+
+    id = Column(Integer, primary_key=True, index=True)
+    ad_post_id = Column(Integer, ForeignKey('ad_posts.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    hidden_at = Column(DateTime, default=lambda: datetime.utcnow())
+
+    __table_args__ = (
+        UniqueConstraint('ad_post_id', 'user_id', name='unique_ad_hidden'),
+        Index('ix_ad_hidden_user', 'user_id'),
     )
 
 

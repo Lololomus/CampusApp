@@ -165,4 +165,5 @@ export const MENU_ACTIONS = {
   COPY: 'copy',
   REPORT: 'report',
   SHARE: 'share',
+  HIDE: 'hide',
 };

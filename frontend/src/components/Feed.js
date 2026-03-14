@@ -14,6 +14,8 @@ import { buildFeedSections } from '../utils/feedDateSections';
 import { hapticFeedback } from '../utils/telegram';
 import EdgeBlur from './shared/EdgeBlur';
 
+const IS_DEV = import.meta.env.DEV;
+
 function Feed() {
   const POSTS_PAGE_SIZE = 20;
   const [posts, setPosts] = useState([]);
@@ -489,6 +491,14 @@ function Feed() {
                     onClick={row.item._isAd ? undefined : handlePostClick}
                     onLikeUpdate={row.item._isAd ? undefined : handleLikeUpdate}
                     onPostDeleted={row.item._isAd ? undefined : handlePostDeleted}
+                    onAdHidden={
+                      row.item._isAd
+                        ? (adId) => {
+                            if (IS_DEV) return;
+                            setFeedAds(prev => prev.filter(a => a.id !== adId && a.ad_id !== adId));
+                          }
+                        : undefined
+                    }
                   />
                 </div>
               )

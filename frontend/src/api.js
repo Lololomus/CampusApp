@@ -1420,6 +1420,24 @@ export async function getAdOverviewStats() {
   return response.data;
 }
 
+/** Скрыть рекламное объявление */
+export async function hideAd(adId) {
+  try {
+    await api.post(`/ads/${adId}/hide`);
+  } catch (error) {
+    console.warn('Ad hide failed:', error);
+  }
+}
+
+/** Отменить скрытие рекламного объявления */
+export async function unhideAd(adId) {
+  try {
+    await api.delete(`/ads/${adId}/hide`);
+  } catch (error) {
+    console.warn('Ad unhide failed:', error);
+  }
+}
+
 
 // ========================================
 // УВЕДОМЛЕНИЯ (NOTIFICATIONS)

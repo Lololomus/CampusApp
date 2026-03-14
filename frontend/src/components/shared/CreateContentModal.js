@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { useSwipe } from '../../hooks/useSwipe';
+import { DragHandle } from './SwipeableModal';
 import { useStore } from '../../store';
 import { createPost, createRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
@@ -690,9 +691,7 @@ function CreateContentModal({ onClose }) {
             </div>
           )}
 
-          <div style={styles.sheetHeader} {...swipeHandlers}>
-            <div style={styles.dragHandle} />
-          </div>
+          <DragHandle handlers={swipeHandlers} gap={0} />
 
           <div style={styles.switcherWrap}>
             <div style={styles.switcherInner}>
@@ -1220,22 +1219,7 @@ const styles = {
   },
   topProgressBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.08)', zIndex: 2 },
   topProgressFill: { height: '100%', background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.3s ease' },
-  sheetHeader: {
-    position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 48,
-    width: '100%',
-    padding: '0 16px',
-    flexShrink: 0,
-    touchAction: 'none',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
-    cursor: 'grab',
-  },
-  dragHandle: { width: 64, height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.2)' },
-  switcherWrap: { padding: '0 16px 12px', borderBottom: '1px solid var(--create-border)', flexShrink: 0 },
+  switcherWrap: { padding: '12px 16px 10px', borderBottom: '1px solid var(--create-border)', flexShrink: 0 },
   switcherInner: { display: 'flex', background: 'var(--create-surface-elevated)', borderRadius: 12, padding: 4 },
   switchBtn: {
     flex: 1, border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--create-text-muted)',

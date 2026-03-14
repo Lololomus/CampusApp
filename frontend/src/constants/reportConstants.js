@@ -18,6 +18,14 @@ export const USER_REPORT_REASONS = [
   { value: 'other', label: 'Другое', icon: '📝' },
 ];
 
+export const AD_REPORT_REASONS = [
+  { value: 'misleading', label: 'Вводит в заблуждение', icon: '🤥' },
+  { value: 'inappropriate', label: 'Неприемл. контент', icon: '⚠️' },
+  { value: 'spam', label: 'Спам', icon: '📨' },
+  { value: 'scam', label: 'Мошенничество', icon: '🎣' },
+  { value: 'other', label: 'Другое', icon: '📝' },
+];
+
 export const REPORT_REASONS_BY_TARGET = {
   post: CONTENT_REPORT_REASONS,
   comment: CONTENT_REPORT_REASONS,
@@ -25,6 +33,7 @@ export const REPORT_REASONS_BY_TARGET = {
   market_item: CONTENT_REPORT_REASONS,
   dating_profile: CONTENT_REPORT_REASONS,
   user: USER_REPORT_REASONS,
+  ad: AD_REPORT_REASONS,
 };
 
 export const REPORT_TARGET_LABELS = {
@@ -34,6 +43,7 @@ export const REPORT_TARGET_LABELS = {
   market_item: 'товар',
   dating_profile: 'профиль',
   user: 'пользователя',
+  ad: 'рекламу',
 };
 
 export function getReportReasons(targetType) {

@@ -1,5 +1,5 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/shared/SwipeableModal.js =====
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSwipe } from '../../hooks/useSwipe';
 import theme from '../../theme';
@@ -19,7 +19,37 @@ if (import.meta.hot) {
   });
 }
 
-const SwipeableModal = ({ isOpen, onClose, children, title, footer }) => {
+// Единая ручка свайпа — iOS/Telegram стиль. Переиспользуется во всех bottom-sheet модалках.
+// gap — отступ от ручки до первого элемента контента (единственное место управления отступом сверху).
+export const DragHandle = ({ handlers = {}, gap = 12 }) => (
+  <div
+    {...handlers}
+    style={{
+      width: '100%',
+      display: 'flex',
+      justifyContent: 'center',
+      paddingTop: 8,
+      paddingBottom: gap,
+      touchAction: 'none',
+      userSelect: 'none',
+      WebkitUserSelect: 'none',
+      cursor: 'grab',
+      flexShrink: 0,
+    }}
+  >
+    <div
+      style={{
+        width: 36,
+        height: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        borderRadius: 999,
+        flexShrink: 0,
+      }}
+    />
+  </div>
+);
+
+const SwipeableModal = ({ isOpen, onClose, children, title, footer, zIndex = 9999 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const contentRef = useRef(null);
@@ -83,7 +113,7 @@ const SwipeableModal = ({ isOpen, onClose, children, title, footer }) => {
         justifyContent: 'center',
         opacity: isOpen ? 1 : 0,
         transition: 'opacity 0.3s ease',
-        zIndex: 9999,
+        zIndex,
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -112,33 +142,8 @@ const SwipeableModal = ({ isOpen, onClose, children, title, footer }) => {
           perspective: 1000,
         }}
       >
-        {/* Drag Handle */}
-        <div
-          {...swipeHandlers}
-          style={{
-            height: 48,
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            touchAction: 'none',
-            userSelect: 'none',
-            WebkitUserSelect: 'none',
-            cursor: 'grab',
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              width: 64,
-              height: 6,
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              borderRadius: 999,
-              flexShrink: 0,
-            }}
-          />
-        </div>
-        
+        <DragHandle handlers={swipeHandlers} gap={title ? 0 : 12} />
+
         {/* Header */}
         {title && (
           <div style={{
@@ -165,8 +170,8 @@ const SwipeableModal = ({ isOpen, onClose, children, title, footer }) => {
             overflowY: 'auto',
             overflowX: 'hidden',
             padding: footer
-              ? `${theme.spacing.md}px ${theme.spacing.xl}px ${theme.spacing.xl}px`
-              : `${theme.spacing.md}px ${theme.spacing.xl}px calc(${theme.spacing.xl}px + var(--screen-bottom-offset))`,
+              ? `0 ${theme.spacing.xl}px ${theme.spacing.xl}px`
+              : `0 ${theme.spacing.xl}px calc(${theme.spacing.xl}px + var(--screen-bottom-offset))`,
           }}
           onTouchStart={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}

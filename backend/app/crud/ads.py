@@ -255,16 +255,21 @@ async def get_active_ads_for_user(
     user_city: Optional[str] = None,
     limit: int = 3,
     exclude_seen_by_user_id: Optional[int] = None,
+    include_all_for_dev: bool = False,
 ) -> List[models.AdPost]:
     """Выбрать активные рекламные посты для подмешивания в ленту."""
     now = datetime.utcnow()
 
     query = (
         select(models.AdPost)
+        .join(models.Post, models.AdPost.post_id == models.Post.id)
         .options(
             selectinload(models.AdPost.post).selectinload(models.Post.author),
         )
-        .where(
+    )
+
+    if not include_all_for_dev:
+        query = query.where(
             models.AdPost.status == 'active',
             models.AdPost.starts_at <= now,
             or_(models.AdPost.ends_at == None, models.AdPost.ends_at > now),
@@ -273,34 +278,44 @@ async def get_active_ads_for_user(
                 models.AdPost.impressions_count < models.AdPost.impression_limit,
             ),
         )
-    )
-
-    # Фильтр по scope
-    scope_filter = [models.AdPost.scope == 'all']
-    scope_filter.append(
-        (models.AdPost.scope == 'university') & (models.AdPost.target_university == user_university)
-    )
-    if user_city:
+        # Фильтр по scope
+        scope_filter = [models.AdPost.scope == 'all']
         scope_filter.append(
-            (models.AdPost.scope == 'city') & (models.AdPost.target_city == user_city)
+            (models.AdPost.scope == 'university') & (models.AdPost.target_university == user_university)
         )
-    query = query.where(or_(*scope_filter))
-
-    # Дедупликация: не показывать уже виденные сегодня
-    if exclude_seen_by_user_id:
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        seen_today = (
-            select(models.AdImpression.ad_post_id)
-            .where(
-                models.AdImpression.user_id == exclude_seen_by_user_id,
-                models.AdImpression.viewed_at >= today_start,
+        if user_city:
+            scope_filter.append(
+                (models.AdPost.scope == 'city') & (models.AdPost.target_city == user_city)
             )
-            .scalar_subquery()
-        )
-        query = query.where(~models.AdPost.id.in_(seen_today))
+        query = query.where(or_(*scope_filter))
 
+        # Дедупликация: не показывать уже виденные сегодня
+        if exclude_seen_by_user_id:
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            seen_today = (
+                select(models.AdImpression.ad_post_id)
+                .where(
+                    models.AdImpression.user_id == exclude_seen_by_user_id,
+                    models.AdImpression.viewed_at >= today_start,
+                )
+                .scalar_subquery()
+            )
+            query = query.where(~models.AdPost.id.in_(seen_today))
+
+            # Исключить скрытые пользователем объявления
+            hidden_sq = (
+                select(models.AdHidden.ad_post_id)
+                .where(models.AdHidden.user_id == exclude_seen_by_user_id)
+                .scalar_subquery()
+            )
+            query = query.where(~models.AdPost.id.in_(hidden_sq))
+
+    query = query.where(models.Post.is_deleted.is_(False))
     result = await db.execute(
-        query.order_by(models.AdPost.priority.desc(), func.random()).limit(limit)
+        query.order_by(
+            models.AdPost.created_at.desc() if include_all_for_dev else models.AdPost.priority.desc(),
+            func.random(),
+        ).limit(limit)
     )
     return result.scalars().all()
 
@@ -382,6 +397,36 @@ async def track_ad_click(db: AsyncSession, ad_post_id: int, user_id: int) -> boo
         .values(clicks_count=models.AdPost.clicks_count + 1)
     )
 
+    await db.commit()
+    return True
+
+
+# ===== СКРЫТИЕ РЕКЛАМЫ =====
+
+async def hide_ad(db: AsyncSession, ad_post_id: int, user_id: int) -> bool:
+    """Скрыть рекламное объявление для пользователя."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    stmt = (
+        pg_insert(models.AdHidden)
+        .values(ad_post_id=ad_post_id, user_id=user_id)
+        .on_conflict_do_nothing(constraint='unique_ad_hidden')
+    )
+    await db.execute(stmt)
+    await db.commit()
+    return True
+
+
+async def unhide_ad(db: AsyncSession, ad_post_id: int, user_id: int) -> bool:
+    """Отменить скрытие рекламного объявления."""
+    from sqlalchemy import delete
+
+    await db.execute(
+        delete(models.AdHidden).where(
+            models.AdHidden.ad_post_id == ad_post_id,
+            models.AdHidden.user_id == user_id,
+        )
+    )
     await db.commit()
     return True
 
