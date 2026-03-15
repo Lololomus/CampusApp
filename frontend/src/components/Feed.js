@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import PostCard from './posts/PostCard';
 import RequestsFeed from './requests/RequestsFeed';
 import FiltersModal from './shared/FiltersModal';
-import { getPosts, getAdsForFeed } from '../api';
+import { getPosts, getAdsForFeed, triggerRegistrationPrompt } from '../api';
 import { useStore } from '../store';
 import PostCardSkeleton from './posts/PostCardSkeleton';
 import theme from '../theme';
@@ -38,6 +38,7 @@ function Feed() {
     feedSubTab, 
     setFeedSubTab,
     setViewPostId, 
+    isRegistered,
     viewPostId, 
     updatedPostId, 
     getUpdatedPost, 
@@ -282,7 +283,13 @@ function Feed() {
     };
   }, [loading, handleRefresh]);
 
-  const handlePostClick = (postId) => setViewPostId(postId);
+  const handlePostClick = (postId) => {
+    if (!isRegistered) {
+      triggerRegistrationPrompt('open_post');
+      return;
+    }
+    setViewPostId(postId);
+  };
 
   const handleCategoryChange = (category) => {
     if (feedSubTab === 'posts') setActiveCategory(category);

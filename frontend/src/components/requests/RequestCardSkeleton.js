@@ -1,5 +1,6 @@
 import React from 'react';
 import theme from '../../theme';
+import { AVATAR_BORDER_RADIUS } from '../shared/Avatar';
 
 function RequestCardSkeleton() {
   return (
@@ -50,7 +51,7 @@ const styles = {
   avatar: {
     width: 44,
     height: 44,
-    borderRadius: '50%',
+    borderRadius: AVATAR_BORDER_RADIUS,
     flexShrink: 0,
   },
   mainContent: {

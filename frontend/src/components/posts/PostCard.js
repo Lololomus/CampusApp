@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Heart, MessageCircle, Eye, MapPin, ChevronLeft, ChevronRight, Calendar, ArrowUpRight, Megaphone, Link, Edit2, Trash2, Flag, EyeOff } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
-import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd } from '../../api';
+import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd, triggerRegistrationPrompt } from '../../api';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
@@ -10,7 +10,7 @@ import OverflowMenuButton from '../shared/OverflowMenuButton';
 import PollWidget from './PollWidget';
 import PhotoViewer from '../shared/PhotoViewer';
 import ReportModal from '../shared/ReportModal';
-import Avatar from '../shared/Avatar';
+import Avatar, { AVATAR_BORDER_RADIUS } from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useModerationActions } from '../shared/ModerationMenu';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
@@ -21,7 +21,7 @@ import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
-  const { likedPosts, setPostLiked, user, setEditingContent } = useStore();
+  const { likedPosts, setPostLiked, user, setEditingContent, isRegistered } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
@@ -39,6 +39,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
 
   // ✅ Local state для likes_count
   const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
+
+  // Синхронизируем локальный счетчик, когда пост обновился извне (например, лайк в PostDetail).
+  useEffect(() => {
+    setLocalLikesCount(post.likes_count || 0);
+  }, [post.id, post.likes_count]);
 
   // Определяем, является ли пост рекламой
   const isAd = post.category === 'ad' || post._isAd;
@@ -102,7 +107,9 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
 
   const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
 
-  const isLiked = likedPosts[post.id] ?? post.is_liked ?? false;
+  const isLiked = isRegistered
+    ? (likedPosts[post.id] ?? post.is_liked ?? false)
+    : Boolean(post.is_liked);
 
   const isOwner = useMemo(() => {
     if (isAd) return false; // Реклама не "своя" в контексте редактирования
@@ -299,6 +306,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
 
   const handleLike = async (e) => {
     e.stopPropagation();
+    if (!isRegistered) {
+      hapticFeedback('light');
+      triggerRegistrationPrompt('feed_like');
+      return;
+    }
     hapticFeedback('medium');
 
     setIsLikeAnimating(true);
@@ -484,7 +496,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
                   <img
                     src={headerInfo.avatarUrl}
                     alt=""
-                    style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                    style={{ width: '100%', height: '100%', borderRadius: AVATAR_BORDER_RADIUS, objectFit: 'cover' }}
                     loading="lazy"
                     decoding="async"
                   />

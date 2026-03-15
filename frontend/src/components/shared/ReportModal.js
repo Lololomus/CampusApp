@@ -1,14 +1,16 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/shared/ReportModal.js =====
 import React, { useState, useEffect } from 'react';
 import { Send, Check } from 'lucide-react';
-import { createReport } from '../../api';
+import { createReport, triggerRegistrationPrompt } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from './Toast';
 import theme from '../../theme';
 import SwipeableModal from './SwipeableModal';
 import { getReportReasons, REPORT_TARGET_LABELS } from '../../constants/reportConstants';
+import { useStore } from '../../store';
 
 function ReportModal({ isOpen, onClose, targetType, targetId, sourceType = null, sourceId = null }) {
+  const isRegistered = useStore((state) => Boolean(state.isRegistered));
   const [selectedReason, setSelectedReason] = useState(null);
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -22,6 +24,12 @@ function ReportModal({ isOpen, onClose, targetType, targetId, sourceType = null,
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || isRegistered) return;
+    triggerRegistrationPrompt('report');
+    onClose();
+  }, [isOpen, isRegistered, onClose]);
+
   const handleClose = () => {
     hapticFeedback('light');
     onClose(); // Анимацию закрытия теперь делает SwipeableModal
@@ -29,6 +37,12 @@ function ReportModal({ isOpen, onClose, targetType, targetId, sourceType = null,
 
   const handleSubmit = async () => {
     if (!selectedReason || isSubmitting || !targetType || !targetId) return;
+    if (!isRegistered) {
+      hapticFeedback('light');
+      triggerRegistrationPrompt('report');
+      onClose();
+      return;
+    }
     setIsSubmitting(true);
     hapticFeedback('medium');
 

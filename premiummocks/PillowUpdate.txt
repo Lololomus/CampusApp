@@ -1,0 +1,143 @@
+import urllib.request
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
+
+def get_font(url, size):
+    """Загрузка шрифта по ссылке (чтобы не устанавливать локально)"""
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        response = urllib.request.urlopen(req)
+        return ImageFont.truetype(BytesIO(response.read()), size=size)
+    except Exception as e:
+        print(f"Ошибка загрузки шрифта: {e}")
+        return ImageFont.load_default()
+
+def create_brutal_patchnote(version, date_str, features, fixes, output_filename="brutal_update.png"):
+    # Цвета (из нашего мокапа)
+    BG_COLOR = "#0A0A0A"
+    LIME_COLOR = "#CCFF00"
+    PINK_COLOR = "#FF3366"
+    WHITE = "#FFFFFF"
+    TEXT_MUTED = "#A0A0A0"
+    FOOTER_MUTED = "#666666"
+    
+    # Создаем изображение в RGBA (чтобы прозрачная сетка работала корректно)
+    width, height = 1080, 1080
+    img = Image.new('RGBA', (width, height), color=BG_COLOR)
+    draw = ImageDraw.Draw(img)
+
+    # 1. Отрисовка фоновой сетки (3% opacity)
+    grid_color = (255, 255, 255, 8) # ~3% белого
+    step = int(width * 0.04) # Шаг сетки (4cqw ~ 43px)
+    for i in range(0, width, step):
+        draw.line([(i, 0), (i, height)], fill=grid_color, width=1)
+        draw.line([(0, i), (width, i)], fill=grid_color, width=1)
+
+    # Ссылки на шрифты Montserrat
+    font_black_url = "https://github.com/googlefonts/montserrat/raw/main/fonts/ttf/Montserrat-Black.ttf"
+    font_bold_url = "https://github.com/googlefonts/montserrat/raw/main/fonts/ttf/Montserrat-Bold.ttf"
+    font_medium_url = "https://github.com/googlefonts/montserrat/raw/main/fonts/ttf/Montserrat-Medium.ttf"
+
+    # Загрузка шрифтов разных размеров
+    f_title = get_font(font_black_url, 95)     # Главный заголовок
+    f_badge = get_font(font_bold_url, 32)      # Версия
+    f_date = get_font(font_bold_url, 24)       # Дата
+    f_col_title = get_font(font_bold_url, 36)  # Заголовки колонок
+    f_list_head = get_font(font_bold_url, 30)  # Названия фич
+    f_list_text = get_font(font_medium_url, 30)# Описание фич
+    f_footer = get_font(font_bold_url, 26)     # Футер
+
+    # Базовые отступы
+    pad_x = 86
+    pad_y = 86
+    col_width = 420
+
+    # --- ШАПКА ---
+    # Текст АПДЕЙТ КАМПУСА
+    draw.text((pad_x, pad_y - 15), "АПДЕЙТ", font=f_title, fill=WHITE)
+    draw.text((pad_x, pad_y + 75), "КАМПУСА", font=f_title, fill=LIME_COLOR)
+
+    # Плашка с версией (v 2.4)
+    v_text = f"v {version}"
+    v_bbox = draw.textbbox((0, 0), v_text, font=f_badge)
+    v_w = v_bbox[2] - v_bbox[0]
+    v_h = v_bbox[3] - v_bbox[1]
+    
+    badge_x = width - pad_x - v_w - 40
+    badge_y = pad_y + 10
+    draw.rounded_rectangle([badge_x, badge_y, badge_x + v_w + 40, badge_y + v_h + 20], radius=20, fill=LIME_COLOR)
+    draw.text((badge_x + 20, badge_y + 7), v_text, font=f_badge, fill=BG_COLOR)
+
+    # Дата
+    d_bbox = draw.textbbox((0, 0), date_str, font=f_date)
+    draw.text((width - pad_x - (d_bbox[2]-d_bbox[0]), badge_y + v_h + 35), date_str, font=f_date, fill="#888888")
+
+    # Линия-разделитель (Лаймовая)
+    line_y = pad_y + 210
+    draw.line([(pad_x, line_y), (width - pad_x, line_y)], fill=LIME_COLOR, width=3)
+
+    # --- КОЛОНКИ С КОНТЕНТОМ ---
+    col1_x = pad_x
+    col2_x = pad_x + col_width + 50
+    start_y = line_y + 50
+
+    # Левая колонка (Что добавили)
+    draw.rectangle([col1_x, start_y + 8, col1_x + 22, start_y + 30], fill=LIME_COLOR) # Квадратик
+    draw.text((col1_x + 35, start_y), "ЧТО ДОБАВИЛИ", font=f_col_title, fill=WHITE)
+    
+    curr_y = start_y + 80
+    for item in features:
+        title, text = item.split("::") # Ожидаем формат "Заголовок::описание"
+        draw.text((col1_x, curr_y), title, font=f_list_head, fill=WHITE)
+        draw.text((col1_x, curr_y + 35), text, font=f_list_text, fill=TEXT_MUTED)
+        curr_y += 100
+
+    # Правая колонка (Что починили)
+    draw.rectangle([col2_x, start_y + 8, col2_x + 22, start_y + 30], fill=PINK_COLOR) # Квадратик
+    draw.text((col2_x + 35, start_y), "ЧТО ПОЧИНИЛИ", font=f_col_title, fill=WHITE)
+    
+    curr_y = start_y + 80
+    for item in fixes:
+        title, text = item.split("::")
+        draw.text((col2_x, curr_y), title, font=f_list_head, fill=WHITE)
+        draw.text((col2_x, curr_y + 35), text, font=f_list_text, fill=TEXT_MUTED)
+        curr_y += 100
+
+    # --- ФУТЕР ---
+    footer_y = height - pad_y - 40
+    # Полупрозрачная линия над футером
+    draw.line([(pad_x, footer_y - 30), (width - pad_x, footer_y - 30)], fill=(255, 255, 255, 25), width=1)
+    
+    draw.text((pad_x, footer_y), "// CAMPUS LIFE", font=f_footer, fill=FOOTER_MUTED)
+    
+    # Текст "СПАСИБО ЗА ФИДБЭК" прижат вправо
+    thx_text = "СПАСИБО ЗА ФИДБЭК"
+    t_bbox = draw.textbbox((0, 0), thx_text, font=f_footer)
+    draw.text((width - pad_x - (t_bbox[2]-t_bbox[0]), footer_y), thx_text, font=f_footer, fill=WHITE)
+
+    # Сохраняем конвертируя в RGB (убираем альфа-канал для JPEG/PNG)
+    final_img = img.convert("RGB")
+    final_img.save(output_filename)
+    return output_filename
+
+# ==========================================
+# ТЕСТОВЫЙ ЗАПУСК
+# ==========================================
+if __name__ == "__main__":
+    version = "2.4"
+    date_str = "15.03.2026"
+    
+    # Используем разделитель "::" чтобы отделить жирный заголовок от серого текста
+    features_list = [
+        "Темная тема::в апке: ваши глаза скажут спасибо",
+        "Бронь в 2 клика::переговорки без экселек и очередей",
+        "Умные пуши::напоминаем про пары и сырники"
+    ]
+    fixes_list = [
+        "Расписание летает::грузится быстрее, чем ты идешь на пару",
+        "Фикс авторизации::больше не выкидывает из аккаунта",
+        "Минус спам::убрали дублирующиеся уведомления"
+    ]
+
+    create_brutal_patchnote(version, date_str, features_list, fixes_list)
+    print("Картинка сгенерирована!")

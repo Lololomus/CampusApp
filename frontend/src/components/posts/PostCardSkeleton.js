@@ -1,4 +1,5 @@
 import React from 'react';
+import { AVATAR_BORDER_RADIUS } from '../shared/Avatar';
 
 function PostCardSkeleton() {
   return (
@@ -47,7 +48,7 @@ const styles = {
   avatarSkeleton: {
     width: '40px',
     height: '40px',
-    borderRadius: '50%',
+    borderRadius: AVATAR_BORDER_RADIUS,
     background: 'linear-gradient(90deg, #2a2a2a 0%, #3a3a3a 50%, #2a2a2a 100%)',
     backgroundSize: '200% 100%',
     animation: 'shimmer 1.5s infinite',

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../../store';
-import { getMarketItems } from '../../api';
+import { getMarketItems, triggerRegistrationPrompt } from '../../api';
 import AppHeader from '../shared/AppHeader';
 import MarketCard from './MarketCard';
 import MarketDetail from './MarketDetail';
@@ -19,6 +19,7 @@ const Market = () => {
     marketItems, 
     setMarketItems, 
     marketFilters, 
+    isRegistered,
     user,
     editingMarketItem,
     setEditingMarketItem,
@@ -227,8 +228,12 @@ const Market = () => {
 
   const handleCardClick = useCallback((item) => { 
     haptic('medium'); 
+    if (!isRegistered) {
+      triggerRegistrationPrompt('open_market_item');
+      return;
+    }
     setShowDetail(item); 
-  }, []); // ✅ useCallback
+  }, [isRegistered]); // ✅ useCallback
 
   const handleTabSwitch = useCallback((tab) => {
     if (activeTab !== tab) {

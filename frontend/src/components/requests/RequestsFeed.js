@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../../store';
-import { getRequestsFeed, deleteRequest, getRequestById } from '../../api';
+import { getRequestsFeed, deleteRequest, getRequestById, triggerRegistrationPrompt } from '../../api';
 import RequestCard from './RequestCard';
 import RequestCardSkeleton from './RequestCardSkeleton';
 import { hapticFeedback } from '../../utils/telegram';
@@ -17,6 +17,7 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
     requests, 
     setRequests, 
     setCurrentRequest,
+    isRegistered,
     user,
     deleteRequest: deleteStoreRequest,
     setEditingContent,
@@ -209,6 +210,10 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
 
   // ===== КЛИК НА КАРТОЧКУ =====
   const handleCardClick = (request) => {
+    if (!isRegistered) {
+      triggerRegistrationPrompt('open_request');
+      return;
+    }
     setCurrentRequest(request);
     setShowDetailModal(true);
   };

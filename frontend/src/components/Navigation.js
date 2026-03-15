@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Home, ShoppingBag, Plus, User, Heart } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback } from '../utils/telegram';
+import { triggerRegistrationPrompt } from '../api';
 import theme from '../theme';
 import { Z_NAVIGATION } from '../constants/zIndex';
 
@@ -73,7 +74,13 @@ function Navigation() {
     hapticFeedback('light');
 
     if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people')) {
-      setShowAuthModal(true);
+      if (tabId === 'people') {
+        triggerRegistrationPrompt('open_dating_tab');
+      } else if (tabId === 'profile') {
+        triggerRegistrationPrompt('open_profile_tab');
+      } else {
+        setShowAuthModal(true);
+      }
       return;
     }
 

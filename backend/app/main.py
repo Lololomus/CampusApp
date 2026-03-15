@@ -170,6 +170,8 @@ public_prefixes = [
     "/auth/logout",
     "/notifications/queue",
     "/notifications/followups",
+    "/posts/feed",
+    "/api/requests/feed",
 ]
 if settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
     public_prefixes.append("/dev/auth")
@@ -191,21 +193,24 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path
-    if path in PUBLIC_PATHS or any(path == prefix or path.startswith(prefix + "/") for prefix in PUBLIC_PREFIXES):
-        return await call_next(request)
+    is_public_path = path in PUBLIC_PATHS or any(
+        path == prefix or path.startswith(prefix + "/") for prefix in PUBLIC_PREFIXES
+    )
 
     auth_header = request.headers.get("authorization")
-    try:
-        payload = decode_authorization_header(auth_header)
-    except HTTPException as exc:
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-    if payload is None:
-        return JSONResponse(status_code=401, content={"detail": "Missing bearer token"})
-
-    request.state.auth_payload = payload
+    payload = None
+    if auth_header:
+        try:
+            payload = decode_authorization_header(auth_header)
+        except HTTPException as exc:
+            if not is_public_path:
+                return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            payload = None
+    if payload is not None:
+        request.state.auth_payload = payload
 
     query_telegram_id = request.query_params.get("telegram_id")
-    if query_telegram_id is not None:
+    if query_telegram_id is not None and payload is not None:
         try:
             token_tgid = int(payload.get("tgid"))
             query_tgid = int(query_telegram_id)
@@ -213,6 +218,12 @@ async def auth_middleware(request: Request, call_next):
             return JSONResponse(status_code=401, content={"detail": "Invalid telegram_id"})
         if token_tgid != query_tgid:
             return JSONResponse(status_code=403, content={"detail": "telegram_id mismatch"})
+
+    if is_public_path:
+        return await call_next(request)
+
+    if payload is None:
+        return JSONResponse(status_code=401, content={"detail": "Missing bearer token"})
 
     return await call_next(request)
 
@@ -403,11 +414,11 @@ async def get_user_stats(user_id: int, db: AsyncSession = Depends(get_db)):
 # ===== POST ENDPOINTS + POLLS =====
 @app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
 async def get_posts_feed(
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     category: Optional[str] = Query(None),
-    telegram_id: int = Query(...),
-    
+
     # FILTER PARAMS
     university: Optional[str] = Query(None),      # Filter by university
     institute: Optional[str] = Query(None),       # Filter by institute
@@ -420,7 +431,15 @@ async def get_posts_feed(
     db: AsyncSession = Depends(get_db)
 ):
     """Posts feed with filtering."""
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    auth_payload = getattr(request.state, "auth_payload", None)
+    telegram_id = None
+    if auth_payload:
+        try:
+            telegram_id = int(auth_payload.get("tgid"))
+        except (TypeError, ValueError):
+            telegram_id = None
+
+    user = await crud.get_user_by_telegram_id(db, telegram_id) if telegram_id else None
     current_user_id = user.id if user else None
     if user:
         await analytics_service.record_server_event(
@@ -1231,11 +1250,11 @@ async def create_request_endpoint(
 
 @app.get("/api/requests/feed", response_model=schemas.RequestsFeedResponse)
 async def get_requests_feed_endpoint(
+    request: Request,
     category: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
-    telegram_id: Optional[int] = Query(None),
-    
+
     # FILTER PARAMS
     university: Optional[str] = Query(None),      # Filter by university
     institute: Optional[str] = Query(None),       # Filter by institute
@@ -1250,6 +1269,14 @@ async def get_requests_feed_endpoint(
 ):
     """Requests feed with filtering."""
     current_user_id = None
+    auth_payload = getattr(request.state, "auth_payload", None)
+    telegram_id = None
+    if auth_payload:
+        try:
+            telegram_id = int(auth_payload.get("tgid"))
+        except (TypeError, ValueError):
+            telegram_id = None
+
     if telegram_id:
         user = await crud.get_user_by_telegram_id(db, telegram_id)
         if user:

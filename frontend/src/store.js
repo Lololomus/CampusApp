@@ -28,6 +28,7 @@ export const useStore = create(
             datingProfile: null,
             currentProfile: null,
             profilesQueue: [],
+            likedPosts: {},
             isRegistered: false,
             moderationRole: null,
             authStatus: 'ready',
@@ -77,6 +78,7 @@ export const useStore = create(
           datingProfile: null,
           currentProfile: null,
           profilesQueue: [],
+          likedPosts: {},
           isRegistered: false,
           moderationRole: null,
           authStatus: 'ready',
@@ -569,6 +571,7 @@ export const useStore = create(
         const setUnregisteredState = () => {
           set({
             user: {},
+            likedPosts: {},
             isRegistered: false,
             authStatus: 'ready',
             showAuthModal: false,
@@ -623,6 +626,7 @@ export const useStore = create(
             setAccessToken(null);
             set({
               user: {},
+              likedPosts: {},
               isRegistered: false,
               authStatus: 'error',
               showAuthModal: false,

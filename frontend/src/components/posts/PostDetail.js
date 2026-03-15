@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Heart, MessageCircle, Eye, MapPin, Calendar,
   ChevronLeft, ChevronRight,
   Gift, Phone, Link2, Pencil, Trash2, Flag
 } from 'lucide-react';
-import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost } from '../../api';
+import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost, triggerRegistrationPrompt } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import BottomActionBar from '../BottomActionBar';
@@ -61,13 +61,26 @@ const formatPostDateForDetail = (value, nowValue = new Date()) => {
   return date.toLocaleDateString('ru-RU');
 };
 
+const alignPostWithLocalLikeState = (postData, localLikeValue, isRegistered) => {
+  if (!postData || !isRegistered) return postData;
+  if (typeof localLikeValue !== 'boolean') return postData;
+  if (typeof postData.is_liked !== 'boolean') return postData;
+  if (localLikeValue === postData.is_liked) return postData;
+
+  const baseLikes = Number(postData.likes_count || 0);
+  const adjustedLikes = Math.max(0, baseLikes + (localLikeValue ? 1 : -1));
+  return { ...postData, is_liked: localLikeValue, likes_count: adjustedLikes };
+};
+
 function PostDetail() {
-  const { viewPostId, setViewPostId, user, setUpdatedPost, likedPosts, setPostLiked, setEditingContent } = useStore();
+  const { viewPostId, setViewPostId, user, isRegistered, setUpdatedPost, likedPosts, setPostLiked, setEditingContent } = useStore();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [commentLikes, setCommentLikes] = useState({});
-  const isLiked = likedPosts[viewPostId] ?? post?.is_liked ?? false;
+  const isLiked = isRegistered
+    ? (likedPosts[viewPostId] ?? post?.is_liked ?? false)
+    : Boolean(post?.is_liked);
 
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
@@ -90,15 +103,22 @@ function PostDetail() {
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
   const lastScrollTopRef = useRef(0);
+  const [isExiting, setIsExiting] = useState(false);
+  const closeTimeoutRef = useRef(null);
 
-  const closeDetail = () => {
-    setViewPostId(null);
-  };
+  const closeDetail = useCallback(() => {
+    if (isExiting) return;
+    setIsExiting(true);
+    closeTimeoutRef.current = setTimeout(() => {
+      setViewPostId(null);
+    }, 340);
+  }, [isExiting, setViewPostId]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
+    if (isExiting) return;
     hapticFeedback('light');
     closeDetail();
-  };
+  }, [closeDetail, isExiting]);
 
   useTelegramScreen({
     id: 'post-detail-screen',
@@ -116,11 +136,22 @@ function PostDetail() {
     }
   }, [viewPostId]);
 
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    };
+  }, []);
+
   const loadPost = async () => {
     if (!post) setLoading(true);
 
     try {
-      const data = await getPost(viewPostId);
+      const dataRaw = await getPost(viewPostId);
+      const data = alignPostWithLocalLikeState(
+        dataRaw,
+        likedPosts[viewPostId],
+        isRegistered
+      );
 
       const imagesData = parseImages(data.images);
       setPost({ ...data, images: imagesData });
@@ -150,7 +181,12 @@ function PostDetail() {
 
   const refreshPost = async () => {
     try {
-      const fresh = await getPost(viewPostId);
+      const freshRaw = await getPost(viewPostId);
+      const fresh = alignPostWithLocalLikeState(
+        freshRaw,
+        likedPosts[viewPostId],
+        isRegistered
+      );
       const imagesData = parseImages(fresh.images);
 
       setPost({ ...fresh, images: imagesData });
@@ -224,6 +260,11 @@ function PostDetail() {
   );
 
   const handleLike = async () => {
+    if (!isRegistered) {
+      hapticFeedback('light');
+      triggerRegistrationPrompt('feed_like');
+      return;
+    }
     hapticFeedback('medium');
     setIsLikeAnimating(true);
     setTimeout(() => setIsLikeAnimating(false), 300);
@@ -430,13 +471,24 @@ function PostDetail() {
   ];
 
   if (!viewPostId) return null;
+  const containerStyle = {
+    ...styles.container,
+    animation: isExiting
+      ? 'pdSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards'
+      : 'pdSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards',
+    pointerEvents: isExiting ? 'none' : 'auto',
+  };
 
   return (
     <>
       <style>{`
-        @keyframes slideInRight {
+        @keyframes pdSlideIn {
           from { transform: translate3d(100%, 0, 0); }
           to { transform: translate3d(0, 0, 0); }
+        }
+        @keyframes pdSlideOut {
+          from { transform: translate3d(0, 0, 0); }
+          to { transform: translate3d(100%, 0, 0); }
         }
         @keyframes shimmer {
           0% { background-position: -200% 0; }
@@ -449,14 +501,14 @@ function PostDetail() {
         }
       `}</style>
 
-      <div style={styles.container}>
+      <div style={containerStyle}>
         {/* Верхний блюр — всегда, независимо от скролла */}
         <EdgeBlur position="top" height={76} zIndex={105} />
         {/* Нижний блюр — поверх поля комментария */}
         <EdgeBlur position="bottom" height={90} zIndex={105} />
 
         <div style={{ ...styles.headerWrap, transform: isHeaderHidden ? 'translateY(-100%)' : 'translateY(0)' }}>
-          <DrilldownHeader title="Пост" onBack={closeDetail} transparent />
+          <DrilldownHeader title="Пост" onBack={handleBack} transparent />
         </div>
 
         <div style={styles.scrollContent} onScroll={handleDetailScroll}>
@@ -988,7 +1040,6 @@ const styles = {
     backgroundColor: theme.colors.premium.bg,
     display: 'flex',
     flexDirection: 'column',
-    animation: 'slideInRight 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
     willChange: 'transform',
     transform: 'translate3d(0,0,0)',
     WebkitOverflowScrolling: 'touch',
@@ -1297,4 +1348,3 @@ const styles = {
 };
 
 export default PostDetail;
-

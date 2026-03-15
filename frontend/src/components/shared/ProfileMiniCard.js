@@ -9,6 +9,7 @@ import { useStore } from '../../store';
 import { getAvatarColor } from '../../utils/avatarColors';
 
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import { AVATAR_BORDER_RADIUS } from './Avatar';
 
 function ProfileMiniCard({ 
   isOpen, 
@@ -157,7 +158,7 @@ const styles = {
   headerAvatarImage: {
     width: 32,
     height: 32,
-    borderRadius: '50%',
+    borderRadius: AVATAR_BORDER_RADIUS,
     objectFit: 'cover',
     flexShrink: 0,
     border: `1px solid ${theme.colors.border}`,
@@ -165,7 +166,7 @@ const styles = {
   headerAvatarFallback: {
     width: 32,
     height: 32,
-    borderRadius: '50%',
+    borderRadius: AVATAR_BORDER_RADIUS,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

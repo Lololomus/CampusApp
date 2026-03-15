@@ -32,3 +32,6 @@ backend/uploads/
 # Analytics reports
 reports/
 backend/reports/
+
+# Desktop generated updates
+updates/

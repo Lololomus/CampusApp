@@ -5,6 +5,7 @@ import { Search, Filter, X, SlidersHorizontal } from 'lucide-react';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 import { useStore } from '../../store';
+import { triggerRegistrationPrompt } from '../../api';
 
 const AppHeader = ({
   title = '',
@@ -49,6 +50,7 @@ const AppHeader = ({
     state.showLikesModal ||
     state.showMatchModal
   ));
+  const isRegistered = useStore((state) => Boolean(state.isRegistered));
 
   // #New Premium: drawer виден если не скроллили ИЛИ если юзер нажал лупу
   const showDrawer = !isScrolled || isManualExpanded;
@@ -154,7 +156,14 @@ const AppHeader = ({
   }, [searchValue]);
 
   // ===== HANDLERS =====
-  const handleSearchInputChange = (e) => setLocalSearchValue(e.target.value);
+  const handleSearchInputChange = (e) => {
+    const nextValue = e.target.value;
+    if (!isRegistered && nextValue.trim().length > 0) {
+      triggerRegistrationPrompt('search');
+      return;
+    }
+    setLocalSearchValue(nextValue);
+  };
   const handleClearSearch = () => {
     hapticFeedback('light');
     setLocalSearchValue('');
@@ -166,6 +175,10 @@ const AppHeader = ({
   };
   const handleFiltersClick = () => {
     hapticFeedback('medium');
+    if (!isRegistered) {
+      triggerRegistrationPrompt('open_filters');
+      return;
+    }
     if (onFiltersClick) onFiltersClick();
   };
 

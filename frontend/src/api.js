@@ -17,6 +17,7 @@ const api = axios.create({
 let accessToken = null;
 let refreshPromise = null;
 let registrationPromptTs = 0;
+const registrationPromptByReason = new Map();
 const IS_DEV = import.meta.env.DEV;
 let notificationsMockModulePromise = null;
 
@@ -96,20 +97,46 @@ function isRegistrationRequiredError(error) {
   return false;
 }
 
-async function openRegistrationPrompt() {
+const REG_PROMPT_COOLDOWNS = {
+  default: 1800,
+  feed_like: 1500,
+  open_post: 1500,
+  open_request: 1500,
+  open_market_item: 1500,
+  open_dating_tab: 900,
+  open_profile_tab: 900,
+  open_filters: 1200,
+  vote_poll: 1200,
+  search: 2000,
+  report: 1500,
+};
+
+function getPromptCooldown(reason) {
+  return REG_PROMPT_COOLDOWNS[reason] || REG_PROMPT_COOLDOWNS.default;
+}
+
+export async function triggerRegistrationPrompt(reason = 'default') {
   const now = Date.now();
-  if (now - registrationPromptTs < 1200) return;
+  const reasonCooldown = getPromptCooldown(reason);
+  const lastForReason = registrationPromptByReason.get(reason) || 0;
+  if (now - registrationPromptTs < 700) return false;
+  if (now - lastForReason < reasonCooldown) return false;
+
   registrationPromptTs = now;
+  registrationPromptByReason.set(reason, now);
 
   try {
     const { useStore } = await import('./store');
     const state = useStore.getState();
     if (!state.isRegistered && typeof state.setShowAuthModal === 'function') {
       state.setShowAuthModal(true);
+      return true;
     }
   } catch (e) {
     // no-op: fallback only
   }
+
+  return false;
 }
 
 api.interceptors.request.use((config) => {
@@ -129,7 +156,7 @@ api.interceptors.response.use(
     const isAuthEndpoint = originalRequest?.url?.startsWith('/auth/');
 
     if (isRegistrationRequiredError(error) && isActionRequest) {
-      await openRegistrationPrompt();
+      await triggerRegistrationPrompt('default');
       throw error;
     }
 
@@ -151,7 +178,7 @@ api.interceptors.response.use(
     } catch (refreshError) {
       setAccessToken(null);
       if (isActionRequest) {
-        await openRegistrationPrompt();
+        await triggerRegistrationPrompt('default');
       }
       throw refreshError;
     }
@@ -270,12 +297,12 @@ export async function getUserStats(userId) {
 
 export async function getPosts(filters = {}) {
   try {
-    const telegram_id = getTelegramId();
+    const telegram_id = getTelegramId(true);
     const params = {
-      telegram_id,
       skip: Number.isFinite(filters.skip) ? filters.skip : 0,
       limit: Number.isFinite(filters.limit) ? filters.limit : 20,
     };
+    if (telegram_id) params.telegram_id = telegram_id;
     
     if (filters.category && filters.category !== 'all') {
       params.category = filters.category;
@@ -562,7 +589,7 @@ export async function createRequest(requestData, onProgress = null) {
 
 export async function getRequestsFeed(filters = {}) {
   try {
-    const telegram_id = getTelegramId();
+    const telegram_id = getTelegramId(true);
     const params = { 
       limit: filters.limit || 20, 
       offset: filters.offset || 0 

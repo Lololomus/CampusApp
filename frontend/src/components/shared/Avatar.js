@@ -5,6 +5,9 @@ import theme from '../../theme';
 import { getAvatarColor } from '../../utils/avatarColors';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 
+// Hero-формат: меняй здесь — обновится везде
+export const AVATAR_BORDER_RADIUS = theme.radius.md; // 12px
+
 const Avatar = forwardRef(({ 
   user, 
   size = 40, 
@@ -96,7 +99,7 @@ Avatar.displayName = 'Avatar';
 
 const styles = {
   avatar: {
-    borderRadius: theme.radius.full,
+    borderRadius: AVATAR_BORDER_RADIUS,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

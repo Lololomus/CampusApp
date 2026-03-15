@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Check } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { votePoll } from '../../api';
+import { votePoll, triggerRegistrationPrompt } from '../../api';
+import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 
 const EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
@@ -12,6 +13,7 @@ const ERROR = '#FF453A';
 const INFO = '#0A84FF';
 
 const PollWidget = ({ poll, showQuestion = true }) => {
+  const isRegistered = useStore((state) => Boolean(state.isRegistered));
   const [selectedOptions, setSelectedOptions] = useState([]);
   const [hasVoted, setHasVoted] = useState(false);
   const [localPoll, setLocalPoll] = useState(poll);
@@ -41,6 +43,10 @@ const PollWidget = ({ poll, showQuestion = true }) => {
 
   const submitVote = async (indices) => {
     if (isVoting) return;
+    if (!isRegistered) {
+      triggerRegistrationPrompt('vote_poll');
+      return;
+    }
     setIsVoting(true);
     hapticFeedback('medium');
     try {
