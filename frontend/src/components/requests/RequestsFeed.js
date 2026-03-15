@@ -83,11 +83,7 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
         apiFilters.sort = requestsFilters.sort;
       }
 
-      console.log('📡 Загрузка запросов с фильтрами:', apiFilters);
-
       const response = await getRequestsFeed(apiFilters);
-
-      console.log('✅ Загружено запросов:', response.items?.length || 0);
 
       const newRequests = response.items || [];
 
@@ -127,7 +123,6 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && !isLoadingRef.current && hasMore) {
-          console.log('📦 Загружаем еще запросы...');
           loadRequests(false);
         }
       },
@@ -150,22 +145,17 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
 
   // ===== РЕДАКТИРОВАТЬ ЗАПРОС =====
   const handleEdit = async (request) => {
-    console.log('✏️ Редактирование запроса:', request.id);
-    
     // Загружаем ПОЛНЫЕ данные с сервера
     try {
       hapticFeedback('light');
-      
+
       // Закрываем модалки
       setShowDetailModal(false);
       setCurrentRequest(null);
-      
+
       // Загружаем полные данные запроса
-      console.log('📡 Загружаем полные данные запроса...');
       const fullRequest = await getRequestById(request.id);
-      
-      console.log('✅ Полные данные получены:', fullRequest);
-      
+
       // Открываем EditContentModal с ПОЛНЫМИ данными
       setEditingContent(fullRequest, 'request');
       
@@ -179,8 +169,6 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
 
   // ===== УДАЛИТЬ ЗАПРОС =====
   const handleDelete = async (request) => {
-    console.log('🗑️ Удаление запроса:', request.id);
-    
     if (!window.confirm(`Удалить запрос "${request.title}"? Это действие нельзя отменить.`)) {
       return;
     }
@@ -198,9 +186,7 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
       setCurrentRequest(null);
       
       hapticFeedback('success');
-      
-      console.log('✅ Запрос удалён:', request.id);
-      
+
     } catch (error) {
       console.error('❌ Ошибка удаления:', error);
       hapticFeedback('error');

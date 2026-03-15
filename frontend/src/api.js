@@ -354,11 +354,6 @@ export async function createPost(postData, onProgress = null) {
   try {
     const telegram_id = getTelegramId();
     
-    console.log('📤 FormData contents:');
-    for (let [key, value] of postData.entries()) {
-      console.log(`  ${key}:`, value);
-    }
-    
     const config = {
       params: { telegram_id },
       headers: {
@@ -1001,14 +996,9 @@ export async function getWhoLikedMe(limit = 20, offset = 0) {
 export async function getMyMatches() {
   try {
     const telegram_id = getTelegramId();
-    console.log('🔍 getMyMatches вызван, telegram_id:', telegram_id);
-    
     const response = await api.get('/dating/matches-active', {
       params: { telegram_id }
     });
-    
-    console.log('✅ Matches получены:', response.data);
-    console.log('📊 Количество матчей:', response.data?.length);
     
     return response.data;
   } catch (error) {
@@ -1422,7 +1412,7 @@ export async function trackAdImpression(adId) {
     await api.post(`/ads/${adId}/impression`);
   } catch (error) {
     // Тихо проглатываем — трекинг не должен ломать UX
-    console.warn('Ad impression tracking failed:', error);
+    if (import.meta.env.DEV) console.warn('Ad impression tracking failed:', error);
   }
 }
 
@@ -1431,7 +1421,7 @@ export async function trackAdClick(adId) {
   try {
     await api.post(`/ads/${adId}/click`);
   } catch (error) {
-    console.warn('Ad click tracking failed:', error);
+    if (import.meta.env.DEV) console.warn('Ad click tracking failed:', error);
   }
 }
 
@@ -1452,7 +1442,7 @@ export async function hideAd(adId) {
   try {
     await api.post(`/ads/${adId}/hide`);
   } catch (error) {
-    console.warn('Ad hide failed:', error);
+    if (import.meta.env.DEV) console.warn('Ad hide failed:', error);
   }
 }
 
@@ -1461,7 +1451,7 @@ export async function unhideAd(adId) {
   try {
     await api.delete(`/ads/${adId}/hide`);
   } catch (error) {
-    console.warn('Ad unhide failed:', error);
+    if (import.meta.env.DEV) console.warn('Ad unhide failed:', error);
   }
 }
 

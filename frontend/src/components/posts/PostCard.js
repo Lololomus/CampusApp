@@ -19,6 +19,7 @@ import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
+import { IMAGE_ASPECT_RATIO_MIN, IMAGE_ASPECT_RATIO_MAX } from '../../constants/layoutConstants';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const { likedPosts, setPostLiked, user, setEditingContent, isRegistered } = useStore();
@@ -58,7 +59,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const firstImage = images.length > 0 ? images[0] : null;
   const meta = (typeof firstImage === 'object' && firstImage !== null) ? firstImage : null;
   const rawRatio = (meta?.w && meta?.h) ? meta.w / meta.h : 1;
-  const safeRatio = Math.max(0.75, Math.min(rawRatio, 1.77));
+  const safeRatio = Math.max(IMAGE_ASPECT_RATIO_MIN, Math.min(rawRatio, IMAGE_ASPECT_RATIO_MAX));
 
   const [currentImageIndex, setCurrentImageIndex] = useState(() => {
     const saved = sessionStorage.getItem(`post-${post.id}-imageIndex`);

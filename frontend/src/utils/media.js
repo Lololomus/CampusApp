@@ -93,7 +93,6 @@ export const compressImage = async (file) => {
     // 3. Дополнительная очистка EXIF через Canvas (paranoid mode)
     const cleaned = await stripExifData(compressed);
     
-    console.log(`📸 Сжато: ${(file.size / 1024).toFixed(0)}KB → ${(cleaned.size / 1024).toFixed(0)}KB`);
     return cleaned;
     
   } catch (error) {
@@ -129,7 +128,7 @@ export const processImageFiles = async (files) => {
         height: dimensions.height,
       });
     } catch (err) {
-      console.warn('⚠️ Пропускаем файл:', file.name, err.message);
+      if (import.meta.env.DEV) console.warn('Пропускаем файл:', file.name, err.message);
       // Можно добавить alert для пользователя
       alert(`Не удалось обработать ${file.name}: ${err.message}`);
     }

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict, Tuple
 from app import models, schemas, crud
@@ -273,7 +274,7 @@ async def upload_avatar(
         user.avatar = avatar_url
         await db.commit()
         await db.refresh(user)
-    except Exception:
+    except SQLAlchemyError:
         await db.rollback()
         delete_images([avatars_meta[0]], default_kind="avatars")
         raise HTTPException(status_code=500, detail="Failed to save avatar")
@@ -596,22 +597,22 @@ async def create_post_endpoint(
         body = (body or "").strip()
 
     # DETAILED DEBUG LOGGING
-    print(f"\n{'='*60}")
-    print("POST CREATE REQUEST")
-    print(f"{'='*60}")
-    print(f"category: {category!r}")
-    print(f"title(raw): {raw_title!r}")
-    print(f"body(raw): {raw_body!r}")
-    print(f"title(parsed): {title!r}")
-    print(f"body(parsed): {body!r}")
-    print(f"is_anonymous: {is_anonymous}")
-    print(f"images raw list length: {len(images)}")
-    
+    logger.debug(f"\n{'='*60}")
+    logger.debug("POST CREATE REQUEST")
+    logger.debug(f"{'='*60}")
+    logger.debug(f"category: {category!r}")
+    logger.debug(f"title(raw): {raw_title!r}")
+    logger.debug(f"body(raw): {raw_body!r}")
+    logger.debug(f"title(parsed): {title!r}")
+    logger.debug(f"body(parsed): {body!r}")
+    logger.debug(f"is_anonymous: {is_anonymous}")
+    logger.debug(f"images raw list length: {len(images)}")
+
     # LOG EACH UPLOADED FILE
     for idx, img in enumerate(images):
-        print(f"  Image [{idx}]: filename={img.filename!r}, content_type={img.content_type}")
-    
-    print(f"{'='*60}\n")
+        logger.debug(f"  Image [{idx}]: filename={img.filename!r}, content_type={img.content_type}")
+
+    logger.debug(f"{'='*60}\n")
     
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
@@ -625,7 +626,7 @@ async def create_post_endpoint(
         if img.filename and len(img.filename) > 0
     ]
     
-    print(f"Valid images after filter: {len(valid_images)}")
+    logger.debug(f"Valid images after filter: {len(valid_images)}")
     
     # CONFESSIONS VALIDATION (fixed: moved inside IF block)
     if category == "confessions":
@@ -679,8 +680,8 @@ async def create_post_endpoint(
                 poll_dict = json.loads(poll_data)
                 poll_schema = schemas.PollCreate(**poll_dict)
                 await crud.create_poll(db, post.id, poll_schema)
-            except Exception as e:
-                print(f"   : {e}")
+            except (json.JSONDecodeError, ValueError, KeyError, ValidationError) as e:
+                logger.debug(f"Ошибка создания опроса: {e}")
     
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

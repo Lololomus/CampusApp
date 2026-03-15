@@ -1,6 +1,7 @@
 # ===== FILE: backend/app/crud/comments.py =====
 # Comments CRUD: create, update, delete, likes
 
+import logging
 from typing import List, Optional
 
 from sqlalchemy import func, or_, select, update as sa_update
@@ -10,6 +11,8 @@ from sqlalchemy.orm import selectinload
 from app import models, schemas
 from app.services import notification_service as notif
 from app.utils import delete_images
+
+logger = logging.getLogger(__name__)
 
 
 # ===== COMMENT LIKES =====
@@ -227,8 +230,8 @@ async def delete_comment(db: AsyncSession, comment_id: int, user_id: int) -> dic
     if comment.images:
         try:
             delete_images(comment.images, default_kind="images")
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("Ошибка удаления изображений комментария %s: %s", comment_id, e)
 
     if has_replies:
         comment.is_deleted = True

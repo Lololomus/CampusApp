@@ -6,6 +6,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File, Query, Body
 from sqlalchemy import select, or_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import json
@@ -206,7 +207,7 @@ async def create_or_update_dating_profile(
         await db.commit()
         await db.refresh(profile)
         await db.refresh(user)
-    except Exception:
+    except SQLAlchemyError:
         await db.rollback()
         delete_images(saved_photos_meta, default_kind="images")
         raise HTTPException(status_code=500, detail="Failed to save dating profile")

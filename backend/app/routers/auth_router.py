@@ -38,7 +38,7 @@ async def telegram_login(
 
     try:
         tg_user = json.loads(user_data_raw)
-    except Exception:
+    except (json.JSONDecodeError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail="Invalid Telegram user payload")
 
     telegram_id = tg_user.get("id")

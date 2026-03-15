@@ -29,6 +29,8 @@ import AdminPanel from './components/moderation/AdminPanel';
 import NotificationsScreen from './components/notifications/NotificationsScreen';
 import { TelegramScreenProvider } from './components/shared/telegram/TelegramScreenProvider';
 
+import ErrorBoundary from './components/shared/ErrorBoundary';
+
 import './App.css';
 
 function App() {
@@ -187,9 +189,11 @@ function App() {
   }
 
   return (
-    <TelegramScreenProvider>
-      {appContent}
-    </TelegramScreenProvider>
+    <ErrorBoundary>
+      <TelegramScreenProvider>
+        {appContent}
+      </TelegramScreenProvider>
+    </ErrorBoundary>
   );
 }
 

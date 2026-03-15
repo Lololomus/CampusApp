@@ -20,6 +20,9 @@ from app import models, schemas
 from app.services import notification_service as notif
 from app.services.analytics_service import record_server_event
 from app.utils import delete_images
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["moderation"])
 
@@ -192,8 +195,8 @@ async def moderate_delete_comment(
     if comment.images:
         try:
             delete_images(comment.images, default_kind="images")
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("Ошибка удаления изображений комментария %s: %s", comment.id, e)
     comment.images = []
 
     post = await db.get(models.Post, comment.post_id)

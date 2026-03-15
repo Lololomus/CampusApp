@@ -7,6 +7,7 @@
 # ✅ Фаза 3.5: joinedload → selectinload
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, func, or_, case, update as sa_update
 from typing import Optional, List, Dict
@@ -44,7 +45,7 @@ async def create_request(
     if not saved_images_meta and request.images and len(request.images) > 0:
         try:
             saved_images_meta = process_base64_images(request.images)
-        except Exception as e:
+        except (ValueError, OSError) as e:
             raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
 
     expires_at = request.expires_at
@@ -70,7 +71,7 @@ async def create_request(
         await db.commit()
         await db.refresh(db_request)
         return db_request
-    except Exception as e:
+    except SQLAlchemyError as e:
         if saved_images_meta:
             delete_images(saved_images_meta)
         raise e

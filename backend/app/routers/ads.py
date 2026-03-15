@@ -9,6 +9,8 @@ from datetime import datetime
 from app.database import get_db
 from app.auth_service import require_user
 from app import crud, schemas, models
+from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from app.config import get_settings
 from app.time_utils import normalize_datetime_payload, to_iso_z
 from app.services.analytics_service import record_server_event
@@ -79,7 +81,7 @@ async def create_ad(
             target_city=target_city,
             daily_impression_cap=daily_impression_cap,
         )
-    except Exception as exc:
+    except (ValueError, ValidationError) as exc:
         delete_images(images_meta)
         raise HTTPException(422, str(exc))
 
@@ -92,7 +94,7 @@ async def create_ad(
             creator_university=user.university,
             images_meta=images_meta,
         )
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         delete_images(images_meta)
         raise HTTPException(500, f"Ошибка создания: {str(exc)}")
 

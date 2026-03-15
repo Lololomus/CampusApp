@@ -19,6 +19,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { toast } from '../shared/Toast';
 import { USE_MOCK_DATA, MOCK_PROFILES, MOCK_LIKES, MOCK_MATCHES } from './mockData';
+import { SWIPE_THRESHOLD } from '../../constants/layoutConstants';
 
 
 function DatingFeed() {
@@ -84,7 +85,7 @@ function DatingFeed() {
 
   const isLoadingRef = useRef(false);
   const offset = useRef(0);
-  const swipeThreshold = 100;
+  const swipeThreshold = SWIPE_THRESHOLD;
 
   useEffect(() => {
     if (currentProfile?.id) setInfoExpanded(false);
@@ -99,7 +100,6 @@ function DatingFeed() {
         const profile = await getMyDatingProfile();
         setDatingProfile(profile || null);
       } catch (e) {
-        console.log('Guest mode или ошибка:', e);
         setDatingProfile(null);
       } finally {
         setCheckingProfile(false);
@@ -202,7 +202,6 @@ function DatingFeed() {
 
   useEffect(() => {
     setOnPrefetchNeeded(() => {
-      console.log('⚡ Prefetch triggered');
       loadProfiles(false);
     });
   }, [setOnPrefetchNeeded, loadProfiles]);
@@ -552,7 +551,6 @@ function DatingFeed() {
             }}
             onMessage={(user) => {
               hapticFeedback('medium');
-              console.log('Open chat with', user);
             }}
             onEmptyAction={() => openEditProfile(false)}
           />
@@ -573,7 +571,6 @@ function DatingFeed() {
             onMessage={() => {
               if (viewingProfile.type === 'match') {
                 hapticFeedback('medium');
-                console.log('Open chat with', viewingProfile.user);
                 setViewingProfile(null);
               }
             }}
@@ -591,7 +588,7 @@ function DatingFeed() {
       {showEditProfile && (
         <EditDatingProfileModal 
           onClose={closeEditProfile}
-          onSuccess={() => console.log('✅')}
+          onSuccess={() => {}}
         />
       )}
 

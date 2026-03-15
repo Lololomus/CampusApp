@@ -78,8 +78,6 @@ function PhotoViewer({ photos = [], initialIndex = 0, onClose }) {
 
   return createPortal(
     <>
-      <style>{styles.keyframes}</style>
-      
       {/* Overlay */}
       <div 
         style={styles.overlay} 
@@ -311,12 +309,6 @@ const styles = {
     transition: 'opacity 0.2s',
     cursor: 'pointer',
   },
-  keyframes: `
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-  `,
 };
 
 export default PhotoViewer;

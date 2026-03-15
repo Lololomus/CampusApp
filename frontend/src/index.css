@@ -295,6 +295,72 @@ body.dating-active {
 }
 
 /* For horizontal carousels (fully hidden scrollbar) */
+/* ===== Shared Component Animations ===== */
+
+/* Avatar.js — hover/active effects */
+.avatar-component:hover {
+  transform: scale(1.05);
+}
+
+.avatar-component:active {
+  transform: scale(0.95);
+}
+
+/* Toast.js — slide animations */
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutDown {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+/* Toast.js — hover effects */
+div[style*="toast"]:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+}
+
+div[style*="toast"]:hover button {
+  opacity: 1;
+  background: rgba(255,255,255,0.25);
+}
+
+button[aria-label="Закрыть"]:hover {
+  background: rgba(255,255,255,0.35) !important;
+}
+
+button[aria-label="Закрыть"]:active {
+  transform: scale(0.9);
+}
+
+/* ConfirmationDialog.js & PhotoViewer.js — fade/scale animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ===== End Shared Component Animations ===== */
+
 .hide-scroll::-webkit-scrollbar { display: none; }
 .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
 

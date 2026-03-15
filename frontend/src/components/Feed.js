@@ -13,11 +13,16 @@ import FeedDateDivider from './shared/FeedDateDivider';
 import { buildFeedSections } from '../utils/feedDateSections';
 import { hapticFeedback } from '../utils/telegram';
 import EdgeBlur from './shared/EdgeBlur';
+import {
+  POSTS_PAGE_SIZE,
+  PULL_TO_REFRESH_THRESHOLD,
+  HEADER_SCROLL_THRESHOLD,
+  INFINITE_SCROLL_ROOT_MARGIN,
+} from '../constants/layoutConstants';
 
 const IS_DEV = import.meta.env.DEV;
 
 function Feed() {
-  const POSTS_PAGE_SIZE = 20;
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [headerScrolled, setHeaderScrolled] = useState(false);
@@ -211,7 +216,7 @@ function Feed() {
       postsLoadingRef.current = false;
       setLoading(false);
     }
-  }, [POSTS_PAGE_SIZE, activeCategory, stabilizedFilters]);
+  }, [activeCategory, stabilizedFilters]);
 
   // ✅ БЕЗ JSON.stringify
   useEffect(() => {
@@ -259,7 +264,7 @@ function Feed() {
     const handleTouchMove = (e) => {
       if (
         window.scrollY === 0 &&
-        e.touches[0].clientY - startYRef.current > 80 &&
+        e.touches[0].clientY - startYRef.current > PULL_TO_REFRESH_THRESHOLD &&
         !loading &&
         !pullToRefreshLockRef.current
       ) {
@@ -391,7 +396,7 @@ function Feed() {
           loadPosts(false);
         }
       },
-      { threshold: 0.1, rootMargin: '200px' }
+      { threshold: 0.1, rootMargin: INFINITE_SCROLL_ROOT_MARGIN }
     );
 
     postsObserverRef.current = observer;
@@ -409,7 +414,7 @@ function Feed() {
   // Следим за скроллом для динамической высоты верхнего блюра (синхронно с AppHeader premium)
   useEffect(() => {
     const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > 40);
+      setHeaderScrolled(window.scrollY > HEADER_SCROLL_THRESHOLD);
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);

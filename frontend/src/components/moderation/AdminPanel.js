@@ -91,7 +91,7 @@ function AdminPanel() {
 
       {/* Content */}
       <div style={styles.content}>
-        {tab === 'feed' && <ActionFeed onReverse={(log) => console.log('Reverse:', log)} />}
+        {tab === 'feed' && <ActionFeed onReverse={() => {}} />}
         {tab === 'ambassadors' && <AmbassadorManager />}
         {tab === 'campuses' && <CampusManager isAdmin={true} />}
         {tab === 'appeals' && <AppealsSection />}

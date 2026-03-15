@@ -13,6 +13,11 @@ import theme from '../../theme';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
 import { hapticFeedback } from '../../utils/telegram';
+import {
+  MARKET_PAGE_SIZE,
+  PULL_TO_REFRESH_THRESHOLD,
+  INFINITE_SCROLL_ROOT_MARGIN,
+} from '../../constants/layoutConstants';
 
 const Market = () => {
   const { 
@@ -111,7 +116,7 @@ const Market = () => {
 
     try {
       const currentPage = reset ? 0 : page;
-      const limit = 20;
+      const limit = MARKET_PAGE_SIZE;
       
       const filters = {
         ...stabilizedFilters, // ✅ ИСПОЛЬЗУЕМ СТАБИЛИЗИРОВАННЫЙ
@@ -161,7 +166,7 @@ const Market = () => {
 
   // Infinite Scroll
   useEffect(() => {
-    const options = { root: null, rootMargin: '200px', threshold: 0 };
+    const options = { root: null, rootMargin: INFINITE_SCROLL_ROOT_MARGIN, threshold: 0 };
     observerRef.current = new IntersectionObserver((entries) => {
       const first = entries[0];
       if (first.isIntersecting && hasMore && !loading) {
@@ -183,7 +188,7 @@ const Market = () => {
     };
     
     const handleTouchMove = (e) => {
-      if (window.scrollY === 0 && e.touches[0].clientY - startYRef.current > 80 && !refreshing) {
+      if (window.scrollY === 0 && e.touches[0].clientY - startYRef.current > PULL_TO_REFRESH_THRESHOLD && !refreshing) {
         setRefreshing(true);
         handleRefresh();
       }

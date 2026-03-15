@@ -25,6 +25,7 @@ import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
+import { IMAGE_ASPECT_RATIO_MIN, IMAGE_ASPECT_RATIO_MAX } from '../../constants/layoutConstants';
 
 const parseImages = (value) => {
   if (!value) return [];
@@ -212,7 +213,7 @@ function PostDetail() {
     const firstImage = images.length > 0 ? images[0] : null;
     const meta = (typeof firstImage === 'object' && firstImage !== null) ? firstImage : null;
     const rawRatio = (meta?.w && meta?.h) ? meta.w / meta.h : 1;
-    return Math.max(0.75, Math.min(rawRatio, 1.77));
+    return Math.max(IMAGE_ASPECT_RATIO_MIN, Math.min(rawRatio, IMAGE_ASPECT_RATIO_MAX));
   }, [images]);
 
   const { dateText, isEdited } = useMemo(() => {

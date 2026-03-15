@@ -31,21 +31,8 @@ function ConfirmationDialog({
     success: theme.colors.success,
   };
 
-  const fadeInKeyframes = `
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    @keyframes scaleIn {
-      from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
-      to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-    }
-  `;
-
   const dialogContent = (
     <>
-      <style>{fadeInKeyframes}</style>
-      
       {/* Overlay */}
       <div 
         style={styles.overlay}

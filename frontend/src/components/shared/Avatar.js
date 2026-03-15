@@ -121,21 +121,4 @@ const styles = {
   }
 };
 
-// CSS для hover эффекта (если кликабельно)
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-  .avatar-component:hover {
-    transform: scale(1.05);
-  }
-  
-  .avatar-component:active {
-    transform: scale(0.95);
-  }
-`;
-
-if (!document.head.querySelector('[data-avatar-styles]')) {
-  styleSheet.setAttribute('data-avatar-styles', '');
-  document.head.appendChild(styleSheet);
-}
-
 export default Avatar;

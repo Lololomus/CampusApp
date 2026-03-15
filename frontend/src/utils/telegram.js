@@ -29,13 +29,13 @@ function syncThemeVariables(tg) {
   try {
     tg.setHeaderColor?.('bg_color');
   } catch (error) {
-    console.warn('Telegram setHeaderColor failed:', error);
+    if (import.meta.env.DEV) console.warn('Telegram setHeaderColor failed:', error);
   }
 
   try {
     tg.setBackgroundColor?.(params.bg_color || '#1a1a1a');
   } catch (error) {
-    console.warn('Telegram setBackgroundColor failed:', error);
+    if (import.meta.env.DEV) console.warn('Telegram setBackgroundColor failed:', error);
   }
 
   try {
@@ -43,7 +43,7 @@ function syncThemeVariables(tg) {
       params.bottom_bar_bg_color || params.secondary_bg_color || params.bg_color || '#1a1a1a'
     );
   } catch (error) {
-    console.warn('Telegram setBottomBarColor failed:', error);
+    if (import.meta.env.DEV) console.warn('Telegram setBottomBarColor failed:', error);
   }
 }
 
@@ -201,7 +201,7 @@ export function setVerticalSwipesEnabled(enabled = true) {
     }
     return true;
   } catch (error) {
-    console.warn('Telegram vertical swipe setup failed:', error);
+    if (import.meta.env.DEV) console.warn('Telegram vertical swipe setup failed:', error);
     return false;
   }
 }
@@ -218,7 +218,7 @@ export function setClosingConfirmation(enabled = true) {
     }
     return true;
   } catch (error) {
-    console.warn('Telegram closing confirmation setup failed:', error);
+    if (import.meta.env.DEV) console.warn('Telegram closing confirmation setup failed:', error);
     return false;
   }
 }
@@ -226,7 +226,7 @@ export function setClosingConfirmation(enabled = true) {
 export function initTelegramApp() {
   const tg = getTelegramWebApp();
   if (!tg) {
-    console.warn('Telegram WebApp SDK not found. Running in browser mode.');
+    if (import.meta.env.DEV) console.warn('Telegram WebApp SDK not found. Running in browser mode.');
     return;
   }
 
@@ -244,7 +244,7 @@ export function initTelegramApp() {
       tg.expand?.();
     }
   } catch (error) {
-    console.warn('Telegram fullscreen request failed, fallback to expand:', error);
+    if (import.meta.env.DEV) console.warn('Telegram fullscreen request failed, fallback to expand:', error);
     tg.expand?.();
   }
 }
@@ -294,7 +294,7 @@ export function hapticFeedback(type = 'light') {
     haptic.impactOccurred?.(impactStyle);
     return true;
   } catch (error) {
-    console.warn('Telegram haptic feedback failed:', error);
+    if (import.meta.env.DEV) console.warn('Telegram haptic feedback failed:', error);
     return false;
   }
 }

@@ -77,7 +77,6 @@ function MatchModal() {
 
   const handleMessage = () => {
     hapticFeedback('medium');
-    console.log('Open chat with:', matchedUser);
     setShowMatchModal(false);
   };
 

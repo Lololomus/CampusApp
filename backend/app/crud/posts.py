@@ -8,6 +8,7 @@
 # ✅ Фаза 5.2: image merge → helpers.merge_images()
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select, func, or_, update as sa_update
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict
@@ -189,7 +190,7 @@ async def create_post(
     if not saved_images_meta and post.images and len(post.images) > 0:
         try:
             saved_images_meta = process_base64_images(post.images)
-        except Exception as e:
+        except (ValueError, OSError) as e:
             raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
 
     db_post = models.Post(
@@ -221,7 +222,7 @@ async def create_post(
         await db.commit()
         await db.refresh(db_post)
         return db_post
-    except Exception as e:
+    except SQLAlchemyError as e:
         if saved_images_meta:
             delete_images(saved_images_meta)
         raise e
@@ -263,7 +264,7 @@ async def update_post(
 
     try:
         await db.commit()
-    except Exception:
+    except SQLAlchemyError:
         await db.rollback()
         if new_images_meta:
             delete_images(new_images_meta)
@@ -285,7 +286,7 @@ async def delete_post(db: AsyncSession, post_id: int) -> bool:
     if db_post.images:
         try:
             delete_images(db_post.images)
-        except Exception as e:
+        except OSError as e:
             logger.warning("Ошибка удаления изображений поста %s: %s", post_id, e)
 
     await db.delete(db_post)
@@ -324,7 +325,7 @@ async def increment_post_views(db: AsyncSession, post_id: int, user_id: int):
         )
 
         await db.commit()
-    except Exception:
+    except SQLAlchemyError:
         await db.rollback()
 
 

@@ -9,6 +9,7 @@
 # ✅ Фаза 5.2: image merge → helpers.merge_images()
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, func, or_, update as sa_update
 from typing import Optional, List, Dict
@@ -50,7 +51,7 @@ async def create_market_item(
     if not saved_images_meta and item.images and len(item.images) > 0:
         try:
             saved_images_meta = process_base64_images(item.images)
-        except Exception as e:
+        except (ValueError, OSError) as e:
             raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
 
     if not saved_images_meta:
@@ -75,7 +76,7 @@ async def create_market_item(
         await db.commit()
         await db.refresh(db_item)
         return db_item
-    except Exception as e:
+    except SQLAlchemyError as e:
         if saved_images_meta:
             delete_images(saved_images_meta)
         raise e
@@ -124,7 +125,7 @@ async def update_market_item(
 
     try:
         await db.commit()
-    except Exception:
+    except SQLAlchemyError:
         await db.rollback()
         if new_images_meta:
             delete_images(new_images_meta)
@@ -283,7 +284,7 @@ async def get_market_item(db: AsyncSession, item_id: int, user_id: Optional[int]
                     )
                     await db.commit()
                     await db.refresh(item)
-                except Exception:
+                except SQLAlchemyError:
                     await db.rollback()
 
     return item

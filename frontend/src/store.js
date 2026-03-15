@@ -308,17 +308,11 @@ export const useStore = create(
       })),
       
       removeCurrentProfile: () => set((state) => {
-        console.log('🔄 removeCurrentProfile вызван');
-        console.log('📊 До: currentProfile =', state.currentProfile?.id, ', queue length =', state.profilesQueue.length);
-        
         const newCurrent = state.profilesQueue[0] || null;
         const newQueue = state.profilesQueue.slice(1);
-        
-        console.log('📊 После: newCurrent =', newCurrent?.id, ', newQueue length =', newQueue.length);
-        
+
         // PREFETCH: если осталось < 3 анкет
         if (newQueue.length < 3 && !state.isLoadingProfiles && state.hasMoreProfiles) {
-          console.log('⚡ PREFETCH TRIGGERED: осталось', newQueue.length, 'анкет');
           setTimeout(() => {
             const currentState = get();
             if (currentState.onPrefetchNeeded) {
@@ -651,9 +645,7 @@ export const useStore = create(
             ...data
           };
           
-          console.log('📤 Отправляем данные:', fullData);
           const user = await registerUser(fullData);
-          console.log('✅ Регистрация успешна:', user);
 
           set({
             user: user,
