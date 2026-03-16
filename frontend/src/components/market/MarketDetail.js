@@ -1,6 +1,7 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketDetail.js =====
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info, MapPin, Link, Edit2, Flag } from 'lucide-react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
@@ -16,7 +17,6 @@ import OverflowMenuButton from '../shared/OverflowMenuButton';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
-import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate } from '../../utils/datetime';
 
@@ -45,6 +45,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   
   const menuRef = useRef(null);
   const sellerAvatarRef = useRef(null);
@@ -57,7 +58,9 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const images = currentItem.images || [];
 
   const closeDetail = () => {
-    onClose?.();
+    if (isExiting) return;
+    setIsExiting(true);
+    setTimeout(() => onClose?.(), 320);
   };
 
   const handleTelegramBack = () => {
@@ -282,13 +285,13 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       ...(actionSet.canCopyLink ? [{
         actionType: 'copy',
         label: 'Копировать ссылку',
-        icon: '🔗',
+        icon: <Link size={18} />,
         onClick: handleCopyLink
       }] : []),
       ...(actionSet.canEdit ? [{
         actionType: 'edit',
         label: 'Редактировать',
-        icon: '✏️',
+        icon: <Edit2 size={18} />,
         onClick: () => {
           hapticFeedback('light');
           setShowMenu(false);
@@ -298,7 +301,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       ...(actionSet.canDelete ? [{
         actionType: 'delete',
         label: 'Удалить',
-        icon: '🗑️',
+        icon: <Trash2 size={18} />,
         onClick: () => {
           hapticFeedback('medium');
           setShowMenu(false);
@@ -308,7 +311,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       ...(actionSet.canReportContent ? [{
         actionType: 'report',
         label: 'Пожаловаться',
-        icon: '⚠️',
+        icon: <Flag size={18} />,
         onClick: handleReport
       }] : []),
     ];
@@ -316,10 +319,26 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
   return (
     <>
-      <div style={styles.container}>
-        <DrilldownHeader title="Маркет" onBack={closeDetail} />
-        {images.length > 0 && (
-          <div style={styles.galleryContainer}>
+      <div style={{
+        ...styles.container,
+        animation: isExiting
+          ? 'slideOutRight 0.32s cubic-bezier(0.32, 0.72, 0, 1) forwards'
+          : 'slideInRight 0.38s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+        pointerEvents: isExiting ? 'none' : 'auto',
+      }}>
+        {/* Floating back button поверх изображения */}
+        <div style={styles.floatingHeader}>
+          <button
+            className="market-detail-back-btn"
+            onClick={() => { hapticFeedback('light'); closeDetail(); }}
+            style={styles.floatingBackBtn}
+          >
+            <ChevronLeft size={24} style={{ marginLeft: -2 }} />
+          </button>
+        </div>
+
+        <div style={styles.content}>
+          {images.length > 0 && (
             <div
               style={styles.gallery}
               onTouchStart={handleTouchStart}
@@ -327,7 +346,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
               onTouchEnd={handleTouchEnd}
             >
               <div style={styles.gradientTop} />
-              
+
               <div style={styles.galleryTrack}>
                 {images.map((img, index) => {
                   const imageUrl = img.url || img;
@@ -371,16 +390,13 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                 </div>
               )}
             </div>
-          </div>
-        )}
-
-        <div style={styles.content}>
+          )}
           <div style={styles.mainInfo}>
             <div style={styles.priceRow}>
               <div style={styles.price}>{formatPrice(currentItem.price)} ₽</div>
               
               <div style={styles.actions}>
-                <button 
+                <button
                   style={{
                     ...styles.actionButton,
                     ...(likeAnimating ? styles.actionButtonAnimating : {}),
@@ -388,19 +404,23 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                   onClick={handleFavorite}
                   aria-label={currentItem.is_favorited ? 'Убрать из избранного' : 'В избранное'}
                 >
-                  {currentItem.is_favorited ? '❤️' : '🤍'}
+                  <Heart
+                    size={20}
+                    fill={currentItem.is_favorited ? theme.colors.error : 'none'}
+                    color={currentItem.is_favorited ? theme.colors.error : '#fff'}
+                  />
                 </button>
-                
+
                 <div style={styles.menuContainer} ref={menuRef}>
                   <OverflowMenuButton
                     isOpen={showMenu}
                     onToggle={handleMenuToggle}
-                    icon={<span style={styles.dotsIcon}>⋯</span>}
+                    icon={<MoreHorizontal size={20} color="#fff" />}
                     style={styles.actionButton}
                     activeStyle={styles.menuActionButtonActive}
-                    activeBorderColor={theme.colors.border}
+                    activeBorderColor={theme.colors.premium.border}
                   />
-                  
+
                   <DropdownMenu
                     isOpen={showMenu}
                     onClose={() => setShowMenu(false)}
@@ -417,7 +437,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
               <div style={styles.metaBadge}>
                 {getCategoryText()}
               </div>
-              <div style={styles.metaBadge}>
+              <div style={styles.metaBadgeCondition}>
                 {getConditionText()}
               </div>
               {currentItem.views_count > 0 && (
@@ -430,31 +450,15 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
           <div style={styles.divider} />
 
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>📄 Описание</h2>
-            <p style={styles.description}>{currentItem.description}</p>
-          </div>
-
-          {currentItem.location && (
-            <>
-              <div style={styles.divider} />
-              <div style={styles.section}>
-                <h2 style={styles.sectionTitle}>📍 Местоположение</h2>
-                <div style={styles.locationText}>{currentItem.location}</div>
-              </div>
-            </>
-          )}
-
-          <div style={styles.divider} />
-
           {currentItem.seller && (
             <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>👤 Продавец</h2>
+              <h2 style={styles.sectionTitle}>Продавец</h2>
               <div style={styles.sellerCard}>
-                <Avatar 
+                <Avatar
                   ref={sellerAvatarRef}
                   user={currentItem.seller}
-                  size={56}
+                  size={48}
+                  borderRadius={14}
                   onClick={() => currentItem.seller?.show_profile && setProfileOpen(true)}
                   showProfile={currentItem.seller?.show_profile}
                 />
@@ -467,15 +471,30 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                     {currentItem.seller.course && ` • ${currentItem.seller.course} курс`}
                   </div>
                 </div>
+
+                <ChevronLeft size={20} color={theme.colors.premium.textMuted} style={{ transform: 'rotate(180deg)', flexShrink: 0 }} />
               </div>
             </div>
           )}
 
-          <div style={styles.divider} />
-
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>🕐 Опубликовано</h2>
-            <div style={styles.publishedDate}>{formatDate(currentItem.created_at)}</div>
+            <h2 style={styles.sectionTitle}>Описание</h2>
+            <p style={styles.description}>{currentItem.description}</p>
+          </div>
+
+          {currentItem.location && (
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>Местоположение</h2>
+              <div style={styles.locationRow}>
+                <MapPin size={16} color={theme.colors.premium.primary} style={{ flexShrink: 0 }} />
+                <span style={styles.locationText}>{currentItem.location}</span>
+              </div>
+            </div>
+          )}
+
+          <div style={styles.publishedRow}>
+            <Info size={14} color={theme.colors.textSecondary} />
+            <span style={styles.publishedDate}>Опубликовано: {formatDate(currentItem.created_at)}</span>
           </div>
 
           <div style={styles.bottomSpacer} />
@@ -484,33 +503,25 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
         <div style={styles.footer}>
           {isOwner ? (
             <div style={styles.ownerActions}>
-              <button 
-                style={styles.editButton} 
-                onClick={() => {
-                  setShowEditModal(true);
-                  hapticFeedback('light');
-                }}
+              <button
+                style={styles.editButton}
+                onClick={() => { setShowEditModal(true); hapticFeedback('light'); }}
               >
-                ✏️ Редактировать
+                <Edit3 size={20} />
+                Изменить
               </button>
-              <button 
-                style={styles.deleteButton} 
-                onClick={() => {
-                  setShowDeleteDialog(true);
-                  hapticFeedback('medium');
-                }}
+              <button
+                style={styles.deleteButton}
+                onClick={() => { setShowDeleteDialog(true); hapticFeedback('medium'); }}
                 disabled={deleting}
               >
-                {deleting ? '⏳' : '🗑️'}
+                {deleting ? <div style={styles.btnSpinner} /> : <Trash2 size={22} />}
               </button>
             </div>
           ) : (
-            <button 
-              style={styles.contactButton} 
-              onClick={handleContact}
-            >
-              <span style={styles.contactIcon}>💬</span>
-              <span style={styles.contactText}>Написать продавцу</span>
+            <button style={styles.contactButton} onClick={handleContact}>
+              <MessageCircle size={20} />
+              <span>Написать продавцу</span>
             </button>
           )}
         </div>
@@ -582,20 +593,13 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    background: theme.colors.bg,
+    background: theme.colors.premium.bg,
     zIndex: Z_MARKET_DETAIL,
-    animation: 'slideInRight 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards',
     willChange: 'transform',
-    transform: 'translate3d(0,0,0)',
     WebkitOverflowScrolling: 'touch',
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
-  },
-
-  galleryContainer: {
-    position: 'relative',
-    flexShrink: 0,
   },
 
   gallery: {
@@ -655,7 +659,7 @@ const styles = {
     width: 32,
     height: 32,
     border: `3px solid ${theme.colors.border}`,
-    borderTop: `3px solid ${theme.colors.market}`,
+    borderTop: `3px solid ${theme.colors.premium.primary}`,
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
@@ -680,7 +684,7 @@ const styles = {
   },
 
   dotActive: {
-    background: theme.colors.market,
+    background: theme.colors.premium.primary,
     width: 20,
     borderRadius: 3,
   },
@@ -706,9 +710,9 @@ const styles = {
 
   price: {
     fontFamily: 'Arial, sans-serif',
-    fontSize: 32,
-    fontWeight: 700,
-    color: theme.colors.market,
+    fontSize: 28,
+    fontWeight: 800,
+    color: theme.colors.premium.primary,
     lineHeight: 1,
     letterSpacing: '-0.5px',
     flex: 1,
@@ -722,11 +726,11 @@ const styles = {
   },
 
   actionButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: theme.radius.full,
-    background: theme.colors.card,
-    border: `1px solid ${theme.colors.border}`,
+    background: theme.colors.premium.surfaceHover,
+    border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -813,6 +817,12 @@ const styles = {
     margin: 0,
   },
 
+  locationRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+
   locationText: {
     fontFamily: 'Arial, sans-serif',
     fontSize: 15,
@@ -821,14 +831,61 @@ const styles = {
     lineHeight: 1.5,
   },
 
+  publishedRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: `0 ${theme.spacing.lg}px 24px`,
+    marginTop: 8,
+  },
+
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    padding: 'calc(var(--screen-top-offset, 44px) + 16px) 16px 16px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    pointerEvents: 'none',
+  },
+  floatingBackBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    background: 'rgba(28,28,30,0.6)',
+    backdropFilter: 'blur(12px)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+    transition: 'transform 0.15s',
+  },
+
+  metaBadgeCondition: {
+    fontFamily: 'Arial, sans-serif',
+    fontSize: 13,
+    fontWeight: 600,
+    color: theme.colors.success,
+    background: 'rgba(16,185,129,0.1)',
+    padding: '6px 10px',
+    borderRadius: theme.radius.sm,
+    border: '1px solid rgba(16,185,129,0.2)',
+    whiteSpace: 'nowrap',
+  },
+
   sellerCard: {
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing.md,
     background: theme.colors.card,
     padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
-    border: `1px solid ${theme.colors.border}`,
+    borderRadius: 20,
+    border: `1px solid ${theme.colors.premium.border}`,
   },
 
   sellerInfo: {
@@ -856,7 +913,7 @@ const styles = {
 
   publishedDate: {
     fontFamily: 'Arial, sans-serif',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 400,
     color: theme.colors.textSecondary,
     lineHeight: 1.5,
@@ -871,11 +928,10 @@ const styles = {
     bottom: 0,
     left: 0,
     right: 0,
-    padding: theme.spacing.lg,
-    paddingBottom: `calc(${theme.spacing.lg}px + env(safe-area-inset-bottom))`,
-    background: theme.colors.bg,
-    borderTop: `1px solid ${theme.colors.border}`,
-    boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.1)',
+    padding: `${theme.spacing.lg}px ${theme.spacing.lg}px calc(${theme.spacing.lg}px + env(safe-area-inset-bottom))`,
+    background: 'rgba(28,28,30,0.8)',
+    backdropFilter: 'blur(20px)',
+    borderTop: `1px solid ${theme.colors.premium.border}`,
     zIndex: 100,
   },
 
@@ -887,12 +943,12 @@ const styles = {
   editButton: {
     flex: 1,
     fontFamily: 'Arial, sans-serif',
-    background: theme.colors.market,
+    background: theme.colors.premium.surfaceHover,
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: 600,
+    fontWeight: 700,
     padding: '16px 20px',
-    borderRadius: theme.radius.md,
+    borderRadius: 16,
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -906,10 +962,9 @@ const styles = {
   deleteButton: {
     width: 56,
     height: 56,
-    background: '#ef4444',
-    color: '#ffffff',
-    fontSize: 20,
-    borderRadius: theme.radius.md,
+    background: 'rgba(255,69,58,0.15)',
+    color: theme.colors.error,
+    borderRadius: 16,
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -919,15 +974,24 @@ const styles = {
     flexShrink: 0,
   },
 
+  btnSpinner: {
+    width: 20,
+    height: 20,
+    border: `2px solid ${theme.colors.error}40`,
+    borderTopColor: theme.colors.error,
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+  },
+
   contactButton: {
     width: '100%',
     fontFamily: 'Arial, sans-serif',
-    background: theme.colors.market,
-    color: '#ffffff',
+    background: theme.colors.premium.primary,
+    color: '#000',
     fontSize: 16,
-    fontWeight: 700,
+    fontWeight: 800,
     padding: '16px 20px',
-    borderRadius: theme.radius.md,
+    borderRadius: 16,
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -936,15 +1000,7 @@ const styles = {
     justifyContent: 'center',
     gap: 10,
     minHeight: 56,
-    boxShadow: `0 4px 16px ${theme.colors.market}40`,
-  },
-
-  contactIcon: {
-    fontSize: 20,
-  },
-
-  contactText: {
-    letterSpacing: '-0.3px',
+    boxShadow: '0 8px 24px rgba(212,255,0,0.2)',
   },
 };
 
@@ -952,7 +1008,12 @@ const styleSheet = document.createElement('style');
 styleSheet.textContent = `
   @keyframes slideInRight {
     from { transform: translate3d(100%, 0, 0); }
-    to { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(0, 0, 0); }
+  }
+
+  @keyframes slideOutRight {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(100%, 0, 0); }
   }
 
   @keyframes spin {
@@ -965,6 +1026,11 @@ styleSheet.textContent = `
     30% { transform: scale(1.25); }
     60% { transform: scale(0.95); }
     100% { transform: scale(1); }
+  }
+
+  .market-detail-back-btn:active {
+    transform: scale(0.92);
+    opacity: 0.85;
   }
 `;
 if (!document.head.querySelector('[data-market-detail-styles]')) {

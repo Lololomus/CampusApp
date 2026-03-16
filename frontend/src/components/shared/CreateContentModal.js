@@ -6,7 +6,7 @@ import {
   BarChart2,
   VenetianMask,
   MapPin,
-  Send,
+  Check,
   Plus,
   Hash,
   AlertCircle,
@@ -34,7 +34,6 @@ import {
   CREATE_CONTENT_REQUEST_REWARD_OPTIONS,
   CREATE_CONTENT_SUGGESTED_TAGS,
 } from '../../constants/createContentUiConfig';
-import { parsePostSingleText, parseRequestSingleText } from '../../utils/contentTextParser';
 import ConfirmationDialog from './ConfirmationDialog';
 import { toast } from './Toast';
 import { useTelegramScreen } from './telegram/useTelegramScreen';
@@ -43,6 +42,7 @@ import SmartDatePicker from './SmartDatePicker';
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
 const MAX_TITLE_LENGTH = POST_LIMITS.TITLE_MAX;
+const TOOL_ICON_SIZE = 26;
 const ALLOWED_FORMATS = IMAGE_SETTINGS.ALLOWED_FORMATS;
 
 const normalizeTag = (raw) =>
@@ -67,11 +67,6 @@ const formatCustomDate = (value) => {
   });
 };
 
-const getFirstNonEmptyLine = (rawText) =>
-  String(rawText || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean) || '';
 
 const buildEventDateIso = (mode, customDate) => {
   const now = new Date();
@@ -126,7 +121,8 @@ function CreateContentModal({ onClose }) {
   const [activeTab, setActiveTab] = useState(feedSubTab === 'requests' ? 'request' : 'post');
 
   const [postCategory, setPostCategory] = useState(CREATE_CONTENT_POST_CATEGORIES[0]?.value || 'news');
-  const [postText, setPostText] = useState('');
+  const [postTitle, setPostTitle] = useState('');
+  const [postBody, setPostBody] = useState('');
   const [postTags, setPostTags] = useState([]);
   const [postTagInput, setPostTagInput] = useState('');
   const [showTagTool, setShowTagTool] = useState(false);
@@ -149,7 +145,8 @@ function CreateContentModal({ onClose }) {
   const [pollExplanation, setPollExplanation] = useState(null);
 
   const [reqCategory, setReqCategory] = useState(CREATE_CONTENT_REQUEST_CATEGORIES[0]?.value || 'help');
-  const [reqText, setReqText] = useState('');
+  const [reqTitle, setReqTitle] = useState('');
+  const [reqBody, setReqBody] = useState('');
   const [showReqReward, setShowReqReward] = useState(false);
   const [reqRewardType, setReqRewardType] = useState('none');
   const [reqRewardValue, setReqRewardValue] = useState('');
@@ -160,8 +157,8 @@ function CreateContentModal({ onClose }) {
   const [showReqPicker, setShowReqPicker] = useState(false);
 
   const sheetRef = useRef(null);
-  const postTextareaRef = useRef(null);
-  const reqTextareaRef = useRef(null);
+  const postBodyRef = useRef(null);
+  const reqBodyRef = useRef(null);
   const postFileInputRef = useRef(null);
   const postTagInputRef = useRef(null);
 
@@ -180,10 +177,6 @@ function CreateContentModal({ onClose }) {
     });
   }, [postTagInput, postTags]);
 
-  const parsedRequestText = useMemo(
-    () => parseRequestSingleText(reqText, { titleMax: REQUEST_LIMITS.TITLE_MAX }),
-    [reqText]
-  );
 
   const resolvedRequestExpiresAt = useMemo(
     () => buildRequestExpiresAtIso(reqDeadlineType, reqCustomDate),
@@ -254,8 +247,8 @@ function CreateContentModal({ onClose }) {
   useEffect(() => {
     if (window.innerWidth < 768 || isSubmitting) return;
     const timer = setTimeout(() => {
-      if (activeTab === 'post') postTextareaRef.current?.focus();
-      else reqTextareaRef.current?.focus();
+      if (activeTab === 'post') postBodyRef.current?.focus();
+      else reqBodyRef.current?.focus();
     }, 220);
     return () => clearTimeout(timer);
   }, [activeTab, isSubmitting]);
@@ -307,7 +300,8 @@ function CreateContentModal({ onClose }) {
 
   const hasAnyContent = () => {
     const hasPostDraft =
-      postText.trim().length > 0 ||
+      postTitle.trim().length > 0 ||
+      postBody.trim().length > 0 ||
       postTags.length > 0 ||
       photos.length > 0 ||
       processingImages.length > 0 ||
@@ -317,7 +311,8 @@ function CreateContentModal({ onClose }) {
       customDate.trim().length > 0;
 
     const hasRequestDraft =
-      reqText.trim().length > 0 ||
+      reqTitle.trim().length > 0 ||
+      reqBody.trim().length > 0 ||
       reqRewardType !== 'none' ||
       reqRewardValue.trim().length > 0 ||
       reqDeadlineType !== '24h' ||
@@ -360,9 +355,9 @@ function CreateContentModal({ onClose }) {
   };
 
   const isPostFormValid = () => {
-    const textValid = postText.trim().length >= POST_LIMITS.BODY_MIN;
-    if (postCategory === 'polls') return postText.trim().length >= 3 && isPollValid();
-    if (postCategory === 'memes') return photos.length > 0 || countLetters(postText) >= 3;
+    const textValid = postBody.trim().length >= POST_LIMITS.BODY_MIN;
+    if (postCategory === 'polls') return postTitle.trim().length >= 3 && isPollValid();
+    if (postCategory === 'memes') return photos.length > 0 || countLetters(postTitle + postBody) >= 3;
     if (!textValid) return false;
     if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
     if (postCategory === 'lost_found') return location.trim().length >= 3;
@@ -371,8 +366,8 @@ function CreateContentModal({ onClose }) {
   };
 
   const isRequestFormValid = () =>
-    parsedRequestText.title.length >= REQUEST_LIMITS.TITLE_MIN &&
-    parsedRequestText.body.length >= REQUEST_LIMITS.BODY_MIN &&
+    reqTitle.trim().length >= REQUEST_LIMITS.TITLE_MIN &&
+    reqBody.trim().length >= REQUEST_LIMITS.BODY_MIN &&
     Boolean(resolvedRequestExpiresAt);
 
   const canSend = activeTab === 'post' ? isPostFormValid() : isRequestFormValid();
@@ -486,7 +481,7 @@ function CreateContentModal({ onClose }) {
   const buildPollPayload = () => {
     const options = pollOptions.map((opt) => opt.trim()).filter(Boolean);
     return {
-      question: postText.trim() || 'Опрос',
+      question: postTitle.trim() || 'Опрос',
       options,
       type: pollType,
       correct_option: pollType === 'quiz' ? (pollCorrectOption ?? 0) : null,
@@ -528,16 +523,12 @@ function CreateContentModal({ onClose }) {
         formData.append('category', postCategory);
 
         if (postCategory === 'polls') {
-          const pollQuestion = postText.trim() || 'Опрос';
+          const pollQuestion = postTitle.trim() || 'Опрос';
           formData.append('title', pollQuestion.slice(0, MAX_TITLE_LENGTH));
           formData.append('body', pollQuestion);
         } else {
-          const parsedPost = parsePostSingleText(postText, {
-            titleMax: POST_LIMITS.TITLE_MAX,
-            bodyMin: postCategory === 'memes' ? 3 : POST_LIMITS.BODY_MIN,
-          });
-          formData.append('title', parsedPost.title || '');
-          formData.append('body', parsedPost.body || '');
+          formData.append('title', postTitle.trim().slice(0, POST_LIMITS.TITLE_MAX));
+          formData.append('body', postBody.trim());
         }
 
         formData.append('tags', JSON.stringify(postTags));
@@ -546,13 +537,13 @@ function CreateContentModal({ onClose }) {
 
         if (postCategory === 'lost_found') {
           formData.append('lost_or_found', lfType);
-          formData.append('item_description', postText.trim());
+          formData.append('item_description', postBody.trim());
           formData.append('location', location.trim());
         }
 
         if (postCategory === 'events') {
           const eventDateIso = buildEventDateIso(eventDateMode, customDate);
-          const eventName = getFirstNonEmptyLine(postText).slice(0, 200);
+          const eventName = (postTitle.trim() || postBody.trim()).slice(0, 200);
           formData.append('event_name', eventName || 'Событие');
           formData.append('event_date', eventDateIso || new Date().toISOString());
           formData.append('event_location', location.trim());
@@ -594,7 +585,7 @@ function CreateContentModal({ onClose }) {
 
     if (!isRequestFormValid()) {
       hapticFeedback('error');
-      setError('Заполните текст запроса: заголовок 10+ и описание 20+');
+      setError(`Заголовок — мин. ${REQUEST_LIMITS.TITLE_MIN} симв., описание — мин. ${REQUEST_LIMITS.BODY_MIN} симв.`);
       return;
     }
 
@@ -603,10 +594,9 @@ function CreateContentModal({ onClose }) {
 
     try {
       const formData = new FormData();
-      const requestPayload = parsedRequestText;
       formData.append('category', reqCategory);
-      formData.append('title', requestPayload.title);
-      formData.append('body', requestPayload.body);
+      formData.append('title', reqTitle.trim());
+      formData.append('body', reqBody.trim());
       formData.append('expires_at', resolvedRequestExpiresAt);
       formData.append('tags', JSON.stringify(postTags));
       formData.append('max_responses', '5');
@@ -740,12 +730,23 @@ function CreateContentModal({ onClose }) {
                   </div>
 
                   <div style={styles.slideContent}>
-                    <div className="create-grow-wrap" data-replicated-value={postText || ' '} style={{ marginBottom: 16 }}>
+                    {postCategory !== 'polls' && (
+                      <input
+                        type="text"
+                        value={postTitle}
+                        onChange={(e) => setPostTitle(e.target.value)}
+                        placeholder={postPlaceholder.split('\n')[0] || 'Заголовок...'}
+                        style={styles.postTitleInput}
+                        maxLength={POST_LIMITS.TITLE_MAX}
+                        disabled={isSubmitting}
+                      />
+                    )}
+                    <div className="create-grow-wrap" data-replicated-value={(postCategory === 'polls' ? postTitle : postBody) || ' '} style={{ marginBottom: 16 }}>
                       <textarea
-                        ref={postTextareaRef}
-                        value={postText}
-                        onChange={(e) => setPostText(e.target.value)}
-                        placeholder={postPlaceholder}
+                        ref={postBodyRef}
+                        value={postCategory === 'polls' ? postTitle : postBody}
+                        onChange={(e) => postCategory === 'polls' ? setPostTitle(e.target.value) : setPostBody(e.target.value)}
+                        placeholder={postCategory === 'polls' ? postPlaceholder : (postPlaceholder.split('\n')[1] || 'Подробности...')}
                         className="hide-scroll create-post-input"
                         style={styles.postTextareaInput}
                         maxLength={POST_LIMITS.BODY_MAX}
@@ -892,11 +893,20 @@ function CreateContentModal({ onClose }) {
                   </div>
 
                   <div style={styles.slideContent}>
-                    <div className="create-grow-wrap" data-replicated-value={reqText || ' '} style={{ marginBottom: 16 }}>
+                    <input
+                      type="text"
+                      value={reqTitle}
+                      onChange={(e) => setReqTitle(e.target.value)}
+                      placeholder="Заголовок запроса..."
+                      style={styles.reqTitleInput}
+                      maxLength={REQUEST_LIMITS.TITLE_MAX}
+                      disabled={isSubmitting}
+                    />
+                    <div className="create-grow-wrap" data-replicated-value={reqBody || ' '} style={{ marginBottom: 16 }}>
                       <textarea
-                        ref={reqTextareaRef}
-                        value={reqText}
-                        onChange={(e) => setReqText(e.target.value)}
+                        ref={reqBodyRef}
+                        value={reqBody}
+                        onChange={(e) => setReqBody(e.target.value)}
                         placeholder={requestPlaceholder}
                         className="hide-scroll"
                         style={styles.requestTextareaInput}
@@ -1105,23 +1115,23 @@ function CreateContentModal({ onClose }) {
                 {activeTab === 'post' ? (
                   <>
                     <div style={styles.toolGroup}>
-                      <button type="button" onClick={() => { if (!categoryCapabilities.allowImages) { hapticFeedback('error'); return; } postFileInputRef.current?.click(); }} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.allowImages ? styles.toolBtn : { ...styles.toolBtn, ...styles.toolBtnDisabled }} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={20} /></button>
-                      <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={20} /></button>
-                      {canUsePollByCategory && <button type="button" onClick={() => { if (postCategory !== 'polls') setHasPoll((prev) => !prev); }} style={pollVisible ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><BarChart2 size={20} /></button>}
-                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) setIsAnonymous((prev) => !prev); }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><VenetianMask size={20} /></button>
+                      <button type="button" onClick={() => { if (!categoryCapabilities.allowImages) { hapticFeedback('error'); return; } postFileInputRef.current?.click(); }} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.allowImages ? styles.toolBtn : { ...styles.toolBtn, ...styles.toolBtnDisabled }} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={TOOL_ICON_SIZE} /></button>
+                      <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={TOOL_ICON_SIZE} /></button>
+                      {canUsePollByCategory && <button type="button" onClick={() => { if (postCategory !== 'polls') setHasPoll((prev) => !prev); }} style={pollVisible ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><BarChart2 size={TOOL_ICON_SIZE} /></button>}
+                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) setIsAnonymous((prev) => !prev); }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><VenetianMask size={TOOL_ICON_SIZE} /></button>
                     </div>
                   </>
                 ) : (
                   <div style={styles.toolGroup}>
-                    <button type="button" onClick={() => postFileInputRef.current?.click()} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={20} /></button>
-                    <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={20} /></button>
-                    <button type="button" onClick={toggleReqReward} style={showReqReward || reqRewardType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Gift size={20} /></button>
-                    <button type="button" onClick={toggleReqDeadline} style={showReqDeadline || reqDeadlineType !== '24h' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Clock size={20} /></button>
+                    <button type="button" onClick={() => postFileInputRef.current?.click()} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={TOOL_ICON_SIZE} /></button>
+                    <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={TOOL_ICON_SIZE} /></button>
+                    <button type="button" onClick={toggleReqReward} style={showReqReward || reqRewardType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Gift size={TOOL_ICON_SIZE} /></button>
+                    <button type="button" onClick={toggleReqDeadline} style={showReqDeadline || reqDeadlineType !== '24h' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Clock size={TOOL_ICON_SIZE} /></button>
                   </div>
                 )}
 
                 <button type="button" onClick={handleSubmit} style={sendDisabled ? styles.sendBtn : { ...styles.sendBtn, ...styles.sendBtnActive }} className="create-spring-btn" disabled={isSubmitting}>
-                  <Send size={18} />
+                  <Check size={TOOL_ICON_SIZE} />
                 </button>
               </div>
             </div>
@@ -1258,10 +1268,29 @@ const styles = {
   },
   categoryChipActive: { border: '1px solid var(--create-primary)', background: 'rgba(212,255,0,0.1)', color: 'var(--create-primary)' },
   slideContent: { padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', flex: '1 0 auto' },
+  postTitleInput: {
+    width: '100%', border: 'none', background: 'transparent',
+    color: '#fff', caretColor: '#fff',
+    fontSize: 22, fontWeight: 700, lineHeight: 1.3, padding: 0, outline: 'none', fontFamily: 'inherit', marginBottom: 12,
+  },
   postTextareaInput: {
     width: '100%', minHeight: 76, resize: 'none', overflow: 'hidden', border: 'none', background: 'transparent',
     color: '#fff', caretColor: '#fff',
-    fontSize: 18, fontWeight: 500, lineHeight: 1.4, padding: 0, outline: 'none', fontFamily: 'inherit',
+    fontSize: 16, fontWeight: 400, lineHeight: 1.4, padding: 0, outline: 'none', fontFamily: 'inherit',
+  },
+  reqTitleInput: {
+    width: '100%',
+    border: 'none',
+    background: 'transparent',
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: 700,
+    lineHeight: 1.3,
+    padding: 0,
+    outline: 'none',
+    fontFamily: 'inherit',
+    marginBottom: 12,
+    caretColor: '#fff',
   },
   requestTextareaInput: {
     width: '100%',
@@ -1271,8 +1300,8 @@ const styles = {
     border: 'none',
     background: 'transparent',
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 500,
+    fontSize: 16,
+    fontWeight: 400,
     lineHeight: 1.4,
     padding: 0,
     outline: 'none',
@@ -1323,13 +1352,10 @@ const styles = {
     backdropFilter: 'blur(8px)',
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
   },
-  photoRow: { display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 16 },
-  photoCard: { position: 'relative', width: 100, height: 100, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--create-border)', flexShrink: 0, background: 'var(--create-surface-elevated)' },
-  photoImage: { width: '100%', height: '100%', objectFit: 'cover' },
+  photoRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 },
+  photoCard: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 },
+  photoImage: { width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 16, border: '1px solid var(--create-border)' },
   removePhotoBtn: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
     width: 24,
     height: 24,
     borderRadius: 12,
@@ -1344,7 +1370,7 @@ const styles = {
     backdropFilter: 'blur(8px)',
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
   },
-  processingPlaceholder: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--create-primary)', fontSize: 13, fontWeight: 600 },
+  processingPlaceholder: { width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--create-primary)', fontSize: 13, fontWeight: 600, borderRadius: 16, border: '1px solid var(--create-border)', background: 'var(--create-surface-elevated)' },
   pollCard: { marginBottom: 16 },
   pollCloseRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   pollX: {

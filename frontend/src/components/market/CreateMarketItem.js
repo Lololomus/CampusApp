@@ -1,1015 +1,892 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/market/CreateMarketItem.js =====
-import React, { useState, useRef } from 'react';
-import { Trash2, MapPin, Check, AlertCircle, Camera, ChevronLeft } from 'lucide-react';
+// ===== FILE: CreateMarketItem.js =====
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { X, Image as ImageIcon, Sparkles, MapPin, Check } from 'lucide-react';
 import { useStore } from '../../store';
-import { createMarketItem, updateMarketItem } from '../../api';
+import { createMarketItem } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { processImageFiles } from '../../utils/media';
 import { toast } from '../shared/Toast';
-import SwipeableModal from '../shared/SwipeableModal';
-
+import { useSwipe } from '../../hooks/useSwipe';
+import { DragHandle } from '../shared/SwipeableModal';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
 
 const MAX_IMAGES = 3;
-const MIN_TITLE_LEN = 5;
-const MAX_TITLE_LEN = 50;
-const MIN_DESC_LEN = 20;
-const MAX_DESC_LEN = 1000;
+const MIN_TITLE_LEN = 3;
+const MIN_DESC_LEN = 10;
+const TOOL_ICON_SIZE = 26;
 
+// Категории товаров и услуг
+const CATEGORIES = [
+  { id: 'textbooks',   label: 'Учебники',  icon: '📚', type: 'goods' },
+  { id: 'electronics', label: 'Техника',   icon: '💻', type: 'goods' },
+  { id: 'clothing',    label: 'Одежда',    icon: '👕', type: 'goods' },
+  { id: 'dorm',        label: 'Общага',    icon: '🛋️', type: 'goods' },
+  { id: 'hobby',       label: 'Хобби',     icon: '🎸', type: 'goods' },
+  { id: 'other_g',     label: 'Другое',    icon: '📦', type: 'goods' },
+  { id: 'tutor',       label: 'Репетитор', icon: '👨‍🏫', type: 'services' },
+  { id: 'homework',    label: 'Курсачи',   icon: '📝', type: 'services' },
+  { id: 'repair',      label: 'Ремонт',    icon: '🛠️', type: 'services' },
+  { id: 'design',      label: 'Дизайн',    icon: '🎨', type: 'services' },
+  { id: 'delivery',    label: 'Курьер',    icon: '🏃', type: 'services' },
+  { id: 'other_s',     label: 'Другое',    icon: '✨', type: 'services' },
+];
 
-const CreateMarketItem = ({ editItem = null, onClose, onSuccess }) => {
-  const { user, addMarketItem, updateMarketItem: updateInStore } = useStore();
+const CONDITIONS = [
+  { id: 'new',      label: 'Новое',     icon: '✨' },
+  { id: 'like_new', label: 'Как новое', icon: '⭐' },
+  { id: 'good',     label: 'Хорошее',   icon: '👍' },
+  { id: 'fair',     label: 'Нормальное',icon: '👌' },
+];
 
-  // ===== STATE =====
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  
-  const [category, setCategory] = useState(editItem?.category || '');
-  const [customCategory, setCustomCategory] = useState('');
-  const [showCategoryInput, setShowCategoryInput] = useState(false);
+const CreateMarketItem = ({ onClose, onSuccess }) => {
+  const { user, addMarketItem } = useStore();
 
-  const [images, setImages] = useState(
-    editItem?.images?.map(img => ({ 
-      file: null, 
-      preview: typeof img === 'string' ? img : img.url 
-    })) || []
-  );
-  
-  const [title, setTitle] = useState(editItem?.title || '');
-  const [description, setDescription] = useState(editItem?.description || '');
-  const [price, setPrice] = useState(editItem?.price || '');
-  const [condition, setCondition] = useState(editItem?.condition || 'good');
-  const [location, setLocation] = useState(editItem?.location || '');
+  // --- Основной стейт ---
+  const [itemType, setItemType] = useState('goods');
+  const [cat, setCat]           = useState('');
+  const [title, setTitle]       = useState('');
+  const [price, setPrice]       = useState('');
+  const [desc, setDesc]         = useState('');
+  const [condition, setCondition] = useState('');
+  const [location, setLocation] = useState('');
+  const [photos, setPhotos]     = useState([]);   // { file, preview }
+  const [loading, setLoading]   = useState(false);
 
-  const [errors, setErrors] = useState({});
-  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
-  const fileInputRef = useRef(null);
+  // --- Суб-шиты ---
+  const [activeSubSheet, setActiveSubSheet] = useState(null); // 'cond' | 'loc' | null
 
-  // ===== CONSTANTS =====
-  
-  const standardCategories = [
-    { id: 'textbooks', label: 'Учебники', icon: '📚' },
-    { id: 'electronics', label: 'Электроника', icon: '💻' },
-    { id: 'clothing', label: 'Одежда', icon: '👕' },
-    { id: 'furniture', label: 'Мебель', icon: '🛋️' },
-    { id: 'sports', label: 'Спорт', icon: '⚽' },
-    { id: 'appliances', label: 'Техника', icon: '🔌' },
-  ];
+  // --- Анимация видимости ---
+  const [isVisible, setIsVisible] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
-  const suggestedCategories = [
-    'Конспекты', 'Для общаги', 'Канцелярия', 
-    'Проездные', 'Услуги', 'Игры', 
-    'Хобби', 'Билеты', 'Косметика', 'Еда'
-  ];
+  const fileInputRef  = useRef(null);
+  const descRef       = useRef(null);
+  const sheetRef      = useRef(null);
 
-  const conditions = [
-    { id: 'new', label: 'Новое', icon: '✨' },
-    { id: 'like_new', label: 'Как новое', icon: '⭐' },
-    { id: 'good', label: 'Хорошее', icon: '👍' },
-    { id: 'fair', label: 'Норм', icon: '👌' },
-  ];
+  useEffect(() => {
+    const t = setTimeout(() => setIsVisible(true), 20);
+    return () => clearTimeout(t);
+  }, []);
 
-  // ===== VALIDATION HELPERS =====
-  const getBorderColor = (isValid, attemptedSubmit) => {
-    if (!attemptedSubmit) return theme.colors.border;
-    return isValid ? theme.colors.success : theme.colors.error;
+  // Сброс категории и состояния при смене типа
+  useEffect(() => {
+    setCat('');
+    if (itemType === 'services') setCondition('');
+  }, [itemType]);
+
+  // Закрыть суб-шит при закрытии
+  useEffect(() => {
+    if (!isVisible) setActiveSubSheet(null);
+  }, [isVisible]);
+
+  // Инжектируем CSS-переменные и анимации (как в CreateContentModal)
+  useEffect(() => {
+    if (document.getElementById('create-market-vars')) return;
+    const style = document.createElement('style');
+    style.id = 'create-market-vars';
+    style.textContent = `
+      :root {
+        --cm-primary: ${theme.colors.premium.primary};
+        --cm-surface: ${theme.colors.premium.surfaceElevated};
+        --cm-surface-elevated: ${theme.colors.premium.surfaceHover};
+        --cm-border: ${theme.colors.premium.border};
+        --cm-text-muted: ${theme.colors.premium.textMuted};
+        --cm-text-body: ${theme.colors.premium.textBody};
+        --cm-error: ${theme.colors.error};
+      }
+      .cm-spring-btn {
+        transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s;
+        cursor: pointer;
+      }
+      .cm-spring-btn:active { transform: scale(0.92); opacity: 0.85; }
+      .cm-hide-scroll::-webkit-scrollbar { display: none; }
+      .cm-hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      @keyframes cm-slide-up {
+        from { transform: translateY(100%); }
+        to   { transform: translateY(0); }
+      }
+      @keyframes cm-pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(212,255,0,0.15); }
+        70%  { box-shadow: 0 0 0 6px rgba(212,255,0,0); }
+        100% { box-shadow: 0 0 0 0 rgba(212,255,0,0); }
+      }
+      .cm-pulse { animation: cm-pulse 3s infinite; }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
+  const hasAnyContent = () =>
+    title.trim().length > 0 || desc.trim().length > 0 || price !== '' || photos.length > 0;
+
+  const confirmClose = () => {
+    hapticFeedback('light');
+    setIsVisible(false);
+    setTimeout(onClose, 320);
   };
-  
-  const isStep1Valid = () => !!category && category.trim().length > 0;
-  const isStep2Valid = () => images.length > 0;
-  const isStep3Valid = () => (
+
+  const swipeHandlers = useSwipe({
+    elementRef: sheetRef,
+    onSwipeDown: () => {
+      if (showConfirmation) return;
+      if (hasAnyContent()) setShowConfirmation(true);
+      else confirmClose();
+    },
+    isModal: true,
+    threshold: 120,
+  });
+
+  const canPublish =
     title.trim().length >= MIN_TITLE_LEN &&
-    description.trim().length >= MIN_DESC_LEN &&
-    price && parseInt(price) >= 0
-  );
+    price !== '' &&
+    desc.trim().length >= MIN_DESC_LEN &&
+    cat !== '' &&
+    photos.length > 0 &&
+    (itemType === 'services' || condition !== '');
 
-  // ===== HANDLERS =====
+  // --- Фото ---
+  const handlePhotoAdd = async () => {
+    if (photos.length >= MAX_IMAGES) return;
+    fileInputRef.current?.click();
+  };
 
-  const handleImageUpload = async (e) => {
+  const handleFileChange = async (e) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
-    if (images.length + files.length > MAX_IMAGES) {
-      hapticFeedback('error');
+    if (photos.length + files.length > MAX_IMAGES) {
       toast.warning(`Максимум ${MAX_IMAGES} фото`);
       return;
     }
-
     setLoading(true);
     try {
       const processed = await processImageFiles(files);
-      setImages(prev => [...prev, ...processed]);
-      if (errors.images) setErrors({ ...errors, images: null });
+      setPhotos(prev => [...prev, ...processed]);
       hapticFeedback('light');
-    } catch (err) {
-      console.error("Ошибка фото:", err);
-      toast.error("Ошибка загрузки фото");
+    } catch {
+      toast.error('Ошибка загрузки фото');
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const removeImage = (index) => {
+  const removePhoto = useCallback((idx) => {
     hapticFeedback('medium');
-    setImages(prev => prev.filter((_, i) => i !== index));
-  };
+    setPhotos(prev => prev.filter((_, i) => i !== idx));
+  }, []);
 
-  const handleNext = () => {
-    if (step === 1) {
-      if (!isStep1Valid()) return;
-      hapticFeedback('light');
-      setStep(2);
-    } 
-    else if (step === 2) {
-      if (!isStep2Valid()) return;
-      hapticFeedback('light');
-      setStep(3);
+  // --- Авто-рост textarea ---
+  const handleDescChange = (e) => {
+    setDesc(e.target.value);
+    // обновляем data-attr для grow-wrap
+    if (descRef.current?.parentElement) {
+      descRef.current.parentElement.dataset.replicatedValue = e.target.value;
     }
   };
 
-  const handleBack = () => {
-    hapticFeedback('light');
-    setStep(prev => prev - 1);
-  };
-
-  const handleSelectCategory = (id) => {
-    hapticFeedback('medium');
-    setCategory(id);
-    setShowCategoryInput(false);
-  };
-
-  const handleCustomCategoryInput = (val) => {
-    setCustomCategory(val);
-    setCategory(val); 
-  };
-
-  const handleSuggestionClick = (val) => {
-    hapticFeedback('light');
-    setCustomCategory(val);
-    setCategory(val);
-  };
-
+  // --- Отправка ---
   const handleSubmit = async () => {
-    setAttemptedSubmit(true);
-    
-    if (!isStep3Valid()) {
-      hapticFeedback('error');
-      return;
-    }
-
+    if (!canPublish || loading) return;
     setLoading(true);
     hapticFeedback('heavy');
-
     try {
       const formData = new FormData();
       formData.append('title', title.trim());
-      formData.append('description', description.trim());
+      formData.append('description', desc.trim());
       formData.append('price', parseInt(price, 10));
-      formData.append('category', category);
-      formData.append('condition', condition);
-      formData.append('location', location);
-      formData.append('telegram_id', user.telegram_id);
+      formData.append('category', cat);
+      formData.append('item_type', itemType);
+      if (condition) formData.append('condition', condition);
+      if (location.trim()) formData.append('location', location.trim());
+      if (user?.telegram_id) formData.append('telegram_id', user.telegram_id);
+      photos.forEach(p => { if (p.file) formData.append('images', p.file); });
 
-      if (editItem) {
-        const keepImages = images
-          .filter(img => !img.file)
-          .map(img => img.preview.split('/').pop());
-        formData.append('keep_images', JSON.stringify(keepImages));
-      }
-
-      images.forEach((img) => {
-        if (img.file) {
-          const fieldName = editItem ? 'new_images' : 'images';
-          formData.append(fieldName, img.file);
-        }
-      });
-
-      let result;
-      if (editItem) {
-        result = await updateMarketItem(editItem.id, formData);
-        updateInStore(result);
-      } else {
-        result = await createMarketItem(formData);
-        addMarketItem(result);
-      }
-
-      setLoading(false);
+      const result = await createMarketItem(formData);
+      addMarketItem(result);
       hapticFeedback('success');
-      toast.success(editItem ? 'Товар обновлён' : 'Товар опубликован');
-
-      setTimeout(() => {
-        if (onSuccess) onSuccess();
-        onClose();
-      }, 300);
-
+      toast.success('Товар опубликован');
+      if (onSuccess) onSuccess(result);
+      handleClose();
     } catch (err) {
-      console.error(err);
-      setLoading(false);
-      hapticFeedback('error');
       toast.error(err.response?.data?.detail || 'Ошибка публикации');
+      hapticFeedback('error');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const renderInputLabel = (labelText, currentVal, min, max, isRequired = false) => {
-    const len = currentVal ? currentVal.trim().length : 0;
-    const isValid = len >= min && len <= max;
-    const isError = len > 0 && !isValid;
-    let counterColor = theme.colors.textTertiary;
-    if (isError) counterColor = theme.colors.error;
-    if (isValid) counterColor = theme.colors.success;
-
-    return (
-      <div style={styles.labelRow}>
-        <span style={styles.label}>
-          {labelText}{isRequired && '*'}
-        </span>
-        
-        <div style={styles.counterContainer}>
-          <span style={{...styles.counterText, color: counterColor}}>
-            {len}/{max}
-          </span>
-          
-          {len > 0 && (
-            isValid 
-              ? <Check size={14} color={theme.colors.success} />
-              : <AlertCircle size={14} color={theme.colors.error} />
-          )}
-        </div>
-      </div>
-    );
+  const handleClose = () => {
+    if (loading) return;
+    if (hasAnyContent()) {
+      hapticFeedback('light');
+      setShowConfirmation(true);
+      return;
+    }
+    confirmClose();
   };
 
-  // Custom Title Component
-  const customTitle = (
-    <div style={styles.titleWrapper}>
-      {editItem ? 'Редактирование' : 'Новое объявление'}
-    </div>
-  );
+  const displayedCategories = CATEGORIES.filter(c => c.type === itemType);
 
-  return (
-    <SwipeableModal
-      isOpen={true}
-      onClose={onClose}
-      title={customTitle}
+  // Текст выбранного состояния
+  const condLabel = CONDITIONS.find(c => c.id === condition);
+
+  const sheet = (
+    <div
+      style={{ ...s.backdrop, opacity: isVisible ? 1 : 0 }}
+      onClick={handleClose}
     >
-      <div style={styles.container}>
-        {/* STEPPER */}
-        <div style={styles.stepperWrapper}>
-          <div style={styles.stepperContainer}>
-            <div style={styles.stepperLine} />
-            {[1, 2, 3].map((s) => {
-              // ✅ Вычисляем стили ВНУТРИ map для правильного реактивного обновления
-              const isActive = step >= s;
-              const isCurrent = step === s;
-              
+      {/* Основной шит */}
+      <div
+        ref={sheetRef}
+        style={{
+          ...s.sheet,
+          transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.36s cubic-bezier(0.32,0.72,0,1)',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Drag handle */}
+        <DragHandle handlers={swipeHandlers} gap={0} />
+
+        {/* Таб-свитчер Товар / Услуга */}
+        <div style={s.switcherWrap}>
+          <div style={s.switcher}>
+            <button
+              className="cm-spring-btn"
+              style={{ ...s.switcherBtn, ...(itemType === 'goods' ? s.switcherBtnActive : {}) }}
+              onClick={() => { hapticFeedback('light'); setItemType('goods'); }}
+            >Товар</button>
+            <button
+              className="cm-spring-btn"
+              style={{ ...s.switcherBtn, ...(itemType === 'services' ? s.switcherBtnActive : {}) }}
+              onClick={() => { hapticFeedback('light'); setItemType('services'); }}
+            >Услуга</button>
+          </div>
+        </div>
+
+        {/* Прокручиваемый контент */}
+        <div className="cm-hide-scroll" style={s.scroll}>
+
+          {/* Сетка категорий 2x3 */}
+          <div style={s.catGrid}>
+            {displayedCategories.map(c => {
+              const isSelected = cat === c.id;
               return (
-                <div 
-                  key={s} 
+                <button
+                  key={c.id}
+                  className="cm-spring-btn"
+                  onClick={() => { hapticFeedback('medium'); setCat(c.id); }}
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '50%',
-                    background: isActive ? theme.colors.market : theme.colors.bg,
-                    borderWidth: 2,
-                    borderStyle: 'solid',
-                    borderColor: isActive ? theme.colors.market : theme.colors.border,
-                    color: isActive ? '#fff' : theme.colors.textSecondary,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 600,
-                    fontSize: 14,
-                    zIndex: 1,
-                    position: 'relative',
-                    transition: 'all 0.3s ease',
-                    boxShadow: isCurrent ? `0 0 0 4px rgba(16, 185, 129, 0.2)` : 'none',
+                    ...s.catBtn,
+                    borderColor: isSelected ? 'var(--cm-primary)' : 'transparent',
+                    background: isSelected ? 'rgba(212,255,0,0.1)' : 'var(--cm-surface-elevated)',
+                    color: isSelected ? 'var(--cm-primary)' : '#fff',
                   }}
                 >
-                  {s}
-                </div>
+                  <span>{c.icon}</span>
+                  <span>{c.label}</span>
+                </button>
               );
             })}
           </div>
-          
-          <div style={styles.stepLabels}>
-            <span style={step >= 1 ? styles.stepLabelActive : styles.stepLabel}>Категория</span>
-            <span style={step >= 2 ? styles.stepLabelActive : styles.stepLabel}>Фото</span>
-            <span style={step >= 3 ? styles.stepLabelActive : styles.stepLabel}>Детали</span>
+
+          {/* Фото-миниатюры */}
+          {photos.length > 0 && (
+            <div className="cm-hide-scroll" style={s.photosRow}>
+              {photos.map((p, i) => (
+                <div key={i} style={s.photoThumb}>
+                  <img src={p.preview} alt="" style={s.photoImg} />
+                  <button
+                    className="cm-spring-btn"
+                    style={s.photoRemove}
+                    onClick={() => removePhoto(i)}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Цена — авто-сайзинг */}
+          <div style={s.priceRow}>
+            <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+              <span style={s.priceSizer}>{price || 'Цена'}</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="Цена"
+                value={price}
+                onChange={e => setPrice(e.target.value.replace(/\D/g, ''))}
+                style={s.priceInput}
+              />
+            </div>
+            {price && <span style={s.priceCurrency}>₽</span>}
+          </div>
+
+          {/* Название */}
+          <input
+            type="text"
+            placeholder={itemType === 'services' ? 'Название услуги...' : 'Название товара...'}
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            maxLength={100}
+            style={s.titleInput}
+          />
+
+          {/* Описание — grow-wrap */}
+          <div
+            className="cm-grow-wrap"
+            data-replicated-value={desc}
+            style={s.growWrap}
+          >
+            <textarea
+              ref={descRef}
+              placeholder={itemType === 'services' ? 'Опишите услугу, опыт и условия работы...' : 'Опишите состояние, комплектацию и причины продажи...'}
+              value={desc}
+              onChange={handleDescChange}
+              style={s.descTextarea}
+            />
+          </div>
+
+          {/* Чипы выбранных метаданных */}
+          <div style={s.metaChips}>
+            {condition && itemType === 'goods' && (
+              <div
+                className="cm-spring-btn"
+                style={s.metaChip}
+                onClick={() => setActiveSubSheet('cond')}
+              >
+                {condLabel?.icon} {condLabel?.label}
+              </div>
+            )}
+            {location && (
+              <div
+                className="cm-spring-btn"
+                style={s.metaChip}
+                onClick={() => setActiveSubSheet('loc')}
+              >
+                <MapPin size={14} color="var(--cm-primary)" style={{ marginRight: 4 }} />
+                {location}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* CONTENT */}
-        <div style={styles.content}>
-          
-          {/* STEP 1: CATEGORY */}
-          {step === 1 && (
-            <div style={styles.stepContent}>
-              {!showCategoryInput ? (
-                <>
-                  <div style={styles.categoriesGrid}>
-                    {standardCategories.map(cat => {
-                      const isSelected = category === cat.id;
-                      return (
-                        <button
-                          key={cat.id}
-                          style={{
-                            background: isSelected 
-                              ? 'rgba(16, 185, 129, 0.1)' 
-                              : theme.colors.bgSecondary,
-                            borderWidth: 1,
-                            borderStyle: 'solid',
-                            borderColor: isSelected 
-                              ? theme.colors.market 
-                              : theme.colors.border,
-                            color: theme.colors.text,
-                            borderRadius: 16,
-                            padding: 16,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            gap: 8,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                          }}
-                          onClick={() => handleSelectCategory(cat.id)}
-                        >
-                          <span style={styles.catIcon}>{cat.icon}</span>
-                          <span style={styles.catLabel}>{cat.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  
-                  <button style={styles.otherButton} onClick={() => setShowCategoryInput(true)}>
-                    <span>💡 Другая категория...</span>
-                  </button>
-                </>
-              ) : (
-                <div style={styles.customCatBlock}>
-                  <button style={styles.cancelCustomBtn} onClick={() => setShowCategoryInput(false)}>
-                    <ChevronLeft size={18} />
-                    Назад к списку
-                  </button>
+        {/* Bottom Action Bar */}
+        <div style={s.toolbar}>
+          <div style={s.toolGroup}>
+            {/* Фото */}
+            <button
+              className={`cm-spring-btn ${photos.length === 0 ? 'cm-pulse' : ''}`}
+              style={photos.length > 0 ? { ...s.toolBtn, ...s.toolBtnActive } : s.toolBtn}
+              onClick={handlePhotoAdd}
+              disabled={loading}
+            >
+              {loading ? <div style={s.spinner} /> : <ImageIcon size={TOOL_ICON_SIZE} />}
+            </button>
 
-                  <div style={styles.suggestionsLabel}>Популярное:</div>
-                  <div style={styles.suggestions}>
-                    {suggestedCategories.map(s => (
-                      <button key={s} style={styles.suggestionChip} onClick={() => handleSuggestionClick(s)}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
+            {/* Состояние (только для товаров) */}
+            {itemType === 'goods' && (
+              <button
+                className={`cm-spring-btn ${!condition ? 'cm-pulse' : ''}`}
+                style={condition || activeSubSheet === 'cond' ? { ...s.toolBtn, ...s.toolBtnActive } : s.toolBtn}
+                onClick={() => setActiveSubSheet(activeSubSheet === 'cond' ? null : 'cond')}
+              >
+                <Sparkles size={TOOL_ICON_SIZE} />
+              </button>
+            )}
 
-                  <div style={styles.bottomInputContainer}>
-                    <div style={styles.suggestionsLabel}>Своя категория:</div>
-                    <input 
-                      autoFocus
-                      placeholder="Напишите категорию..."
-                      value={customCategory}
-                      onChange={e => handleCustomCategoryInput(e.target.value)}
-                      style={styles.customInput}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            {/* Локация */}
+            <button
+              className="cm-spring-btn"
+              style={location || activeSubSheet === 'loc' ? { ...s.toolBtn, ...s.toolBtnActive } : s.toolBtn}
+              onClick={() => setActiveSubSheet(activeSubSheet === 'loc' ? null : 'loc')}
+            >
+              <MapPin size={TOOL_ICON_SIZE} />
+            </button>
+          </div>
 
-          {/* STEP 2: PHOTOS */}
-          {step === 2 && (
-            <div style={styles.stepContent}>
-              <div style={styles.sectionHeader}>
-                <span style={styles.sectionTitle}>Фотографии*</span>
-                <span style={styles.counter}>{images.length}/{MAX_IMAGES}</span>
-              </div>
-
-              <div style={styles.photosGrid}>
-                {images.map((img, idx) => (
-                  <div key={idx} style={styles.photoWrapper}>
-                    <img src={img.preview} alt="preview" style={styles.photoPreview} />
-                    <button style={styles.removePhotoButton} onClick={() => removeImage(idx)}>
-                      <Trash2 size={14} />
-                    </button>
-                    {idx === 0 && <div style={styles.coverBadge}>Обложка</div>}
-                  </div>
-                ))}
-
-                {images.length < MAX_IMAGES && (
-                  <button 
-                    style={styles.addPhotoButton}
-                    onClick={() => fileInputRef.current.click()}
-                  >
-                    {loading ? (
-                      <div style={styles.spinner} />
-                    ) : (
-                      <>
-                        <Camera size={24} color={theme.colors.market} />
-                        <span style={styles.addPhotoText}>Добавить</span>
-                      </>
-                    )}
-                  </button>
-                )}
-                
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleImageUpload}
-                  style={{ display: 'none' }}
-                  accept="image/*"
-                  multiple
-                />
-              </div>
-
-              <div style={styles.divider} />
-              
-              <div style={styles.sectionTitle}>Состояние*</div>
-              <div style={styles.conditionsGrid}>
-                {conditions.map(c => {
-                  const isActive = condition === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      style={{
-                        backgroundColor: isActive ? theme.colors.market : theme.colors.bgSecondary,
-                        borderWidth: 1,
-                        borderStyle: 'solid',
-                        borderColor: isActive ? theme.colors.market : theme.colors.border,
-                        color: isActive ? '#ffffff' : theme.colors.text,
-                        fontWeight: isActive ? 600 : 400,
-                        borderRadius: 12,
-                        padding: '10px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 13,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                      onClick={() => { setCondition(c.id); hapticFeedback('light'); }}
-                    >
-                      <span>{c.icon} {c.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: DETAILS */}
-          {step === 3 && (
-            <div style={styles.stepContentCompact}>
-              
-              {/* НАЗВАНИЕ */}
-              <div style={styles.inputGroup}>
-                {renderInputLabel("Название", title, MIN_TITLE_LEN, MAX_TITLE_LEN, true)}
-                <input
-                  style={{
-                    width: '100%',
-                    height: 44,
-                    padding: '0 14px',
-                    background: theme.colors.bgSecondary,
-                    borderWidth: 1,
-                    borderStyle: 'solid',
-                    borderColor: getBorderColor(title.trim().length >= MIN_TITLE_LEN, attemptedSubmit),
-                    borderRadius: 12,
-                    color: theme.colors.text,
-                    fontSize: 16,
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
-                  placeholder="iPhone 13, Велосипед..."
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  maxLength={MAX_TITLE_LEN}
-                />
-              </div>
-
-              {/* ЦЕНА */}
-              <div style={styles.inputGroup}>
-                <div style={styles.labelRow}>
-                  <span style={styles.label}>Цена (₽)*</span>
-                </div>
-                <input
-                  type="number"
-                  style={{
-                    width: '100%',
-                    height: 44,
-                    padding: '0 14px',
-                    background: theme.colors.bgSecondary,
-                    borderWidth: 1,
-                    borderStyle: 'solid',
-                    borderColor: getBorderColor(price && parseInt(price) >= 0, attemptedSubmit),
-                    borderRadius: 12,
-                    color: theme.colors.text,
-                    fontSize: 16,
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
-                  placeholder="0"
-                  value={price}
-                  onChange={e => setPrice(e.target.value)}
-                />
-              </div>
-
-              {/* ОПИСАНИЕ */}
-              <div style={styles.inputGroup}>
-                {renderInputLabel("Описание", description, MIN_DESC_LEN, MAX_DESC_LEN, true)}
-                <textarea
-                  style={{
-                    width: '100%',
-                    padding: '12px 14px',
-                    background: theme.colors.bgSecondary,
-                    borderWidth: 1,
-                    borderStyle: 'solid',
-                    borderColor: getBorderColor(description.trim().length >= MIN_DESC_LEN, attemptedSubmit),
-                    borderRadius: 12,
-                    color: theme.colors.text,
-                    fontSize: 15,
-                    resize: 'none',
-                    fontFamily: 'inherit',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
-                  placeholder={`Минимум ${MIN_DESC_LEN} символов...`}
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  rows={4}
-                />
-              </div>
-
-              {/* ЛОКАЦИЯ */}
-              <div style={styles.inputGroup}>
-                <div style={styles.labelRow}>
-                  <span style={styles.label}>
-                    Где забирать? <span style={{color: theme.colors.textTertiary, fontWeight: 400}}>(опционально)</span>
-                  </span>
-                </div>
-                <div style={styles.inputWrapper}>
-                  <MapPin size={16} style={styles.inputIcon} />
-                  <input 
-                    style={styles.inputWithIcon}
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Например: Покровка, R-корпус"
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Кнопка публикации */}
+          <button
+            className="cm-spring-btn"
+            disabled={!canPublish || loading}
+            onClick={handleSubmit}
+            style={{
+              ...s.publishBtn,
+              background: canPublish ? 'var(--cm-primary)' : 'var(--cm-surface-elevated)',
+              color: canPublish ? '#000' : 'var(--cm-text-muted)',
+            }}
+          >
+            {loading ? <div style={s.spinner} /> : <Check size={TOOL_ICON_SIZE} />}
+          </button>
         </div>
 
-        {/* FOOTER */}
-        <div style={styles.footer}>
-          {step > 1 && (
-            <button style={styles.backButton} onClick={handleBack} disabled={loading}>
-              Назад
-            </button>
-          )}
-          
-          {step < 3 ? (
-            <button 
-              style={(!isStep1Valid() && step === 1) || (!isStep2Valid() && step === 2)
-                ? styles.nextButtonDisabled 
-                : styles.nextButton
-              } 
-              onClick={handleNext}
-              disabled={(step === 1 && !isStep1Valid()) || (step === 2 && !isStep2Valid())}
+        {/* Sub-sheet: состояние */}
+        <div style={{
+          ...s.subSheet,
+          transform: activeSubSheet === 'cond' ? 'translateY(0)' : 'translateY(100%)',
+        }}>
+          <div style={s.subSheetHeader}>
+            <span style={s.subSheetTitle}>Состояние</span>
+            <button
+              className="cm-spring-btn"
+              style={s.subSheetClose}
+              onClick={() => setActiveSubSheet(null)}
             >
-              Далее
+              <X size={16} />
             </button>
-          ) : (
-            <button 
-              style={!isStep3Valid() || loading ? styles.submitButtonDisabled : styles.submitButton} 
-              onClick={handleSubmit} 
-              disabled={!isStep3Valid() || loading}
-            >
-              {loading ? '...' : 'Разместить'}
-            </button>
-          )}
+          </div>
+          <div className="cm-hide-scroll" style={{ overflowY: 'auto' }}>
+            {CONDITIONS.map(c => (
+              <button
+                key={c.id}
+                className="cm-spring-btn"
+                onClick={() => {
+                  hapticFeedback('light');
+                  setCondition(c.id);
+                  setActiveSubSheet(null);
+                }}
+                style={{
+                  ...s.condBtn,
+                  background: condition === c.id ? 'rgba(212,255,0,0.1)' : 'var(--cm-surface-elevated)',
+                  color: condition === c.id ? 'var(--cm-primary)' : '#fff',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 16, fontWeight: 600 }}>
+                  <span style={{ fontSize: 18 }}>{c.icon}</span>
+                  {c.label}
+                </div>
+                {condition === c.id && <Check size={20} color="var(--cm-primary)" />}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Sub-sheet: локация */}
+        <div style={{
+          ...s.subSheet,
+          transform: activeSubSheet === 'loc' ? 'translateY(0)' : 'translateY(100%)',
+        }}>
+          <div style={s.subSheetHeader}>
+            <span style={s.subSheetTitle}>Где забирать?</span>
+            <button
+              className="cm-spring-btn"
+              style={s.subSheetClose}
+              onClick={() => setActiveSubSheet(null)}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div style={{ position: 'relative' }}>
+            <MapPin size={20} color="var(--cm-text-muted)" style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <input
+              type="text"
+              placeholder="Аудитория, общага или метро..."
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+              style={s.locInput}
+            />
+          </div>
+          <button
+            className="cm-spring-btn"
+            style={s.locSaveBtn}
+            onClick={() => setActiveSubSheet(null)}
+          >
+            Сохранить
+          </button>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
       </div>
-    </SwipeableModal>
+
+      {/* Grow-wrap стили */}
+      <style>{`
+        .cm-grow-wrap { display: grid; }
+        .cm-grow-wrap::after {
+          content: attr(data-replicated-value) " ";
+          white-space: pre-wrap;
+          visibility: hidden;
+          font-size: 16px;
+          line-height: 1.4;
+          min-height: 80px;
+          padding: 4px 0;
+          font-family: inherit;
+          grid-area: 1/1/2/2;
+        }
+        .cm-grow-wrap > textarea {
+          resize: none;
+          overflow: hidden;
+          grid-area: 1/1/2/2;
+          font-family: inherit;
+        }
+      `}</style>
+    </div>
   );
+
+  const portal = (
+    <>
+      {sheet}
+      <ConfirmationDialog
+        isOpen={showConfirmation}
+        title="Выйти из редактора?"
+        message="Весь введённый текст будет потерян"
+        confirmText="Да, выйти"
+        cancelText="Продолжить"
+        confirmType="danger"
+        onConfirm={confirmClose}
+        onCancel={() => setShowConfirmation(false)}
+      />
+    </>
+  );
+
+  return createPortal(portal, document.body);
 };
 
-
-const styles = {
-  // Container
-  container: {
+// ===== СТИЛИ =====
+const s = {
+  backdrop: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(4px)',
+    zIndex: 3000,
     display: 'flex',
     flexDirection: 'column',
-    minHeight: '60vh',
-    maxHeight: '75vh',
+    justifyContent: 'flex-end',
+    transition: 'opacity 0.3s ease',
   },
-
-  titleWrapper: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.text,
-  },
-
-  // Stepper
-  stepperWrapper: {
-    paddingBottom: theme.spacing.md,
-    borderBottom: `1px solid ${theme.colors.border}`,
-    marginBottom: theme.spacing.md,
-  },
-
-  stepperContainer: {
+  sheet: {
+    background: 'var(--cm-surface)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: '92%',
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
     position: 'relative',
-    margin: '16px 40px 8px',
+    overflow: 'hidden',
   },
-
-  stepperLine: {
-    position: 'absolute',
-    top: '50%',
-    left: 0,
-    right: 0,
-    height: 2,
-    background: theme.colors.border,
-    zIndex: 0,
-    transform: 'translateY(-50%)',
+  // Таб-свитчер
+  switcherWrap: {
+    padding: '12px 16px 10px',
+    borderBottom: '1px solid var(--cm-border)',
+    flexShrink: 0,
   },
-
-  stepLabels: {
+  switcher: {
     display: 'flex',
-    justifyContent: 'space-between',
-    margin: '0 20px',
+    background: 'var(--cm-surface-elevated)',
+    borderRadius: 12,
+    padding: 4,
+  },
+  switcherBtn: {
+    flex: 1,
+    border: 'none',
+    borderRadius: 8,
+    background: 'transparent',
+    color: 'var(--cm-text-muted)',
+    padding: '8px',
+    fontWeight: 700,
+    fontSize: 15,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  switcherBtnActive: {
+    background: 'var(--cm-primary)',
+    color: '#000',
   },
 
-  stepLabel: {
-    fontSize: 11,
-    color: theme.colors.textSecondary,
-    width: 60,
-    textAlign: 'center'
-  },
-
-  stepLabelActive: {
-    fontSize: 11,
-    color: theme.colors.market,
-    fontWeight: 600,
-    width: 60,
-    textAlign: 'center'
-  },
-
-  // Content
-  content: {
+  // Скролл-область
+  scroll: {
     flex: 1,
     overflowY: 'auto',
-    overflowX: 'hidden',
-    paddingBottom: theme.spacing.sm,
-  },
-
-  stepContent: {
+    padding: '0 20px 150px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
   },
 
-  stepContentCompact: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-
-  // Step 1: Categories
-  categoriesGrid: {
+  // Категории
+  catGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: 12
-  },
-
-  catIcon: {
-    fontSize: 28
-  },
-
-  catLabel: {
-    fontSize: 14,
-    color: theme.colors.text,
-    fontWeight: 500
-  },
-
-  otherButton: {
-    width: '100%',
-    padding: '14px',
-    marginTop: 12,
-    background: theme.colors.card,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: 16,
-    color: theme.colors.textSecondary,
-    fontWeight: 500,
-    cursor: 'pointer',
-  },
-  
-  // Custom Category
-  customCatBlock: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-    height: '100%'
-  },
-
-  cancelCustomBtn: {
-    alignSelf: 'flex-start',
-    padding: '8px 0',
-    background: 'transparent',
-    border: 'none',
-    color: theme.colors.textSecondary,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    cursor: 'pointer',
-    fontSize: 14,
-  },
-
-  suggestionsLabel: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    marginBottom: 4
-  },
-
-  suggestions: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8
-  },
-
-  suggestionChip: {
-    background: theme.colors.card,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: 20,
-    padding: '8px 14px',
-    color: theme.colors.text,
-    fontSize: 13,
-    cursor: 'pointer',
-  },
-
-  bottomInputContainer: {
-    marginTop: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
+    gridTemplateRows: 'repeat(2, auto)',
+    gridAutoFlow: 'column',
+    gridAutoColumns: 'max-content',
     gap: 8,
-    paddingBottom: 10
+    padding: '12px 0 16px',
+    overflowX: 'auto',
+    flexShrink: 0,
   },
-
-  customInput: {
-    width: '100%',
-    height: 48,
-    padding: '0 16px',
-    background: theme.colors.bgSecondary,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: 14,
-    color: theme.colors.text,
-    fontSize: 16,
-    outline: 'none',
-    boxSizing: 'border-box',
-  },
-
-  // Step 2: Photos & Condition
-  sectionHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-
-  sectionTitle: {
-    fontSize: 16,
+  catBtn: {
+    border: '1px solid transparent',
+    borderRadius: 20,
+    background: 'var(--cm-surface-elevated)',
+    color: '#fff',
+    padding: '8px 16px',
+    fontSize: 14,
     fontWeight: 600,
-    color: theme.colors.text
+    display: 'flex',
+    gap: 6,
+    alignItems: 'center',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
   },
 
-  counter: {
-    fontSize: 13,
-    color: theme.colors.textTertiary
-  },
-
-  photosGrid: {
+  // Фото
+  photosRow: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: 12
+    gap: 8,
+    marginBottom: 16,
   },
-
-  photoWrapper: {
-    position: 'relative',
-    aspectRatio: '1',
-    borderRadius: 12,
-    overflow: 'hidden'
+  photoThumb: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
   },
-
-  photoPreview: {
+  photoImg: {
     width: '100%',
-    height: '100%',
-    objectFit: 'cover'
+    aspectRatio: '1',
+    objectFit: 'cover',
+    borderRadius: 12,
+    display: 'block',
   },
-
-  removePhotoButton: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    background: 'rgba(0,0,0,0.6)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '50%',
+  photoRemove: {
     width: 24,
     height: 24,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-  },
-
-  coverBadge: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    right: 4,
-    background: 'rgba(16, 185, 129, 0.9)',
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 700,
-    borderRadius: 4,
-    textAlign: 'center',
-    padding: 2,
-  },
-
-  addPhotoButton: {
-    aspectRatio: '1',
     borderRadius: 12,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: theme.colors.border,
-    background: 'transparent',
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(36,36,40,0.9)',
+    color: 'rgba(255,255,255,0.92)',
+    cursor: 'pointer',
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    cursor: 'pointer',
-    color: theme.colors.textSecondary,
+    padding: 0,
+    backdropFilter: 'blur(8px)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    flexShrink: 0,
   },
 
-  addPhotoText: {
-    fontSize: 11,
-    fontWeight: 500
-  },
-
-  divider: {
-    height: 1,
-    background: theme.colors.border,
-    margin: '8px 0'
-  },
-  
-  conditionsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: 10
-  },
-
-  // Step 3
-  inputGroup: {
+  // Цена
+  priceRow: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    width: '100%'
+    alignItems: 'baseline',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  priceSizer: {
+    fontSize: 36,
+    fontWeight: 800,
+    fontFamily: 'inherit',
+    visibility: 'hidden',
+    whiteSpace: 'pre',
+    minWidth: '3ch',
+  },
+  priceInput: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: '100%',
+    height: '100%',
+    fontSize: 36,
+    fontWeight: 800,
+    fontFamily: 'inherit',
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--cm-primary)',
+    outline: 'none',
+    padding: 0,
+  },
+  priceCurrency: {
+    fontSize: 36,
+    fontWeight: 800,
+    color: 'var(--cm-primary)',
+    marginLeft: 8,
   },
 
-  labelRow: {
+  // Название
+  titleInput: {
+    fontSize: 22,
+    fontWeight: 700,
+    background: 'transparent',
+    border: 'none',
+    color: '#fff',
+    outline: 'none',
+    marginTop: 16,
+    width: '100%',
+    fontFamily: 'inherit',
+  },
+
+  // Описание grow-wrap
+  growWrap: {
+    marginTop: 12,
+    padding: 0,
+  },
+  descTextarea: {
+    width: '100%',
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--cm-text-body)',
+    fontSize: 16,
+    outline: 'none',
+    minHeight: 80,
+    lineHeight: 1.4,
+    padding: 0,
+  },
+
+  // Чипы метаданных
+  metaChips: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 16,
+  },
+  metaChip: {
+    background: 'var(--cm-surface-elevated)',
+    border: '1px solid var(--cm-border)',
+    color: '#fff',
+    padding: '6px 12px',
+    borderRadius: 12,
+    fontSize: 13,
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    cursor: 'pointer',
+  },
+
+  // Нижний тулбар
+  toolbar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 'calc(12px) 16px calc(12px + env(safe-area-inset-bottom, 20px))',
+    background: 'var(--cm-surface)',
+    borderTop: '1px solid var(--cm-border)',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    zIndex: 10,
   },
-
-  counterContainer: {
+  toolGroup: {
+    display: 'flex',
+    gap: 8,
+  },
+  toolBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    background: 'var(--cm-surface-elevated)',
+    color: 'var(--cm-text-muted)',
+    border: 'none',
     display: 'flex',
     alignItems: 'center',
-    gap: 6
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    flexShrink: 0,
   },
-
-  counterText: {
-    fontSize: 12,
-    fontWeight: 500
-  },
-
-  label: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    marginLeft: 4,
-    fontWeight: 500
-  },
-
-  inputWrapper: {
-    position: 'relative',
+  toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--cm-primary)' },
+  publishBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    border: 'none',
     display: 'flex',
     alignItems: 'center',
-    width: '100%'
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    flexShrink: 0,
   },
 
-  inputIcon: {
+  // Sub-sheet
+  subSheet: {
     position: 'absolute',
-    left: 12,
-    color: theme.colors.textSecondary
-  },
-
-  inputWithIcon: {
-    width: '100%',
-    height: 44,
-    padding: '0 12px 0 40px',
-    background: theme.colors.bgSecondary,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: 12,
-    color: theme.colors.text,
-    fontSize: 15,
-    boxSizing: 'border-box',
-    outline: 'none',
-  },
-
-  // Footer & Buttons
-  footer: {
-    padding: theme.spacing.md,
-    borderTop: `1px solid ${theme.colors.border}`,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    background: 'var(--cm-surface)',
+    borderTop: '1px solid var(--cm-border)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: '24px 16px calc(env(safe-area-inset-bottom,20px) + 24px)',
     display: 'flex',
-    gap: 12,
-    background: theme.colors.bg,
-    marginTop: 'auto',
+    flexDirection: 'column',
+    maxHeight: '70%',
+    transition: 'transform 0.4s cubic-bezier(0.32,0.72,0,1)',
+    gap: 8,
   },
-
-  backButton: {
-    flex: 1,
-    height: 48,
-    background: theme.colors.bgSecondary,
+  subSheetHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subSheetTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: '#fff',
+  },
+  subSheetClose: {
+    background: 'var(--cm-surface-elevated)',
     border: 'none',
-    borderRadius: 14,
-    color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: 600,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#fff',
     cursor: 'pointer',
   },
-
-  nextButton: {
-    flex: 2,
-    height: 48,
-    background: theme.colors.market,
+  condBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 16,
     border: 'none',
-    borderRadius: 14,
+    marginBottom: 4,
+    cursor: 'pointer',
+    transition: 'background 0.15s',
+    width: '100%',
+  },
+
+  // Локация
+  locInput: {
+    width: '100%',
+    background: 'var(--cm-surface-elevated)',
+    border: '1px solid var(--cm-border)',
     color: '#fff',
     fontSize: 16,
-    fontWeight: 600,
-    cursor: 'pointer',
+    padding: '16px 20px 16px 52px',
+    borderRadius: 16,
+    fontFamily: 'inherit',
+    outline: 'none',
+    boxSizing: 'border-box',
+    transition: 'border-color 0.2s',
   },
-
-  nextButtonDisabled: {
-    flex: 2,
-    height: 48,
-    background: theme.colors.bgSecondary,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: 14,
-    color: theme.colors.textDisabled,
+  locSaveBtn: {
+    width: '100%',
+    padding: 16,
+    borderRadius: 16,
+    background: 'var(--cm-primary)',
+    color: '#000',
+    fontWeight: 700,
     fontSize: 16,
-    fontWeight: 600,
-    cursor: 'not-allowed',
-    opacity: 0.5,
-  },
-
-  submitButton: {
-    flex: 2,
-    height: 48,
-    background: theme.colors.market,
     border: 'none',
-    borderRadius: 14,
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 600,
+    marginTop: 12,
     cursor: 'pointer',
-  },
-
-  submitButtonDisabled: {
-    flex: 2,
-    height: 48,
-    background: theme.colors.bgSecondary,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: theme.colors.border,
-    borderRadius: 14,
-    color: theme.colors.textDisabled,
-    fontSize: 16,
-    fontWeight: 600,
-    cursor: 'not-allowed',
-    opacity: 0.5,
   },
 
   spinner: {
@@ -1018,21 +895,8 @@ const styles = {
     border: '2px solid rgba(255,255,255,0.3)',
     borderTopColor: '#fff',
     borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite',
+    animation: 'cm-spin 0.8s linear infinite',
   },
 };
-
-
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-  @keyframes spin { 
-    to { transform: rotate(360deg); } 
-  }
-`;
-if (!document.getElementById('create-market-item-styles')) {
-  styleSheet.id = 'create-market-item-styles';
-  document.head.appendChild(styleSheet);
-}
-
 
 export default CreateMarketItem;

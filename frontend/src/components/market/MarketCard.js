@@ -1,8 +1,9 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketCard.js =====
 
 import React, { useRef, useState, useMemo } from 'react';
+import { Heart, Link, Edit2, Trash2, Flag } from 'lucide-react';
 import { useStore } from '../../store';
-import { toggleMarketFavorite, deleteMarketItem } from '../../api';
+import { toggleMarketFavorite, deleteMarketItem, triggerRegistrationPrompt } from '../../api';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
@@ -16,12 +17,12 @@ import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 
 const MarketCard = ({ item, onClick, index = 0 }) => {
-  const { 
-    toggleMarketFavoriteOptimistic, 
-    user, 
+  const {
+    toggleMarketFavoriteOptimistic,
+    user,
+    isRegistered,
     deleteMarketItem: deleteFromStore,
-    setEditingMarketItem, 
-    setShowCreateMarketItem 
+    setEditingMarketItem,
   } = useStore();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -101,6 +102,10 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
 
   const handleFavorite = async (e) => {
     e.stopPropagation();
+    if (!isRegistered) {
+      triggerRegistrationPrompt('market_favorite');
+      return;
+    }
     hapticFeedback('medium');
 
     setLikeAnimating(true);
@@ -155,36 +160,35 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
 
   const menuItems = [
     ...(actionSet.canCopyLink ? [{
-      icon: '🔗',
+      icon: <Link size={18} />,
       label: 'Копировать ссылку',
       actionType: MENU_ACTIONS.COPY,
       onClick: handleCopyLink
     }] : []),
     ...(actionSet.canEdit ? [{
-        icon: '✏️',
-        label: 'Редактировать',
-        actionType: MENU_ACTIONS.EDIT,
-        onClick: handleEdit
-      }] : []),
+      icon: <Edit2 size={18} />,
+      label: 'Редактировать',
+      actionType: MENU_ACTIONS.EDIT,
+      onClick: handleEdit
+    }] : []),
     ...(actionSet.canDelete ? [{
-        icon: '🗑️',
-        label: 'Удалить',
-        actionType: MENU_ACTIONS.DELETE,
-        onClick: () => {
-          setIsMenuOpen(false);
-          setShowDeleteDialog(true);
-        }
-      }] : []),
+      icon: <Trash2 size={18} />,
+      label: 'Удалить',
+      actionType: MENU_ACTIONS.DELETE,
+      onClick: () => {
+        setIsMenuOpen(false);
+        setShowDeleteDialog(true);
+      }
+    }] : []),
     ...(actionSet.canReportContent ? [{
-        icon: '🚩',
-        label: 'Пожаловаться',
-        actionType: MENU_ACTIONS.REPORT,
-        onClick: () => {
-          setIsMenuOpen(false);
-          setShowReportModal(true);
-        }
-      }] : []),
-    // ✅ Модерация
+      icon: <Flag size={18} />,
+      label: 'Пожаловаться',
+      actionType: MENU_ACTIONS.REPORT,
+      onClick: () => {
+        setIsMenuOpen(false);
+        setShowReportModal(true);
+      }
+    }] : []),
     ...moderationMenuItems,
   ];
 
@@ -240,53 +244,43 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
           )}
 
           {/* ❤️ Лайк */}
-          <button 
+          <button
             style={{
               ...styles.likeButton,
               ...(likeAnimating ? styles.likeButtonAnimating : {}),
-            }} 
+            }}
             onClick={handleFavorite}
           >
-            <span style={{
-              ...styles.likeIcon,
-              transform: item.is_favorited ? 'scale(1.1)' : 'scale(1)',
-              color: item.is_favorited ? theme.colors.error : '#fff'
-            }}>
-              {item.is_favorited ? '❤️' : '🤍'}
-            </span>
+            <Heart
+              size={16}
+              fill={item.is_favorited ? theme.colors.error : 'none'}
+              color={item.is_favorited ? theme.colors.error : '#FFF'}
+            />
           </button>
         </div>
 
         {/* === INFO SECTION === */}
         <div style={styles.info}>
-          <div style={styles.topRow}>
-            <div style={styles.price}>{formatPrice(item.price)} ₽</div>
-            
-            <OverflowMenuButton
-              ref={menuButtonRef}
-              isOpen={isMenuOpen}
-              onToggle={() => setIsMenuOpen((prev) => !prev)}
-              icon={<span style={styles.menuIcon}>⋯</span>}
-              style={styles.menuButton}
-              activeBorderColor={theme.colors.border}
-            />
-          </div>
+          <OverflowMenuButton
+            ref={menuButtonRef}
+            isOpen={isMenuOpen}
+            onToggle={(e) => { e.stopPropagation(); setIsMenuOpen((prev) => !prev); }}
+            icon={<span style={styles.menuIcon}>⋯</span>}
+            style={styles.menuButton}
+            activeBorderColor={theme.colors.border}
+          />
 
+          <div style={styles.price}>{formatPrice(item.price)} ₽</div>
           <div style={styles.title}>{item.title}</div>
-          
-          <div style={styles.metaRow}>
-            <span style={styles.metaText}>
-              {getConditionText()}
-            </span>
-            <span style={styles.metaDivider}>•</span>
-            <span style={styles.metaText}>
-              {item.seller?.university || 'Университет'}
-              {item.seller?.institute && `, ${item.seller.institute.slice(0, 10)}`}
-            </span>
-            <span style={styles.metaDivider}>•</span>
-            <span style={styles.metaText}>
-              {formatRelativeDate(item.created_at)}
-            </span>
+
+          <div style={styles.metaGroup}>
+            <div style={styles.metaCondition}>{getConditionText()}</div>
+            <div style={styles.metaLocationRow}>
+              {item.location
+                ? `${item.location} • ${formatRelativeDate(item.created_at)}`
+                : formatRelativeDate(item.created_at)
+              }
+            </div>
           </div>
         </div>
       </div>
@@ -331,18 +325,19 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
 const styles = {
   card: {
     position: 'relative',
-    background: theme.colors.card,
-    borderRadius: theme.radius.lg,
+    background: theme.colors.premium.surfaceElevated,
+    borderRadius: 20,
     overflow: 'hidden',
     transition: 'transform 0.1s ease',
     animation: 'fadeInUp 0.4s ease forwards',
     opacity: 0,
     fontFamily: 'Arial, sans-serif',
+    border: `1px solid ${theme.colors.premium.border}`,
   },
   imageContainer: {
     position: 'relative',
     width: '100%',
-    height: 180,
+    aspectRatio: '1',
     backgroundColor: theme.colors.bgSecondary,
     overflow: 'hidden',
   },
@@ -375,15 +370,18 @@ const styles = {
     position: 'absolute',
     top: 8,
     left: 8,
-    background: 'rgba(0,0,0,0.65)',
-    backdropFilter: 'blur(4px)',
+    background: 'rgba(28,28,30,0.8)',
+    backdropFilter: 'blur(8px)',
     color: theme.colors.text,
-    fontSize: 10,
-    fontWeight: 600,
+    fontSize: 11,
+    fontWeight: 700,
     fontFamily: 'Arial, sans-serif',
-    padding: '3px 7px',
-    borderRadius: 6,
+    padding: '4px 8px',
+    borderRadius: 8,
     zIndex: 2,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
   },
   
   photoBadge: {
@@ -419,11 +417,11 @@ const styles = {
     position: 'absolute',
     bottom: 8,
     right: 8,
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: '50%',
-    background: 'rgba(0,0,0,0.4)',
-    backdropFilter: 'blur(4px)',
+    background: 'rgba(28,28,30,0.6)',
+    backdropFilter: 'blur(8px)',
     border: 'none',
     display: 'flex',
     alignItems: 'center',
@@ -432,51 +430,41 @@ const styles = {
     zIndex: 2,
     transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
   },
-  likeIcon: {
-    fontSize: 18,
-    lineHeight: 1,
-    transition: 'all 0.2s ease',
-    filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
-  },
 
   likeButtonAnimating: {
     animation: 'likeAnimation 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
   },
 
   info: {
-    padding: '10px 12px',
+    padding: '12px',
+    position: 'relative',
   },
-  
-  topRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  
+
   price: {
-    color: theme.colors.market,
-    fontSize: 20,
-    fontWeight: 700,
+    color: theme.colors.premium.primary,
+    fontSize: 16,
+    fontWeight: 800,
     fontFamily: 'Arial, sans-serif',
     lineHeight: 1,
+    marginBottom: 4,
   },
 
   menuButton: {
+    position: 'absolute',
+    top: 6,
+    right: 4,
     background: 'transparent',
-    border: '1px solid transparent',
-    width: 40,
-    height: 40,
+    border: 'none',
+    width: 28,
+    height: 28,
     color: theme.colors.textTertiary,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: -8,
-    marginTop: -8,
   },
   menuIcon: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     lineHeight: 1,
     fontFamily: 'Arial, sans-serif',
@@ -484,35 +472,33 @@ const styles = {
 
   title: {
     color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: 500,
+    fontSize: 13,
+    fontWeight: 600,
     fontFamily: 'Arial, sans-serif',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
+    whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     lineHeight: 1.3,
-    minHeight: '2.6em',
+    paddingRight: 24,
   },
   
-  metaRow: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-    fontSize: 11,
-    fontFamily: 'Arial, sans-serif',
-    color: theme.colors.textSecondary,
-    opacity: 0.75,
-    lineHeight: 1.3,
+  metaGroup: {
+    fontSize: 12,
+    lineHeight: 1.4,
+    marginTop: 8,
+    color: theme.colors.premium.textMuted,
   },
-  metaText: {
+  metaCondition: {
+    fontFamily: 'Arial, sans-serif',
+    color: '#32D74B',
+    fontWeight: 600,
+    marginBottom: 2,
+  },
+  metaLocationRow: {
+    fontFamily: 'Arial, sans-serif',
+    whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-  },
-  metaDivider: { 
-    color: theme.colors.textTertiary 
   },
 };
 

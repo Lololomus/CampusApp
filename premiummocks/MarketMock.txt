@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA - Neo Market</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #000000;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        --text-body: #EAEAEA;
+        --error: #FF453A;
+        --success: #32D74B;
+        --safe-area-bottom: env(safe-area-inset-bottom, 20px);
+        --safe-area-top: env(safe-area-inset-top, 44px);
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: #050505; 
+        color: var(--text); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.96); opacity: 0.8; }
+      
+      /* Inputs */
+      .ios-input {
+        width: 100%; background: var(--surface); border: 1px solid var(--border);
+        color: var(--text); font-size: 16px; padding: 16px 20px;
+        border-radius: 16px; font-family: inherit; transition: border-color 0.2s;
+      }
+      .ios-input:focus { border-color: rgba(212, 255, 0, 0.4); }
+      .ios-input::placeholder { color: var(--text-muted); }
+
+      /* Grow Wrap Textarea */
+      .grow-wrap { display: grid; }
+      .grow-wrap::after {
+        content: attr(data-replicated-value) " ";
+        white-space: pre-wrap; visibility: hidden;
+        font-size: 16px; line-height: 1.4; min-height: 90px;
+        padding: 16px 20px;
+      }
+      .grow-wrap > textarea { resize: none; overflow: hidden; }
+      .grow-wrap > textarea, .grow-wrap::after {
+        grid-area: 1 / 1 / 2 / 2; font-family: inherit;
+      }
+
+      /* Animations */
+      @keyframes slideUpSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+      @keyframes slideOutRight { from { transform: translateX(0); } to { transform: translateX(100%); } }
+      
+      @keyframes limePulse {
+        0% { box-shadow: 0 0 0 0 rgba(212, 255, 0, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(212, 255, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(212, 255, 0, 0); }
+      }
+      .pulse-attention {
+        animation: limePulse 2s infinite cubic-bezier(0.32, 0.72, 0, 1);
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useRef, useEffect } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        Search, Home, ShoppingBag, Plus, Heart, User, X, ChevronLeft, 
+        Camera, Trash2, MapPin, Edit3, MessageCircle, Info, MoreHorizontal,
+        Tag, Sparkles, Check, Image as ImageIcon
+      } from 'lucide-react';
+
+      // === MOCK DATA ===
+      // Обновляем категории для поддержки товаров и услуг (грид 2x3)
+      const CATEGORIES = [
+        // Товары (Goods)
+        { id: 'books', label: 'Учебники', icon: '📚', type: 'goods' },
+        { id: 'electronics', label: 'Техника', icon: '💻', type: 'goods' },
+        { id: 'clothes', label: 'Одежда', icon: '👕', type: 'goods' },
+        { id: 'home', label: 'Общага', icon: '🛋️', type: 'goods' },
+        { id: 'hobby', label: 'Хобби', icon: '🎸', type: 'goods' },
+        { id: 'other_g', label: 'Другое', icon: '📦', type: 'goods' },
+        // Услуги (Services)
+        { id: 'tutor', label: 'Репетитор', icon: '👨‍🏫', type: 'services' },
+        { id: 'homework', label: 'Курсачи', icon: '📝', type: 'services' },
+        { id: 'repair', label: 'Ремонт', icon: '🛠️', type: 'services' },
+        { id: 'design', label: 'Дизайн', icon: '🎨', type: 'services' },
+        { id: 'delivery', label: 'Курьер', icon: '🏃', type: 'services' },
+        { id: 'other_s', label: 'Другое', icon: '✨', type: 'services' }
+      ];
+
+      // Фильтры для главной ленты (Feed)
+      const FEED_FILTERS = [
+        { id: 'all', label: 'Все', icon: '🔥' },
+        { id: 'books', label: 'Учебники', icon: '📚' },
+        { id: 'electronics', label: 'Техника', icon: '💻' },
+        { id: 'tutor', label: 'Репетиторы', icon: '👨‍🏫' },
+        { id: 'clothes', label: 'Одежда', icon: '👕' }
+      ];
+
+      const CONDITIONS = [
+        { id: 'new', label: 'Новое', icon: '✨' },
+        { id: 'perfect', label: 'Как новое', icon: '⭐' },
+        { id: 'good', label: 'Хорошее', icon: '👍' },
+        { id: 'ok', label: 'Нормальное', icon: '👌' },
+        { id: 'parts', label: 'На запчасти', icon: '🔧' }
+      ];
+
+      const PRODUCTS = [
+        {
+          id: 1, title: 'Бронежилет DEV Учебный', price: '321 313 ₽',
+          image: 'https://images.unsplash.com/photo-1595590424283-b8f1784cb2c8?auto=format&fit=crop&q=80&w=600',
+          cat: 'books', condition: 'Хорошее', location: 'РУК, Администрирование',
+          time: 'Вчера', isMine: true, isLiked: false,
+          seller: { name: 'dev_superadmin', meta: 'РУК • 2 курс', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150' },
+          desc: 'Продаю учебный макет. Состояние хорошее, использовался пару раз на полигоне. Без торга, срочно.'
+        },
+        {
+          id: 2, title: 'MacBook Air M1 2020', price: '65 000 ₽',
+          image: 'https://images.unsplash.com/photo-1611186871348-b1ce696e52c9?auto=format&fit=crop&q=80&w=600',
+          cat: 'electronics', condition: 'Идеальное', location: 'Общежитие №4',
+          time: '2 часа назад', isMine: false, isLiked: true,
+          seller: { name: 'Анна К.', meta: 'ВШЭ • 3 курс', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150' },
+          desc: 'Ноутбук в идеальном состоянии. Батарея 92%. Коробка и зарядка в комплекте. Пишите в тг.'
+        },
+        {
+          id: 3, title: 'Учебник по Макроэкономике', price: '800 ₽',
+          image: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=600',
+          cat: 'books', condition: 'Б/У', location: 'Покровка',
+          time: 'Сегодня', isMine: false, isLiked: false,
+          seller: { name: 'Игорь', meta: 'ВШЭ • 4 курс', avatar: null },
+          desc: 'Второе издание. Немного помяты углы, внутри есть пометки карандашом.'
+        }
+      ];
+
+      // === COMPONENTS ===
+
+      // 1. Creation Bottom Sheet (Smart Create Flow)
+      const CreateSheet = ({ isOpen, onClose }) => {
+        const [itemType, setItemType] = useState('goods'); // 'goods' or 'services'
+        const [cat, setCat] = useState('');
+        const [title, setTitle] = useState('');
+        const [price, setPrice] = useState('');
+        const [desc, setDesc] = useState('');
+        const [condition, setCondition] = useState('');
+        const [location, setLocation] = useState('');
+        const [photos, setPhotos] = useState([]);
+
+        const [activeSubSheet, setActiveSubSheet] = useState(null); // 'cond', 'loc', null
+
+        const canPublish = title && price && desc.length >= 10 && cat && photos.length > 0 && (itemType === 'services' || condition);
+
+        const addPhoto = () => {
+          if (photos.length < 5) setPhotos([...photos, 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=300']);
+        };
+
+        // Умный сброс нерелевантных данных при переключении таба
+        useEffect(() => {
+          setCat('');
+          if (itemType === 'services') setCondition('');
+        }, [itemType]);
+
+        // Сброс стейта при закрытии
+        useEffect(() => { if (!isOpen) setActiveSubSheet(null); }, [isOpen]);
+
+        if (!isOpen) return null;
+
+        const displayedCategories = CATEGORIES.filter(c => c.type === itemType);
+
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+            {/* Backdrop */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', opacity: isOpen ? 1 : 0, transition: 'opacity 0.3s' }} onClick={onClose} />
+            
+            {/* Main Sheet */}
+            <div style={{ 
+              background: 'var(--surface)', borderTopLeftRadius: '24px', borderTopRightRadius: '24px',
+              height: '92%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden',
+              animation: 'slideUpSheet 0.3s cubic-bezier(0.32, 0.72, 0, 1)'
+            }}>
+              
+              {/* Header (Drag handle) */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px 16px', position: 'relative', flexShrink: 0 }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
+              </div>
+
+              {/* Segmented Control: Товар / Услуга */}
+              <div style={{ background: 'var(--surface-elevated)', borderRadius: '16px', display: 'flex', padding: '4px', height: '40px', margin: '0 20px 20px', position: 'relative', flexShrink: 0 }}>
+                <div style={{ position: 'absolute', top: 4, bottom: 4, width: 'calc(50% - 4px)', background: 'var(--surface)', borderRadius: '12px', transform: `translateX(${itemType === 'goods' ? '0' : '100%'})`, transition: 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }} />
+                <button onClick={() => setItemType('goods')} className="spring-btn" style={{ flex: 1, position: 'relative', background: 'transparent', border: 'none', color: itemType === 'goods' ? '#FFF' : 'var(--text-muted)', fontWeight: 700, fontSize: '14px', zIndex: 2, transition: 'color 0.2s' }}>Товар</button>
+                <button onClick={() => setItemType('services')} className="spring-btn" style={{ flex: 1, position: 'relative', background: 'transparent', border: 'none', color: itemType === 'services' ? '#FFF' : 'var(--text-muted)', fontWeight: 700, fontSize: '14px', zIndex: 2, transition: 'color 0.2s' }}>Услуга</button>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 20px 140px', display: 'flex', flexDirection: 'column' }}>
+                
+                {/* Сетка Категорий 2x3 */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '24px' }}>
+                  {displayedCategories.map(c => (
+                    <button 
+                      key={c.id} 
+                      onClick={() => setCat(c.id)} 
+                      className="spring-btn" 
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '12px 14px', borderRadius: '16px', border: '1px solid',
+                        borderColor: cat === c.id ? 'var(--primary)' : 'transparent',
+                        background: cat === c.id ? 'rgba(212, 255, 0, 0.1)' : 'var(--surface-elevated)',
+                        color: cat === c.id ? 'var(--primary)' : '#FFF',
+                        fontSize: '14px', fontWeight: 600
+                      }}
+                    >
+                      <span style={{ fontSize: '20px' }}>{c.icon}</span>
+                      <span>{c.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Компактные миниатюры фотографий (появляются под категорией) */}
+                {photos.length > 0 && (
+                  <div className="hide-scroll" style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', paddingBottom: '4px' }}>
+                    {photos.map((p, i) => (
+                      <div key={i} style={{ position: 'relative', width: 64, height: 64, flexShrink: 0, borderRadius: '12px', background: '#222' }}>
+                        <img src={p} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} />
+                        <button onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))} className="spring-btn" style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: '11px', background: 'var(--error)', border: 'none', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}><X size={12}/></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Seamless Inputs (Price с прилипающим знаком рубля) */}
+                <div style={{ display: 'flex', alignItems: 'baseline', marginTop: '8px' }}>
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    {/* Скрытый span для идеального авто-сайзинга инпута */}
+                    <span style={{ fontSize: '36px', fontWeight: 800, visibility: 'hidden', whiteSpace: 'pre' }}>{price || 'Цена ₽'}</span>
+                    <input type="text" inputMode="numeric" placeholder="Цена ₽" value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ''))} style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', fontSize: '36px', fontWeight: 800, background: 'transparent', border: 'none', color: 'var(--primary)', outline: 'none', padding: 0 }} />
+                  </div>
+                  {price && <span style={{ fontSize: '36px', fontWeight: 800, color: 'var(--primary)', marginLeft: '8px' }}>₽</span>}
+                </div>
+
+                <input type="text" placeholder="Название товара..." value={title} onChange={e => setTitle(e.target.value)} style={{ fontSize: '22px', fontWeight: 700, background: 'transparent', border: 'none', color: '#FFF', outline: 'none', marginTop: '16px' }} />
+
+                <div className="grow-wrap" data-replicated-value={desc} style={{ marginTop: '12px', padding: 0 }}>
+                  <textarea placeholder="Опишите состояние, комплектацию и причины продажи..." value={desc} onChange={e => setDesc(e.target.value)} style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-body)', fontSize: '16px', outline: 'none', minHeight: '80px' }} />
+                </div>
+
+                {/* Selected Metadata Chips */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '16px' }}>
+                  {condition && itemType === 'goods' && (
+                     <div onClick={() => setActiveSubSheet('cond')} className="spring-btn" style={{ background: 'var(--surface-elevated)', border: '1px solid var(--border)', color: '#FFF', padding: '6px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {CONDITIONS.find(c => c.id === condition)?.icon} {CONDITIONS.find(c => c.id === condition)?.label}
+                     </div>
+                  )}
+                  {location && (
+                     <div onClick={() => setActiveSubSheet('loc')} className="spring-btn" style={{ background: 'var(--surface-elevated)', border: '1px solid var(--border)', color: '#FFF', padding: '6px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MapPin size={14} color="var(--primary)" /> {location}
+                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Bottom Action Bar */}
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 20px))', background: 'rgba(28,28,30,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  {/* Кнопка добавления фото (Серая + Плавный пульс, если пусто) */}
+                  <button onClick={addPhoto} className={`spring-btn ${photos.length === 0 ? 'pulse-attention' : ''}`} style={{ width: 44, height: 44, borderRadius: '22px', background: 'var(--surface-elevated)', color: photos.length === 0 ? 'var(--text-muted)' : 'var(--primary)', border: photos.length > 0 ? '1px solid rgba(212, 255, 0, 0.3)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s' }}>
+                    <ImageIcon size={20} />
+                  </button>
+
+                  {/* Кнопка "Состояние" скрывается, если выбрана Услуга (С пульсом, если пусто) */}
+                  {itemType === 'goods' && (
+                    <button onClick={() => setActiveSubSheet(activeSubSheet === 'cond' ? null : 'cond')} className={`spring-btn ${!condition ? 'pulse-attention' : ''}`} style={{ width: 44, height: 44, borderRadius: '22px', background: 'var(--surface-elevated)', color: !condition ? 'var(--text-muted)' : 'var(--primary)', border: condition ? '1px solid rgba(212, 255, 0, 0.3)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s' }}>
+                      <Sparkles size={20} />
+                    </button>
+                  )}
+                  
+                  <button onClick={() => setActiveSubSheet(activeSubSheet === 'loc' ? null : 'loc')} className="spring-btn" style={{ width: 44, height: 44, borderRadius: '22px', background: 'var(--surface-elevated)', color: !location ? 'var(--text-muted)' : 'var(--primary)', border: location ? '1px solid rgba(212, 255, 0, 0.3)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s' }}>
+                    <MapPin size={20} />
+                  </button>
+                </div>
+
+                <button onClick={onClose} className="spring-btn" disabled={!canPublish} style={{ 
+                  padding: '12px 24px', borderRadius: '22px', border: 'none', 
+                  background: canPublish ? 'var(--primary)' : 'var(--surface-elevated)', 
+                  color: canPublish ? '#000' : 'var(--text-muted)', 
+                  fontSize: '16px', fontWeight: 800, transition: 'all 0.3s' 
+                }}>
+                  Создать
+                </button>
+              </div>
+
+              {/* Sub-Sheets (Context Menus) */}
+              <div style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
+                background: 'var(--surface)', borderTop: '1px solid var(--border)',
+                borderTopLeftRadius: '24px', borderTopRightRadius: '24px',
+                padding: '24px 16px calc(env(safe-area-inset-bottom, 20px) + 24px)',
+                transform: activeSubSheet ? 'translateY(0)' : 'translateY(100%)',
+                transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+                display: 'flex', flexDirection: 'column',
+                maxHeight: '70%', boxShadow: '0 -20px 40px rgba(0,0,0,0.5)'
+              }}>
+                {/* Condition Selection - ИСПРАВЛЕН БАГ (Ранее тут были категории) */}
+                {activeSubSheet === 'cond' && itemType === 'goods' && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Состояние</h3>
+                      <button onClick={() => setActiveSubSheet(null)} className="spring-btn" style={{ background: 'var(--surface-elevated)', border: 'none', width: 32, height: 32, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}><X size={16} /></button>
+                    </div>
+                    <div className="hide-scroll" style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto' }}>
+                      {CONDITIONS.map(c => (
+                        <button key={c.id} onClick={() => { setCondition(c.id); setActiveSubSheet(null); }} className="spring-btn" style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '16px', borderRadius: '16px', border: 'none',
+                          background: condition === c.id ? 'rgba(212, 255, 0, 0.1)' : 'var(--surface-elevated)',
+                          color: condition === c.id ? 'var(--primary)' : '#FFF'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '16px', fontWeight: 600 }}>
+                            <span style={{ fontSize: '18px' }}>{c.icon}</span> {c.label}
+                          </div>
+                          {condition === c.id && <Check size={20} color="var(--primary)" />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Location Input */}
+                {activeSubSheet === 'loc' && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Где забирать?</h3>
+                      <button onClick={() => setActiveSubSheet(null)} className="spring-btn" style={{ background: 'var(--surface-elevated)', border: 'none', width: 32, height: 32, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}><X size={16} /></button>
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                      <MapPin size={20} color="var(--text-muted)" style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)' }} />
+                      <input type="text" placeholder="Аудитория, общага или метро..." value={location} onChange={e => setLocation(e.target.value)} className="ios-input" style={{ paddingLeft: '52px' }} />
+                    </div>
+                    <button onClick={() => setActiveSubSheet(null)} className="spring-btn" style={{ width: '100%', padding: '16px', borderRadius: '16px', background: 'var(--primary)', color: '#000', fontWeight: 700, fontSize: '16px', border: 'none', marginTop: '12px' }}>
+                      Сохранить
+                    </button>
+                  </>
+                )}
+              </div>
+
+            </div>
+          </div>
+        );
+      };
+
+      // 2. Product Detail View
+      const ProductDetail = ({ product, onBack }) => {
+        if (!product) return null;
+
+        return (
+          <div style={{ position: 'absolute', inset: 0, background: 'var(--bg)', zIndex: 200, display: 'flex', flexDirection: 'column', animation: 'slideInRight 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards' }}>
+            
+            {/* Floating Header (Only Back Button for TMA safe area) */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, padding: 'calc(var(--safe-area-top) + 16px) 16px 16px', display: 'flex', justifyContent: 'space-between', pointerEvents: 'none' }}>
+              <button onClick={onBack} className="spring-btn" style={{ width: 40, height: 40, borderRadius: '20px', background: 'rgba(28,28,30,0.6)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}>
+                <ChevronLeft size={24} style={{ marginLeft: '-2px' }} />
+              </button>
+            </div>
+
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
+              
+              {/* Image Hero (Edge-to-Edge) */}
+              <div style={{ width: '100%', height: '400px', background: '#111' }}>
+                <img src={product.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+
+              {/* Content */}
+              <div style={{ padding: '20px 16px' }}>
+                
+                {/* Price & Actions */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                  <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--primary)' }}>{product.price}</div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="spring-btn" style={{ width: 44, height: 44, borderRadius: '22px', background: 'var(--surface-elevated)', border: 'none', color: product.isLiked ? 'var(--error)' : '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Heart size={20} fill={product.isLiked ? 'var(--error)' : 'none'} />
+                    </button>
+                    <button className="spring-btn" style={{ width: 44, height: 44, borderRadius: '22px', background: 'var(--surface-elevated)', border: 'none', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <MoreHorizontal size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <h1 style={{ margin: '0 0 16px', fontSize: '20px', fontWeight: 700, color: '#FFF', lineHeight: 1.3 }}>{product.title}</h1>
+
+                {/* Chips */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+                  <div style={{ background: 'var(--surface-elevated)', color: '#FFF', padding: '6px 12px', borderRadius: '10px', fontSize: '13px', fontWeight: 600 }}>
+                    {CATEGORIES.find(c => c.id === product.cat)?.icon} {CATEGORIES.find(c => c.id === product.cat)?.label}
+                  </div>
+                  <div style={{ background: 'rgba(50, 215, 75, 0.1)', color: 'var(--success)', border: '1px solid rgba(50, 215, 75, 0.2)', padding: '6px 12px', borderRadius: '10px', fontSize: '13px', fontWeight: 600 }}>
+                    👍 {product.condition}
+                  </div>
+                </div>
+
+                <div style={{ height: '1px', background: 'var(--border)', margin: '0 -16px 24px' }} />
+
+                {/* Seller */}
+                <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 700, color: '#FFF' }}>Продавец</h3>
+                <div className="spring-btn" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '20px', padding: '16px', display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+                   <div style={{ width: 48, height: 48, borderRadius: '14px', background: 'var(--surface-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 800, overflow: 'hidden' }}>
+                      {product.seller.avatar ? <img src={product.seller.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}}/> : product.seller.name.charAt(0)}
+                   </div>
+                   <div style={{ flex: 1 }}>
+                     <div style={{ fontSize: '16px', fontWeight: 700, color: '#FFF' }}>{product.seller.name}</div>
+                     <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>{product.seller.meta}</div>
+                   </div>
+                   <ChevronLeft size={20} color="var(--text-muted)" style={{ transform: 'rotate(180deg)' }} />
+                </div>
+
+                {/* Description */}
+                <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 700, color: '#FFF' }}>Описание</h3>
+                <p style={{ margin: '0 0 24px', fontSize: '15px', color: 'var(--text-body)', lineHeight: 1.5 }}>
+                  {product.desc}
+                </p>
+
+                {/* Location */}
+                <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 700, color: '#FFF' }}>Местоположение</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-body)', fontSize: '15px' }}>
+                  <MapPin size={18} color="var(--primary)" /> {product.location}
+                </div>
+
+                <div style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '24px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                   <Info size={14} /> Опубликовано: {product.time}
+                </div>
+              </div>
+            </div>
+
+            {/* Sticky Action Footer */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px 20px calc(16px + env(safe-area-inset-bottom, 20px))', background: 'rgba(28,28,30,0.8)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border)', display: 'flex', gap: '12px' }}>
+               {product.isMine ? (
+                 <>
+                   <button className="spring-btn" style={{ flex: 1, padding: '16px', borderRadius: '16px', border: 'none', background: 'var(--surface-elevated)', color: '#FFF', fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                     <Edit3 size={20} /> Изменить
+                   </button>
+                   <button className="spring-btn" style={{ width: 56, borderRadius: '16px', border: 'none', background: 'rgba(255, 69, 58, 0.15)', color: 'var(--error)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                     <Trash2 size={24} />
+                   </button>
+                 </>
+               ) : (
+                 <button className="spring-btn" style={{ width: '100%', padding: '16px', borderRadius: '16px', border: 'none', background: 'var(--primary)', color: '#000', fontSize: '16px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 8px 24px rgba(212, 255, 0, 0.2)' }}>
+                   <MessageCircle size={20} /> Написать продавцу
+                 </button>
+               )}
+            </div>
+          </div>
+        );
+      };
+
+      // 3. Main Feed
+      function App() {
+        const [filter, setFilter] = useState('all');
+        const [tab, setTab] = useState('goods'); // goods, favs
+        const [createOpen, setCreateOpen] = useState(false);
+        const [activeProduct, setActiveProduct] = useState(null);
+
+        const displayedProducts = filter === 'all' ? PRODUCTS : PRODUCTS.filter(p => p.cat === filter);
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: 'var(--bg)', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            {/* HEADER */}
+            <header style={{ paddingTop: 'calc(var(--safe-area-top) + 16px)', paddingBottom: '12px', background: 'var(--bg)', zIndex: 10 }}>
+              
+              <h1 style={{ margin: '0 0 16px', textAlign: 'center', fontSize: '20px', fontWeight: 800, color: '#FFF' }}>Барахолка</h1>
+
+              {/* Segmented Control */}
+              <div style={{ background: 'var(--surface-elevated)', borderRadius: '20px', display: 'flex', padding: '4px', height: '44px', margin: '0 16px 16px', position: 'relative' }}>
+                <div style={{ position: 'absolute', top: 4, bottom: 4, width: 'calc(50% - 4px)', background: 'var(--primary)', borderRadius: '16px', transform: `translateX(${tab === 'goods' ? '0' : '100%'})`, transition: 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)' }} />
+                <button onClick={() => setTab('goods')} style={{ flex: 1, position: 'relative', background: 'transparent', border: 'none', color: tab === 'goods' ? '#000' : '#FFF', fontWeight: 700, fontSize: '15px', zIndex: 2, transition: 'color 0.2s' }}>Товары</button>
+                <button onClick={() => setTab('favs')} style={{ flex: 1, position: 'relative', background: 'transparent', border: 'none', color: tab === 'favs' ? '#000' : '#FFF', fontWeight: 700, fontSize: '15px', zIndex: 2, transition: 'color 0.2s' }}>Избранное</button>
+              </div>
+
+              {/* Search */}
+              <div style={{ margin: '0 16px 16px' }}>
+                <div style={{ width: '100%', height: '44px', background: 'var(--surface)', borderRadius: '16px', border: `1px solid var(--border)`, display: 'flex', alignItems: 'center', padding: '0 16px' }}>
+                  <Search size={18} color="var(--text-muted)" style={{ marginRight: '8px' }} />
+                  <input type="text" placeholder="Поиск товаров..." style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF', fontSize: '15px', outline: 'none' }} />
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="hide-scroll" style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '0 16px' }}>
+                {FEED_FILTERS.map(c => (
+                  <button key={c.id} onClick={() => setFilter(c.id)} className="spring-btn" style={{ 
+                    padding: '0 16px', height: '36px', borderRadius: '12px', flexShrink: 0,
+                    background: filter === c.id ? 'transparent' : 'var(--surface-elevated)', 
+                    color: filter === c.id ? 'var(--primary)' : '#FFF', 
+                    border: `1px solid ${filter === c.id ? 'var(--primary)' : 'transparent'}`,
+                    fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                  }}>
+                    <span>{c.icon}</span> {c.label}
+                  </button>
+                ))}
+              </div>
+            </header>
+
+            {/* FEED GRID */}
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 100px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {displayedProducts.map(p => (
+                  <div key={p.id} onClick={() => setActiveProduct(p)} className="spring-btn" style={{ background: 'var(--surface)', borderRadius: '20px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    
+                    {/* Image Box */}
+                    <div style={{ width: '100%', aspectRatio: '1', position: 'relative', background: '#222' }}>
+                      <img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      
+                      {/* Top Left Category Badge */}
+                      <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(28,28,30,0.8)', backdropFilter: 'blur(8px)', padding: '4px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, color: '#FFF', display: 'flex', alignItems: 'center', gap: '4px', zIndex: 2 }}>
+                        <span>{CATEGORIES.find(c => c.id === p.cat)?.icon}</span>
+                        {CATEGORIES.find(c => c.id === p.cat)?.label}
+                      </div>
+
+                      {/* Heart Button */}
+                      <button onClick={(e) => { e.stopPropagation(); /* handle like */ }} style={{ position: 'absolute', bottom: 8, right: 8, width: 32, height: 32, borderRadius: '16px', background: 'rgba(28,28,30,0.6)', backdropFilter: 'blur(8px)', border: 'none', color: p.isLiked ? 'var(--error)' : '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Heart size={16} fill={p.isLiked ? 'var(--error)' : 'none'} />
+                      </button>
+                    </div>
+
+                    {/* Info */}
+                    <div style={{ padding: '12px' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--primary)', marginBottom: '4px' }}>{p.price}</div>
+                      <div style={{ fontSize: '13px', color: '#FFF', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.title}</div>
+                      
+                      {/* Perfectly formatted 2-line description */}
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.4, marginTop: '8px' }}>
+                         <div style={{ color: 'var(--success)', fontWeight: 600, marginBottom: '2px' }}>👍 {p.condition}</div>
+                         <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.location} • {p.time}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* BOTTOM NAV */}
+            <div style={{ position: 'absolute', bottom: '16px', left: '16px', right: '16px', zIndex: 100, display: 'flex', justifyContent: 'center' }}>
+              <nav style={{ background: 'var(--surface)', borderRadius: '32px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', boxShadow: '0 20px 40px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)' }}>
+                <button className="spring-btn" style={{ flex: 1, height: '48px', background: 'none', border: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Home size={24} /></button>
+                <button className="spring-btn" style={{ flex: 1, height: '48px', background: 'none', border: 'none', color: '#FFF', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ position: 'absolute', top: -8, width: '24px', height: '4px', borderRadius: '0 0 4px 4px', background: '#FFFFFF' }}/>
+                  <ShoppingBag size={24} strokeWidth={2.5} />
+                </button>
+                <button onClick={() => setCreateOpen(true)} className="spring-btn" style={{ width: '48px', height: '48px', borderRadius: '24px', background: 'var(--primary)', border: 'none', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={26} strokeWidth={3} /></button>
+                <button className="spring-btn" style={{ flex: 1, height: '48px', background: 'none', border: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Heart size={24} /></button>
+                <button className="spring-btn" style={{ flex: 1, height: '48px', background: 'none', border: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={24} /></button>
+              </nav>
+            </div>
+
+            <ProductDetail product={activeProduct} onBack={() => setActiveProduct(null)} />
+            <CreateSheet isOpen={createOpen} onClose={() => setCreateOpen(false)} />
+
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

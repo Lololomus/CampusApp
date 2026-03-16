@@ -1,10 +1,10 @@
 // ===== FILE: frontend/src/components/profile/Profile.js =====
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Grid, ShoppingBag, FileText, Share2, Heart,
   MessageCircle, MapPin, ChevronRight,
-  Shield, Zap, Settings, PencilLine, Check, Barcode, Bell
+  Shield, Zap, Settings, PencilLine, Check, Barcode, Bell,
 } from 'lucide-react';
 import { HandTap } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -28,8 +28,6 @@ import EditMarketItemModal from '../market/EditMarketItemModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import RequestDetailModal from '../requests/RequestDetailModal';
 import MarketDetail from '../market/MarketDetail';
-import FeedDateDivider from '../shared/FeedDateDivider';
-import { buildFeedSections } from '../../utils/feedDateSections';
 import EdgeBlur from '../shared/EdgeBlur';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
@@ -121,28 +119,9 @@ function Profile() {
 
   const activeTabIndex = tabs.findIndex(t => t.id === activeTab);
 
-  const previewPostsRows = useMemo(
-    () => buildFeedSections(posts, (post) => post.created_at, { getItemKey: (post) => post.id }),
-    [posts]
-  );
-
-  const previewRequestsRows = useMemo(
-    () => buildFeedSections(
-      requests.slice(0, 3),
-      (request) => request.created_at,
-      { getItemKey: (request) => request.id }
-    ),
-    [requests]
-  );
-
-  const previewMarketRows = useMemo(
-    () => buildFeedSections(
-      marketItems.slice(0, 4),
-      (item) => item.created_at,
-      { getItemKey: (item) => item.id }
-    ),
-    [marketItems]
-  );
+  const previewPosts = posts.slice(0, 3);
+  const previewRequests = requests.slice(0, 3);
+  const previewMarket = marketItems.slice(0, 4);
 
   const handleOpenMyPosts = () => { hapticFeedback('medium'); setShowUserPosts(true); };
   const handleOpenMyRequests = () => { hapticFeedback('medium'); setShowUserRequests(true); };
@@ -358,96 +337,78 @@ function Profile() {
 
           {activeTab === 'posts' && (
             <div className="fade-in">
-              <div style={{ padding: '0 16px', marginBottom: 16 }}>
-                <ActionCard
-                  icon={<FileText size={20} color="#fff" />}
-                  title="Мои публикации"
-                  subtitle={`${stats.posts_count} постов`}
-                  onClick={handleOpenMyPosts}
-                />
-              </div>
-              {posts.length > 0 ? (
+              <ActionCard
+                icon={<FileText size={20} color="#fff" />}
+                title="Мои публикации"
+                subtitle={`${stats.posts_count} постов`}
+                onClick={handleOpenMyPosts}
+              />
+              {previewPosts.length > 0 ? (
                 <div style={styles.listGap}>
-                  {previewPostsRows.map((row) => (
-                    row.type === 'divider' ? (
-                      <FeedDateDivider key={row.key} label={row.label} />
-                    ) : (
-                      <PostCard
-                        key={row.key}
-                        post={row.item}
-                        onClick={handlePostClick}
-                        onPostDeleted={(postId) => setPosts(prev => prev.filter(p => p.id !== postId))}
-                      />
-                    )
+                  {previewPosts.map((post) => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      onClick={handlePostClick}
+                      onPostDeleted={(postId) => setPosts(prev => prev.filter(p => p.id !== postId))}
+                    />
                   ))}
                 </div>
               ) : (
-                <EmptyState text="Пока нет постов" icon="📝" />
+                <EmptyState text="Пока нет постов" icon={<FileText size={36} />} />
               )}
             </div>
           )}
 
           {activeTab === 'requests' && (
             <div className="fade-in">
-              <div style={{ padding: '0 16px', marginBottom: 16 }}>
-                <ActionCard
-                  icon={<FileText size={20} color="#fff" />}
-                  title="Мои запросы"
-                  subtitle={`${requests.length} активных`}
-                  onClick={handleOpenMyRequests}
-                />
-              </div>
-              {requests.length > 0 ? (
+              <ActionCard
+                icon={<Zap size={20} color="#fff" />}
+                title="Мои запросы"
+                subtitle={`${requests.length} активных`}
+                onClick={handleOpenMyRequests}
+              />
+              {previewRequests.length > 0 ? (
                 <div style={styles.listGap}>
-                  {previewRequestsRows.map((row) => (
-                    row.type === 'divider' ? (
-                      <FeedDateDivider key={row.key} label={row.label} />
-                    ) : (
-                      <RequestCard
-                        key={row.key}
-                        request={row.item}
-                        currentUserId={user?.id}
-                        onClick={handleRequestClick}
-                        onEdit={handleEditRequest}
-                        onDelete={handleDeleteRequest}
-                      />
-                    )
+                  {previewRequests.map((request) => (
+                    <RequestCard
+                      key={request.id}
+                      request={request}
+                      currentUserId={user?.id}
+                      onClick={handleRequestClick}
+                      onEdit={handleEditRequest}
+                      onDelete={handleDeleteRequest}
+                    />
                   ))}
                 </div>
               ) : (
-                <EmptyState text="Нет активных запросов" icon="⚡️" />
+                <EmptyState text="Нет активных запросов" icon={<Zap size={36} />} />
               )}
             </div>
           )}
 
           {activeTab === 'market' && (
             <div className="fade-in">
-              <div style={{ padding: '0 16px', marginBottom: 16 }}>
-                <ActionCard
-                  icon={<ShoppingBag size={20} color="#fff" />}
-                  title="Мои товары"
-                  subtitle={`${marketItems.length} объявлений`}
-                  onClick={handleOpenMyMarketItems}
-                />
-              </div>
-              {marketItems.length > 0 ? (
+              <ActionCard
+                icon={<ShoppingBag size={20} color="#fff" />}
+                title="Мои товары"
+                subtitle={`${marketItems.length} объявлений`}
+                onClick={handleOpenMyMarketItems}
+              />
+              {previewMarket.length > 0 ? (
                 <div style={styles.listGap}>
-                  {previewMarketRows.map((row) => (
-                    row.type === 'divider' ? (
-                      <FeedDateDivider key={row.key} label={row.label} />
-                    ) : (
-                      <MyMarketCard
-                        key={row.key}
-                        item={row.item}
-                        onOpen={handleMarketItemOpen}
-                        onEdit={handleEditMarketItem}
-                        onDelete={handleDeleteMarketItem}
-                      />
-                    )
+                  {previewMarket.map((item) => (
+                    <MyMarketCard
+                      key={item.id}
+                      item={item}
+                      onOpen={handleMarketItemOpen}
+                      onEdit={handleEditMarketItem}
+                      onDelete={handleDeleteMarketItem}
+                    />
                   ))}
                 </div>
               ) : (
-                <EmptyState text="Пока нет товаров" icon="📦" />
+                <EmptyState text="Пока нет товаров" icon={<ShoppingBag size={36} />} />
               )}
             </div>
           )}
@@ -713,24 +674,21 @@ const StatsGrid = ({ stats }) => {
 
 // ===== ACTION CARD =====
 const ActionCard = ({ icon, title, subtitle, onClick }) => (
-  <div
-    style={styles.actionCard}
-    onClick={onClick}
-  >
+  <div style={styles.actionCard} onClick={onClick}>
     <div style={styles.actionCardIcon}>{icon}</div>
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 2 }}>{title}</div>
-      <div style={{ fontSize: 13, color: '#8E8E93' }}>{subtitle}</div>
+      <div style={styles.actionCardTitle}>{title}</div>
+      <div style={styles.actionCardSubtitle}>{subtitle}</div>
     </div>
-    <ChevronRight size={20} color="#8E8E93" />
+    <ChevronRight size={18} color="#8E8E93" />
   </div>
 );
 
 // ===== EMPTY STATE =====
 const EmptyState = ({ text, icon }) => (
-  <div style={{ padding: '60px 20px', textAlign: 'center', opacity: 0.5 }}>
-    <div style={{ fontSize: 48, marginBottom: 12 }}>{icon}</div>
-    <div style={{ fontSize: 15, color: '#8E8E93' }}>{text}</div>
+  <div style={styles.emptyState}>
+    <div style={styles.emptyIcon}>{icon}</div>
+    <div style={styles.emptyText}>{text}</div>
   </div>
 );
 
@@ -1117,17 +1075,21 @@ const styles = {
     transition: 'color 0.2s',
   },
 
-  feedContainer: { paddingTop: 0 },
+  feedContainer: {
+    paddingTop: 0,
+  },
 
   listGap: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
-    padding: '0 16px',
+    gap: 0,
   },
 
   actionCard: {
-    background: '#1C1C1E',
+    margin: '0 16px 12px',
+    background: 'rgba(28, 28, 30, 0.5)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
     borderRadius: 16,
     padding: '14px 16px',
     display: 'flex',
@@ -1135,15 +1097,42 @@ const styles = {
     gap: 12,
     cursor: 'pointer',
     border: '1px solid rgba(255,255,255,0.06)',
-    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1)',
+    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
+    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
   },
   actionCardIcon: {
-    width: 44, height: 44,
+    width: 40, height: 40,
     borderRadius: 12,
-    background: 'rgba(212,255,0,0.12)',
+    background: 'rgba(255,255,255,0.08)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
+  },
+  actionCardTitle: {
+    fontSize: 15, fontWeight: 700, color: '#FFF', marginBottom: 2,
+  },
+  actionCardSubtitle: {
+    fontSize: 13, color: '#8E8E93', fontWeight: 500,
+  },
+
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: '48px 24px',
+    margin: '0 16px',
+    border: '1px dashed rgba(255,255,255,0.12)',
+    borderRadius: 16,
+  },
+  emptyIcon: {
+    color: '#555',
+    opacity: 0.5,
+  },
+  emptyText: {
+    fontSize: 14, fontWeight: 600, color: '#8E8E93',
   },
 };
 

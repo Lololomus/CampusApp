@@ -173,6 +173,8 @@ public_prefixes = [
     "/notifications/followups",
     "/posts/feed",
     "/api/requests/feed",
+    "/market/feed",
+    "/market/categories",
 ]
 if settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
     public_prefixes.append("/dev/auth")
@@ -1677,7 +1679,7 @@ async def get_market_categories_endpoint(db: AsyncSession = Depends(get_db)):
 
 @app.get("/market/feed", response_model=schemas.MarketFeedResponse)
 async def get_market_feed_endpoint(
-    telegram_id: int = Query(...),
+    telegram_id: Optional[int] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     category: Optional[str] = Query(None),
@@ -1692,7 +1694,7 @@ async def get_market_feed_endpoint(
     city: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    user = await crud.get_user_by_telegram_id(db, telegram_id) if telegram_id else None
     current_user_id = user.id if user else None
     
     feed_data = await crud.get_market_items(

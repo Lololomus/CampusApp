@@ -1,7 +1,8 @@
-// ===== 📄 ФАЙЛ: src/components/profile/UserMarketItems.js =====
+// ===== FILE: UserMarketItems.js =====
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { createPortal } from 'react-dom'; // ✅ Добавлено для рендера модалок поверх всего
+import { createPortal } from 'react-dom';
+import { ShoppingBag, CheckCircle } from 'lucide-react';
 import { getMyMarketItems, deleteMarketItem } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
@@ -11,11 +12,20 @@ import EditMarketItemModal from '../market/EditMarketItemModal';
 import MarketDetail from '../market/MarketDetail';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_USER_MARKET_ITEMS } from '../../constants/zIndex';
-import theme from '../../theme';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
+
+const C = {
+  bg: '#000000',
+  surfaceElevated: '#2C2C2E',
+  border: 'rgba(255, 255, 255, 0.08)',
+  text: '#FFFFFF',
+  textMuted: '#8E8E93',
+  textTertiary: '#666666',
+  accent: '#10b981', // market green
+};
 
 function UserMarketItems() {
   const { setShowUserMarketItems } = useStore();
@@ -24,55 +34,32 @@ function UserMarketItems() {
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState('all');
-  
-  // Локальные модалки
   const [editingItem, setEditingItem] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
-  
   const LIMIT = 20;
 
-  const closeScreen = () => {
-    setShowUserMarketItems(false);
-  };
-
-  const handleTelegramBack = () => {
-    hapticFeedback('light');
-    closeScreen();
-  };
+  const closeScreen = () => setShowUserMarketItems(false);
 
   useTelegramScreen({
     id: 'user-market-items-screen',
     title: 'Мои товары',
     priority: 40,
-    back: {
-      visible: true,
-      onClick: handleTelegramBack,
-    },
+    back: { visible: true, onClick: () => { hapticFeedback('light'); closeScreen(); } },
   });
 
-  useEffect(() => {
-    loadItems();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { loadItems(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const loadItems = async () => {
     if (loading || !hasMore) return;
     setLoading(true);
     try {
       const newItems = await getMyMarketItems(LIMIT, offset);
-      
-      if (newItems.length < LIMIT) {
-        setHasMore(false);
-      }
-      
-      // ✅ FIX: Фильтруем дубликаты перед добавлением в стейт
+      if (newItems.length < LIMIT) setHasMore(false);
       setItems(prev => {
         const existingIds = new Set(prev.map(i => i.id));
-        const uniqueNewItems = newItems.filter(i => !existingIds.has(i.id));
-        return [...prev, ...uniqueNewItems];
+        return [...prev, ...newItems.filter(i => !existingIds.has(i.id))];
       });
-      
       setOffset(prev => prev + newItems.length);
     } catch (error) {
       console.error('Error loading items:', error);
@@ -82,29 +69,13 @@ function UserMarketItems() {
     }
   };
 
-  const handleEdit = (item) => {
-    hapticFeedback('light');
-    setEditingItem(item);
-  };
-
-  const handleEditSuccess = (updatedItem) => {
-    setItems(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
-    setEditingItem(null);
-  };
-
-  const handleDeleteClick = (itemId) => {
-    hapticFeedback('medium');
-    setItemToDelete(itemId);
-  };
-
-  const handleOpenItem = (item) => {
-    hapticFeedback('light');
-    setSelectedItem(item);
-  };
+  const handleEdit = (item) => { hapticFeedback('light'); setEditingItem(item); };
+  const handleEditSuccess = (updatedItem) => { setItems(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i)); setEditingItem(null); };
+  const handleDeleteClick = (itemId) => { hapticFeedback('medium'); setItemToDelete(itemId); };
+  const handleOpenItem = (item) => { hapticFeedback('light'); setSelectedItem(item); };
 
   const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
-    
     try {
       await deleteMarketItem(itemToDelete);
       setItems(prev => prev.filter(i => i.id !== itemToDelete));
@@ -120,9 +91,7 @@ function UserMarketItems() {
 
   const handleScroll = (e) => {
     const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
-    if (bottom && hasMore && !loading) {
-      loadItems();
-    }
+    if (bottom && hasMore && !loading) loadItems();
   };
 
   const filteredItems = items.filter(item => {
@@ -139,91 +108,71 @@ function UserMarketItems() {
   };
 
   const itemRows = useMemo(() => (
-    buildFeedSections(
-      filteredItems,
-      (item) => item.created_at,
-      { getItemKey: (item) => item.id }
-    )
+    buildFeedSections(filteredItems, (i) => i.created_at, { getItemKey: (i) => i.id })
   ), [filteredItems]);
 
-  // ✅ FIX: Рендерим модалки через Portal, чтобы они были поверх родительских трансформаций
-  const renderModals = () => {
-    return createPortal(
-      <>
-        {editingItem && (
-          <EditMarketItemModal
-            item={editingItem}
-            onClose={() => setEditingItem(null)}
-            onSuccess={handleEditSuccess}
-          />
-        )}
+  const FILTERS = [
+    { key: 'all', label: 'Все', count: counts.all },
+    { key: 'active', label: 'Активные', count: counts.active },
+    { key: 'sold', label: 'Проданные', count: counts.sold },
+  ];
 
-        {selectedItem && (
-          <MarketDetail
-            item={selectedItem}
-            onClose={() => setSelectedItem(null)}
-            onUpdate={(updatedItem) => {
-              if (updatedItem?.id) {
-                setItems(prev => prev.map(i => (
-                  String(i.id) === String(updatedItem.id) ? { ...i, ...updatedItem } : i
-                )));
-                setSelectedItem(updatedItem);
-              } else {
-                setItems(prev => prev.filter(i => String(i.id) !== String(selectedItem.id)));
-                setSelectedItem(null);
-              }
-            }}
-          />
-        )}
-
-        <ConfirmationDialog
-          isOpen={!!itemToDelete}
-          title="Удалить товар?"
-          message="Это действие нельзя отменить."
-          confirmText="Удалить"
-          confirmType="danger"
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setItemToDelete(null)}
+  const renderModals = () => createPortal(
+    <>
+      {editingItem && (
+        <EditMarketItemModal item={editingItem} onClose={() => setEditingItem(null)} onSuccess={handleEditSuccess} />
+      )}
+      {selectedItem && (
+        <MarketDetail
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onUpdate={(updatedItem) => {
+            if (updatedItem?.id) {
+              setItems(prev => prev.map(i => (String(i.id) === String(updatedItem.id) ? { ...i, ...updatedItem } : i)));
+              setSelectedItem(updatedItem);
+            } else {
+              setItems(prev => prev.filter(i => String(i.id) !== String(selectedItem.id)));
+              setSelectedItem(null);
+            }
+          }}
         />
-      </>,
-      document.body
-    );
-  };
+      )}
+      <ConfirmationDialog
+        isOpen={!!itemToDelete}
+        title="Удалить товар?"
+        message="Это действие нельзя отменить."
+        confirmText="Удалить"
+        confirmType="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setItemToDelete(null)}
+      />
+    </>,
+    document.body
+  );
 
   return (
     <div style={styles.container} onScroll={handleScroll}>
       <DrilldownHeader title={`Мои товары (${counts.all})`} onBack={closeScreen} />
 
-      {/* Filter Tabs */}
-      <div style={styles.filterTabs}>
-        <button 
-          onClick={() => { hapticFeedback('selection'); setFilter('all'); }} 
-          style={{...styles.filterTab, ...(filter === 'all' && styles.filterTabActive)}}
-        >
-          Все {counts.all > 0 && `(${counts.all})`}
-        </button>
-        <button 
-          onClick={() => { hapticFeedback('selection'); setFilter('active'); }} 
-          style={{...styles.filterTab, ...(filter === 'active' && styles.filterTabActive)}}
-        >
-          Активные {counts.active > 0 && `(${counts.active})`}
-        </button>
-        <button 
-          onClick={() => { hapticFeedback('selection'); setFilter('sold'); }} 
-          style={{...styles.filterTab, ...(filter === 'sold' && styles.filterTabActive)}}
-        >
-          Проданные {counts.sold > 0 && `(${counts.sold})`}
-        </button>
+      <div style={styles.filterBar}>
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => { hapticFeedback('selection'); setFilter(f.key); }}
+            style={{ ...styles.chip, ...(filter === f.key ? styles.chipActive : {}) }}
+          >
+            {f.label}{f.count > 0 ? ` ${f.count}` : ''}
+          </button>
+        ))}
       </div>
 
-      {/* Items List */}
       <div style={styles.content}>
         {filteredItems.length > 0 ? (
-          itemRows.map((row) => (
+          itemRows.map((row) =>
             row.type === 'divider' ? (
               <FeedDateDivider key={row.key} label={row.label} />
             ) : (
-              <div key={row.key} style={{ animation: `fadeInUp 0.4s ease ${row.index * 0.05}s both` }}>
+              <div key={row.key} style={{ animation: `fadeInUp 0.35s ease ${row.index * 0.04}s both` }}>
                 <MyMarketCard
                   item={row.item}
                   onOpen={handleOpenItem}
@@ -232,142 +181,91 @@ function UserMarketItems() {
                 />
               </div>
             )
-          ))
-        ) : (
+          )
+        ) : !loading ? (
           <div style={styles.empty}>
-            <div style={styles.emptyEmoji}>📦</div>
-            <p style={styles.emptyText}>Нет товаров</p>
-            <p style={styles.emptySubtext}>
+            <ShoppingBag size={36} color={C.textTertiary} strokeWidth={1.5} />
+            <div style={styles.emptyTitle}>Нет товаров</div>
+            <div style={styles.emptySub}>
               {filter === 'all' && 'Создайте первое объявление'}
               {filter === 'active' && 'Все товары проданы'}
               {filter === 'sold' && 'Пока ничего не продано'}
-            </p>
+            </div>
+          </div>
+        ) : null}
+
+        {loading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 16px' }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ ...styles.skeleton, animationDelay: `${i * 0.15}s` }} />
+            ))}
           </div>
         )}
-        
-        {loading && (
-          <div style={styles.loading}>Загрузка...</div>
-        )}
-        
+
         {!hasMore && items.length > 0 && (
-          <div style={styles.endMessage}>
-            <div style={styles.endIcon}>✅</div>
-            <div>Все товары загружены</div>
+          <div style={styles.endMsg}>
+            <CheckCircle size={20} color={C.textTertiary} strokeWidth={1.5} />
+            <span>Все товары загружены</span>
           </div>
         )}
       </div>
 
       {renderModals()}
-
-      <style>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </div>
   );
 }
 
 const styles = {
   container: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
     zIndex: Z_USER_MARKET_ITEMS,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: C.bg,
     overflowY: 'auto',
-    paddingBottom: 20,
   },
-  
-  filterTabs: {
-    display: 'flex',
-    gap: 8,
-    padding: '12px 16px',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    backgroundColor: theme.colors.bg,
+  filterBar: {
+    display: 'flex', gap: 8, padding: '12px 16px',
+    backgroundColor: C.bg,
     position: 'sticky',
     top: 'calc(var(--drilldown-header-height) + env(safe-area-inset-top, 0px))',
     zIndex: 9,
   },
-  
-  filterTab: {
-    flex: 1,
-    padding: '8px 12px',
-    border: 'none',
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    color: theme.colors.textSecondary,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
+  chip: {
+    flex: 1, height: 36, padding: '0 12px',
+    border: '1px solid transparent', borderRadius: 18,
+    backgroundColor: C.surfaceElevated, color: C.text,
+    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
+    WebkitTapHighlightColor: 'transparent',
   },
-  
-  filterTabActive: {
-    backgroundColor: theme.colors.market,
-    color: '#fff',
+  chipActive: {
+    backgroundColor: 'transparent',
+    borderColor: C.accent,
+    color: C.accent,
   },
-  
   content: {
-    padding: 16,
+    padding: '4px 16px calc(env(safe-area-inset-bottom, 20px) + 20px)',
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
   },
-  
   empty: {
-    textAlign: 'center',
-    padding: '80px 20px',
-    animation: 'fadeInUp 0.5s ease',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+    padding: '52px 24px',
+    border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 16,
   },
-  
-  emptyEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
+  emptyTitle: { fontSize: 16, fontWeight: 700, color: C.text },
+  emptySub: { fontSize: 14, color: C.textMuted, lineHeight: 1.5, textAlign: 'center' },
+  skeleton: {
+    height: 80, borderRadius: 16,
+    background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 75%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.5s infinite',
   },
-  
-  emptyText: {
-    fontSize: 18,
-    color: theme.colors.text,
-    fontWeight: 600,
-    marginBottom: 8,
-  },
-  
-  emptySubtext: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    lineHeight: 1.5,
-  },
-  
-  loading: {
-    textAlign: 'center',
-    color: theme.colors.textTertiary,
-    padding: 20,
-    fontSize: 14,
-  },
-  
-  endMessage: {
-    textAlign: 'center',
-    color: theme.colors.textTertiary,
-    padding: '32px 20px',
-    fontSize: 14,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 8,
-  },
-  
-  endIcon: {
-    fontSize: 24,
+  endMsg: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    padding: '28px 20px', marginTop: 8,
+    borderTop: `1px solid ${C.border}`,
+    fontSize: 13, fontWeight: 600, color: C.textTertiary,
   },
 };
 

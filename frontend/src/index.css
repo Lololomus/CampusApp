@@ -359,6 +359,18 @@ button[aria-label="Закрыть"]:active {
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
+/* Profile drilldown screens — staggered card entrance */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Skeleton shimmer for loading placeholders */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 /* ===== End Shared Component Animations ===== */
 
 .hide-scroll::-webkit-scrollbar { display: none; }

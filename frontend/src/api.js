@@ -724,7 +724,7 @@ export async function deleteResponse(responseId) {
 
 export async function getMarketItems(filters = {}) {
   try {
-    const telegram_id = getTelegramId();
+    const telegram_id = getTelegramId(true);
     const skip = filters.skip || 0;
     const limit = filters.limit || 20;
 
@@ -752,7 +752,8 @@ export async function getMarketItems(filters = {}) {
       };
     }
 
-    const params = { telegram_id, skip, limit };
+    const params = { skip, limit };
+    if (telegram_id) params.telegram_id = telegram_id;
     
     if (filters.category && filters.category !== 'all') params.category = filters.category;
     if (filters.price_min) params.price_min = filters.price_min;

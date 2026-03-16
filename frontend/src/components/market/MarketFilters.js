@@ -335,8 +335,8 @@ const styles = {
   },
 
   badge: {
-    background: theme.colors.market,
-    color: theme.colors.text,
+    background: theme.colors.premium.primary,
+    color: '#000',
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.bold,
     padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
@@ -385,8 +385,8 @@ const styles = {
 
   radioButtonActive: {
     background: theme.colors.card,
-    borderColor: theme.colors.market,
-    color: theme.colors.market,
+    borderColor: theme.colors.premium.primary,
+    color: theme.colors.premium.primary,
   },
 
   // === ЦЕНА (Chips) ===
@@ -411,9 +411,9 @@ const styles = {
   },
 
   chipActive: {
-    background: theme.colors.market,
-    borderColor: theme.colors.market,
-    color: theme.colors.text,
+    background: theme.colors.premium.primary,
+    borderColor: theme.colors.premium.primary,
+    color: '#000',
   },
 
   // === ЦЕНА (Inputs) ===
@@ -487,7 +487,7 @@ const styles = {
 
   checkboxButtonActive: {
     background: theme.colors.card,
-    borderColor: theme.colors.market,
+    borderColor: theme.colors.premium.primary,
   },
 
   checkboxIcon: {
@@ -521,8 +521,8 @@ const styles = {
 
   sortButtonActive: {
     background: theme.colors.card,
-    borderColor: theme.colors.market,
-    color: theme.colors.market,
+    borderColor: theme.colors.premium.primary,
+    color: theme.colors.premium.primary,
   },
 
   sortIcon: {
@@ -558,12 +558,12 @@ const styles = {
 
   applyButton: {
     flex: 2,
-    background: theme.colors.market,
+    background: theme.colors.premium.primary,
     borderWidth: 0,
     borderStyle: 'none',
     borderRadius: theme.radius.md,
     padding: theme.spacing.lg,
-    color: theme.colors.text,
+    color: '#000',
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.semibold,
     cursor: 'pointer',

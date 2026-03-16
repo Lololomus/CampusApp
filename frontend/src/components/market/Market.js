@@ -9,6 +9,7 @@ import MarketDetail from './MarketDetail';
 import MarketFilters from './MarketFilters';
 import CreateMarketItem from './CreateMarketItem';
 import EditMarketItemModal from './EditMarketItemModal';
+import EdgeBlur from '../shared/EdgeBlur';
 import theme from '../../theme';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
@@ -45,6 +46,8 @@ const Market = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [animationKey, setAnimationKey] = useState(0); // ✅ СОХРАНИЛИ
 
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+
   // Refs
   const contentRef = useRef(null);
   const observerRef = useRef(null);
@@ -52,23 +55,25 @@ const Market = () => {
   const startYRef = useRef(0); // ✅ ДЛЯ PULL TO REFRESH
 
   // ===== CATEGORIES =====
-  const categories = [
-    { id: 'all', label: 'Все', emoji: '📋' },
-    { id: 'textbooks', label: 'Учебники', emoji: '📚' },
-    { id: 'electronics', label: 'Электроника', emoji: '💻' },
-    { id: 'furniture', label: 'Мебель', emoji: '🛋️' },
-    { id: 'clothing', label: 'Одежда', emoji: '👕' },
-    { id: 'sports', label: 'Спорт', emoji: '⚽' },
-    { id: 'appliances', label: 'Техника', emoji: '🔌' },
+  const goodsCategories = [
+    { id: 'all', label: 'Все', emoji: '' },
+    { id: 'books', label: 'Учебники', emoji: '📚' },
+    { id: 'electronics', label: 'Техника', emoji: '💻' },
+    { id: 'clothes', label: 'Одежда', emoji: '👕' },
+    { id: 'home', label: 'Общага', emoji: '🛋️' },
+    { id: 'hobby', label: 'Хобби', emoji: '🎸' },
   ];
 
-  // ===== DYNAMIC TITLE =====
-  const getDynamicTitle = () => {
-    if (activeTab === 'favorites') return 'Избранное';
-    if (selectedCategory === 'all') return 'Барахолка';
-    const category = categories.find(c => c.id === selectedCategory);
-    return category ? category.label : 'Барахолка';
-  };
+  const servicesCategories = [
+    { id: 'all', label: 'Все', emoji: '🔥' },
+    { id: 'tutor', label: 'Репетитор', emoji: '👨‍🏫' },
+    { id: 'homework', label: 'Курсачи', emoji: '📝' },
+    { id: 'repair', label: 'Ремонт', emoji: '🛠️' },
+    { id: 'design', label: 'Дизайн', emoji: '🎨' },
+    { id: 'delivery', label: 'Курьер', emoji: '🏃' },
+  ];
+
+  const currentCategories = activeTab === 'services' ? servicesCategories : goodsCategories;
 
   // ✅ СТАБИЛИЗАЦИЯ marketFilters
   const stabilizedFilters = useMemo(() => ({
@@ -94,7 +99,7 @@ const Market = () => {
     let count = 0;
     if (stabilizedFilters.price_min || stabilizedFilters.price_max) count++;
     if (stabilizedFilters.condition) count++;
-    if (stabilizedFilters.location !== 'all') count++;
+    if (stabilizedFilters.location && stabilizedFilters.location !== 'all') count++;
     if (stabilizedFilters.sort !== 'newest') count++;
     return count;
   }, [stabilizedFilters]);
@@ -124,11 +129,8 @@ const Market = () => {
         limit,
         search: searchQuery || undefined,
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        item_type: activeTab === 'services' ? 'services' : 'goods',
       };
-
-      if (activeTab === 'favorites') {
-        filters.favorites_only = true;
-      }
 
       const result = await getMarketItems(filters);
       
@@ -203,6 +205,13 @@ const Market = () => {
     };
   }, [refreshing, loading]); // ✅ ТОЛЬКО НУЖНЫЕ ЗАВИСИМОСТИ
 
+  // Scroll-детект для EdgeBlur (синхронно с premium AppHeader)
+  useEffect(() => {
+    const handleScroll = () => setHeaderScrolled(window.scrollY > 40);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   // ===== HANDLERS =====
   const haptic = (type = 'light') => hapticFeedback(type);
 
@@ -244,55 +253,51 @@ const Market = () => {
     if (activeTab !== tab) {
       haptic('medium');
       setActiveTab(tab);
+      setSelectedCategory('all');
       setPage(0);
-      setAnimationKey(prev => prev + 1); // ✅ АНИМАЦИЯ
+      setAnimationKey(prev => prev + 1);
     }
-  }, [activeTab]); // ✅ useCallback
-
-  const getIndicatorPosition = () => {
-    return activeTab === 'all' ? '0%' : '100%';
-  };
+  }, [activeTab]);
 
   return (
     <div style={styles.container}>
-      
-      <AppHeader 
-        title={getDynamicTitle()}
+
+      <EdgeBlur position="top" height={headerScrolled ? 90 : 160} zIndex={50} animateHeight />
+      <EdgeBlur position="bottom" height={100} zIndex={50} />
+
+      <AppHeader
+        title="Барахолка"
         showSearch={true}
         searchValue={searchQuery}
         searchPlaceholder="Поиск товаров..."
         onSearchChange={handleSearchChange}
-        categories={categories}
+        categories={currentCategories}
         selectedCategory={selectedCategory}
         onCategoryChange={handleCategoryChange}
         showFilters={true}
         onFiltersClick={handleOpenFilters}
-        activeFiltersCount={activeFiltersCount} // ✅ БЕЗ ()
-        accentColor={theme.colors.market} 
+        activeFiltersCount={activeFiltersCount}
+        premium
       >
-        <div style={styles.tabsWrapper}>
-          <div style={styles.tabsContainer}>
-            <div 
-              style={{
-                ...styles.activeIndicator,
-                transform: `translateX(${getIndicatorPosition()})`,
-              }} 
-            />
-            
-            <button 
-              onClick={() => handleTabSwitch('all')}
-              style={{...styles.tabButton, color: activeTab === 'all' ? '#fff' : theme.colors.textSecondary}}
-            >
-              Товары
-            </button>
-
-            <button 
-              onClick={() => handleTabSwitch('favorites')}
-              style={{...styles.tabButton, color: activeTab === 'favorites' ? '#fff' : theme.colors.textSecondary}}
-            >
-              Избранное
-            </button>
-          </div>
+        <div style={{ position: 'relative', width: '100%', display: 'flex' }}>
+          <div
+            style={{
+              ...styles.activeIndicator,
+              transform: `translateX(${activeTab === 'all' ? '0' : '100%'})`,
+            }}
+          />
+          <button
+            onClick={() => handleTabSwitch('all')}
+            style={{ ...styles.tabButton, color: activeTab === 'all' ? '#000' : '#FFF' }}
+          >
+            Товары
+          </button>
+          <button
+            onClick={() => handleTabSwitch('services')}
+            style={{ ...styles.tabButton, color: activeTab === 'services' ? '#000' : '#FFF' }}
+          >
+            Услуги
+          </button>
         </div>
       </AppHeader>
 
@@ -317,11 +322,7 @@ const Market = () => {
           <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>📦</div>
             <div style={styles.emptyTitle}>Ничего не найдено</div>
-            <div style={styles.emptyText}>
-              {activeTab === 'favorites' 
-                ? 'Вы ещё ничего не добавили в избранное' 
-                : 'Попробуйте изменить фильтры'}
-            </div>
+            <div style={styles.emptyText}>Попробуйте изменить фильтры</div>
           </div>
         )}
 
@@ -401,47 +402,31 @@ const MarketCardSkeleton = () => (
 const styles = {
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: theme.colors.premium.bg,
     minHeight: '100vh',
   },
 
-  tabsWrapper: {
-    padding: '0 12px 12px 12px',
-  },
-
-  tabsContainer: {
-    position: 'relative',
-    display: 'flex',
-    backgroundColor: theme.colors.bg,
-    borderRadius: theme.radius.lg,
-    padding: '4px',
-    height: 44,
-    border: `1px solid ${theme.colors.border}`,
-  },
-
-  // ✅ КАК В FEED (0.3s)
   activeIndicator: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 4,
-    width: 'calc(50% - 4px)',
-    backgroundColor: theme.colors.market, 
-    borderRadius: theme.radius.md,
-    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
-    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)', // ✅ ИСПРАВЛЕНО
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: '50%',
+    backgroundColor: theme.colors.premium.primary,
+    borderRadius: 15,
+    boxShadow: `0 2px 10px ${theme.colors.premium.primary}30`,
+    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
     zIndex: 1,
   },
 
-  // ✅ fontSize 15 как в Feed
   tabButton: {
     flex: 1,
     position: 'relative',
     zIndex: 2,
     background: 'transparent',
     border: 'none',
-    fontSize: 15, // ✅ ИСПРАВЛЕНО
-    fontWeight: 600,
+    fontSize: 15,
+    fontWeight: 700,
     cursor: 'pointer',
     transition: 'color 0.2s ease',
     display: 'flex',
@@ -450,8 +435,7 @@ const styles = {
   },
 
   content: {
-    paddingTop: 'calc(var(--header-padding, 104px) + 16px)',
-    transition: 'padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    paddingTop: 'var(--header-padding, 140px)',
   },
 
   grid: {
@@ -470,11 +454,11 @@ const styles = {
   emptyIcon: { fontSize: 64, marginBottom: 16, opacity: 0.5 },
   emptyTitle: { fontSize: 18, fontWeight: 600, color: theme.colors.text, marginBottom: 8 },
   emptyText: { fontSize: 14, color: theme.colors.textSecondary, maxWidth: 300 },
-  retryButton: { marginTop: 16, background: theme.colors.market, border: 'none', borderRadius: 12, padding: '12px 24px', color: '#fff', fontWeight: 600, cursor: 'pointer' },
+  retryButton: { marginTop: 16, background: theme.colors.premium.primary, border: 'none', borderRadius: 12, padding: '12px 24px', color: '#000', fontWeight: 600, cursor: 'pointer' },
   loadMoreTrigger: { height: 20, width: '100%' },
   
-  skeletonCard: { background: theme.colors.card, borderRadius: 16, overflow: 'hidden', animation: 'pulse 1.5s infinite', aspectRatio: '0.7' },
-  skeletonImage: { width: '100%', height: '60%', background: theme.colors.bgSecondary },
+  skeletonCard: { background: theme.colors.card, borderRadius: 20, overflow: 'hidden', animation: 'pulse 1.5s infinite', border: `1px solid ${theme.colors.premium.border}` },
+  skeletonImage: { width: '100%', aspectRatio: '1', background: theme.colors.bgSecondary },
   skeletonInfo: { padding: 12, display: 'flex', flexDirection: 'column', gap: 8 },
   skeletonLine: { height: 16, background: theme.colors.bgSecondary, borderRadius: 4 },
   skeletonLineShort: { height: 16, width: '60%', background: theme.colors.bgSecondary, borderRadius: 4 },

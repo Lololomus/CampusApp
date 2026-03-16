@@ -25,6 +25,7 @@ const AppHeader = ({
   children = null,
   accentColor, // ✅ НОВЫЙ ПРОП: для перекраски в зеленый
   premium = false, // #New Premium: включает новый визуальный режим
+  categoryOutline = false, // когда true, активная категория = border + text (без заливки)
 }) => {
   // ===== STATE =====
   const [searchFocused, setSearchFocused] = useState(false);
@@ -346,7 +347,7 @@ const AppHeader = ({
             fontWeight: 800,
             color: '#FFF',
             letterSpacing: '-0.5px',
-          }}>Campus.</h1>
+          }}>{title || 'Campus.'}</h1>
         </div>
 
         {/* 2. Строка: Табы + Search-иконка при скролле */}
@@ -467,22 +468,32 @@ const AppHeader = ({
                       display: 'flex', gap: 8, overflowX: 'auto', flex: 1,
                       scrollbarWidth: 'none', msOverflowStyle: 'none',
                     }}>
-                      {categories.map((cat) => (
-                        <button
-                          key={cat.id}
-                          onClick={() => handleCategoryClick(cat.id)}
-                          style={{
-                            padding: '0 14px', height: 36, borderRadius: 18,
-                            background: selectedCategory === cat.id ? p.primary : p.surfaceElevated,
-                            color: selectedCategory === cat.id ? '#000' : '#FFF',
-                            fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-                            cursor: 'pointer', border: 'none', flexShrink: 0,
-                            transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
-                          }}
-                        >
-                          {cat.emoji && `${cat.emoji} `}{cat.label}
-                        </button>
-                      ))}
+                      {categories.map((cat) => {
+                        const isActive = selectedCategory === cat.id;
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => handleCategoryClick(cat.id)}
+                            style={{
+                              padding: '0 14px', height: 36, borderRadius: 18,
+                              background: isActive
+                                ? (categoryOutline ? 'transparent' : p.primary)
+                                : p.surfaceElevated,
+                              color: isActive
+                                ? (categoryOutline ? p.primary : '#000')
+                                : '#FFF',
+                              border: categoryOutline
+                                ? `1px solid ${isActive ? p.primary : 'transparent'}`
+                                : 'none',
+                              fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                              cursor: 'pointer', flexShrink: 0,
+                              transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
+                            }}
+                          >
+                            {cat.emoji && `${cat.emoji} `}{cat.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

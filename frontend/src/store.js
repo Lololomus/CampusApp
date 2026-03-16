@@ -396,6 +396,7 @@ export const useStore = create(
         price_min: null,
         price_max: null,
         condition: null,
+        location: 'all',
         university: 'all',
         institute: 'all',
         campus_id: null,
@@ -455,6 +456,7 @@ export const useStore = create(
           price_min: null,
           price_max: null,
           condition: null,
+          location: 'all',
           university: 'all',
           institute: 'all',
           campus_id: null,
@@ -569,7 +571,6 @@ export const useStore = create(
             isRegistered: false,
             authStatus: 'ready',
             showAuthModal: false,
-            activeTab: 'feed',
           });
         };
 
