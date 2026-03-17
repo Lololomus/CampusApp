@@ -46,7 +46,10 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   });
 
   const coverImage = item.images && item.images.length > 0 ? item.images[0] : null;
-  const imageUrl = coverImage?.url || coverImage;
+  // Для видео используем thumbnail, иначе основной url
+  const imageUrl = coverImage?.type === 'video'
+    ? (coverImage.thumbnail_url || '')
+    : (coverImage?.url || coverImage);
 
   const getCategoryGradient = () => {
     const gradients = {

@@ -19,7 +19,7 @@ import logging
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
 from app.crud.users import get_user_by_id
-from app.utils import delete_images, process_base64_images
+from app.utils import delete_images, delete_all_media, process_base64_images
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ async def create_market_item(
         return db_item
     except SQLAlchemyError as e:
         if saved_images_meta:
-            delete_images(saved_images_meta)
+            delete_all_media(saved_images_meta)
         raise e
 
 
@@ -89,6 +89,7 @@ async def update_market_item(
     item_update: schemas.MarketItemUpdate,
     new_images_meta: Optional[List[dict]] = None,
     keep_filenames: Optional[List[str]] = None,
+    keep_video: bool = True,
 ) -> Optional[models.MarketItem]:
     """Update market item (smart image merge)."""
     result = await db.execute(
@@ -113,6 +114,7 @@ async def update_market_item(
             new_images_meta=new_images_meta,
             keep_filenames=keep_filenames,
             require_at_least_one=True,
+            keep_old_videos=keep_video,
         )
         update_data["images"] = final_images
 
@@ -128,7 +130,7 @@ async def update_market_item(
     except SQLAlchemyError:
         await db.rollback()
         if new_images_meta:
-            delete_images(new_images_meta)
+            delete_all_media(new_images_meta)
         raise
 
     if files_to_delete:

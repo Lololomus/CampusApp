@@ -275,12 +275,18 @@ class PollResponse(BaseModel):
 # ===== POST SCHEMAS =====
 
 class ImageMeta(BaseModel):
-    """Model for image metadata"""
+    """Model for image/video metadata"""
+    type: str = "image"                    # "image" | "video"
     url: str
     w: int
     h: int
     format: Optional[str] = None
     size_bytes: Optional[int] = None
+    # Поля для видео (None для изображений)
+    duration: Optional[float] = None
+    thumbnail_url: Optional[str] = None
+    thumbnail_w: Optional[int] = None
+    thumbnail_h: Optional[int] = None
 
 class PostCreate(BaseModel):
     category: str

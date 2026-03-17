@@ -1,12 +1,13 @@
 // ===== FILE: CreateMarketItem.js =====
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Image as ImageIcon, Sparkles, MapPin, Check } from 'lucide-react';
+import { X, Image as ImageIcon, Sparkles, MapPin, Check, Play } from 'lucide-react';
 import { useStore } from '../../store';
 import { createMarketItem } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { processImageFiles } from '../../utils/media';
+import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
 import { toast } from '../shared/Toast';
 import { useSwipe } from '../../hooks/useSwipe';
 import { DragHandle } from '../shared/SwipeableModal';
@@ -52,6 +53,8 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const [condition, setCondition] = useState('');
   const [location, setLocation] = useState('');
   const [photos, setPhotos]     = useState([]);   // { file, preview }
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoThumb, setVideoThumb] = useState(null);
   const [loading, setLoading]   = useState(false);
 
   // --- Суб-шиты ---
@@ -64,11 +67,28 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const fileInputRef  = useRef(null);
   const descRef       = useRef(null);
   const sheetRef      = useRef(null);
+  const mediaProcessingTasksRef = useRef(new Set());
+  const photosRef = useRef(photos);
+  const videoFileRef = useRef(videoFile);
 
   useEffect(() => {
     const t = setTimeout(() => setIsVisible(true), 20);
     return () => clearTimeout(t);
   }, []);
+
+  const registerMediaTask = (taskPromise) => {
+    mediaProcessingTasksRef.current.add(taskPromise);
+    taskPromise.finally(() => {
+      mediaProcessingTasksRef.current.delete(taskPromise);
+    });
+    return taskPromise;
+  };
+
+  const waitForMediaTasks = async () => {
+    while (mediaProcessingTasksRef.current.size > 0) {
+      await Promise.allSettled(Array.from(mediaProcessingTasksRef.current));
+    }
+  };
 
   // Сброс категории и состояния при смене типа
   useEffect(() => {
@@ -80,6 +100,14 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   useEffect(() => {
     if (!isVisible) setActiveSubSheet(null);
   }, [isVisible]);
+
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
+  useEffect(() => {
+    videoFileRef.current = videoFile;
+  }, [videoFile]);
 
   // Инжектируем CSS-переменные и анимации (как в CreateContentModal)
   useEffect(() => {
@@ -142,7 +170,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     price !== '' &&
     desc.trim().length >= MIN_DESC_LEN &&
     cat !== '' &&
-    photos.length > 0 &&
+    (photos.length > 0 || videoFile !== null) &&
     (itemType === 'services' || condition !== '');
 
   // --- Фото ---
@@ -151,9 +179,52 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (e) => {
-    const files = e.target.files;
+  const captureVideoThumbnail = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.src = url;
+    video.currentTime = 1;
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 360;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/webp', 0.7));
+    };
+    video.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    video.load();
+  });
+
+  const handleFileChange = (e) => {
+    const task = (async () => {
+      const files = e.target.files;
+    const clearMarketFileInput = () => {
+      if (!fileInputRef.current) return;
+      fileInputRef.current.value = '';
+    };
     if (!files || files.length === 0) return;
+    // Handle video separately (no compression on client; backend processes it)
+    const videoCandidate = Array.from(files).find((file) => isVideoFileCandidate(file));
+    if (videoCandidate) {
+      const validation = await validateVideoFile(videoCandidate);
+      if (!validation.valid) {
+        hapticFeedback('error');
+        toast.error(validation.error);
+        clearMarketFileInput();
+        return;
+      }
+
+      setVideoFile(videoCandidate);
+      captureVideoThumbnail(videoCandidate).then(setVideoThumb);
+      hapticFeedback('light');
+      clearMarketFileInput();
+      return;
+    }
+
     if (photos.length + files.length > MAX_IMAGES) {
       toast.warning(`Максимум ${MAX_IMAGES} фото`);
       return;
@@ -167,8 +238,11 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       toast.error('Ошибка загрузки фото');
     } finally {
       setLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      clearMarketFileInput();
     }
+    })();
+
+    registerMediaTask(task);
   };
 
   const removePhoto = useCallback((idx) => {
@@ -187,7 +261,29 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
   // --- Отправка ---
   const handleSubmit = async () => {
-    if (!canPublish || loading) return;
+    if (loading) return;
+
+    if (mediaProcessingTasksRef.current.size > 0) {
+      setLoading(true);
+      await waitForMediaTasks();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const currentPhotos = photosRef.current;
+    const currentVideoFile = videoFileRef.current;
+    const canPublishNow =
+      title.trim().length >= MIN_TITLE_LEN &&
+      price !== '' &&
+      desc.trim().length >= MIN_DESC_LEN &&
+      cat !== '' &&
+      (currentPhotos.length > 0 || currentVideoFile !== null) &&
+      (itemType === 'services' || condition !== '');
+
+    if (!canPublishNow) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     hapticFeedback('heavy');
     try {
@@ -200,7 +296,8 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       if (condition) formData.append('condition', condition);
       if (location.trim()) formData.append('location', location.trim());
       if (user?.telegram_id) formData.append('telegram_id', user.telegram_id);
-      photos.forEach(p => { if (p.file) formData.append('images', p.file); });
+      currentPhotos.forEach((p) => { if (p.file) formData.append('images', p.file); });
+      if (currentVideoFile) formData.append('video', currentVideoFile);
 
       const result = await createMarketItem(formData);
       addMarketItem(result);
@@ -291,7 +388,36 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
             })}
           </div>
 
-          {/* Фото-миниатюры */}
+          {/* Видео-превью — отдельная карточка на всю ширину */}
+          {videoFile && (
+            <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
+              {videoThumb
+                ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
+                : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />
+              }
+              {/* Play-иконка по центру */}
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
+                </div>
+              </div>
+              {/* Нижняя плашка */}
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>
+                  Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ
+                </span>
+                <button
+                  className="cm-spring-btn"
+                  style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}
+                  onClick={() => { setVideoFile(null); setVideoThumb(null); }}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Фото-миниатюры — 3-колоночная сетка */}
           {photos.length > 0 && (
             <div className="cm-hide-scroll" style={s.photosRow}>
               {photos.map((p, i) => (
@@ -501,7 +627,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/mp4,video/quicktime,video/webm"
           multiple
           style={{ display: 'none' }}
           onChange={handleFileChange}
@@ -900,3 +1026,5 @@ const s = {
 };
 
 export default CreateMarketItem;
+
+

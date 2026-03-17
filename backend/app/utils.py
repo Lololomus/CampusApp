@@ -21,7 +21,7 @@ except Exception:
 # ================= CONFIG =================
 
 UPLOADS_ROOT = Path("uploads")
-ALLOWED_UPLOAD_KINDS = {"images", "avatars"}
+ALLOWED_UPLOAD_KINDS = {"images", "avatars", "videos", "thumbs"}
 
 MAX_IMAGE_SIZE = 1600
 MAX_AVATAR_SIZE = 512
@@ -51,6 +51,8 @@ if register_heif_opener:
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 os.makedirs(UPLOADS_ROOT / "images", exist_ok=True)
 os.makedirs(UPLOADS_ROOT / "avatars", exist_ok=True)
+os.makedirs(UPLOADS_ROOT / "videos", exist_ok=True)
+os.makedirs(UPLOADS_ROOT / "thumbs", exist_ok=True)
 
 # ================= LOGIC =================
 
@@ -301,6 +303,36 @@ def parse_keep_file_list(raw_value: Optional[str], kind: str = "images") -> List
     return result
 
 
+def delete_all_media(media_data: Union[List[dict], List[str], str]) -> None:
+    """
+    Удаляет все медиа из списка: изображения через delete_images, видео через delete_video.
+    Используется при полном удалении поста/товара.
+    """
+    from app.video_utils import delete_video
+
+    if not media_data:
+        return
+
+    if isinstance(media_data, str):
+        try:
+            media_data = json.loads(media_data)
+        except Exception:
+            return
+
+    target_list = media_data if isinstance(media_data, list) else [media_data]
+
+    images = [item for item in target_list if not (isinstance(item, dict) and item.get("type") == "video")]
+    videos = [item for item in target_list if isinstance(item, dict) and item.get("type") == "video"]
+
+    if images:
+        delete_images(images)
+    for video in videos:
+        try:
+            delete_video(video)
+        except Exception:
+            pass
+
+
 def delete_images(images_data: Union[List[dict], List[str], str], default_kind: str = "images"):
     if not images_data:
         return
@@ -370,11 +402,14 @@ def get_image_urls(images_json: Union[str, List]) -> List[dict]:
                     "h": 800,
                 })
             elif isinstance(item, dict):
-                normalized_url = normalize_uploads_path(item.get("url", ""), "images")
+                media_type = item.get("type", "image")
+                url_kind = "videos" if media_type == "video" else "images"
+                normalized_url = normalize_uploads_path(item.get("url", ""), url_kind)
                 if not normalized_url:
                     continue
 
                 image_meta: Dict[str, Any] = {
+                    "type": media_type,
                     "url": normalized_url,
                     "w": item.get("w", 800),
                     "h": item.get("h", 800),
@@ -383,6 +418,17 @@ def get_image_urls(images_json: Union[str, List]) -> List[dict]:
                     image_meta["format"] = item.get("format")
                 if item.get("size_bytes") is not None:
                     image_meta["size_bytes"] = item.get("size_bytes")
+                # Видео-поля
+                if media_type == "video":
+                    thumb_url = normalize_uploads_path(item.get("thumbnail_url", ""), "thumbs")
+                    if thumb_url:
+                        image_meta["thumbnail_url"] = thumb_url
+                    if item.get("duration") is not None:
+                        image_meta["duration"] = item.get("duration")
+                    if item.get("thumbnail_w") is not None:
+                        image_meta["thumbnail_w"] = item.get("thumbnail_w")
+                    if item.get("thumbnail_h") is not None:
+                        image_meta["thumbnail_h"] = item.get("thumbnail_h")
                 result.append(image_meta)
 
     return result

@@ -12,6 +12,7 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем зависимости и ставим их
@@ -22,7 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Создаем папку для загрузок, чтобы не было ошибки прав
-RUN mkdir -p uploads/avatars uploads/images
+RUN mkdir -p uploads/avatars uploads/images uploads/videos uploads/thumbs
 
 # Запуск через Uvicorn
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-2}"]

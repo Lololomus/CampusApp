@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, ChevronLeft, ChevronRight, Calendar, ArrowUpRight, Megaphone, Link, Edit2, Trash2, Flag, EyeOff } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Heart, MessageCircle, Eye, MapPin, Calendar, ArrowUpRight, Megaphone, Link, Edit2, Trash2, Flag, EyeOff } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd, triggerRegistrationPrompt } from '../../api';
@@ -9,6 +9,7 @@ import DropdownMenu from '../DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import PollWidget from './PollWidget';
 import PhotoViewer from '../shared/PhotoViewer';
+import MediaGrid from '../shared/MediaGrid';
 import ReportModal from '../shared/ReportModal';
 import Avatar, { AVATAR_BORDER_RADIUS } from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
@@ -19,7 +20,6 @@ import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
-import { IMAGE_ASPECT_RATIO_MIN, IMAGE_ASPECT_RATIO_MAX } from '../../constants/layoutConstants';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const { likedPosts, setPostLiked, user, setEditingContent, isRegistered } = useStore();
@@ -27,6 +27,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const menuButtonRef = useRef(null);
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isBodyExpanded, setIsBodyExpanded] = useState(false);
+  const [isBodyOverflowing, setIsBodyOverflowing] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
@@ -35,6 +36,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const [deleting, setDeleting] = useState(false);
   const avatarRef = useRef(null);
   const cardRef = useRef(null);
+  const bodyRef = useRef(null);
   const impressionTracked = useRef(false);
   const [adHidden, setAdHidden] = useState(false);
 
@@ -56,26 +58,16 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   }, [post.images]);
   const hasTags = Array.isArray(post.tags) && post.tags.length > 0;
 
-  const firstImage = images.length > 0 ? images[0] : null;
-  const meta = (typeof firstImage === 'object' && firstImage !== null) ? firstImage : null;
-  const rawRatio = (meta?.w && meta?.h) ? meta.w / meta.h : 1;
-  const safeRatio = Math.max(IMAGE_ASPECT_RATIO_MIN, Math.min(rawRatio, IMAGE_ASPECT_RATIO_MAX));
-
-  const [currentImageIndex, setCurrentImageIndex] = useState(() => {
-    const saved = sessionStorage.getItem(`post-${post.id}-imageIndex`);
-    return saved ? parseInt(saved, 10) : 0;
-  });
-
   const getImageUrl = (img) => {
     if (!img) return '';
+    // Для видео показываем thumbnail, а не сам видео-файл
+    if (typeof img === 'object' && img.type === 'video') {
+      return img.thumbnail_url ? resolveImageUrl(img.thumbnail_url, 'images') : '';
+    }
     const filename = (typeof img === 'object') ? img.url : img;
     return resolveImageUrl(filename, 'images');
   };
 
-  const currentImageUrl = useMemo(
-    () => getImageUrl(images[currentImageIndex]),
-    [images, currentImageIndex]
-  );
   const adImageUrl = useMemo(
     () => getImageUrl(images[0]),
     [images]
@@ -96,17 +88,15 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
     setFailedImageMap((prev) => ({ ...prev, [key]: true }));
   };
 
-  const mainImageStateKey = currentImageUrl ? `${post.id}:${currentImageUrl}` : '';
-  const isMainImageLoaded = mainImageStateKey ? Boolean(loadedImageMap[mainImageStateKey]) : false;
-  const isMainImageError = !currentImageUrl || Boolean(failedImageMap[mainImageStateKey]);
-  const isMainImageLoading = Boolean(currentImageUrl) && !isMainImageLoaded && !isMainImageError;
-
   const adImageStateKey = adImageUrl ? `${post.id}:${adImageUrl}` : '';
   const isAdImageLoaded = adImageStateKey ? Boolean(loadedImageMap[adImageStateKey]) : false;
   const isAdImageError = !adImageUrl || Boolean(failedImageMap[adImageStateKey]);
   const isAdImageLoading = Boolean(adImageUrl) && !isAdImageLoaded && !isAdImageError;
 
-  const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
+  const viewerMeta = useMemo(() => ({
+    author: post.is_anonymous ? null : post.author,
+    caption: post.title || post.body,
+  }), [post.is_anonymous, post.author, post.title, post.body]);
 
   const isLiked = isRegistered
     ? (likedPosts[post.id] ?? post.is_liked ?? false)
@@ -247,6 +237,39 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
     [post.title, post.body]
   );
 
+  useEffect(() => {
+    setIsBodyExpanded(false);
+  }, [post.id]);
+
+  useEffect(() => {
+    if (!displayBody) {
+      setIsBodyOverflowing(false);
+      return undefined;
+    }
+
+    const updateBodyOverflow = () => {
+      if (!bodyRef.current) {
+        setIsBodyOverflowing(false);
+        return;
+      }
+      const { scrollHeight, clientHeight } = bodyRef.current;
+      setIsBodyOverflowing(scrollHeight - clientHeight > 1);
+    };
+
+    const frame = requestAnimationFrame(updateBodyOverflow);
+    let resizeObserver = null;
+
+    if (typeof ResizeObserver !== 'undefined' && bodyRef.current) {
+      resizeObserver = new ResizeObserver(updateBodyOverflow);
+      resizeObserver.observe(bodyRef.current);
+    }
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (resizeObserver) resizeObserver.disconnect();
+    };
+  }, [displayBody, isBodyExpanded]);
+
   // ===== MODERATION HOOK =====
   const { moderationMenuItems, moderationModals } = useModerationActions({
     targetType: 'post',
@@ -383,31 +406,12 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
     }
   };
 
-  const handleImageClick = (e) => {
-    e.stopPropagation();
+  const [viewerStartIndex, setViewerStartIndex] = useState(0);
+  const handleMediaItemClick = useCallback((index) => {
     hapticFeedback('light');
+    setViewerStartIndex(index);
     setIsPhotoViewerOpen(true);
-  };
-
-  const handlePrevImage = (e) => {
-    e.stopPropagation();
-    hapticFeedback('light');
-    setCurrentImageIndex(prev => {
-      const n = prev === 0 ? images.length - 1 : prev - 1;
-      sessionStorage.setItem(`post-${post.id}-imageIndex`, n);
-      return n;
-    });
-  };
-
-  const handleNextImage = (e) => {
-    e.stopPropagation();
-    hapticFeedback('light');
-    setCurrentImageIndex(prev => {
-      const n = prev === images.length - 1 ? 0 : prev + 1;
-      sessionStorage.setItem(`post-${post.id}-imageIndex`, n);
-      return n;
-    });
-  };
+  }, []);
 
   const menuItems = isAd ? [
     {
@@ -568,12 +572,22 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
             )}
             {displayBody && (
               <div style={{ marginTop: post.title ? 4 : 0 }}>
-                <p style={{
-                  ...styles.body,
-                  WebkitLineClamp: isBodyExpanded ? 'unset' : 4,
-                  overflow: isBodyExpanded ? 'visible' : 'hidden',
-                }}>{displayBody}</p>
-                {!isBodyExpanded && displayBody.length > 150 && (
+                <div style={styles.bodyWrap}>
+                  <p
+                    ref={bodyRef}
+                    style={{
+                      ...styles.body,
+                      WebkitLineClamp: isBodyExpanded ? 'unset' : 4,
+                      overflow: isBodyExpanded ? 'visible' : 'hidden',
+                    }}
+                  >
+                    {displayBody}
+                  </p>
+                  {!isBodyExpanded && isBodyOverflowing && (
+                    <div style={styles.bodyBottomFade} />
+                  )}
+                </div>
+                {!isBodyExpanded && isBodyOverflowing && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setIsBodyExpanded(true); }}
                     style={styles.expandButton}
@@ -621,39 +635,8 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
               />
             </div>
           ) : (
-            <div style={{...styles.imageContainer, aspectRatio: `${safeRatio}`}} onClick={handleImageClick}>
-              {isMainImageLoading && <div style={styles.imageSkeleton} />}
-              {isMainImageError && <div style={styles.imageFallback}>Фото недоступно</div>}
-              <img
-                src={currentImageUrl}
-                alt=""
-                style={{
-                  ...styles.image,
-                  opacity: (isMainImageLoading || isMainImageError) ? 0 : 1,
-                  transition: 'opacity 0.2s ease',
-                }}
-                loading="lazy"
-                decoding="async"
-                onLoad={() => markImageLoaded(currentImageUrl)}
-                onError={() => markImageFailed(currentImageUrl)}
-              />
-
-              {images.length > 1 && (
-                <>
-                  <div style={styles.imageCounter}>{currentImageIndex + 1}/{images.length}</div>
-                  <button onClick={(e) => { handlePrevImage(e); }} style={{...styles.navBtn, left: 10}}>
-                    <ChevronLeft size={20}/>
-                  </button>
-                  <button onClick={(e) => { handleNextImage(e); }} style={{...styles.navBtn, right: 10}}>
-                    <ChevronRight size={20}/>
-                  </button>
-                  <div style={styles.dots}>
-                    {images.map((_, i) => (
-                      <div key={i} style={{...styles.dot, opacity: i === currentImageIndex ? 1 : 0.4}} />
-                    ))}
-                  </div>
-                </>
-              )}
+            <div style={{ margin: '0 16px 12px', width: 'calc(100% - 32px)' }}>
+              <MediaGrid mediaItems={images} onItemClick={handleMediaItemClick} />
             </div>
           )
         )}
@@ -725,9 +708,10 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
 
         {isPhotoViewerOpen && (
           <PhotoViewer
-            photos={viewerPhotos}
-            initialIndex={currentImageIndex}
+            photos={images}
+            initialIndex={viewerStartIndex}
             onClose={() => setIsPhotoViewerOpen(false)}
+            meta={viewerMeta}
           />
         )}
       </div>
@@ -873,6 +857,21 @@ const styles = {
     display: '-webkit-box',
     WebkitBoxOrient: 'vertical',
     margin: 0,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
+  },
+  bodyWrap: {
+    position: 'relative',
+  },
+  bodyBottomFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 30,
+    background: `linear-gradient(to bottom, rgba(0, 0, 0, 0), ${theme.colors.premium.bg} 82%)`,
+    pointerEvents: 'none',
   },
   expandButton: {
     background: 'none',
@@ -901,15 +900,6 @@ const styles = {
     color: theme.colors.textSecondary,
     fontWeight: theme.fontWeight.medium,
   },
-  imageContainer: {
-    position: 'relative',
-    backgroundColor: theme.colors.bg,
-    margin: '0 16px 12px',
-    width: 'calc(100% - 32px)',
-    borderRadius: 16,
-    overflow: 'hidden',
-    border: `1px solid ${theme.colors.premium.border}`,
-  },
   adImageContainer: {
     position: 'relative',
     width: 'calc(100% - 32px)',
@@ -920,7 +910,6 @@ const styles = {
     background: theme.colors.surfaceElevated,
     minHeight: 160,
   },
-  image: { width: '100%', height: '100%', objectFit: 'cover' },
   adImage: { width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'cover' },
   imageSkeleton: {
     position: 'absolute',
@@ -941,37 +930,6 @@ const styles = {
     fontWeight: 600,
     background: theme.colors.surfaceElevated,
     zIndex: 1,
-  },
-  imageCounter: {
-    position: 'absolute',
-    top: 12, right: 12,
-    background: theme.colors.overlayDark,
-    color: theme.colors.text,
-    padding: '4px 10px',
-    borderRadius: theme.radius.md,
-    fontSize: 12, fontWeight: theme.fontWeight.bold,
-  },
-  navBtn: {
-    position: 'absolute',
-    top: '50%', transform: 'translateY(-50%)',
-    width: 32, height: 32,
-    borderRadius: theme.radius.full,
-    background: theme.colors.overlay,
-    color: theme.colors.text,
-    border: 'none',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer',
-    backdropFilter: 'blur(4px)',
-  },
-  dots: {
-    position: 'absolute', bottom: 10, left: 0, right: 0,
-    display: 'flex', justifyContent: 'center', gap: 6,
-  },
-  dot: {
-    width: 6, height: 6,
-    borderRadius: theme.radius.full,
-    background: theme.colors.text,
-    transition: theme.transitions.fast,
   },
   tags: {
     padding: `0 16px`,

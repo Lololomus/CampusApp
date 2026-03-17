@@ -537,9 +537,10 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
       {showPhotoViewer && (
         <PhotoViewer
-          photos={images.map(img => img.url || img)}
+          photos={images}
           initialIndex={currentImageIndex}
           onClose={() => setShowPhotoViewer(false)}
+          meta={{ author: currentItem.seller, caption: currentItem.title }}
         />
       )}
 

@@ -17,7 +17,7 @@ import logging
 
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
-from app.utils import delete_images, process_base64_images
+from app.utils import delete_images, delete_all_media, process_base64_images
 from app.services import notification_service as notif
 
 logger = logging.getLogger(__name__)
@@ -224,7 +224,7 @@ async def create_post(
         return db_post
     except SQLAlchemyError as e:
         if saved_images_meta:
-            delete_images(saved_images_meta)
+            delete_all_media(saved_images_meta)
         raise e
 
 
@@ -234,6 +234,7 @@ async def update_post(
     post_update: schemas.PostUpdate,
     new_images_meta: Optional[List[dict]] = None,
     keep_filenames: Optional[List[str]] = None,
+    keep_video: bool = True,
 ) -> Optional[models.Post]:
     """Update post (smart image merge)."""
     db_post = await db.get(models.Post, post_id)
@@ -254,6 +255,7 @@ async def update_post(
             old_images=db_post.images,
             new_images_meta=new_images_meta,
             keep_filenames=keep_filenames,
+            keep_old_videos=keep_video,
         )
         update_data["images"] = sanitize_json_field(final_images)
 
@@ -267,7 +269,7 @@ async def update_post(
     except SQLAlchemyError:
         await db.rollback()
         if new_images_meta:
-            delete_images(new_images_meta)
+            delete_all_media(new_images_meta)
         raise
 
     if files_to_delete:
@@ -285,9 +287,9 @@ async def delete_post(db: AsyncSession, post_id: int) -> bool:
 
     if db_post.images:
         try:
-            delete_images(db_post.images)
+            delete_all_media(db_post.images)
         except OSError as e:
-            logger.warning("Ошибка удаления изображений поста %s: %s", post_id, e)
+            logger.warning("Ошибка удаления медиа поста %s: %s", post_id, e)
 
     await db.delete(db_post)
     await db.commit()

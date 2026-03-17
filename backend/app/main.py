@@ -20,6 +20,7 @@ from app.utils import (
     parse_keep_file_list,
     process_uploaded_files,
 )
+from app.video_utils import process_uploaded_video
 from app.auth_service import decode_authorization_header
 from app.config import get_settings
 from app.rate_limiter import close_redis
@@ -580,7 +581,8 @@ async def create_post_endpoint(
     
     is_important: Optional[bool] = Form(False),
     images: List[UploadFile] = File(default=[]),
-    
+    video: Optional[UploadFile] = File(None),
+
     poll_data: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db)
 ):
@@ -630,13 +632,16 @@ async def create_post_endpoint(
     
     logger.debug(f"Valid images after filter: {len(valid_images)}")
     
+    # Проверяем валидность видео-файла
+    valid_video = video if (video and video.filename) else None
+
     # CONFESSIONS VALIDATION (fixed: moved inside IF block)
     if category == "confessions":
         is_anonymous = True
         # Validation is inside the block and uses valid_images
-        if len(valid_images) > 0:
+        if len(valid_images) > 0 or valid_video:
             raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
-    
+
     # MAX IMAGE COUNT CHECK (use valid_images)
     if len(valid_images) > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
@@ -675,6 +680,9 @@ async def create_post_endpoint(
     try:
         # valid_images instead of images
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
+        if valid_video:
+            video_meta = await process_uploaded_video(valid_video)
+            images_meta.append(video_meta)
         post = await crud.create_post(db, post_data, user.id, images_meta=images_meta)
         
         if poll_data:
@@ -836,33 +844,36 @@ async def update_post_endpoint(
     is_important: Optional[bool] = Form(None),
     new_images: List[UploadFile] = File(default=[]),
     keep_images: Optional[str] = Form(None),
+    new_video: Optional[UploadFile] = File(None),
+    keep_video: Optional[bool] = Form(True),
     db: AsyncSession = Depends(get_db)
 ):
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+
     if post.author_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
     tags_list = _parse_json_list_form_field(tags, "tags") if tags is not None else None
     try:
         keep_images_list = parse_keep_file_list(keep_images, kind="images")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     valid_new_images = [img for img in new_images if img.filename and len(img.filename) > 0]
+    valid_new_video = new_video if (new_video and new_video.filename) else None
 
     total_images = len(keep_images_list) + len(valid_new_images)
     if total_images > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
-    
-    if post.category == "confessions" and (len(valid_new_images) > 0 or len(keep_images_list) > 0):
+
+    if post.category == "confessions" and (valid_new_images or keep_images_list or valid_new_video):
         raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
-    
+
     try:
         post_update = schemas.PostUpdate(
             title=title,
@@ -882,13 +893,21 @@ async def update_post_endpoint(
         )
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
-    
+
     try:
         new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
+
+        # Если загружено новое видео — добавляем его; старое удалится в merge_images
+        if valid_new_video:
+            video_meta = await process_uploaded_video(valid_new_video)
+            new_images_meta.append(video_meta)
+
+        # keep_video=False + нет нового видео → merge_images удалит старое само
         updated_post = await crud.update_post(
             db, post_id, post_update,
             new_images_meta=new_images_meta,
-            keep_filenames=keep_images_list
+            keep_filenames=keep_images_list,
+            keep_video=keep_video if not valid_new_video else False,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1941,21 +1960,23 @@ async def create_market_item_endpoint(
     price: int = Form(...),
     condition: str = Form(...),
     location: Optional[str] = Form(None),
-    images: List[UploadFile] = File(...),
+    images: List[UploadFile] = File(default=[]),
+    video: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db)
 ):
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    valid_images = [img for img in images if img.filename and len(img.filename) > 0]
 
-    if len(valid_images) < 1:
-        raise HTTPException(status_code=400, detail="At least 1 photo is required")
-    
+    valid_images = [img for img in images if img.filename and len(img.filename) > 0]
+    valid_video = video if (video and video.filename) else None
+
+    if len(valid_images) < 1 and not valid_video:
+        raise HTTPException(status_code=400, detail="At least 1 photo or video is required")
+
     if len(valid_images) > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
-    
+
     item_data = schemas.MarketItemCreate(
         category=category,
         title=title,
@@ -1965,9 +1986,12 @@ async def create_market_item_endpoint(
         location=location,
         images=["placeholder"]
     )
-    
+
     try:
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
+        if valid_video:
+            video_meta = await process_uploaded_video(valid_video)
+            images_meta.append(video_meta)
         item = await crud.create_market_item(db, item_data, user.id, images_meta=images_meta)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2029,25 +2053,25 @@ async def update_market_item_endpoint(
     status: Optional[str] = Form(None),
     new_images: List[UploadFile] = File(default=[]),
     keep_images: Optional[str] = Form(None),
+    new_video: Optional[UploadFile] = File(None),
+    keep_video: Optional[bool] = Form(True),
     db: AsyncSession = Depends(get_db)
 ):
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     try:
         keep_images_list = parse_keep_file_list(keep_images, kind="images")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     valid_new_images = [img for img in new_images if img.filename and len(img.filename) > 0]
+    valid_new_video = new_video if (new_video and new_video.filename) else None
 
     total_images = len(keep_images_list) + len(valid_new_images)
-    if total_images < 1:
-        raise HTTPException(status_code=400, detail="At least 1 photo is required")
-    
     if total_images > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
-    
+
     item_update = schemas.MarketItemUpdate(
         title=title,
         description=description,
@@ -2057,13 +2081,17 @@ async def update_market_item_endpoint(
         status=status,
         images=None
     )
-    
+
     try:
         new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
+        if valid_new_video:
+            video_meta = await process_uploaded_video(valid_new_video)
+            new_images_meta.append(video_meta)
         updated_item = await crud.update_market_item(
             db, item_id, user.id, item_update,
             new_images_meta=new_images_meta,
-            keep_filenames=keep_images_list
+            keep_filenames=keep_images_list,
+            keep_video=keep_video if not valid_new_video else False,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

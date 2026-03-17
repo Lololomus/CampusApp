@@ -12,7 +12,7 @@ const Avatar = forwardRef(({
   user, 
   size = 40, 
   onClick, 
-  showProfile = true,
+  showProfile = true, 
   isAnonymous = false,
   style = {}
 }, ref) => {

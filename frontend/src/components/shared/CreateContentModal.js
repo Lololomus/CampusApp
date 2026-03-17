@@ -7,11 +7,13 @@ import {
   VenetianMask,
   MapPin,
   Check,
+  Loader2,
   Plus,
   Hash,
   AlertCircle,
   Gift,
   Clock,
+  Play,
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { useSwipe } from '../../hooks/useSwipe';
@@ -23,6 +25,7 @@ import theme from '../../theme';
 import { Z_MODAL_CREATE_POST, getOverlayZIndex } from '../../constants/zIndex';
 import { REWARD_TYPES } from '../../types';
 import { POST_LIMITS, REQUEST_LIMITS, IMAGE_SETTINGS } from '../../constants/contentConstants';
+import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
 import PollCreator from '../posts/PollCreator';
 import {
   CREATE_CONTENT_CATEGORY_CAPABILITIES,
@@ -44,6 +47,7 @@ const MAX_TAGS = POST_LIMITS.TAGS_MAX;
 const MAX_TITLE_LENGTH = POST_LIMITS.TITLE_MAX;
 const TOOL_ICON_SIZE = 26;
 const ALLOWED_FORMATS = IMAGE_SETTINGS.ALLOWED_FORMATS;
+const IMAGE_EXTENSIONS_ALLOWED = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
 
 const normalizeTag = (raw) =>
   String(raw || '')
@@ -54,6 +58,22 @@ const normalizeTag = (raw) =>
     .replace(/[^a-zа-яё0-9_-]/gi, '');
 
 const countLetters = (raw) => (String(raw || '').match(/[a-zа-яё]/gi) || []).length;
+
+const getFileExtension = (name = '') => {
+  const parts = String(name).toLowerCase().split('.');
+  return parts.length > 1 ? parts.pop() : '';
+};
+
+const isSupportedImageFile = (file) => {
+  const mimeType = String(file?.type || '').toLowerCase();
+  const extension = getFileExtension(file?.name);
+  const isImageMime = mimeType.startsWith('image/');
+  const isUnknownMime = mimeType === '' || mimeType === 'application/octet-stream';
+  if (!isImageMime && !isUnknownMime) return false;
+  if (ALLOWED_FORMATS.includes(mimeType)) return true;
+  if (mimeType === 'image/jpg' || mimeType === 'image/heic' || mimeType === 'image/heif') return true;
+  return IMAGE_EXTENSIONS_ALLOWED.includes(extension);
+};
 
 const formatCustomDate = (value) => {
   if (!value) return 'Выбрать 📅';
@@ -114,6 +134,7 @@ function CreateContentModal({ onClose }) {
   const [isVisible, setIsVisible] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAwaitingMedia, setIsAwaitingMedia] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
@@ -129,6 +150,8 @@ function CreateContentModal({ onClose }) {
   const [photos, setPhotos] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
   const [processingImages, setProcessingImages] = useState([]);
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoThumb, setVideoThumb] = useState(null);
 
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [lfType, setLfType] = useState('lost');
@@ -161,6 +184,11 @@ function CreateContentModal({ onClose }) {
   const reqBodyRef = useRef(null);
   const postFileInputRef = useRef(null);
   const postTagInputRef = useRef(null);
+  const mediaProcessingTasksRef = useRef(new Set());
+  const photosRef = useRef(photos);
+  const imageFilesRef = useRef(imageFiles);
+  const videoFileRef = useRef(videoFile);
+  const processingImagesRef = useRef(processingImages);
 
   const categoryCapabilities =
     CREATE_CONTENT_CATEGORY_CAPABILITIES[postCategory] || CREATE_CONTENT_CATEGORY_CAPABILITIES.news;
@@ -184,6 +212,20 @@ function CreateContentModal({ onClose }) {
   );
 
   const isAnyPickerOpen = showEventPicker || showReqPicker;
+
+  const registerMediaTask = (taskPromise) => {
+    mediaProcessingTasksRef.current.add(taskPromise);
+    taskPromise.finally(() => {
+      mediaProcessingTasksRef.current.delete(taskPromise);
+    });
+    return taskPromise;
+  };
+
+  const waitForMediaTasks = async () => {
+    while (mediaProcessingTasksRef.current.size > 0) {
+      await Promise.allSettled(Array.from(mediaProcessingTasksRef.current));
+    }
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -260,6 +302,22 @@ function CreateContentModal({ onClose }) {
     }
     return undefined;
   }, [showTagTool]);
+
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
+  useEffect(() => {
+    imageFilesRef.current = imageFiles;
+  }, [imageFiles]);
+
+  useEffect(() => {
+    videoFileRef.current = videoFile;
+  }, [videoFile]);
+
+  useEffect(() => {
+    processingImagesRef.current = processingImages;
+  }, [processingImages]);
 
   useEffect(() => {
     setShowReqReward(false);
@@ -416,13 +474,61 @@ function CreateContentModal({ onClose }) {
     hapticFeedback('light');
   };
 
-  const handleSharedFileSelect = async (event) => {
-    const files = Array.from(event.target.files || []);
-    if (files.length === 0) return;
+  const captureVideoThumbnail = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.src = url;
+    video.currentTime = 1;
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 360;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/webp', 0.7));
+    };
+    video.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    video.load();
+  });
+
+  const handleSharedFileSelect = (event) => {
+    const task = (async () => {
+      const files = Array.from(event.target.files || []);
+      const clearPostFileInput = () => {
+        if (postFileInputRef.current) postFileInputRef.current.value = '';
+      };
+      if (files.length === 0) return;
+
+      if (import.meta.env.DEV) {
+        // [DIAG-1] Что пришло из input сразу после выбора
+        console.log('[FileSelect][1] files.length:', files.length, files.map((f) => ({ name: f.name, type: f.type, size: f.size })));
+      }
 
     if (activeTab === 'post' && !categoryCapabilities.allowImages) {
       hapticFeedback('error');
-      toast.error(`В категории ${postCategory === 'confessions' ? 'Признания' : 'Опросы'} нельзя прикреплять изображения`);
+      toast.error('В этой категории нельзя прикреплять медиа');
+      clearPostFileInput();
+      return;
+    }
+
+    // Handle video separately (no compression on client; backend processes it)
+    const videoCandidate = files.find((file) => isVideoFileCandidate(file));
+    if (videoCandidate) {
+      const validation = await validateVideoFile(videoCandidate);
+      if (!validation.valid) {
+        hapticFeedback('error');
+        toast.error(validation.error);
+        clearPostFileInput();
+        return;
+      }
+
+      setVideoFile(videoCandidate);
+      captureVideoThumbnail(videoCandidate).then(setVideoThumb);
+      hapticFeedback('success');
+      clearPostFileInput();
       return;
     }
 
@@ -437,45 +543,105 @@ function CreateContentModal({ onClose }) {
     const processors = filesToProcess.map(() => ({ id: Math.random().toString(36).slice(2, 10), progress: 0 }));
     setProcessingImages((prev) => [...prev, ...processors]);
 
+    if (import.meta.env.DEV) {
+      // [DIAG-2] Кол-во файлов после клиентской фильтрации слотами
+      console.log('[FileSelect][2] remainingSlots:', remainingSlots, '| filesToProcess.length:', filesToProcess.length);
+    }
+
     try {
+      const failedFiles = [];
+
       for (let i = 0; i < filesToProcess.length; i += 1) {
         const file = filesToProcess[i];
         const processorId = processors[i].id;
 
-        if (!ALLOWED_FORMATS.includes(file.type)) {
+        if (!isSupportedImageFile(file)) {
+          failedFiles.push(file?.name || `Файл ${i + 1}`);
           setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
           continue;
         }
 
-        const compressed = await imageCompression(file, {
-          maxSizeMB: 1,
-          maxWidthOrHeight: 1600,
-          useWebWorker: true,
-          onProgress: (progress) => {
-            setProcessingImages((prev) => prev.map((p) => (p.id === processorId ? { ...p, progress } : p)));
-          },
-        });
+        try {
+          let processedFile = file;
+          try {
+            // useWebWorker: false — в Telegram WebView нажатие кнопки может приостановить/убить
+            // web worker в iOS, вешая imageCompression Promise навсегда. Main-thread async сжатие
+            // не зависит от жизненного цикла воркеров и надёжно работает при любых фокус-событиях.
+            processedFile = await imageCompression(file, {
+              maxSizeMB: 1,
+              maxWidthOrHeight: 1600,
+              useWebWorker: false,
+              onProgress: (progress) => {
+                setProcessingImages((prev) => prev.map((p) => (p.id === processorId ? { ...p, progress } : p)));
+              },
+            });
+          } catch (compressionError) {
+            // Keep original file if compression fails to avoid silently dropping media.
+            if (import.meta.env.DEV) console.warn('Image compression failed, using original file:', file?.name, compressionError);
+            processedFile = file;
+          }
 
-        await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (readEvent) => {
-            setPhotos((prev) => [...prev, readEvent.target.result]);
-            setImageFiles((prev) => [...prev, compressed]);
-            setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
-            resolve();
-          };
-          reader.readAsDataURL(compressed);
-        });
+          // [FIX] imageCompression может resolve(undefined) при сбое web-worker на мобильном WebKit
+          // без throw — тогда processedFile === undefined и reader.readAsDataURL(undefined) бросает TypeError.
+          // Падаем обратно на оригинальный файл.
+          if (!processedFile) {
+            if (import.meta.env.DEV) console.warn('[FileSelect] imageCompression вернул falsy, используем оригинал:', file?.name);
+            processedFile = file;
+          }
+
+          if (import.meta.env.DEV) {
+            // [DIAG-3] Состояние файла перед FileReader
+            console.log(`[FileSelect][3] file[${i}] before FileReader:`, { name: processedFile?.name, type: processedFile?.type, size: processedFile?.size });
+          }
+
+          await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (readEvent) => {
+              if (import.meta.env.DEV) {
+                // [DIAG-4] FileReader.onload сработал — данные есть
+                console.log(`[FileSelect][4] FileReader.onload file[${i}]: dataURL length=${readEvent.target.result?.length}`);
+              }
+              // Обновляем рефы синхронно ДО React-коммита: handleSubmit читает рефы сразу
+              // после waitForMediaTasks(), до того как useEffect успевает их обновить.
+              const nextPhotos = [...photosRef.current, readEvent.target.result];
+              const nextImageFiles = [...imageFilesRef.current, processedFile];
+              photosRef.current = nextPhotos;
+              imageFilesRef.current = nextImageFiles;
+              setPhotos(nextPhotos);
+              setImageFiles(nextImageFiles);
+              setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
+              resolve();
+            };
+            // [FIX] Без onerror Promise висел вечно при ошибке FileReader,
+            // блокируя submit через waitForMediaTasks.
+            reader.onerror = (errorEvent) => {
+              if (import.meta.env.DEV) console.error(`[FileSelect] FileReader.onerror file[${i}]:`, errorEvent);
+              reject(new Error(`FileReader failed: ${file?.name}`));
+            };
+            reader.readAsDataURL(processedFile);
+          });
+        } catch (fileError) {
+          failedFiles.push(file?.name || `Файл ${i + 1}`);
+          setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
+          console.error('Image processing failed:', fileError);
+        }
       }
 
-      hapticFeedback('success');
-    } catch (err) {
-      console.error(err);
-      setProcessingImages([]);
-      toast.error('Ошибка обработки изображений');
+      if (filesToProcess.length > failedFiles.length) {
+        hapticFeedback('success');
+      }
+
+      if (failedFiles.length > 0) {
+        const preview = failedFiles.slice(0, 2).join(', ');
+        const suffix = failedFiles.length > 2 ? '…' : '';
+        toast.warning(`Не удалось добавить ${failedFiles.length} файл(а): ${preview}${suffix}`);
+      }
     } finally {
-      if (postFileInputRef.current) postFileInputRef.current.value = '';
+      clearPostFileInput();
     }
+    })();
+
+    registerMediaTask(task);
   };
 
   const buildPollPayload = () => {
@@ -504,8 +670,38 @@ function CreateContentModal({ onClose }) {
     setAttemptedSubmit(true);
     setError('');
 
+    if (mediaProcessingTasksRef.current.size > 0 || processingImagesRef.current.length > 0) {
+      setIsAwaitingMedia(true);
+      try {
+        await waitForMediaTasks();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        setIsAwaitingMedia(false);
+      }
+    }
+
+    const currentPhotos = photosRef.current;
+    const currentImageFiles = imageFilesRef.current;
+    const currentVideoFile = videoFileRef.current;
+
+    if (import.meta.env.DEV) {
+      // [DIAG-5] Кол-во фото и файлов перед submit
+      console.log('[Submit][5] photos.length:', currentPhotos.length, '| imageFiles.length:', currentImageFiles.length);
+    }
+
+    const isPostFormValidForSubmit = () => {
+      const textValid = postBody.trim().length >= POST_LIMITS.BODY_MIN;
+      if (postCategory === 'polls') return postTitle.trim().length >= 3 && isPollValid();
+      if (postCategory === 'memes') return currentPhotos.length > 0 || countLetters(postTitle + postBody) >= 3;
+      if (!textValid) return false;
+      if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
+      if (postCategory === 'lost_found') return location.trim().length >= 3;
+      if (hasPoll) return isPollValid();
+      return true;
+    };
+
     if (activeTab === 'post') {
-      if (!isPostFormValid()) {
+      if (!isPostFormValidForSubmit()) {
         hapticFeedback('error');
         if (postCategory === 'polls') setError('Введите текст вопроса и минимум 2 варианта ответа');
         else if (postCategory === 'memes') setError('Для категории Мемы добавьте фото или текст от 3 букв');
@@ -553,7 +749,13 @@ function CreateContentModal({ onClose }) {
           formData.append('poll_data', JSON.stringify(buildPollPayload()));
         }
 
-        imageFiles.forEach((file) => formData.append('images', file));
+        currentImageFiles.forEach((file) => formData.append('images', file));
+        if (currentVideoFile) formData.append('video', currentVideoFile);
+
+        if (import.meta.env.DEV) {
+          // [DIAG-6] Кол-во images в FormData перед отправкой
+          console.log('[Submit][6] FormData images count:', formData.getAll('images').length, formData.getAll('images').map((f) => ({ name: f.name, type: f.type, size: f.size })));
+        }
 
         const newPost = await createPost(formData, (progressEvent) => {
           if (!progressEvent?.total) return;
@@ -611,7 +813,7 @@ function CreateContentModal({ onClose }) {
         }
       }
 
-      imageFiles.forEach((file) => formData.append('images', file));
+      currentImageFiles.forEach((file) => formData.append('images', file));
 
       const newRequest = await createRequest(formData, (progressEvent) => {
         if (!progressEvent?.total) return;
@@ -667,7 +869,8 @@ function CreateContentModal({ onClose }) {
   if (!isMounted) return null;
 
   const pollVisible = hasPoll || postCategory === 'polls';
-  const sendDisabled = !canSend || isSubmitting;
+  const sendDisabled = !canSend || isSubmitting || isAwaitingMedia;
+  const sendLoading = isSubmitting || isAwaitingMedia;
 
   const content = (
     <>
@@ -770,6 +973,33 @@ function CreateContentModal({ onClose }) {
                             </button>
                           </span>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Видео-превью — отдельная карточка на всю ширину */}
+                    {videoFile && (
+                      <div className="smart-block" style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: photos.length > 0 || processingImages.length > 0 ? 8 : 16, background: '#111' }}>
+                        {videoThumb
+                          ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
+                          : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />
+                        }
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                          <span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
+                          <button
+                            type="button"
+                            onClick={() => { setVideoFile(null); setVideoThumb(null); }}
+                            style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}
+                            className="create-spring-btn"
+                            disabled={isSubmitting}
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -1111,7 +1341,7 @@ function CreateContentModal({ onClose }) {
               )}
 
               <div style={styles.toolbar}>
-                <input ref={postFileInputRef} type="file" multiple accept="image/*" onChange={handleSharedFileSelect} style={{ display: 'none' }} />
+                <input ref={postFileInputRef} type="file" multiple accept="image/*,video/mp4,video/quicktime,video/webm" onChange={handleSharedFileSelect} style={{ display: 'none' }} />
                 {activeTab === 'post' ? (
                   <>
                     <div style={styles.toolGroup}>
@@ -1130,8 +1360,8 @@ function CreateContentModal({ onClose }) {
                   </div>
                 )}
 
-                <button type="button" onClick={handleSubmit} style={sendDisabled ? styles.sendBtn : { ...styles.sendBtn, ...styles.sendBtnActive }} className="create-spring-btn" disabled={isSubmitting}>
-                  <Check size={TOOL_ICON_SIZE} />
+                <button type="button" onClick={handleSubmit} style={canSend ? { ...styles.sendBtn, ...styles.sendBtnActive } : styles.sendBtn} className="create-spring-btn" disabled={sendDisabled}>
+                  {sendLoading ? <Loader2 size={TOOL_ICON_SIZE} style={{ animation: 'createSpin 0.7s linear infinite' }} /> : <Check size={TOOL_ICON_SIZE} />}
                 </button>
               </div>
             </div>
@@ -1589,6 +1819,11 @@ const keyframeStyles = `
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes createSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .create-grow-wrap { display: grid; position: relative; }
 .create-grow-wrap::after {
   content: attr(data-replicated-value) " ";
@@ -1614,3 +1849,5 @@ const keyframeStyles = `
 `;
 
 export default CreateContentModal;
+
+

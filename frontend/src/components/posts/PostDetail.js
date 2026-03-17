@@ -43,6 +43,9 @@ const parseImages = (value) => {
 
 const getImageUrl = (img) => {
   if (!img) return '';
+  if (typeof img === 'object' && img.type === 'video') {
+    return img.thumbnail_url ? resolveImageUrl(img.thumbnail_url, 'images') : '';
+  }
   const filename = (typeof img === 'object') ? img.url : img;
   return resolveImageUrl(filename, 'images');
 };
@@ -207,7 +210,10 @@ function PostDetail() {
     return post.images;
   }, [post]);
 
-  const viewerPhotos = useMemo(() => images.map(img => getImageUrl(img)), [images]);
+  const viewerMeta = useMemo(() => ({
+    author: post?.is_anonymous ? null : post?.author,
+    caption: post?.title || post?.body,
+  }), [post?.is_anonymous, post?.author, post?.title, post?.body]);
 
   const safeRatio = useMemo(() => {
     const firstImage = images.length > 0 ? images[0] : null;
@@ -534,10 +540,10 @@ function PostDetail() {
               <div style={styles.cardContent}>
                 <div style={styles.authorSection}>
                   <div style={styles.authorRow}>
-                    <Avatar 
+                    <Avatar
                       ref={avatarRef}
                       user={post.author}
-                      size={40}
+                      size={44}
                       onClick={() => !post.is_anonymous && post.author?.show_profile && setProfileOpen(true)}
                       showProfile={post.author?.show_profile}
                       isAnonymous={post.is_anonymous}
@@ -580,7 +586,9 @@ function PostDetail() {
                     <h3 style={styles.title}>{post.title}</h3>
                   )}
                   {displayBody && (
-                    <p style={styles.body}>{displayBody}</p>
+                    <div style={{ marginTop: post.title ? 4 : 0 }}>
+                      <p style={styles.body}>{displayBody}</p>
+                    </div>
                   )}
                 </div>
 
@@ -752,9 +760,10 @@ function PostDetail() {
 
         {isPhotoViewerOpen && (
           <PhotoViewer
-            photos={viewerPhotos}
+            photos={images}
             initialIndex={currentImageIndex}
             onClose={() => setIsPhotoViewerOpen(false)}
+            meta={viewerMeta}
           />
         )}
 
@@ -1064,11 +1073,11 @@ const styles = {
     marginBottom: theme.spacing.md,
   },
   authorSection: {
-    padding: `${theme.spacing.md}px ${theme.spacing.lg}px ${theme.spacing.xs + 2}px`,
+    padding: `20px ${theme.spacing.lg}px ${theme.spacing.xs + 2}px`,
     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
   },
   authorRow: {
-    display: 'flex', alignItems: 'center', gap: theme.spacing.sm + 2, flex: 1, minWidth: 0,
+    display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0,
   },
   avatar: {
     width: 40, height: 40, borderRadius: theme.radius.full,
@@ -1082,12 +1091,12 @@ const styles = {
     display: 'flex', alignItems: 'center', gap: theme.spacing.xs
   },
   authorName: {
-    fontSize: 15, fontWeight: theme.fontWeight.bold, color: theme.colors.text,
+    fontSize: 16, fontWeight: theme.fontWeight.bold, color: theme.colors.text,
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
   pinned: { fontSize: 12 },
   authorMeta: {
-    fontSize: 12, color: theme.colors.textTertiary, marginTop: 2,
+    fontSize: 13, color: theme.colors.textTertiary, marginTop: 2,
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
   headerRight: {
@@ -1097,13 +1106,13 @@ const styles = {
     fontSize: 12, fontWeight: theme.fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px',
   },
   textContent: {
-    padding: `${theme.spacing.xs}px ${theme.spacing.lg}px ${theme.spacing.md}px`,
+    padding: `0 ${theme.spacing.lg}px ${theme.spacing.md}px`,
   },
   title: {
-    fontSize: 17, fontWeight: theme.fontWeight.bold, marginBottom: theme.spacing.xs + 2, lineHeight: 1.3, color: theme.colors.text,
+    fontSize: 17, fontWeight: theme.fontWeight.bold, margin: '4px 0 2px', lineHeight: 1.3, color: theme.colors.text,
   },
   body: {
-    fontSize: 15, lineHeight: 1.5, color: theme.colors.textSecondary,
+    fontSize: 15, lineHeight: 1.45, color: theme.colors.textSecondary, margin: 0,
   },
   pollWrapper: { margin: `0 ${theme.spacing.lg}px ${theme.spacing.md}px` },
   specialBlock: {
@@ -1118,7 +1127,7 @@ const styles = {
     width: 'calc(100% - 32px)',
     position: 'relative',
     backgroundColor: theme.colors.bg,
-    margin: '12px 16px 8px',
+    margin: '0 16px 12px',
     borderRadius: 16,
     overflow: 'hidden',
     border: `1px solid ${theme.colors.premium.border}`,
@@ -1146,12 +1155,13 @@ const styles = {
     width: 6, height: 6, borderRadius: theme.radius.full, background: theme.colors.text, transition: theme.transitions.fast
   },
   tags: {
-    padding: `0 ${theme.spacing.lg}px`, display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm, marginBottom: theme.spacing.md
+    padding: `0 ${theme.spacing.lg}px`, display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm, marginBottom: 0
   },
   statsFooter: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: `${theme.spacing.xs + 2}px ${theme.spacing.lg}px ${theme.spacing.sm + 2}px`,
-    backgroundColor: theme.colors.premium.bg, minHeight: 48,
+    padding: `0 ${theme.spacing.lg}px 12px`,
+    marginTop: 16,
+    backgroundColor: theme.colors.premium.bg, minHeight: 36,
   },
   footerLeft: {
     display: 'flex', alignItems: 'center', gap: theme.spacing.sm, minWidth: 0,

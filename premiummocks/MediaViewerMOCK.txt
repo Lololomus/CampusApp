@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus TMA - Media Viewer</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --bg: #000000;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        --text-body: #EAEAEA;
+        --error: #FF453A;
+        --safe-area-top: 44px;
+        --safe-area-bottom: 34px;
+      }
+      
+      html, body { 
+        height: 100%; margin: 0; background: #050505; 
+        color: var(--text); font-family: system-ui, -apple-system, sans-serif; 
+        -webkit-font-smoothing: antialiased;
+        user-select: none; /* Защита от выделения при Zoom */
+        -webkit-user-select: none;
+      }
+      
+      #root { height: 100%; display: flex; align-items: center; justify-content: center; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.92); opacity: 0.8; }
+
+      /* Animations */
+      @keyframes fadeInScale {
+        from { opacity: 0; transform: scale(0.95) translateY(10px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+
+      @keyframes toastDrop {
+        0% { opacity: 0; transform: translate(-50%, -20px); }
+        10% { opacity: 1; transform: translate(-50%, 0); }
+        90% { opacity: 1; transform: translate(-50%, 0); }
+        100% { opacity: 0; transform: translate(-50%, -20px); }
+      }
+      
+      .glass-panel {
+        background: rgba(10, 10, 12, 0.6);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+      }
+
+      /* Play Button Pulse */
+      @keyframes playPulse {
+        0% { box-shadow: 0 0 0 0 rgba(212, 255, 0, 0.4); }
+        70% { box-shadow: 0 0 0 15px rgba(212, 255, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(212, 255, 0, 0); }
+      }
+      
+      /* Telegram Slider */
+      .telegram-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 24px;
+        background: transparent;
+        outline: none;
+        margin: 0;
+      }
+      .telegram-slider::-webkit-slider-runnable-track {
+        width: 100%; height: 24px; background: transparent;
+      }
+      .telegram-slider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 14px; height: 14px; border-radius: 50%;
+        background: #FFFFFF; margin-top: 5px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      .telegram-slider:active::-webkit-slider-thumb {
+        transform: scale(1.4);
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useRef, useEffect } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        X, ChevronLeft, ChevronRight, MoreHorizontal, Heart, MessageCircle, 
+        Share2, Play, Pause, Volume2, VolumeX, Download, PlayCircle
+      } from 'lucide-react';
+
+      // === МОК-ДАННЫЕ ===
+      const MOCK_MEDIA = [
+        {
+          id: 1, type: 'image',
+          url: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&q=80&w=800',
+          caption: 'Вид из аудитории на Покровке. Обожаю эти закаты после пар 🌆',
+        },
+        {
+          id: 2, type: 'video',
+          poster: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80&w=800',
+          caption: 'Ищем свободное место в библиотеке (миссия невыполнима) 📚🏃‍♂️',
+        },
+        {
+          id: 3, type: 'image',
+          url: 'https://images.unsplash.com/photo-1527192491265-7e15c55b1ed2?auto=format&fit=crop&q=80&w=800',
+          caption: 'Кто забыл конспекты по макре на третьем этаже?',
+        },
+        {
+          id: 4, type: 'video',
+          poster: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&q=80&w=800',
+          caption: 'Кодим до утра. Дедлайн через 5 часов ☕️💻',
+        }
+      ];
+
+      const AUTHOR = { name: 'Артем Лебедев', meta: 'ФКН • 3 курс', avatar: 'А' };
+
+      // === КОМПОНЕНТ ДЛЯ PINCH-TO-ZOOM ===
+      const Zoomable = ({ children }) => {
+        const [scale, setScale] = useState(1);
+        const startDist = useRef(null);
+
+        const handleTouchStart = (e) => {
+          if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            startDist.current = Math.hypot(dx, dy);
+          }
+        };
+
+        const handleTouchMove = (e) => {
+          if (e.touches.length === 2 && startDist.current) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const currentDist = Math.hypot(dx, dy);
+            // Ограничиваем зум от 1x до 4x
+            const newScale = Math.min(Math.max(1, currentDist / startDist.current), 4);
+            setScale(newScale);
+          }
+        };
+
+        const handleTouchEnd = () => {
+          setScale(1); // Возвращаем масштаб обратно при отпускании (как в Instagram)
+          startDist.current = null;
+        };
+
+        return (
+          <div
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              transition: scale === 1 ? 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
+              transform: `scale(${scale})`,
+              transformOrigin: 'center center',
+              zIndex: scale > 1 ? 50 : 1,
+              maxWidth: '100%', maxHeight: '100%'
+            }}
+          >
+            {children}
+          </div>
+        );
+      };
+
+      // === СИМУЛЯТОР ВИДЕО ===
+      const VideoSimulator = ({ poster, isActive, showUI, footerHeight, toggleUI }) => {
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isMuted, setIsMuted] = useState(true);
+        const [progress, setProgress] = useState(0);
+        const [isDragging, setIsDragging] = useState(false);
+
+        useEffect(() => {
+          if (!isActive) { setIsPlaying(false); setProgress(0); }
+        }, [isActive]);
+
+        useEffect(() => {
+          let interval;
+          if (isPlaying && !isDragging) {
+            interval = setInterval(() => {
+              setProgress(p => (p >= 100 ? 0 : p + 0.3));
+            }, 30);
+          }
+          return () => clearInterval(interval);
+        }, [isPlaying, isDragging]);
+
+        const handleVideoClick = (e) => {
+          e.stopPropagation(); // Останавливаем клик, чтобы не свернулся интерфейс
+          setIsPlaying(!isPlaying);
+        };
+
+        return (
+          // Контейнер на весь экран. Клик по черному фону сворачивает UI.
+          <div onClick={toggleUI} style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+            
+            <Zoomable>
+              {/* Само видео занимает только свой размер. Клик по нему - пауза/плей. */}
+              <img 
+                src={poster} 
+                onClick={handleVideoClick}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                alt="Video Poster"
+              />
+            </Zoomable>
+            
+            {/* Большая кнопка Play по центру */}
+            {!isPlaying && (
+              <button 
+                onClick={handleVideoClick}
+                className="spring-btn"
+                style={{
+                  position: 'absolute', width: '72px', height: '72px', borderRadius: '36px',
+                  background: 'rgba(28, 28, 30, 0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+                  border: '1px solid rgba(255,255,255,0.1)', color: 'var(--primary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  animation: 'playPulse 2s infinite', zIndex: 5
+                }}
+              >
+                <Play size={32} fill="var(--primary)" style={{ marginLeft: '4px' }} />
+              </button>
+            )}
+
+            {/* Кнопка звука (не сворачивает интерфейс) */}
+            <div onClick={(e) => e.stopPropagation()} style={{
+              position: 'absolute', bottom: showUI ? `${footerHeight + 32}px` : '40px', right: '16px', zIndex: 10,
+              opacity: showUI ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)', pointerEvents: showUI ? 'auto' : 'none',
+            }}>
+              <button onClick={() => setIsMuted(!isMuted)} className="spring-btn" style={{ width: '40px', height: '40px', borderRadius: '20px', background: 'rgba(28, 28, 30, 0.6)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </button>
+            </div>
+
+            {/* Прогресс-бар */}
+            <div onClick={(e) => e.stopPropagation()} style={{ 
+              position: 'absolute', bottom: showUI ? `${footerHeight + 12}px` : '16px', left: '16px', right: '16px', 
+              height: '24px', zIndex: 150, display: 'flex', alignItems: 'center',
+              opacity: showUI ? 1 : 0.4, transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+            }}>
+              <div style={{
+                position: 'absolute', left: 0, right: 0, top: '10px', height: '4px', borderRadius: '2px',
+                background: `linear-gradient(to right, var(--primary) ${progress}%, rgba(255,255,255,0.2) ${progress}%)`,
+                pointerEvents: 'none', zIndex: 1, boxShadow: showUI ? '0 0 10px rgba(212,255,0,0.3)' : 'none'
+              }} />
+              <input 
+                type="range" min="0" max="100" step="0.1" value={progress}
+                onChange={(e) => setProgress(parseFloat(e.target.value))}
+                onMouseDown={() => setIsDragging(true)} onMouseUp={() => setIsDragging(false)}
+                onTouchStart={() => setIsDragging(true)} onTouchEnd={() => setIsDragging(false)}
+                className="telegram-slider" style={{ position: 'relative', zIndex: 2 }}
+              />
+            </div>
+          </div>
+        );
+      };
+
+      // === ГЛАВНЫЙ КОМПОНЕНТ MEDIA VIEWER ===
+      const MediaViewer = ({ mediaList, initialIndex = 0, onClose }) => {
+        const [currentIndex, setCurrentIndex] = useState(initialIndex);
+        const [showUI, setShowUI] = useState(true);
+        const [isLiked, setIsLiked] = useState(false);
+        const [footerHeight, setFooterHeight] = useState(180);
+        const [toastMsg, setToastMsg] = useState(null);
+        
+        const scrollRef = useRef(null);
+        const footerRef = useRef(null);
+
+        // Расчет высоты футера
+        useEffect(() => {
+          if (footerRef.current) setFooterHeight(footerRef.current.offsetHeight);
+        }, [currentIndex, showUI]);
+
+        // Прыжок к выбранному фото
+        useEffect(() => {
+          if (scrollRef.current) {
+            scrollRef.current.style.scrollBehavior = 'auto';
+            scrollRef.current.scrollLeft = scrollRef.current.clientWidth * initialIndex;
+            setTimeout(() => { if (scrollRef.current) scrollRef.current.style.scrollBehavior = 'smooth'; }, 50);
+          }
+        }, [initialIndex]);
+
+        const handleScroll = (e) => {
+          if (!scrollRef.current) return;
+          const newIndex = Math.round(e.target.scrollLeft / e.target.clientWidth);
+          if (newIndex !== currentIndex) setCurrentIndex(newIndex);
+        };
+
+        const toggleUI = () => setShowUI(prev => !prev);
+        const currentMedia = mediaList[currentIndex];
+
+        // Функции кнопок
+        const showToast = (msg) => {
+          setToastMsg(msg);
+          setTimeout(() => setToastMsg(null), 2500); // Скрыть через 2.5с
+        };
+
+        return (
+          <div style={{ 
+            position: 'absolute', inset: 0, zIndex: 2000, 
+            background: '#000', display: 'flex', flexDirection: 'column',
+            animation: 'fadeInScale 0.3s cubic-bezier(0.32, 0.72, 0, 1)'
+          }}>
+            
+            {/* TOAST NOTIFICATION */}
+            {toastMsg && (
+              <div style={{
+                position: 'absolute', top: 'max(var(--safe-area-top), 60px)', left: '50%',
+                background: 'var(--surface-elevated)', border: '1px solid var(--border)',
+                color: '#FFF', padding: '10px 20px', borderRadius: '24px', fontSize: '14px', fontWeight: 600,
+                zIndex: 3000, pointerEvents: 'none', animation: 'toastDrop 2.5s cubic-bezier(0.32, 0.72, 0, 1) forwards'
+              }}>
+                {toastMsg}
+              </div>
+            )}
+
+            {/* HEADER */}
+            <div style={{
+              position: 'absolute', top: 'max(var(--safe-area-top), 16px)', left: '50%', transform: `translateX(-50%) ${showUI ? 'translateY(0)' : 'translateY(-100px)'}`,
+              zIndex: 100, background: 'rgba(28, 28, 30, 0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+              padding: '6px 14px', borderRadius: '16px', fontSize: '13px', fontWeight: 700, color: '#FFF', letterSpacing: '1px',
+              border: '1px solid rgba(255,255,255,0.1)', opacity: showUI ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)'
+            }}>
+              {currentIndex + 1} / {mediaList.length}
+            </div>
+
+            {/* SWIPER CONTAINER */}
+            <div ref={scrollRef} onScroll={handleScroll} className="hide-scroll" style={{ flex: 1, display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', scrollBehavior: 'smooth', width: '100%', height: '100%' }}>
+              {mediaList.map((media, idx) => (
+                <div key={media.id} style={{ flex: '0 0 100%', width: '100%', height: '100%', scrollSnapAlign: 'center', position: 'relative' }}>
+                  {media.type === 'image' ? (
+                    // Фото: Клик по контейнеру или фото = свернуть UI
+                    <div onClick={toggleUI} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Zoomable>
+                        <img 
+                          src={media.url} 
+                          alt="Media content"
+                          onClick={(e) => { e.stopPropagation(); toggleUI(); }}
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                        />
+                      </Zoomable>
+                    </div>
+                  ) : (
+                    <VideoSimulator 
+                      poster={media.poster} 
+                      isActive={idx === currentIndex} 
+                      showUI={showUI}
+                      footerHeight={footerHeight}
+                      toggleUI={toggleUI}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* КНОПКИ ПЕРЕКЛЮЧЕНИЯ (Для ПК) */}
+            {showUI && currentIndex > 0 && (
+              <button onClick={() => scrollRef.current.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' })} className="spring-btn" style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', zIndex: 100, width: '40px', height: '40px', borderRadius: '20px', background: 'rgba(28, 28, 30, 0.6)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ChevronLeft size={24} />
+              </button>
+            )}
+            {showUI && currentIndex < mediaList.length - 1 && (
+              <button onClick={() => scrollRef.current.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' })} className="spring-btn" style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', zIndex: 100, width: '40px', height: '40px', borderRadius: '20px', background: 'rgba(28, 28, 30, 0.6)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ChevronRight size={24} />
+              </button>
+            )}
+
+            {/* FOOTER */}
+            <div ref={footerRef} className="glass-panel" style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 100, borderBottom: 'none',
+              padding: '16px 16px calc(var(--safe-area-bottom) + 16px)',
+              transform: showUI ? 'translateY(0)' : 'translateY(100%)',
+              opacity: showUI ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+              display: 'flex', flexDirection: 'column', gap: '16px'
+            }}>
+              
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '12px', background: 'linear-gradient(135deg, #7A5CFF, #4DA6FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 800, color: '#FFF' }}>
+                    {AUTHOR.avatar}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: 700, fontSize: '14px', color: '#FFF' }}>{AUTHOR.name}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{AUTHOR.meta}</span>
+                  </div>
+                </div>
+                {currentMedia.caption && (
+                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-body)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {currentMedia.caption}
+                  </p>
+                )}
+              </div>
+
+              {/* Action Buttons - Compact Row as per Mockup */}
+              <div className="hide-scroll" style={{ display: 'flex', gap: '8px', alignItems: 'center', overflowX: 'auto', width: '100%', paddingBottom: '2px' }}>
+                
+                <button 
+                  onClick={() => setIsLiked(!isLiked)} 
+                  className="spring-btn" 
+                  style={{ 
+                    display: 'flex', alignItems: 'center', gap: '6px', height: '40px', padding: '0 14px', borderRadius: '20px', flexShrink: 0,
+                    background: isLiked ? 'rgba(255, 69, 58, 0.15)' : 'var(--surface-elevated)', border: '1px solid var(--border)',
+                    color: isLiked ? 'var(--error)' : '#FFF', fontWeight: 700, fontSize: '14px'
+                  }}
+                >
+                  <Heart size={18} fill={isLiked ? 'var(--error)' : 'none'} strokeWidth={isLiked ? 0 : 2} />
+                  {isLiked ? '125' : '124'}
+                </button>
+                
+                <button onClick={() => showToast('Комментарии откроются в полной версии')} className="spring-btn" style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '40px', padding: '0 14px', borderRadius: '20px', flexShrink: 0, background: 'var(--surface-elevated)', border: '1px solid var(--border)', color: '#FFF', fontWeight: 700, fontSize: '14px' }}>
+                  <MessageCircle size={18} /> 4
+                </button>
+
+                <button onClick={() => showToast('Сохранено в галерею')} className="spring-btn" style={{ width: '40px', height: '40px', borderRadius: '20px', flexShrink: 0, background: 'var(--surface-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                  <Download size={18} />
+                </button>
+                
+                <button onClick={() => showToast('Ссылка скопирована')} className="spring-btn" style={{ width: '40px', height: '40px', borderRadius: '20px', flexShrink: 0, background: 'var(--surface-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                  <Share2 size={18} />
+                </button>
+                
+                {/* Закрыть - Растягивается на остаток места */}
+                <button onClick={onClose} className="spring-btn" style={{ flex: 1, minWidth: '100px', height: '40px', borderRadius: '20px', background: 'var(--primary)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', boxShadow: '0 4px 12px rgba(212, 255, 0, 0.2)', fontWeight: 800, fontSize: '14px', gap: '6px' }}>
+                  <X size={16} strokeWidth={3} /> Закрыть
+                </button>
+
+              </div>
+            </div>
+
+          </div>
+        );
+      };
+
+      // === ПРИЛОЖЕНИЕ (ФОН ДЛЯ ТЕСТИРОВАНИЯ) ===
+      function App() {
+        const [viewerOpen, setViewerOpen] = useState(false);
+        const [initialIndex, setInitialIndex] = useState(0);
+
+        const openViewer = (index) => {
+          setInitialIndex(index);
+          setViewerOpen(true);
+        };
+
+        return (
+          <div style={{ position: 'relative', width: '390px', height: '844px', backgroundColor: 'var(--bg)', borderRadius: '46px', border: '10px solid #222', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: '120px', height: '32px', backgroundColor: '#000', borderRadius: '16px', zIndex: 1100 }} />
+
+            <div className="hide-scroll" style={{ flex: 1, padding: '60px 16px', overflowY: 'auto' }}>
+              <h1 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '20px', color: '#FFF' }}>Медиагалерея</h1>
+              <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '24px' }}>Теперь работают Toasts (Скачать/Поделиться), Zoom жестом, а области кликов разделены: Тап по черному фону прячет интерфейс.</p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {MOCK_MEDIA.map((item, index) => (
+                  <div 
+                    key={item.id} 
+                    onClick={() => openViewer(index)}
+                    className="spring-btn"
+                    style={{ aspectRatio: '3/4', borderRadius: '16px', overflow: 'hidden', position: 'relative', background: 'var(--surface-elevated)', border: '1px solid var(--border)' }}
+                  >
+                    <img src={item.type === 'video' ? item.poster : item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {item.type === 'video' && (
+                      <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: '6px', borderRadius: '12px', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <PlayCircle size={16} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {viewerOpen && <MediaViewer mediaList={MOCK_MEDIA} initialIndex={initialIndex} onClose={() => setViewerOpen(false)} />}
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
