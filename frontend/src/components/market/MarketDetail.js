@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info, MapPin, Link, Edit2, Flag } from 'lucide-react';
 import { useStore } from '../../store';
-import { toggleMarketFavorite, deleteMarketItem } from '../../api';
+import { toggleMarketFavorite, deleteMarketItem, getSellerRating } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
 import PhotoViewer from '../shared/PhotoViewer';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
@@ -46,9 +46,17 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [sellerRating, setSellerRating] = useState({ avg: null, count: 0 });
   
   const menuRef = useRef(null);
   const sellerAvatarRef = useRef(null);
+
+  useEffect(() => {
+    const sellerId = currentItem?.seller_id || currentItem?.seller?.id;
+    if (sellerId) {
+      getSellerRating(sellerId).then(setSellerRating).catch(() => {});
+    }
+  }, [currentItem?.seller_id, currentItem?.seller?.id]);
 
   const isOwner = useMemo(() => isEntityOwner('market_item', currentItem, user), [currentItem, user]);
   const actionSet = useMemo(
@@ -263,12 +271,18 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
   const getCategoryText = () => {
     const categories = {
-      'textbooks': '📚 Учебники',
-      'electronics': '💻 Электроника',
-      'furniture': '🛋️ Мебель',
-      'clothing': '👕 Одежда',
-      'sports': '⚽ Спорт',
-      'appliances': '🔌 Техника'
+      'textbooks':   '📚 Учебники',
+      'electronics': '💻 Техника',
+      'clothing':    '👕 Одежда',
+      'dorm':        '🛋️ Общага',
+      'hobby':       '🎸 Хобби',
+      'other_g':     '📦 Другое',
+      'tutor':       '👨‍🏫 Репетитор',
+      'homework':    '📝 Курсачи',
+      'repair':      '🛠️ Ремонт',
+      'design':      '🎨 Дизайн',
+      'delivery':    '🏃 Курьер',
+      'other_s':     '✨ Другое',
     };
     return categories[currentItem.category] || currentItem.category;
   };
@@ -470,6 +484,12 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                     {institute && ` • ${institute}`}
                     {currentItem.seller.course && ` • ${currentItem.seller.course} курс`}
                   </div>
+                  {sellerRating.count > 0 && (
+                    <div style={styles.sellerRating}>
+                      ⭐ <strong>{sellerRating.avg}</strong>
+                      <span style={styles.ratingCount}> ({sellerRating.count} отз.)</span>
+                    </div>
+                  )}
                 </div>
 
                 <ChevronLeft size={20} color={theme.colors.premium.textMuted} style={{ transform: 'rotate(180deg)', flexShrink: 0 }} />
@@ -910,6 +930,19 @@ const styles = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+  },
+
+  sellerRating: {
+    fontFamily: 'Arial, sans-serif',
+    fontSize: 13,
+    fontWeight: 500,
+    color: theme.colors.text,
+    marginTop: 4,
+  },
+
+  ratingCount: {
+    color: theme.colors.textSecondary,
+    fontWeight: 400,
   },
 
   publishedDate: {

@@ -12,7 +12,7 @@ from aiogram.exceptions import (
 import asyncio
 
 from templates.messages import format_notification, format_followup
-from keyboards.inline import followup_market_kb, followup_request_kb
+from keyboards.inline import followup_market_kb, followup_request_kb, review_stars_kb
 from services.api_client import api_client
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,11 @@ class NotificationSender:
                 text += "\n\n<i>(повторный запрос)</i>"
 
             # Выбираем клавиатуру по типу
-            if target_type == "market_item":
+            if followup_type == "review_request":
+                item_id = payload.get("item_id")
+                seller_id = payload.get("seller_id")
+                kb = review_stars_kb(item_id, seller_id)
+            elif target_type == "market_item":
                 kb = followup_market_kb(followup_id)
             elif target_type == "request":
                 kb = followup_request_kb(followup_id)

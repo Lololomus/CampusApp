@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 import asyncio
 
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -176,6 +176,7 @@ public_prefixes = [
     "/api/requests/feed",
     "/market/feed",
     "/market/categories",
+    "/market/reviews",   # бот + фронт (проверяют bot_secret / telegram_id внутри)
 ]
 if settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
     public_prefixes.append("/dev/auth")
@@ -408,12 +409,18 @@ async def get_user_stats(user_id: int, db: AsyncSession = Depends(get_db)):
     user = await crud.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     return {
         "posts_count": await crud.count_user_posts(db, user_id),
         "comments_count": await crud.count_user_comments(db, user_id),
         "likes_count": await crud.count_user_total_likes(db, user_id)
     }
+
+
+@app.get("/users/{user_id}/rating", response_model=schemas.SellerRatingResponse)
+async def get_user_rating(user_id: int, db: AsyncSession = Depends(get_db)):
+    """Рейтинг продавца (публичный эндпоинт)."""
+    return await crud.get_seller_rating(db, user_id)
 
 # ===== POST ENDPOINTS + POLLS =====
 @app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
@@ -1693,8 +1700,11 @@ async def unbind_user_from_campus_endpoint(
 # ===== MARKET ENDPOINTS =====
 
 @app.get("/market/categories", response_model=schemas.MarketCategoriesResponse)
-async def get_market_categories_endpoint(db: AsyncSession = Depends(get_db)):
-    return await crud.get_market_categories(db)
+async def get_market_categories_endpoint(
+    item_type: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
+    return await crud.get_market_categories(db, item_type=item_type)
 
 @app.get("/market/feed", response_model=schemas.MarketFeedResponse)
 async def get_market_feed_endpoint(
@@ -1702,6 +1712,7 @@ async def get_market_feed_endpoint(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     category: Optional[str] = Query(None),
+    item_type: Optional[str] = Query(None),
     sort: Optional[str] = Query("newest"),
     search: Optional[str] = Query(None),
     price_min: Optional[int] = Query(None),
@@ -1715,12 +1726,13 @@ async def get_market_feed_endpoint(
 ):
     user = await crud.get_user_by_telegram_id(db, telegram_id) if telegram_id else None
     current_user_id = user.id if user else None
-    
+
     feed_data = await crud.get_market_items(
         db,
         skip=skip,
         limit=limit,
         category=category,
+        item_type=item_type,
         sort=sort,
         search=search,
         price_min=price_min,
@@ -1757,6 +1769,7 @@ async def get_market_feed_endpoint(
             "seller_id": item.seller_id,
             "seller": seller_data,
             "category": item.category,
+            "item_type": item.item_type,
             "title": item.title,
             "description": item.description,
             "price": item.price,
@@ -1817,6 +1830,7 @@ async def get_market_favorites_endpoint(
             "seller_id": item.seller_id,
             "seller": seller_data,
             "category": item.category,
+            "item_type": item.item_type,
             "title": item.title,
             "description": item.description,
             "price": item.price,
@@ -1834,7 +1848,7 @@ async def get_market_favorites_endpoint(
             "is_favorited": True
         }
         result.append(item_dict)
-    
+
     return normalize_datetime_payload(result)
 
 @app.get("/market/my-items", response_model=List[schemas.MarketItemResponse])
@@ -1872,6 +1886,7 @@ async def get_my_market_items_endpoint(
             "seller_id": item.seller_id,
             "seller": seller_data,
             "category": item.category,
+            "item_type": item.item_type,
             "title": item.title,
             "description": item.description,
             "price": item.price,
@@ -1889,7 +1904,7 @@ async def get_my_market_items_endpoint(
             "is_favorited": False
         }
         result.append(item_dict)
-    
+
     return result
 
 @app.get("/market/{item_id}", response_model=schemas.MarketItemResponse)
@@ -1934,6 +1949,7 @@ async def get_market_item_endpoint(
         "seller_id": item.seller_id,
         "seller": seller_data,
         "category": item.category,
+        "item_type": item.item_type,
         "title": item.title,
         "description": item.description,
         "price": item.price,
@@ -1955,10 +1971,11 @@ async def get_market_item_endpoint(
 async def create_market_item_endpoint(
     telegram_id: int = Query(...),
     category: str = Form(...),
+    item_type: str = Form('product'),
     title: str = Form(...),
     description: str = Form(...),
     price: int = Form(...),
-    condition: str = Form(...),
+    condition: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
     video: Optional[UploadFile] = File(None),
@@ -1979,6 +1996,7 @@ async def create_market_item_endpoint(
 
     item_data = schemas.MarketItemCreate(
         category=category,
+        item_type=item_type if item_type in ('product', 'service') else 'product',
         title=title,
         description=description,
         price=price,
@@ -2024,6 +2042,7 @@ async def create_market_item_endpoint(
         "seller_id": item.seller_id,
         "seller": seller_data,
         "category": item.category,
+        "item_type": item.item_type,
         "title": item.title,
         "description": item.description,
         "price": item.price,
@@ -2045,6 +2064,7 @@ async def create_market_item_endpoint(
 async def update_market_item_endpoint(
     item_id: int,
     telegram_id: int = Query(...),
+    item_type: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     price: Optional[int] = Form(None),
@@ -2073,6 +2093,7 @@ async def update_market_item_endpoint(
         raise HTTPException(status_code=400, detail="Maximum 3 images")
 
     item_update = schemas.MarketItemUpdate(
+        item_type=item_type if item_type in ('product', 'service') else None,
         title=title,
         description=description,
         price=price,
@@ -2120,6 +2141,7 @@ async def update_market_item_endpoint(
         "seller_id": updated_item.seller_id,
         "seller": seller_data,
         "category": updated_item.category,
+        "item_type": updated_item.item_type,
         "title": updated_item.title,
         "description": updated_item.description,
         "price": updated_item.price,
@@ -2173,6 +2195,95 @@ async def toggle_market_favorite_endpoint(
             entity_id=item_id,
         )
     return result
+
+
+def _verify_bot_secret(x_bot_secret: str = Header(..., alias="X-Bot-Secret")):
+    if x_bot_secret != settings.bot_secret:
+        raise HTTPException(status_code=403, detail="Invalid bot secret")
+
+
+@app.post("/market/reviews", response_model=schemas.MarketReviewResponse)
+async def create_market_review(
+    data: schemas.MarketReviewCreate,
+    telegram_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Создать отзыв. Используется фронтом (JWT) и ботом (bot-secret)."""
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    source = data.source or 'app'
+    status = 'pending_text' if source == 'bot' else 'completed'
+    try:
+        review = await crud.create_review(db, user.id, data, source=source, status=status)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        if 'unique_review_per_item' in str(e):
+            raise HTTPException(status_code=409, detail="Отзыв уже оставлен")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+    return review
+
+
+@app.get("/market/reviews/pending")
+async def get_pending_review(
+    telegram_id: int = Query(...),
+    _: None = Depends(_verify_bot_secret),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pending_text отзыв для бота (проверка перед обработкой текста)."""
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        return None
+    review = await crud.get_pending_review(db, user.id)
+    if not review:
+        return None
+    return {"review_id": review.id}
+
+
+@app.patch("/market/reviews/{review_id}/text")
+async def add_review_text(
+    review_id: int,
+    telegram_id: int = Query(...),
+    text: Optional[str] = Body(None, embed=True),
+    _: None = Depends(_verify_bot_secret),
+    db: AsyncSession = Depends(get_db),
+):
+    """Добавить текст к отзыву (или завершить без текста)."""
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    review = await crud.add_review_text(db, review_id, user.id, text)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"ok": True}
+
+
+@app.post("/market/reviews/skip")
+async def skip_review_request(
+    telegram_id: int = Query(...),
+    item_id: int = Query(...),
+    _: None = Depends(_verify_bot_secret),
+    db: AsyncSession = Depends(get_db),
+):
+    """Пропустить запрос отзыва (бот)."""
+    user = await crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await crud.skip_review_request(db, user.id, item_id)
+    return {"ok": True}
+
+
+@app.get("/market/{item_id}/reviews", response_model=List[schemas.MarketReviewResponse])
+async def get_item_reviews(
+    item_id: int,
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Список отзывов на товар."""
+    return await crud.get_item_reviews(db, item_id, limit=limit, offset=offset)
 
 # ===== DEV ENDPOINTS =====
 

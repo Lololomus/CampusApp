@@ -1,5 +1,5 @@
 // ===== 📄 ФАЙЛ: src/components/Navigation.js =====
-// 4 таба: Лента, Барахолка, Знакомства, Профиль
+// 4 таба: Лента, Маркет, Знакомства, Профиль
 // Центральная кнопка "+" между 2-м и 3-м табом
 // Доступ к модерации/админке — через кнопки в Profile
 
@@ -32,7 +32,7 @@ function Navigation() {
   // 4 боковых таба (без кнопки создания)
   const sideTabs = [
     { id: 'feed', icon: Home, label: 'Лента' },
-    { id: 'market', icon: ShoppingBag, label: 'Барахолка' },
+    { id: 'market', icon: ShoppingBag, label: 'Маркет' },
     // — центральная кнопка "+" вставляется между 2-м и 3-м —
     { id: 'people', icon: Heart, label: 'Знакомства' },
     { id: 'profile', icon: User, label: 'Профиль' },

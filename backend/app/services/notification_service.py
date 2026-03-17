@@ -145,9 +145,46 @@ async def notify_market_contact(db: AsyncSession, seller, buyer, item):
         followup_type="market_sold",
         target_type="market_item",
         target_id=item.id,
-        payload={"item_title": item.title},
+        payload={
+            "item_title": item.title,
+            "item_type": item.item_type,
+            "buyer_id": buyer.id,
+            "buyer_name": buyer.name,
+        },
         delay_hours=24,
     )
+
+
+async def notify_review_request(db: AsyncSession, buyer, seller, item):
+    """Запрос отзыва покупателю после подтверждения продажи продавцом."""
+    from sqlalchemy import select
+    from app import models
+    existing = await db.execute(
+        select(models.MarketReview).where(
+            models.MarketReview.reviewer_id == buyer.id,
+            models.MarketReview.item_id == item.id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return  # отзыв уже есть
+
+    review_payload = {
+        "seller_id": seller.id,
+        "seller_name": seller.name,
+        "item_id": item.id,
+        "item_title": item.title,
+    }
+
+    await create_followup(
+        db,
+        user_id=buyer.id,
+        followup_type="review_request",
+        target_type="market_item",
+        target_id=item.id,
+        payload=review_payload,
+        delay_hours=0,
+    )
+    await create_notification(db, buyer.id, "review_request", review_payload)
 
 
 async def notify_request_response(db: AsyncSession, request_obj, responder):

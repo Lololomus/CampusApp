@@ -20,18 +20,18 @@ const TOOL_ICON_SIZE = 26;
 
 // Категории товаров и услуг
 const CATEGORIES = [
-  { id: 'textbooks',   label: 'Учебники',  icon: '📚', type: 'goods' },
-  { id: 'electronics', label: 'Техника',   icon: '💻', type: 'goods' },
-  { id: 'clothing',    label: 'Одежда',    icon: '👕', type: 'goods' },
-  { id: 'dorm',        label: 'Общага',    icon: '🛋️', type: 'goods' },
-  { id: 'hobby',       label: 'Хобби',     icon: '🎸', type: 'goods' },
-  { id: 'other_g',     label: 'Другое',    icon: '📦', type: 'goods' },
-  { id: 'tutor',       label: 'Репетитор', icon: '👨‍🏫', type: 'services' },
-  { id: 'homework',    label: 'Курсачи',   icon: '📝', type: 'services' },
-  { id: 'repair',      label: 'Ремонт',    icon: '🛠️', type: 'services' },
-  { id: 'design',      label: 'Дизайн',    icon: '🎨', type: 'services' },
-  { id: 'delivery',    label: 'Курьер',    icon: '🏃', type: 'services' },
-  { id: 'other_s',     label: 'Другое',    icon: '✨', type: 'services' },
+  { id: 'textbooks',   label: 'Учебники',  icon: '📚', type: 'product' },
+  { id: 'electronics', label: 'Техника',   icon: '💻', type: 'product' },
+  { id: 'clothing',    label: 'Одежда',    icon: '👕', type: 'product' },
+  { id: 'dorm',        label: 'Общага',    icon: '🛋️', type: 'product' },
+  { id: 'hobby',       label: 'Хобби',     icon: '🎸', type: 'product' },
+  { id: 'other_g',     label: 'Другое',    icon: '📦', type: 'product' },
+  { id: 'tutor',       label: 'Репетитор', icon: '👨‍🏫', type: 'service' },
+  { id: 'homework',    label: 'Курсачи',   icon: '📝', type: 'service' },
+  { id: 'repair',      label: 'Ремонт',    icon: '🛠️', type: 'service' },
+  { id: 'design',      label: 'Дизайн',    icon: '🎨', type: 'service' },
+  { id: 'delivery',    label: 'Курьер',    icon: '🏃', type: 'service' },
+  { id: 'other_s',     label: 'Другое',    icon: '✨', type: 'service' },
 ];
 
 const CONDITIONS = [
@@ -45,7 +45,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const { user, addMarketItem } = useStore();
 
   // --- Основной стейт ---
-  const [itemType, setItemType] = useState('goods');
+  const [itemType, setItemType] = useState('product');
   const [cat, setCat]           = useState('');
   const [title, setTitle]       = useState('');
   const [price, setPrice]       = useState('');
@@ -65,6 +65,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   const fileInputRef  = useRef(null);
+  const titleRef      = useRef(null);
   const descRef       = useRef(null);
   const sheetRef      = useRef(null);
   const mediaProcessingTasksRef = useRef(new Set());
@@ -93,7 +94,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   // Сброс категории и состояния при смене типа
   useEffect(() => {
     setCat('');
-    if (itemType === 'services') setCondition('');
+    if (itemType === 'service') setCondition('');
   }, [itemType]);
 
   // Закрыть суб-шит при закрытии
@@ -171,7 +172,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     desc.trim().length >= MIN_DESC_LEN &&
     cat !== '' &&
     (photos.length > 0 || videoFile !== null) &&
-    (itemType === 'services' || condition !== '');
+    (itemType === 'service' || condition !== '');
 
   // --- Фото ---
   const handlePhotoAdd = async () => {
@@ -251,9 +252,15 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   }, []);
 
   // --- Авто-рост textarea ---
+  const handleTitleChange = (e) => {
+    setTitle(e.target.value);
+    if (titleRef.current?.parentElement) {
+      titleRef.current.parentElement.dataset.replicatedValue = e.target.value;
+    }
+  };
+
   const handleDescChange = (e) => {
     setDesc(e.target.value);
-    // обновляем data-attr для grow-wrap
     if (descRef.current?.parentElement) {
       descRef.current.parentElement.dataset.replicatedValue = e.target.value;
     }
@@ -277,10 +284,24 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       desc.trim().length >= MIN_DESC_LEN &&
       cat !== '' &&
       (currentPhotos.length > 0 || currentVideoFile !== null) &&
-      (itemType === 'services' || condition !== '');
+      (itemType === 'service' || condition !== '');
 
     if (!canPublishNow) {
       setLoading(false);
+      hapticFeedback('error');
+      if (!cat) {
+        toast.error('Выберите категорию');
+      } else if (!title.trim() || title.trim().length < MIN_TITLE_LEN) {
+        toast.error('Введите название (минимум 3 символа)');
+      } else if (!price) {
+        toast.error('Укажите цену');
+      } else if (!desc.trim() || desc.trim().length < MIN_DESC_LEN) {
+        toast.error('Добавьте описание (минимум 10 символов)');
+      } else if (currentPhotos.length === 0 && !currentVideoFile) {
+        toast.error('Добавьте хотя бы одно фото');
+      } else if (itemType === 'product' && !condition) {
+        toast.error('Укажите состояние товара');
+      }
       return;
     }
 
@@ -323,8 +344,6 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     confirmClose();
   };
 
-  const displayedCategories = CATEGORIES.filter(c => c.type === itemType);
-
   // Текст выбранного состояния
   const condLabel = CONDITIONS.find(c => c.id === condition);
 
@@ -351,152 +370,139 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
           <div style={s.switcher}>
             <button
               className="cm-spring-btn"
-              style={{ ...s.switcherBtn, ...(itemType === 'goods' ? s.switcherBtnActive : {}) }}
-              onClick={() => { hapticFeedback('light'); setItemType('goods'); }}
+              style={{ ...s.switcherBtn, ...(itemType === 'product' ? s.switcherBtnActive : {}) }}
+              onClick={() => { hapticFeedback('light'); setItemType('product'); }}
             >Товар</button>
             <button
               className="cm-spring-btn"
-              style={{ ...s.switcherBtn, ...(itemType === 'services' ? s.switcherBtnActive : {}) }}
-              onClick={() => { hapticFeedback('light'); setItemType('services'); }}
+              style={{ ...s.switcherBtn, ...(itemType === 'service' ? s.switcherBtnActive : {}) }}
+              onClick={() => { hapticFeedback('light'); setItemType('service'); }}
             >Услуга</button>
           </div>
         </div>
 
         {/* Прокручиваемый контент */}
         <div className="cm-hide-scroll" style={s.scroll}>
+          <div style={{
+            display: 'flex',
+            width: '200%',
+            transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+            transform: `translateX(${itemType === 'product' ? '0' : '-50%'})`,
+          }}>
 
-          {/* Сетка категорий 2x3 */}
-          <div style={s.catGrid}>
-            {displayedCategories.map(c => {
-              const isSelected = cat === c.id;
-              return (
-                <button
-                  key={c.id}
-                  className="cm-spring-btn"
-                  onClick={() => { hapticFeedback('medium'); setCat(c.id); }}
-                  style={{
-                    ...s.catBtn,
-                    borderColor: isSelected ? 'var(--cm-primary)' : 'transparent',
-                    background: isSelected ? 'rgba(212,255,0,0.1)' : 'var(--cm-surface-elevated)',
-                    color: isSelected ? 'var(--cm-primary)' : '#fff',
-                  }}
-                >
-                  <span>{c.icon}</span>
-                  <span>{c.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Видео-превью — отдельная карточка на всю ширину */}
-          {videoFile && (
-            <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
-              {videoThumb
-                ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
-                : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />
-              }
-              {/* Play-иконка по центру */}
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
+            {/* Слайд — Товар */}
+            <div style={s.slide}>
+              <div style={s.catGrid}>
+                {CATEGORIES.filter(c => c.type === 'product').map(c => {
+                  const isSelected = cat === c.id;
+                  return (
+                    <button key={c.id} className="cm-spring-btn"
+                      onClick={() => { hapticFeedback('medium'); setCat(c.id); }}
+                      style={{ ...s.catBtn, borderColor: isSelected ? 'var(--cm-primary)' : 'transparent', background: isSelected ? 'rgba(212,255,0,0.1)' : 'var(--cm-surface-elevated)', color: isSelected ? 'var(--cm-primary)' : '#fff' }}>
+                      <span>{c.icon}</span><span>{c.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {videoFile && (
+                <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
+                  {videoThumb ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />}
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
+                    </div>
+                  </div>
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                    <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
+                    <button className="cm-spring-btn" style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }} onClick={() => { setVideoFile(null); setVideoThumb(null); }}><X size={13} /></button>
+                  </div>
                 </div>
-              </div>
-              {/* Нижняя плашка */}
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>
-                  Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ
-                </span>
-                <button
-                  className="cm-spring-btn"
-                  style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}
-                  onClick={() => { setVideoFile(null); setVideoThumb(null); }}
-                >
-                  <X size={13} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Фото-миниатюры — 3-колоночная сетка */}
-          {photos.length > 0 && (
-            <div className="cm-hide-scroll" style={s.photosRow}>
-              {photos.map((p, i) => (
-                <div key={i} style={s.photoThumb}>
-                  <img src={p.preview} alt="" style={s.photoImg} />
-                  <button
-                    className="cm-spring-btn"
-                    style={s.photoRemove}
-                    onClick={() => removePhoto(i)}
-                  >
-                    <X size={14} />
-                  </button>
+              )}
+              {photos.length > 0 && (
+                <div className="cm-hide-scroll" style={s.photosRow}>
+                  {photos.map((p, i) => (
+                    <div key={i} style={s.photoThumb}>
+                      <img src={p.preview} alt="" style={s.photoImg} />
+                      <button className="cm-spring-btn" style={s.photoRemove} onClick={() => removePhoto(i)}><X size={14} /></button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Цена — авто-сайзинг */}
-          <div style={s.priceRow}>
-            <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-              <span style={s.priceSizer}>{price || 'Цена'}</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="Цена"
-                value={price}
-                onChange={e => setPrice(e.target.value.replace(/\D/g, ''))}
-                style={s.priceInput}
-              />
-            </div>
-            {price && <span style={s.priceCurrency}>₽</span>}
-          </div>
-
-          {/* Название */}
-          <input
-            type="text"
-            placeholder={itemType === 'services' ? 'Название услуги...' : 'Название товара...'}
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            maxLength={100}
-            style={s.titleInput}
-          />
-
-          {/* Описание — grow-wrap */}
-          <div
-            className="cm-grow-wrap"
-            data-replicated-value={desc}
-            style={s.growWrap}
-          >
-            <textarea
-              ref={descRef}
-              placeholder={itemType === 'services' ? 'Опишите услугу, опыт и условия работы...' : 'Опишите состояние, комплектацию и причины продажи...'}
-              value={desc}
-              onChange={handleDescChange}
-              style={s.descTextarea}
-            />
-          </div>
-
-          {/* Чипы выбранных метаданных */}
-          <div style={s.metaChips}>
-            {condition && itemType === 'goods' && (
-              <div
-                className="cm-spring-btn"
-                style={s.metaChip}
-                onClick={() => setActiveSubSheet('cond')}
-              >
-                {condLabel?.icon} {condLabel?.label}
+              )}
+              <div style={s.priceRow}>
+                <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+                  <span style={s.priceSizer}>{price || 'Цена'}</span>
+                  <input type="text" inputMode="numeric" placeholder="Цена" value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ''))} style={s.priceInput} />
+                </div>
+                {price && <span style={s.priceCurrency}>₽</span>}
               </div>
-            )}
-            {location && (
-              <div
-                className="cm-spring-btn"
-                style={s.metaChip}
-                onClick={() => setActiveSubSheet('loc')}
-              >
-                <MapPin size={14} color="var(--cm-primary)" style={{ marginRight: 4 }} />
-                {location}
+              <div className="cm-title-wrap" data-replicated-value={title}>
+                <textarea ref={itemType === 'product' ? titleRef : null} placeholder="Название товара..." value={title} onChange={handleTitleChange} maxLength={100} rows={1} style={s.titleInput} />
               </div>
-            )}
+              <div className="cm-grow-wrap" data-replicated-value={desc} style={s.growWrap}>
+                <textarea ref={itemType === 'product' ? descRef : null} placeholder="Опишите состояние, комплектацию и причины продажи..." value={desc} onChange={handleDescChange} style={s.descTextarea} />
+              </div>
+              <div style={s.metaChips}>
+                {condition && <div className="cm-spring-btn" style={s.metaChip} onClick={() => setActiveSubSheet('cond')}>{condLabel?.icon} {condLabel?.label}</div>}
+                {location && <div className="cm-spring-btn" style={s.metaChip} onClick={() => setActiveSubSheet('loc')}><MapPin size={14} color="var(--cm-primary)" style={{ marginRight: 4 }} />{location}</div>}
+              </div>
+            </div>
+
+            {/* Слайд — Услуга */}
+            <div style={s.slide}>
+              <div style={s.catGrid}>
+                {CATEGORIES.filter(c => c.type === 'service').map(c => {
+                  const isSelected = cat === c.id;
+                  return (
+                    <button key={c.id} className="cm-spring-btn"
+                      onClick={() => { hapticFeedback('medium'); setCat(c.id); }}
+                      style={{ ...s.catBtn, borderColor: isSelected ? 'var(--cm-primary)' : 'transparent', background: isSelected ? 'rgba(212,255,0,0.1)' : 'var(--cm-surface-elevated)', color: isSelected ? 'var(--cm-primary)' : '#fff' }}>
+                      <span>{c.icon}</span><span>{c.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {videoFile && (
+                <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
+                  {videoThumb ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />}
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
+                    </div>
+                  </div>
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                    <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
+                    <button className="cm-spring-btn" style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }} onClick={() => { setVideoFile(null); setVideoThumb(null); }}><X size={13} /></button>
+                  </div>
+                </div>
+              )}
+              {photos.length > 0 && (
+                <div className="cm-hide-scroll" style={s.photosRow}>
+                  {photos.map((p, i) => (
+                    <div key={i} style={s.photoThumb}>
+                      <img src={p.preview} alt="" style={s.photoImg} />
+                      <button className="cm-spring-btn" style={s.photoRemove} onClick={() => removePhoto(i)}><X size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={s.priceRow}>
+                <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+                  <span style={s.priceSizer}>{price || 'Цена'}</span>
+                  <input type="text" inputMode="numeric" placeholder="Цена" value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ''))} style={s.priceInput} />
+                </div>
+                {price && <span style={s.priceCurrency}>₽</span>}
+              </div>
+              <div className="cm-title-wrap" data-replicated-value={title}>
+                <textarea ref={itemType === 'service' ? titleRef : null} placeholder="Название услуги..." value={title} onChange={handleTitleChange} maxLength={100} rows={1} style={s.titleInput} />
+              </div>
+              <div className="cm-grow-wrap" data-replicated-value={desc} style={s.growWrap}>
+                <textarea ref={itemType === 'service' ? descRef : null} placeholder="Опишите услугу, опыт и условия работы..." value={desc} onChange={handleDescChange} style={s.descTextarea} />
+              </div>
+              <div style={s.metaChips}>
+                {location && <div className="cm-spring-btn" style={s.metaChip} onClick={() => setActiveSubSheet('loc')}><MapPin size={14} color="var(--cm-primary)" style={{ marginRight: 4 }} />{location}</div>}
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -514,7 +520,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
             </button>
 
             {/* Состояние (только для товаров) */}
-            {itemType === 'goods' && (
+            {itemType === 'product' && (
               <button
                 className={`cm-spring-btn ${!condition ? 'cm-pulse' : ''}`}
                 style={condition || activeSubSheet === 'cond' ? { ...s.toolBtn, ...s.toolBtnActive } : s.toolBtn}
@@ -537,7 +543,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
           {/* Кнопка публикации */}
           <button
             className="cm-spring-btn"
-            disabled={!canPublish || loading}
+            disabled={loading}
             onClick={handleSubmit}
             style={{
               ...s.publishBtn,
@@ -636,23 +642,46 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
       {/* Grow-wrap стили */}
       <style>{`
+        .cm-title-wrap { display: grid; }
+        .cm-title-wrap > textarea,
+        .cm-title-wrap::after {
+          font-size: 22px;
+          font-weight: 700;
+          line-height: 1.3;
+          padding: 0;
+          font-family: inherit;
+          word-break: break-word;
+          grid-area: 1/1/2/2;
+        }
+        .cm-title-wrap::after {
+          content: attr(data-replicated-value) " ";
+          white-space: pre-wrap;
+          visibility: hidden;
+        }
+        .cm-title-wrap > textarea {
+          resize: none;
+          overflow: hidden;
+        }
+
         .cm-grow-wrap { display: grid; }
+        .cm-grow-wrap > textarea,
+        .cm-grow-wrap::after {
+          font-size: 16px;
+          line-height: 1.4;
+          min-height: 80px;
+          padding: 0;
+          font-family: inherit;
+          word-break: break-word;
+          grid-area: 1/1/2/2;
+        }
         .cm-grow-wrap::after {
           content: attr(data-replicated-value) " ";
           white-space: pre-wrap;
           visibility: hidden;
-          font-size: 16px;
-          line-height: 1.4;
-          min-height: 80px;
-          padding: 4px 0;
-          font-family: inherit;
-          grid-area: 1/1/2/2;
         }
         .cm-grow-wrap > textarea {
           resize: none;
           overflow: hidden;
-          grid-area: 1/1/2/2;
-          font-family: inherit;
         }
       `}</style>
     </div>
@@ -733,20 +762,24 @@ const s = {
   scroll: {
     flex: 1,
     overflowY: 'auto',
-    padding: '0 20px 150px',
+    overflowX: 'hidden',
+  },
+
+  slide: {
+    width: '50%',
+    flexShrink: 0,
     display: 'flex',
     flexDirection: 'column',
+    padding: '0 20px 150px',
+    boxSizing: 'border-box',
   },
 
   // Категории
   catGrid: {
     display: 'grid',
-    gridTemplateRows: 'repeat(2, auto)',
-    gridAutoFlow: 'column',
-    gridAutoColumns: 'max-content',
+    gridTemplateColumns: 'repeat(3, 1fr)',
     gap: 8,
     padding: '12px 0 16px',
-    overflowX: 'auto',
     flexShrink: 0,
   },
   catBtn: {
@@ -754,14 +787,16 @@ const s = {
     borderRadius: 20,
     background: 'var(--cm-surface-elevated)',
     color: '#fff',
-    padding: '8px 16px',
-    fontSize: 14,
+    padding: '8px 10px',
+    fontSize: 13,
     fontWeight: 600,
     display: 'flex',
-    gap: 6,
+    gap: 5,
     alignItems: 'center',
-    whiteSpace: 'nowrap',
+    justifyContent: 'center',
     cursor: 'pointer',
+    minWidth: 0,
+    overflow: 'hidden',
   },
 
   // Фото
@@ -840,15 +875,13 @@ const s = {
 
   // Название
   titleInput: {
-    fontSize: 22,
-    fontWeight: 700,
     background: 'transparent',
     border: 'none',
     color: '#fff',
+    caretColor: '#fff',
     outline: 'none',
     marginTop: 16,
     width: '100%',
-    fontFamily: 'inherit',
   },
 
   // Описание grow-wrap

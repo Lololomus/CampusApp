@@ -53,24 +53,42 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
 
   const getCategoryGradient = () => {
     const gradients = {
-      textbooks: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      textbooks:   'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       electronics: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-      furniture: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-      clothing: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-      sports: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
-      appliances: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+      furniture:   'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+      clothing:    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+      sports:      'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+      appliances:  'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+      dorm:        'linear-gradient(135deg, #f6d365 0%, #fda085 100%)',
+      hobby:       'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
+      tutor:       'linear-gradient(135deg, #fddb92 0%, #d1fdff 100%)',
+      homework:    'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+      repair:      'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
+      design:      'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
+      delivery:    'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)',
     };
     return gradients[item.category] || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
   };
 
   const getCategoryInfo = () => {
     const categories = {
-      textbooks: { emoji: '📚', label: 'Учебники' },
+      // Товары
+      textbooks:   { emoji: '📚', label: 'Учебники' },
       electronics: { emoji: '💻', label: 'Электроника' },
-      furniture: { emoji: '🛋️', label: 'Мебель' },
-      clothing: { emoji: '👕', label: 'Одежда' },
-      sports: { emoji: '⚽', label: 'Спорт' },
-      appliances: { emoji: '🔌', label: 'Техника' }
+      furniture:   { emoji: '🛋️', label: 'Мебель' },
+      clothing:    { emoji: '👕', label: 'Одежда' },
+      sports:      { emoji: '⚽', label: 'Спорт' },
+      appliances:  { emoji: '🔌', label: 'Техника' },
+      dorm:        { emoji: '🏠', label: 'Общага' },
+      hobby:       { emoji: '🎸', label: 'Хобби' },
+      other_g:     { emoji: '📦', label: 'Другое' },
+      // Услуги
+      tutor:       { emoji: '👨‍🏫', label: 'Репетитор' },
+      homework:    { emoji: '📝', label: 'Курсачи' },
+      repair:      { emoji: '🛠️', label: 'Ремонт' },
+      design:      { emoji: '🎨', label: 'Дизайн' },
+      delivery:    { emoji: '🏃', label: 'Курьер' },
+      other_s:     { emoji: '✨', label: 'Другое' },
     };
     return categories[item.category] || { emoji: '📦', label: item.category };
   };

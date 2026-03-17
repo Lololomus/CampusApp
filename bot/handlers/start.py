@@ -9,6 +9,7 @@ from aiogram.types import Message
 
 from keyboards.inline import open_miniapp_kb
 from templates.messages import format_welcome
+from services.api_client import api_client
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,22 @@ async def cmd_start(message: Message):
 @router.message(F.text)
 async def handle_text(message: Message):
     """
-    Любое текстовое сообщение — направляем в mini app.
-    Бот не ведет диалог, используется для уведомлений.
+    Любое текстовое сообщение.
+    Сначала проверяем pending_text отзыв — если есть, сохраняем текст.
+    Иначе — редирект в mini app.
     """
+    pending = await api_client.get_pending_review(telegram_id=message.from_user.id)
+    if pending and pending.get("review_id"):
+        review_id = pending["review_id"]
+        text = (message.text or "")[:300]
+        await api_client.add_review_text(
+            telegram_id=message.from_user.id,
+            review_id=review_id,
+            text=text,
+        )
+        await message.answer("✅ Спасибо за отзыв!")
+        return
+
     await message.answer(
         text=(
             "Я бот-уведомитель CampusApp 🤖\n"

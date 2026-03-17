@@ -887,10 +887,11 @@ class DatingStatsResponse(BaseModel):
 class MarketItemCreate(BaseModel):
     """Создание товара"""
     category: str = Field(..., min_length=1, max_length=50)
-    title: str = Field(..., min_length=5, max_length=100)
-    description: str = Field(..., min_length=20, max_length=1000)
+    item_type: str = Field('product', pattern="^(product|service)$")
+    title: str = Field(..., min_length=3, max_length=100)
+    description: str = Field(..., min_length=10, max_length=1000)
     price: int = Field(..., ge=0, le=1000000)
-    condition: str = Field(..., pattern="^(new|like_new|good|fair)$")
+    condition: Optional[str] = Field(None, pattern="^(new|like_new|good|fair)$")
     location: Optional[str] = Field(None, max_length=200)
     images: List[str] = Field(..., min_length=1, max_length=3)
     
@@ -911,10 +912,20 @@ class MarketItemCreate(BaseModel):
             raise ValueError('Максимум 3 фото')
         return v
 
+    @model_validator(mode='after')
+    def validate_condition_by_item_type(self):
+        if self.item_type == 'product' and not self.condition:
+            raise ValueError('Для товара обязательно состояние')
+        if self.item_type == 'service' and not self.condition:
+            # Сохраняем консистентное дефолтное состояние для услуг.
+            self.condition = 'good'
+        return self
+
 class MarketItemUpdate(BaseModel):
     """Обновление товара"""
-    title: Optional[str] = Field(None, min_length=5, max_length=100)
-    description: Optional[str] = Field(None, min_length=20, max_length=1000)
+    item_type: Optional[str] = Field(None, pattern="^(product|service)$")
+    title: Optional[str] = Field(None, min_length=3, max_length=100)
+    description: Optional[str] = Field(None, min_length=10, max_length=1000)
     price: Optional[int] = Field(None, ge=0, le=1000000)
     condition: Optional[str] = Field(None, pattern="^(new|like_new|good|fair)$")
     location: Optional[str] = Field(None, max_length=200)
@@ -937,6 +948,7 @@ class MarketItemResponse(BaseModel):
     seller_id: int
     seller: UserShort                                        # ✅ Фаза 5.3: MarketSeller → UserShort
     category: str
+    item_type: str = 'product'
     title: str
     description: str
     price: int
@@ -972,6 +984,32 @@ class MarketCategoriesResponse(BaseModel):
     """Список категорий"""
     standard: List[str]
     popular_custom: List[str]
+
+
+class MarketReviewCreate(BaseModel):
+    item_id: int
+    seller_id: int
+    rating: int = Field(..., ge=1, le=5)
+    text: Optional[str] = Field(None, max_length=300)
+    source: str = Field('app', pattern="^(bot|app)$")
+
+
+class MarketReviewResponse(BaseModel):
+    id: int
+    item_id: int
+    seller_id: int
+    reviewer: UserShort
+    rating: int
+    text: Optional[str] = None
+    source: str
+    status: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SellerRatingResponse(BaseModel):
+    avg: Optional[float] = None
+    count: int = 0
 
 # Схема для создания/обновления анкеты
 class DatingProfileCreate(BaseModel):

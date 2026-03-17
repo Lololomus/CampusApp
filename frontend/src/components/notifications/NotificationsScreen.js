@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Heart, ShoppingBag, MessageCircle, LifeBuoy, Flame, Check, X
+  Heart, ShoppingBag, MessageCircle, LifeBuoy, Flame, Check, X, Star
 } from 'lucide-react';
 
 import DrilldownHeader from '../shared/DrilldownHeader';
@@ -12,6 +12,7 @@ import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import { Z_MODAL_NOTIFICATIONS_SCREEN } from '../../constants/zIndex';
+import ReviewModal from '../market/ReviewModal';
 
 // ========== КОНСТАНТЫ ==========
 
@@ -45,6 +46,7 @@ const TYPE_TO_FILTER = {
   comment: 'comment',
   comment_reply: 'comment',
   market_contact: 'market',
+  review_request: 'market',
   request_response: 'request',
 };
 
@@ -54,6 +56,7 @@ const BADGE_CONFIG = {
   comment: { icon: MessageCircle, color: COLORS.badgeComment },
   comment_reply: { icon: MessageCircle, color: COLORS.badgeComment },
   market_contact: { icon: ShoppingBag, color: COLORS.badgeMarket },
+  review_request: { icon: Star, color: COLORS.badgeMarket },
   request_response: { icon: LifeBuoy, color: COLORS.badgeRequest },
 };
 
@@ -134,6 +137,19 @@ function parseNotification(notif) {
         isDatingLikeAnon: false,
         isMilestone: true,
         milestoneTitle: getMilestoneTitle(p.milestone),
+      };
+    case 'review_request':
+      return {
+        userName: p.seller_name,
+        userLetter: (p.seller_name || '?')[0].toUpperCase(),
+        userColor: COLORS.badgeMarket,
+        text: `оцени сделку по «${p.item_title || ''}»`,
+        thumbnailUrl: null,
+        hasActions: !p.is_review_done,
+        isReviewRequest: true,
+        reviewPayload: p,
+        isDone: !!p.is_review_done,
+        isDatingLikeAnon: false,
       };
     case 'admin_report':
       return {
@@ -227,6 +243,7 @@ const FilterChip = ({ label, active, onClick }) => (
 
 const NotificationItem = React.memo(({ notif }) => {
   const [resolved, setResolved] = useState(false);
+  const [reviewModal, setReviewModal] = useState(null);
   const display = parseNotification(notif);
   const badge = BADGE_CONFIG[notif.type];
   const isMilestone = display.isMilestone;
@@ -310,8 +327,8 @@ const NotificationItem = React.memo(({ notif }) => {
           {formatTime(notif.created_at)}
         </div>
 
-        {/* Quick Actions — только для market_contact */}
-        {display.hasActions && !resolved && (
+        {/* Quick Actions — market_contact */}
+        {notif.type === 'market_contact' && display.hasActions && !resolved && (
           <div className="ns-quick-actions" style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button
               onClick={(e) => { e.stopPropagation(); hapticFeedback('success'); setResolved('accepted'); }}
@@ -339,7 +356,7 @@ const NotificationItem = React.memo(({ notif }) => {
         )}
 
         {/* Resolved state */}
-        {display.hasActions && resolved && (
+        {notif.type === 'market_contact' && display.hasActions && resolved && (
           <div className="ns-quick-actions" style={{
             marginTop: 10, fontSize: 13, fontWeight: 600,
             color: resolved === 'accepted' ? COLORS.success : COLORS.muted,
@@ -348,6 +365,44 @@ const NotificationItem = React.memo(({ notif }) => {
             <Check size={14} strokeWidth={3} />
             {resolved === 'accepted' ? 'Заявка одобрена' : 'Заявка отклонена'}
           </div>
+        )}
+
+        {/* Quick Action — review_request */}
+        {notif.type === 'review_request' && !resolved && (
+          display.isDone ? (
+            <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: COLORS.success, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Check size={14} strokeWidth={3} /> Уже оценено
+            </div>
+          ) : (
+            <div className="ns-quick-actions" style={{ marginTop: 12 }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  hapticFeedback('selection');
+                  setReviewModal(display.reviewPayload);
+                }}
+                style={{
+                  background: COLORS.lime, color: '#000',
+                  border: 'none', borderRadius: 10, padding: '10px 20px',
+                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <Star size={15} strokeWidth={3} /> Оценить
+              </button>
+            </div>
+          )
+        )}
+
+        {reviewModal && (
+          <ReviewModal
+            sellerId={reviewModal.seller_id}
+            sellerName={reviewModal.seller_name}
+            itemId={reviewModal.item_id}
+            itemTitle={reviewModal.item_title}
+            onClose={() => setReviewModal(null)}
+            onSuccess={() => setResolved('done')}
+          />
         )}
       </div>
 

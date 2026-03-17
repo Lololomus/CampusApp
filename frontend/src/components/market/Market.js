@@ -65,7 +65,7 @@ const Market = () => {
   ];
 
   const servicesCategories = [
-    { id: 'all', label: 'Все', emoji: '🔥' },
+    { id: 'all', label: 'Все', emoji: '' },
     { id: 'tutor', label: 'Репетитор', emoji: '👨‍🏫' },
     { id: 'homework', label: 'Курсачи', emoji: '📝' },
     { id: 'repair', label: 'Ремонт', emoji: '🛠️' },
@@ -129,7 +129,7 @@ const Market = () => {
         limit,
         search: searchQuery || undefined,
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
-        item_type: activeTab === 'services' ? 'services' : 'goods',
+        item_type: activeTab === 'services' ? 'service' : 'product',
       };
 
       const result = await getMarketItems(filters);
@@ -266,7 +266,7 @@ const Market = () => {
       <EdgeBlur position="bottom" height={100} zIndex={50} />
 
       <AppHeader
-        title="Барахолка"
+        title="Маркет"
         showSearch={true}
         searchValue={searchQuery}
         searchPlaceholder="Поиск товаров..."

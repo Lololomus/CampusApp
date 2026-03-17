@@ -755,6 +755,7 @@ export async function getMarketItems(filters = {}) {
     const params = { skip, limit };
     if (telegram_id) params.telegram_id = telegram_id;
     
+    if (filters.item_type) params.item_type = filters.item_type;
     if (filters.category && filters.category !== 'all') params.category = filters.category;
     if (filters.price_min) params.price_min = filters.price_min;
     if (filters.price_max) params.price_max = filters.price_max;
@@ -888,6 +889,28 @@ export async function getMarketCategories() {
     console.error('Ошибка получения категорий:', error);
     return { standard: [], popular_custom: [] };
   }
+}
+
+export async function createMarketReview({ seller_id, item_id, rating, text }) {
+  const telegram_id = getTelegramId();
+  const response = await api.post('/market/reviews', { seller_id, item_id, rating, text, source: 'app' }, {
+    params: { telegram_id },
+  });
+  return response.data;
+}
+
+export async function getSellerRating(userId) {
+  try {
+    const response = await api.get(`/users/${userId}/rating`);
+    return response.data;
+  } catch {
+    return { avg: null, count: 0 };
+  }
+}
+
+export async function skipReviewRequest(itemId) {
+  const telegram_id = getTelegramId();
+  await api.post('/market/reviews/skip', null, { params: { telegram_id, item_id: itemId } });
 }
 
 export async function getMyDatingProfile() {

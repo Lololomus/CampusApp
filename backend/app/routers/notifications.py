@@ -18,6 +18,7 @@ from app import models, schemas, crud
 from app.auth_service import require_user
 from app.config import get_settings
 from app.services.analytics_service import record_server_event
+from app.services import notification_service
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,19 @@ async def get_inbox(
             payload = json.loads(n.payload) if isinstance(n.payload, str) else n.payload
         except json.JSONDecodeError:
             payload = {}
+
+        # Для review_request добавить is_review_done — чтобы фронт не показывал кнопку повторно
+        if n.type == 'review_request':
+            item_id = payload.get("item_id")
+            if item_id:
+                review_check = await db.execute(
+                    select(models.MarketReview).where(
+                        models.MarketReview.reviewer_id == user.id,
+                        models.MarketReview.item_id == item_id,
+                    )
+                )
+                payload["is_review_done"] = review_check.scalar_one_or_none() is not None
+
         result.append({
             "id": n.id,
             "type": n.type,
@@ -290,7 +304,7 @@ async def get_pending_followups(
             f.status = 'skipped'
             continue
 
-        if not await _is_target_active(db, f.target_type, f.target_id):
+        if f.type != 'review_request' and not await _is_target_active(db, f.target_type, f.target_id):
             f.status = 'expired'
             continue
 
@@ -351,6 +365,18 @@ async def answer_followup(
             if item and item.status == 'active':
                 item.status = 'sold'
                 logger.info(f"Товар #{f.target_id} помечен как sold (follow-up)")
+
+            # Отправить запрос отзыва покупателю
+            try:
+                payload_data = json.loads(f.payload) if isinstance(f.payload, str) else f.payload
+                buyer_id = payload_data.get("buyer_id")
+                if buyer_id and item:
+                    buyer = await db.get(models.User, buyer_id)
+                    seller = await db.get(models.User, item.seller_id)
+                    if buyer and seller:
+                        await notification_service.notify_review_request(db, buyer, seller, item)
+            except Exception as exc:
+                logger.warning("notify_review_request failed: %s", exc)
 
         elif f.target_type == 'request':
             req = await db.get(models.Request, f.target_id)

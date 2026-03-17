@@ -435,7 +435,13 @@ class MarketItem(Base):
     seller_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
     category = Column(String(50), nullable=False, index=True)
-    
+    item_type = Column(
+        Enum('product', 'service', name='market_item_type_enum'),
+        nullable=False,
+        default='product',
+        index=True
+    )
+
     title = Column(String(100), nullable=False)
     description = Column(Text, nullable=False)
     price = Column(Integer, nullable=False)
@@ -490,17 +496,42 @@ class MarketItem(Base):
 class MarketFavorite(Base):
     """Избранные товары пользователей"""
     __tablename__ = 'market_favorites'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
-    
+
     user = relationship('User', back_populates='market_favorites')
     item = relationship('MarketItem', back_populates='favorites')
-    
+
     __table_args__ = (
         UniqueConstraint('user_id', 'item_id', name='unique_market_favorite'),
+    )
+
+
+class MarketReview(Base):
+    """Отзывы покупателей о продавцах на барахолке"""
+    __tablename__ = 'market_reviews'
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
+    reviewer_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    seller_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    rating = Column(Integer, nullable=False)          # 1–5
+    text = Column(Text, nullable=True)
+    source = Column(String(20), default='app')        # 'bot' | 'app'
+    status = Column(String(20), default='completed')  # 'pending_text' | 'completed'
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+
+    reviewer = relationship('User', foreign_keys=[reviewer_id])
+    seller   = relationship('User', foreign_keys=[seller_id])
+    item     = relationship('MarketItem')
+
+    __table_args__ = (
+        UniqueConstraint('reviewer_id', 'item_id', name='unique_review_per_item'),
+        Index('ix_market_reviews_seller_id', 'seller_id'),
+        Index('ix_market_reviews_item_id', 'item_id'),
     )
 
 

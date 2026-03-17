@@ -9,7 +9,7 @@
 # ✅ Фаза 5.2: image merge → helpers.merge_images()
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, func, or_, update as sa_update
 from typing import Optional, List, Dict
@@ -23,14 +23,24 @@ from app.utils import delete_images, delete_all_media, process_base64_images
 
 logger = logging.getLogger(__name__)
 
-STANDARD_CATEGORIES = [
+PRODUCT_CATEGORIES = [
     'textbooks',
     'electronics',
     'furniture',
     'clothing',
     'sports',
-    'appliances'
+    'appliances',
 ]
+
+SERVICE_CATEGORIES = [
+    'tutor',
+    'homework',
+    'repair',
+    'design',
+    'delivery',
+]
+
+STANDARD_CATEGORIES = PRODUCT_CATEGORIES + SERVICE_CATEGORIES
 
 
 # ===== СОЗДАНИЕ И ОБНОВЛЕНИЕ =====
@@ -60,6 +70,7 @@ async def create_market_item(
     db_item = models.MarketItem(
         seller_id=seller_id,
         category=item.category.strip(),
+        item_type=item.item_type,
         title=item.title,
         description=item.description,
         price=item.price,
@@ -168,6 +179,7 @@ async def get_market_items(
     skip: int = 0,
     limit: int = 20,
     category: Optional[str] = None,
+    item_type: Optional[str] = None,
     price_min: Optional[int] = None,
     price_max: Optional[int] = None,
     condition: Optional[str] = None,
@@ -196,6 +208,9 @@ async def get_market_items(
                 models.MarketItem.description.ilike(search_term)
             )
         )
+
+    if item_type and item_type in ('product', 'service'):
+        query = query.where(models.MarketItem.item_type == item_type)
 
     if category and category != 'all':
         query = query.where(models.MarketItem.category == category)
@@ -370,19 +385,179 @@ async def get_user_market_items(db: AsyncSession, user_id: int, limit: int = 20,
 
 # ===== КАТЕГОРИИ =====
 
-async def get_market_categories(db: AsyncSession) -> Dict[str, List[str]]:
+async def get_market_categories(db: AsyncSession, item_type: Optional[str] = None) -> Dict[str, List[str]]:
     """Список стандартных + популярных кастомных категорий"""
-    result = await db.execute(
+    if item_type == 'service':
+        standard = SERVICE_CATEGORIES
+    elif item_type == 'product':
+        standard = PRODUCT_CATEGORIES
+    else:
+        standard = STANDARD_CATEGORIES
+
+    custom_query = (
         select(models.MarketItem.category, func.count(models.MarketItem.id).label('count'))
         .where(~models.MarketItem.category.in_(STANDARD_CATEGORIES))
-        .group_by(models.MarketItem.category)
-        .order_by(func.count(models.MarketItem.id).desc())
-        .limit(10)
     )
+    if item_type and item_type in ('product', 'service'):
+        custom_query = custom_query.where(models.MarketItem.item_type == item_type)
 
+    custom_query = custom_query.group_by(models.MarketItem.category).order_by(
+        func.count(models.MarketItem.id).desc()
+    ).limit(10)
+
+    result = await db.execute(custom_query)
     popular_custom = [row[0] for row in result.all()]
 
     return {
-        'standard': STANDARD_CATEGORIES,
+        'standard': standard,
         'popular_custom': popular_custom
     }
+
+
+# ===== ОТЗЫВЫ =====
+
+async def create_review(
+    db: AsyncSession,
+    reviewer_id: int,
+    data: schemas.MarketReviewCreate,
+    source: str = 'app',
+    status: str = 'completed',
+) -> models.MarketReview:
+    """Создать отзыв покупателя о продавце."""
+    if reviewer_id == data.seller_id:
+        raise ValueError("Нельзя оставить отзыв себе")
+
+    existing = await db.execute(
+        select(models.MarketReview).where(
+            models.MarketReview.reviewer_id == reviewer_id,
+            models.MarketReview.item_id == data.item_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise IntegrityError(None, None, Exception("unique_review_per_item"))
+
+    review = models.MarketReview(
+        reviewer_id=reviewer_id,
+        seller_id=data.seller_id,
+        item_id=data.item_id,
+        rating=data.rating,
+        text=data.text,
+        source=source,
+        status=status,
+    )
+    db.add(review)
+
+    # Пометить связанное in-app уведомление как прочитанное
+    await db.execute(
+        sa_update(models.Notification).where(
+            models.Notification.recipient_id == reviewer_id,
+            models.Notification.type == 'review_request',
+            models.Notification.is_read == False,
+        ).values(is_read=True, read_at=datetime.utcnow())
+    )
+
+    # Если отзыв через апп — пометить bot followup как skipped
+    if source == 'app':
+        await db.execute(
+            sa_update(models.Followup).where(
+                models.Followup.user_id == reviewer_id,
+                models.Followup.type == 'review_request',
+                models.Followup.target_id == data.item_id,
+                models.Followup.status.in_(['pending', 'sent']),
+            ).values(status='skipped')
+        )
+
+    await db.commit()
+    await db.refresh(review)
+
+    # Загрузить reviewer для ответа
+    await db.execute(select(models.User).where(models.User.id == reviewer_id))
+    result = await db.execute(
+        select(models.MarketReview)
+        .options(selectinload(models.MarketReview.reviewer))
+        .where(models.MarketReview.id == review.id)
+    )
+    return result.scalar_one()
+
+
+async def get_pending_review(db: AsyncSession, reviewer_id: int) -> Optional[models.MarketReview]:
+    """Найти отзыв со статусом pending_text для данного пользователя."""
+    result = await db.execute(
+        select(models.MarketReview).where(
+            models.MarketReview.reviewer_id == reviewer_id,
+            models.MarketReview.status == 'pending_text',
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def add_review_text(
+    db: AsyncSession,
+    review_id: int,
+    reviewer_id: int,
+    text: Optional[str],
+) -> Optional[models.MarketReview]:
+    """Добавить текст к отзыву и завершить его."""
+    result = await db.execute(
+        select(models.MarketReview).where(
+            models.MarketReview.id == review_id,
+            models.MarketReview.reviewer_id == reviewer_id,
+        )
+    )
+    review = result.scalar_one_or_none()
+    if not review:
+        return None
+
+    if text:
+        review.text = text[:300]
+    review.status = 'completed'
+    await db.commit()
+    await db.refresh(review)
+    return review
+
+
+async def skip_review_request(db: AsyncSession, reviewer_id: int, item_id: int) -> None:
+    """Пропустить запрос отзыва — пометить followup как skipped."""
+    await db.execute(
+        sa_update(models.Followup).where(
+            models.Followup.user_id == reviewer_id,
+            models.Followup.type == 'review_request',
+            models.Followup.target_id == item_id,
+            models.Followup.status.in_(['pending', 'sent']),
+        ).values(status='skipped')
+    )
+    await db.commit()
+
+
+async def get_seller_rating(db: AsyncSession, seller_id: int) -> dict:
+    """Средний рейтинг и количество отзывов продавца."""
+    result = await db.execute(
+        select(func.avg(models.MarketReview.rating), func.count(models.MarketReview.id))
+        .where(
+            models.MarketReview.seller_id == seller_id,
+            models.MarketReview.status == 'completed',
+        )
+    )
+    avg, count = result.one()
+    return {'avg': round(float(avg), 1) if avg else None, 'count': count or 0}
+
+
+async def get_item_reviews(
+    db: AsyncSession,
+    item_id: int,
+    limit: int = 20,
+    offset: int = 0,
+) -> List[models.MarketReview]:
+    """Список завершённых отзывов на товар."""
+    result = await db.execute(
+        select(models.MarketReview)
+        .options(selectinload(models.MarketReview.reviewer))
+        .where(
+            models.MarketReview.item_id == item_id,
+            models.MarketReview.status == 'completed',
+        )
+        .order_by(models.MarketReview.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()

@@ -47,10 +47,12 @@ def format_followup(followup_type: str, payload: dict) -> str:
     """Форматирует текст follow-up сообщения (клавиатура добавляется отдельно)."""
     if followup_type == "market_sold":
         title = _escape(payload.get("item_title", "товар"))
+        item_type = payload.get("item_type", "product")
+        question = "Услуга оказана?" if item_type == "service" else "Удалось продать?"
         return (
             f"🤝 <b>Как дела с «{title}»?</b>\n"
             "\n"
-            "Удалось продать?"
+            f"{question}"
         )
 
     if followup_type == "request_resolved":
@@ -59,6 +61,16 @@ def format_followup(followup_type: str, payload: dict) -> str:
             f"📋 <b>Как дела с запросом «{title}»?</b>\n"
             "\n"
             "Вопрос решен?"
+        )
+
+    if followup_type == "review_request":
+        seller = _escape(payload.get("seller_name", "продавца"))
+        title = _escape(payload.get("item_title", "товар"))
+        return (
+            f"⭐ <b>Оцени продавца!</b>\n"
+            "\n"
+            f"Сделка по «{title}» завершена.\n"
+            f"Как прошло с <b>{seller}</b>?"
         )
 
     return "🔔 У тебя есть незакрытый вопрос"
@@ -234,8 +246,8 @@ def _format_admin_report(payload: dict) -> dict:
 
 
 FOLLOWUP_ANSWERS = {
-    ("market_sold", "yes"): "🎉 Отлично! Объявление снято с продажи. Поздравляю!",
-    ("market_sold", "no"): "👌 Понял, товар остается активным. Удачи с продажей!",
+    ("market_sold", "yes"): "🎉 Отлично! Объявление снято. Поздравляю!",
+    ("market_sold", "no"): "👌 Понял, объявление остаётся активным. Удачи!",
     ("market_sold", "in_progress"): "💬 Понял, напишу через пару дней 👌",
     ("request_resolved", "yes"): "🎉 Отлично! Запрос закрыт. Рад, что помогло!",
     ("request_resolved", "no"): "👌 Понял, запрос остается активным. Удачи!",

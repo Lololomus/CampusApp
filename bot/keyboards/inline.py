@@ -123,6 +123,23 @@ def admin_report_kb() -> InlineKeyboardMarkup:
     )
 
 
+def review_stars_kb(item_id: int, seller_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура оценки продавца: звёзды 1–5 + Пропустить."""
+    stars = [
+        InlineKeyboardButton(text=f"{i}⭐", callback_data=f"rv:{item_id}:{seller_id}:{i}")
+        for i in range(1, 6)
+    ]
+    skip = InlineKeyboardButton(text="Пропустить", callback_data=f"rv_skip:{item_id}")
+    return InlineKeyboardMarkup(inline_keyboard=[stars, [skip]])
+
+
+def review_text_skip_kb(review_id: int) -> InlineKeyboardMarkup:
+    """Кнопка пропустить добавление текста отзыва."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Пропустить", callback_data=f"rv_text_skip:{review_id}")
+    ]])
+
+
 def welcome_kb() -> InlineKeyboardMarkup:
     """Кнопка в welcome-сообщении."""
     return InlineKeyboardMarkup(

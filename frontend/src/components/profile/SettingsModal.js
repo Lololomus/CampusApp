@@ -209,7 +209,7 @@ function SettingsModal() {
 
               <ToggleRow
                 icon={<Package size={18} color="#10b981" />}
-                label="Барахолка"
+                label="Маркет"
                 description="Отклики на товары и follow-up"
                 value={settings.market_enabled}
                 onChange={() => handleToggle('market_enabled')}

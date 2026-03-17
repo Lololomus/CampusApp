@@ -148,6 +148,89 @@ class ApiClient:
             logger.error(f"Ошибка mark_followup_sent({followup_id}): {e}")
             return False
 
+    # =============================================
+    # Отзывы (reviews)
+    # =============================================
+
+    async def create_review(
+        self,
+        telegram_id: int,
+        item_id: int,
+        seller_id: int,
+        rating: int,
+        source: str = "bot",
+        status: str = "pending_text",
+    ) -> dict:
+        """Создать отзыв покупателя через бот."""
+        try:
+            session = await self._get_session()
+            async with session.post(
+                "/market/reviews",
+                headers=BOT_HEADERS,
+                params={"telegram_id": telegram_id},
+                json={"item_id": item_id, "seller_id": seller_id, "rating": rating, "source": source},
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                if resp.status == 409:
+                    return {"error": "already_exists"}
+                text = await resp.text()
+                logger.error(f"create_review error {resp.status}: {text}")
+                return {"error": text}
+        except aiohttp.ClientError as e:
+            logger.error(f"Сетевая ошибка create_review: {e}")
+            return {"error": str(e)}
+
+    async def get_pending_review(self, telegram_id: int) -> Optional[dict]:
+        """Получить pending_text отзыв пользователя (для перехвата текста в боте)."""
+        try:
+            session = await self._get_session()
+            async with session.get(
+                "/market/reviews/pending",
+                headers=BOT_HEADERS,
+                params={"telegram_id": telegram_id},
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                return None
+        except aiohttp.ClientError as e:
+            logger.error(f"Сетевая ошибка get_pending_review: {e}")
+            return None
+
+    async def add_review_text(
+        self,
+        telegram_id: int,
+        review_id: int,
+        text: Optional[str],
+    ) -> bool:
+        """Добавить текст к отзыву и завершить его."""
+        try:
+            session = await self._get_session()
+            async with session.patch(
+                f"/market/reviews/{review_id}/text",
+                headers=BOT_HEADERS,
+                params={"telegram_id": telegram_id},
+                json={"text": text},
+            ) as resp:
+                return resp.status == 200
+        except aiohttp.ClientError as e:
+            logger.error(f"Сетевая ошибка add_review_text: {e}")
+            return False
+
+    async def skip_review_request(self, telegram_id: int, item_id: int) -> bool:
+        """Пропустить запрос отзыва (бот)."""
+        try:
+            session = await self._get_session()
+            async with session.post(
+                "/market/reviews/skip",
+                headers=BOT_HEADERS,
+                params={"telegram_id": telegram_id, "item_id": item_id},
+            ) as resp:
+                return resp.status == 200
+        except aiohttp.ClientError as e:
+            logger.error(f"Сетевая ошибка skip_review_request: {e}")
+            return False
+
 
 # Глобальный инстанс (singleton)
 api_client = ApiClient()
