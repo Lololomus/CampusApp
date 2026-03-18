@@ -82,6 +82,8 @@ function PostDetail() {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [commentLikes, setCommentLikes] = useState({});
+  const [localLikesCount, setLocalLikesCount] = useState(0);
+  const [isLikeInFlight, setIsLikeInFlight] = useState(false);
   const isLiked = isRegistered
     ? (likedPosts[viewPostId] ?? post?.is_liked ?? false)
     : Boolean(post?.is_liked);
@@ -145,6 +147,10 @@ function PostDetail() {
       if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    setLocalLikesCount(Number(post?.likes_count || 0));
+  }, [post?.id, post?.likes_count]);
 
   const loadPost = async () => {
     if (!post) setLoading(true);
@@ -267,6 +273,7 @@ function PostDetail() {
   );
 
   const handleLike = async () => {
+    if (!post || isLikeInFlight) return;
     if (!isRegistered) {
       hapticFeedback('light');
       triggerRegistrationPrompt('feed_like');
@@ -276,20 +283,41 @@ function PostDetail() {
     setIsLikeAnimating(true);
     setTimeout(() => setIsLikeAnimating(false), 300);
 
-    const prevCount = post.likes_count || 0;
-    const newIsLiked = !isLiked;
+    const targetPostId = post.id;
+    const prevCount = Number(localLikesCount || 0);
+    const prevIsLiked = Boolean(isLiked);
+    const newIsLiked = !prevIsLiked;
+    const optimisticCount = Math.max(0, newIsLiked ? prevCount + 1 : prevCount - 1);
 
-    setPostLiked(viewPostId, newIsLiked);
-    setPost(p => ({ ...p, likes_count: newIsLiked ? prevCount + 1 : prevCount - 1 }));
+    setIsLikeInFlight(true);
+    setPostLiked(targetPostId, newIsLiked);
+    setLocalLikesCount(optimisticCount);
+    setPost((p) => {
+      if (!p || p.id !== targetPostId) return p;
+      return { ...p, is_liked: newIsLiked, likes_count: optimisticCount };
+    });
 
     try {
-      const result = await likePost(post.id);
-      setPostLiked(viewPostId, result.is_liked);
-      setPost(p => ({ ...p, likes_count: result.likes, is_liked: result.is_liked }));
-      if (setUpdatedPost) setUpdatedPost(viewPostId, { likes_count: result.likes, is_liked: result.is_liked });
+      const result = await likePost(targetPostId);
+      const serverLikes = Number(result.likes || 0);
+      setPostLiked(targetPostId, result.is_liked);
+      setLocalLikesCount(serverLikes);
+      setPost((p) => {
+        if (!p || p.id !== targetPostId) return p;
+        return { ...p, likes_count: serverLikes, is_liked: result.is_liked };
+      });
+      if (setUpdatedPost) {
+        setUpdatedPost(targetPostId, { likes_count: serverLikes, is_liked: result.is_liked });
+      }
     } catch (error) {
-      setPostLiked(viewPostId, !newIsLiked);
-      setPost(p => ({ ...p, likes_count: prevCount }));
+      setPostLiked(targetPostId, prevIsLiked);
+      setLocalLikesCount(prevCount);
+      setPost((p) => {
+        if (!p || p.id !== targetPostId) return p;
+        return { ...p, likes_count: prevCount, is_liked: prevIsLiked };
+      });
+    } finally {
+      setIsLikeInFlight(false);
     }
   };
 
@@ -693,21 +721,27 @@ function PostDetail() {
                     <button
                       style={{
                         ...styles.footerAction,
-                        animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none'
+                        animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
+                        color: isLiked ? theme.colors.accent : '#888888',
+                        borderColor: isLiked ? theme.colors.accent : '#222',
+                        background: '#161618',
+                        padding: '6px 12px',
+                        borderRadius: 20,
                       }}
                       onClick={handleLike}
+                      disabled={isLikeInFlight}
                     >
                       <Heart
-                        size={18}
+                        size={16}
                         fill={isLiked ? theme.colors.accent : 'none'}
-                        color={isLiked ? theme.colors.accent : theme.colors.textSecondary}
-                        strokeWidth={isLiked ? 0 : 2}
+                        color={isLiked ? theme.colors.accent : '#888888'}
+                        strokeWidth={isLiked ? 0 : 2.5}
                       />
                       <span style={{
                         ...styles.statText,
-                        color: isLiked ? theme.colors.accent : theme.colors.textSecondary
+                        color: isLiked ? theme.colors.accent : '#888888'
                       }}>
-                        {post.likes_count || 0}
+                        {localLikesCount}
                       </span>
                     </button>
                   </div>
@@ -1272,6 +1306,7 @@ const styles = {
     border: `1px solid ${theme.colors.premium.border}`,
     backgroundColor: theme.colors.premium.surfaceElevated,
     color: theme.colors.text, fontSize: theme.fontSize.md, resize: 'vertical', outline: 'none',
+    boxSizing: 'border-box',
   },
   editButtons: { display: 'flex', gap: theme.spacing.sm, justifyContent: 'flex-end' },
   saveButton: {

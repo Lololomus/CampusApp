@@ -9,9 +9,11 @@ const MAX_FILE_SIZE_MB = 10; // Макс размер ДО сжатия: 10MB
 const COMPRESSION_OPTIONS = {
   maxSizeMB: 1,
   maxWidthOrHeight: 1280,
-  useWebWorker: true,
+  // useWebWorker: false — в Telegram WebView (iOS) web-worker может быть killed при потере фокуса,
+  // вешая imageCompression Promise навсегда. Main-thread async сжатие надёжнее.
+  useWebWorker: false,
   fileType: 'image/jpeg',
-  initialQuality: 0.8, // ✅ Помогает удалить EXIF
+  initialQuality: 0.8,
   alwaysKeepResolution: false,
 };
 
@@ -80,15 +82,17 @@ const stripExifData = async (file) => {
 /**
  * Сжимает изображение с валидацией и очисткой EXIF
  * @param {File} file - Исходный файл
+ * @param {Function} [onProgress] - Callback прогресса (0–100)
  * @returns {Promise<File>} - Сжатый файл
  */
-export const compressImage = async (file) => {
+export const compressImage = async (file, onProgress) => {
   // 1. Валидация
   validateImageFile(file);
 
   try {
     // 2. Сжатие (библиотека удаляет EXIF благодаря initialQuality)
-    const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
+    const opts = onProgress ? { ...COMPRESSION_OPTIONS, onProgress } : COMPRESSION_OPTIONS;
+    const compressed = await imageCompression(file, opts);
     
     // 3. Дополнительная очистка EXIF через Canvas (paranoid mode)
     const cleaned = await stripExifData(compressed);

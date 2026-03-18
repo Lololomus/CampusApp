@@ -1,7 +1,7 @@
 // ===== FILE: CreateMarketItem.js =====
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Image as ImageIcon, Sparkles, MapPin, Check, Play } from 'lucide-react';
+import { X, Image as ImageIcon, Sparkles, MapPin, Check, Play, Loader2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { createMarketItem } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
@@ -12,34 +12,14 @@ import { toast } from '../shared/Toast';
 import { useSwipe } from '../../hooks/useSwipe';
 import { DragHandle } from '../shared/SwipeableModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
+import { Z_MODAL_CREATE_MARKET_ITEM } from '../../constants/zIndex';
+import { MARKET_CATEGORIES, MARKET_CONDITIONS } from '../../constants/marketConstants';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 
 const MAX_IMAGES = 3;
 const MIN_TITLE_LEN = 3;
 const MIN_DESC_LEN = 10;
 const TOOL_ICON_SIZE = 26;
-
-// Категории товаров и услуг
-const CATEGORIES = [
-  { id: 'textbooks',   label: 'Учебники',  icon: '📚', type: 'product' },
-  { id: 'electronics', label: 'Техника',   icon: '💻', type: 'product' },
-  { id: 'clothing',    label: 'Одежда',    icon: '👕', type: 'product' },
-  { id: 'dorm',        label: 'Общага',    icon: '🛋️', type: 'product' },
-  { id: 'hobby',       label: 'Хобби',     icon: '🎸', type: 'product' },
-  { id: 'other_g',     label: 'Другое',    icon: '📦', type: 'product' },
-  { id: 'tutor',       label: 'Репетитор', icon: '👨‍🏫', type: 'service' },
-  { id: 'homework',    label: 'Курсачи',   icon: '📝', type: 'service' },
-  { id: 'repair',      label: 'Ремонт',    icon: '🛠️', type: 'service' },
-  { id: 'design',      label: 'Дизайн',    icon: '🎨', type: 'service' },
-  { id: 'delivery',    label: 'Курьер',    icon: '🏃', type: 'service' },
-  { id: 'other_s',     label: 'Другое',    icon: '✨', type: 'service' },
-];
-
-const CONDITIONS = [
-  { id: 'new',      label: 'Новое',     icon: '✨' },
-  { id: 'like_new', label: 'Как новое', icon: '⭐' },
-  { id: 'good',     label: 'Хорошее',   icon: '👍' },
-  { id: 'fair',     label: 'Нормальное',icon: '👌' },
-];
 
 const CreateMarketItem = ({ onClose, onSuccess }) => {
   const { user, addMarketItem } = useStore();
@@ -56,6 +36,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const [videoFile, setVideoFile] = useState(null);
   const [videoThumb, setVideoThumb] = useState(null);
   const [loading, setLoading]   = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // --- Суб-шиты ---
   const [activeSubSheet, setActiveSubSheet] = useState(null); // 'cond' | 'loc' | null
@@ -75,6 +56,60 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   useEffect(() => {
     const t = setTimeout(() => setIsVisible(true), 20);
     return () => clearTimeout(t);
+  }, []);
+
+  // Скролл-фриз страницы при открытии
+  useEffect(() => {
+    const body = document.body;
+    const root = document.getElementById('root');
+    const html = document.documentElement;
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+
+    const prevBodyStyle = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    };
+    const prevRootOverflow = root?.style.overflow || '';
+    const prevHtmlOverflow = html.style.overflow;
+    const shouldRestoreScroll = prevBodyStyle.position !== 'fixed';
+
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    html.style.overflow = 'hidden';
+    if (root) root.style.overflow = 'hidden';
+
+    const restoreScrollPosition = () => {
+      const prevScrollBehavior = html.style.scrollBehavior;
+      html.style.scrollBehavior = 'auto';
+      window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+        setTimeout(() => {
+          window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+          html.style.scrollBehavior = prevScrollBehavior;
+        }, 0);
+      });
+    };
+
+    return () => {
+      body.style.overflow = prevBodyStyle.overflow;
+      body.style.position = prevBodyStyle.position;
+      body.style.top = prevBodyStyle.top;
+      body.style.left = prevBodyStyle.left;
+      body.style.right = prevBodyStyle.right;
+      body.style.width = prevBodyStyle.width;
+      html.style.overflow = prevHtmlOverflow;
+      if (root) root.style.overflow = prevRootOverflow;
+      if (shouldRestoreScroll) restoreScrollPosition();
+    };
   }, []);
 
   const registerMediaTask = (taskPromise) => {
@@ -110,42 +145,6 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     videoFileRef.current = videoFile;
   }, [videoFile]);
 
-  // Инжектируем CSS-переменные и анимации (как в CreateContentModal)
-  useEffect(() => {
-    if (document.getElementById('create-market-vars')) return;
-    const style = document.createElement('style');
-    style.id = 'create-market-vars';
-    style.textContent = `
-      :root {
-        --cm-primary: ${theme.colors.premium.primary};
-        --cm-surface: ${theme.colors.premium.surfaceElevated};
-        --cm-surface-elevated: ${theme.colors.premium.surfaceHover};
-        --cm-border: ${theme.colors.premium.border};
-        --cm-text-muted: ${theme.colors.premium.textMuted};
-        --cm-text-body: ${theme.colors.premium.textBody};
-        --cm-error: ${theme.colors.error};
-      }
-      .cm-spring-btn {
-        transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s;
-        cursor: pointer;
-      }
-      .cm-spring-btn:active { transform: scale(0.92); opacity: 0.85; }
-      .cm-hide-scroll::-webkit-scrollbar { display: none; }
-      .cm-hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-      @keyframes cm-slide-up {
-        from { transform: translateY(100%); }
-        to   { transform: translateY(0); }
-      }
-      @keyframes cm-pulse {
-        0%   { box-shadow: 0 0 0 0 rgba(212,255,0,0.15); }
-        70%  { box-shadow: 0 0 0 6px rgba(212,255,0,0); }
-        100% { box-shadow: 0 0 0 0 rgba(212,255,0,0); }
-      }
-      .cm-pulse { animation: cm-pulse 3s infinite; }
-    `;
-    document.head.appendChild(style);
-  }, []);
-
   const hasAnyContent = () =>
     title.trim().length > 0 || desc.trim().length > 0 || price !== '' || photos.length > 0;
 
@@ -164,6 +163,17 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     },
     isModal: true,
     threshold: 120,
+  });
+
+  // Telegram back button
+  useTelegramScreen({
+    id: 'create-market-item',
+    priority: Z_MODAL_CREATE_MARKET_ITEM + 5,
+    back: {
+      visible: true,
+      onClick: handleClose,
+    },
+    main: { visible: false },
   });
 
   const canPublish =
@@ -203,46 +213,42 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const handleFileChange = (e) => {
     const task = (async () => {
       const files = e.target.files;
-    const clearMarketFileInput = () => {
-      if (!fileInputRef.current) return;
-      fileInputRef.current.value = '';
-    };
-    if (!files || files.length === 0) return;
-    // Handle video separately (no compression on client; backend processes it)
-    const videoCandidate = Array.from(files).find((file) => isVideoFileCandidate(file));
-    if (videoCandidate) {
-      const validation = await validateVideoFile(videoCandidate);
-      if (!validation.valid) {
-        hapticFeedback('error');
-        toast.error(validation.error);
-        clearMarketFileInput();
+      const clearInput = () => {
+        if (!fileInputRef.current) return;
+        fileInputRef.current.value = '';
+      };
+      if (!files || files.length === 0) return;
+      const videoCandidate = Array.from(files).find((file) => isVideoFileCandidate(file));
+      if (videoCandidate) {
+        const validation = await validateVideoFile(videoCandidate);
+        if (!validation.valid) {
+          hapticFeedback('error');
+          toast.error(validation.error);
+          clearInput();
+          return;
+        }
+        setVideoFile(videoCandidate);
+        captureVideoThumbnail(videoCandidate).then(setVideoThumb);
+        hapticFeedback('light');
+        clearInput();
         return;
       }
-
-      setVideoFile(videoCandidate);
-      captureVideoThumbnail(videoCandidate).then(setVideoThumb);
-      hapticFeedback('light');
-      clearMarketFileInput();
-      return;
-    }
-
-    if (photos.length + files.length > MAX_IMAGES) {
-      toast.warning(`Максимум ${MAX_IMAGES} фото`);
-      return;
-    }
-    setLoading(true);
-    try {
-      const processed = await processImageFiles(files);
-      setPhotos(prev => [...prev, ...processed]);
-      hapticFeedback('light');
-    } catch {
-      toast.error('Ошибка загрузки фото');
-    } finally {
-      setLoading(false);
-      clearMarketFileInput();
-    }
+      if (photos.length + files.length > MAX_IMAGES) {
+        toast.warning(`Максимум ${MAX_IMAGES} фото`);
+        return;
+      }
+      setLoading(true);
+      try {
+        const processed = await processImageFiles(files);
+        setPhotos(prev => [...prev, ...processed]);
+        hapticFeedback('light');
+      } catch {
+        toast.error('Ошибка загрузки фото');
+      } finally {
+        setLoading(false);
+        clearInput();
+      }
     })();
-
     registerMediaTask(task);
   };
 
@@ -306,6 +312,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     }
 
     setLoading(true);
+    setUploadProgress(10);
     hapticFeedback('heavy');
     try {
       const formData = new FormData();
@@ -320,7 +327,9 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       currentPhotos.forEach((p) => { if (p.file) formData.append('images', p.file); });
       if (currentVideoFile) formData.append('video', currentVideoFile);
 
+      setUploadProgress(50);
       const result = await createMarketItem(formData);
+      setUploadProgress(100);
       addMarketItem(result);
       hapticFeedback('success');
       toast.success('Товар опубликован');
@@ -331,10 +340,11 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       hapticFeedback('error');
     } finally {
       setLoading(false);
+      setUploadProgress(0);
     }
   };
 
-  const handleClose = () => {
+  function handleClose() {
     if (loading) return;
     if (hasAnyContent()) {
       hapticFeedback('light');
@@ -342,17 +352,81 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       return;
     }
     confirmClose();
-  };
+  }
 
   // Текст выбранного состояния
-  const condLabel = CONDITIONS.find(c => c.id === condition);
+  const condLabel = MARKET_CONDITIONS.find(c => c.id === condition);
+
+  // --- Слайд с категориями + полями (общий для product/service) ---
+  const renderSlide = (type) => (
+    <div style={s.slide}>
+      <div style={s.catGrid}>
+        {MARKET_CATEGORIES.filter(c => c.type === type).map(c => {
+          const isSelected = cat === c.id;
+          return (
+            <button key={c.id}
+              onClick={() => { hapticFeedback('medium'); setCat(c.id); }}
+              style={{
+                ...s.catBtn,
+                borderColor: isSelected ? theme.colors.premium.primary : 'transparent',
+                background: isSelected ? 'rgba(212,255,0,0.1)' : theme.colors.premium.surfaceHover,
+                color: isSelected ? theme.colors.premium.primary : '#fff',
+                transition: 'opacity 0.15s, background-color 0.2s, border-color 0.2s',
+              }}>
+              <span>{c.icon}</span><span>{c.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      {videoFile && (
+        <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
+          {videoThumb ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />}
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
+            </div>
+          </div>
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
+            <button style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0, transition: 'opacity 0.15s' }} onClick={() => { setVideoFile(null); setVideoThumb(null); }}><X size={13} /></button>
+          </div>
+        </div>
+      )}
+      {photos.length > 0 && (
+        <div className="market-hide-scroll" style={s.photosRow}>
+          {photos.map((p, i) => (
+            <div key={i} style={s.photoThumb}>
+              <img src={p.preview} alt="" style={s.photoImg} />
+              <button style={{ ...s.photoRemove, transition: 'opacity 0.15s' }} onClick={() => removePhoto(i)}><X size={14} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={s.priceRow}>
+        <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+          <span style={s.priceSizer}>{price || 'Цена'}</span>
+          <input type="text" inputMode="numeric" placeholder="Цена" value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ''))} style={s.priceInput} />
+        </div>
+        {price && <span style={s.priceCurrency}>₽</span>}
+      </div>
+      <div className="cm-title-wrap" data-replicated-value={title}>
+        <textarea ref={itemType === type ? titleRef : null} placeholder={type === 'product' ? 'Название товара...' : 'Название услуги...'} value={title} onChange={handleTitleChange} maxLength={100} rows={1} style={s.titleInput} />
+      </div>
+      <div className="cm-grow-wrap" data-replicated-value={desc} style={s.growWrap}>
+        <textarea ref={itemType === type ? descRef : null} placeholder={type === 'product' ? 'Опишите состояние, комплектацию и причины продажи...' : 'Опишите услугу, опыт и условия работы...'} value={desc} onChange={handleDescChange} style={s.descTextarea} />
+      </div>
+      <div style={s.metaChips}>
+        {type === 'product' && condition && <div style={{ ...s.metaChip, transition: 'opacity 0.15s' }} onClick={() => setActiveSubSheet('cond')}>{condLabel?.icon} {condLabel?.label}</div>}
+        {location && <div style={{ ...s.metaChip, transition: 'opacity 0.15s' }} onClick={() => setActiveSubSheet('loc')}><MapPin size={14} color={theme.colors.premium.primary} style={{ marginRight: 4 }} />{location}</div>}
+      </div>
+    </div>
+  );
 
   const sheet = (
     <div
       style={{ ...s.backdrop, opacity: isVisible ? 1 : 0 }}
       onClick={handleClose}
     >
-      {/* Основной шит */}
       <div
         ref={sheetRef}
         style={{
@@ -362,6 +436,13 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
         }}
         onClick={e => e.stopPropagation()}
       >
+        {/* Прогресс-бар */}
+        {loading && uploadProgress > 0 && (
+          <div style={s.progressBar}>
+            <div style={{ ...s.progressFill, width: `${uploadProgress}%` }} />
+          </div>
+        )}
+
         {/* Drag handle */}
         <DragHandle handlers={swipeHandlers} gap={0} />
 
@@ -369,140 +450,34 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
         <div style={s.switcherWrap}>
           <div style={s.switcher}>
             <button
-              className="cm-spring-btn"
-              style={{ ...s.switcherBtn, ...(itemType === 'product' ? s.switcherBtnActive : {}) }}
+              style={{
+                ...s.switcherBtn,
+                ...(itemType === 'product' ? s.switcherBtnActive : {}),
+                transition: 'background-color 0.2s, color 0.2s',
+              }}
               onClick={() => { hapticFeedback('light'); setItemType('product'); }}
             >Товар</button>
             <button
-              className="cm-spring-btn"
-              style={{ ...s.switcherBtn, ...(itemType === 'service' ? s.switcherBtnActive : {}) }}
+              style={{
+                ...s.switcherBtn,
+                ...(itemType === 'service' ? s.switcherBtnActive : {}),
+                transition: 'background-color 0.2s, color 0.2s',
+              }}
               onClick={() => { hapticFeedback('light'); setItemType('service'); }}
             >Услуга</button>
           </div>
         </div>
 
         {/* Прокручиваемый контент */}
-        <div className="cm-hide-scroll" style={s.scroll}>
+        <div className="market-hide-scroll" style={s.scroll}>
           <div style={{
             display: 'flex',
             width: '200%',
             transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
             transform: `translateX(${itemType === 'product' ? '0' : '-50%'})`,
           }}>
-
-            {/* Слайд — Товар */}
-            <div style={s.slide}>
-              <div style={s.catGrid}>
-                {CATEGORIES.filter(c => c.type === 'product').map(c => {
-                  const isSelected = cat === c.id;
-                  return (
-                    <button key={c.id} className="cm-spring-btn"
-                      onClick={() => { hapticFeedback('medium'); setCat(c.id); }}
-                      style={{ ...s.catBtn, borderColor: isSelected ? 'var(--cm-primary)' : 'transparent', background: isSelected ? 'rgba(212,255,0,0.1)' : 'var(--cm-surface-elevated)', color: isSelected ? 'var(--cm-primary)' : '#fff' }}>
-                      <span>{c.icon}</span><span>{c.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {videoFile && (
-                <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
-                  {videoThumb ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />}
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
-                    </div>
-                  </div>
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                    <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
-                    <button className="cm-spring-btn" style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }} onClick={() => { setVideoFile(null); setVideoThumb(null); }}><X size={13} /></button>
-                  </div>
-                </div>
-              )}
-              {photos.length > 0 && (
-                <div className="cm-hide-scroll" style={s.photosRow}>
-                  {photos.map((p, i) => (
-                    <div key={i} style={s.photoThumb}>
-                      <img src={p.preview} alt="" style={s.photoImg} />
-                      <button className="cm-spring-btn" style={s.photoRemove} onClick={() => removePhoto(i)}><X size={14} /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={s.priceRow}>
-                <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-                  <span style={s.priceSizer}>{price || 'Цена'}</span>
-                  <input type="text" inputMode="numeric" placeholder="Цена" value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ''))} style={s.priceInput} />
-                </div>
-                {price && <span style={s.priceCurrency}>₽</span>}
-              </div>
-              <div className="cm-title-wrap" data-replicated-value={title}>
-                <textarea ref={itemType === 'product' ? titleRef : null} placeholder="Название товара..." value={title} onChange={handleTitleChange} maxLength={100} rows={1} style={s.titleInput} />
-              </div>
-              <div className="cm-grow-wrap" data-replicated-value={desc} style={s.growWrap}>
-                <textarea ref={itemType === 'product' ? descRef : null} placeholder="Опишите состояние, комплектацию и причины продажи..." value={desc} onChange={handleDescChange} style={s.descTextarea} />
-              </div>
-              <div style={s.metaChips}>
-                {condition && <div className="cm-spring-btn" style={s.metaChip} onClick={() => setActiveSubSheet('cond')}>{condLabel?.icon} {condLabel?.label}</div>}
-                {location && <div className="cm-spring-btn" style={s.metaChip} onClick={() => setActiveSubSheet('loc')}><MapPin size={14} color="var(--cm-primary)" style={{ marginRight: 4 }} />{location}</div>}
-              </div>
-            </div>
-
-            {/* Слайд — Услуга */}
-            <div style={s.slide}>
-              <div style={s.catGrid}>
-                {CATEGORIES.filter(c => c.type === 'service').map(c => {
-                  const isSelected = cat === c.id;
-                  return (
-                    <button key={c.id} className="cm-spring-btn"
-                      onClick={() => { hapticFeedback('medium'); setCat(c.id); }}
-                      style={{ ...s.catBtn, borderColor: isSelected ? 'var(--cm-primary)' : 'transparent', background: isSelected ? 'rgba(212,255,0,0.1)' : 'var(--cm-surface-elevated)', color: isSelected ? 'var(--cm-primary)' : '#fff' }}>
-                      <span>{c.icon}</span><span>{c.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {videoFile && (
-                <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
-                  {videoThumb ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />}
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
-                    </div>
-                  </div>
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                    <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
-                    <button className="cm-spring-btn" style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }} onClick={() => { setVideoFile(null); setVideoThumb(null); }}><X size={13} /></button>
-                  </div>
-                </div>
-              )}
-              {photos.length > 0 && (
-                <div className="cm-hide-scroll" style={s.photosRow}>
-                  {photos.map((p, i) => (
-                    <div key={i} style={s.photoThumb}>
-                      <img src={p.preview} alt="" style={s.photoImg} />
-                      <button className="cm-spring-btn" style={s.photoRemove} onClick={() => removePhoto(i)}><X size={14} /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={s.priceRow}>
-                <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-                  <span style={s.priceSizer}>{price || 'Цена'}</span>
-                  <input type="text" inputMode="numeric" placeholder="Цена" value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ''))} style={s.priceInput} />
-                </div>
-                {price && <span style={s.priceCurrency}>₽</span>}
-              </div>
-              <div className="cm-title-wrap" data-replicated-value={title}>
-                <textarea ref={itemType === 'service' ? titleRef : null} placeholder="Название услуги..." value={title} onChange={handleTitleChange} maxLength={100} rows={1} style={s.titleInput} />
-              </div>
-              <div className="cm-grow-wrap" data-replicated-value={desc} style={s.growWrap}>
-                <textarea ref={itemType === 'service' ? descRef : null} placeholder="Опишите услугу, опыт и условия работы..." value={desc} onChange={handleDescChange} style={s.descTextarea} />
-              </div>
-              <div style={s.metaChips}>
-                {location && <div className="cm-spring-btn" style={s.metaChip} onClick={() => setActiveSubSheet('loc')}><MapPin size={14} color="var(--cm-primary)" style={{ marginRight: 4 }} />{location}</div>}
-              </div>
-            </div>
-
+            {renderSlide('product')}
+            {renderSlide('service')}
           </div>
         </div>
 
@@ -511,19 +486,25 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
           <div style={s.toolGroup}>
             {/* Фото */}
             <button
-              className={`cm-spring-btn ${photos.length === 0 ? 'cm-pulse' : ''}`}
-              style={photos.length > 0 ? { ...s.toolBtn, ...s.toolBtnActive } : s.toolBtn}
+              style={{
+                ...s.toolBtn,
+                ...(photos.length > 0 ? s.toolBtnActive : {}),
+                transition: 'opacity 0.15s, background-color 0.2s',
+              }}
               onClick={handlePhotoAdd}
               disabled={loading}
             >
-              {loading ? <div style={s.spinner} /> : <ImageIcon size={TOOL_ICON_SIZE} />}
+              {loading && uploadProgress === 0 ? <div style={s.spinner} /> : <ImageIcon size={TOOL_ICON_SIZE} />}
             </button>
 
             {/* Состояние (только для товаров) */}
             {itemType === 'product' && (
               <button
-                className={`cm-spring-btn ${!condition ? 'cm-pulse' : ''}`}
-                style={condition || activeSubSheet === 'cond' ? { ...s.toolBtn, ...s.toolBtnActive } : s.toolBtn}
+                style={{
+                  ...s.toolBtn,
+                  ...(condition || activeSubSheet === 'cond' ? s.toolBtnActive : {}),
+                  transition: 'opacity 0.15s, background-color 0.2s',
+                }}
                 onClick={() => setActiveSubSheet(activeSubSheet === 'cond' ? null : 'cond')}
               >
                 <Sparkles size={TOOL_ICON_SIZE} />
@@ -532,8 +513,11 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
             {/* Локация */}
             <button
-              className="cm-spring-btn"
-              style={location || activeSubSheet === 'loc' ? { ...s.toolBtn, ...s.toolBtnActive } : s.toolBtn}
+              style={{
+                ...s.toolBtn,
+                ...(location || activeSubSheet === 'loc' ? s.toolBtnActive : {}),
+                transition: 'opacity 0.15s, background-color 0.2s',
+              }}
               onClick={() => setActiveSubSheet(activeSubSheet === 'loc' ? null : 'loc')}
             >
               <MapPin size={TOOL_ICON_SIZE} />
@@ -542,16 +526,16 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
           {/* Кнопка публикации */}
           <button
-            className="cm-spring-btn"
             disabled={loading}
             onClick={handleSubmit}
             style={{
               ...s.publishBtn,
-              background: canPublish ? 'var(--cm-primary)' : 'var(--cm-surface-elevated)',
-              color: canPublish ? '#000' : 'var(--cm-text-muted)',
+              background: canPublish ? 'rgba(212,255,0,0.15)' : theme.colors.premium.surfaceHover,
+              color: canPublish ? theme.colors.premium.primary : theme.colors.premium.textMuted,
+              transition: 'opacity 0.15s, background-color 0.2s',
             }}
           >
-            {loading ? <div style={s.spinner} /> : <Check size={TOOL_ICON_SIZE} />}
+            {loading ? <Loader2 size={TOOL_ICON_SIZE} style={{ animation: 'cm-spin 0.7s linear infinite' }} /> : <Check size={TOOL_ICON_SIZE} />}
           </button>
         </div>
 
@@ -563,18 +547,16 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
           <div style={s.subSheetHeader}>
             <span style={s.subSheetTitle}>Состояние</span>
             <button
-              className="cm-spring-btn"
-              style={s.subSheetClose}
+              style={{ ...s.subSheetClose, transition: 'opacity 0.15s' }}
               onClick={() => setActiveSubSheet(null)}
             >
               <X size={16} />
             </button>
           </div>
-          <div className="cm-hide-scroll" style={{ overflowY: 'auto' }}>
-            {CONDITIONS.map(c => (
+          <div className="market-hide-scroll" style={{ overflowY: 'auto' }}>
+            {MARKET_CONDITIONS.map(c => (
               <button
                 key={c.id}
-                className="cm-spring-btn"
                 onClick={() => {
                   hapticFeedback('light');
                   setCondition(c.id);
@@ -582,15 +564,16 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
                 }}
                 style={{
                   ...s.condBtn,
-                  background: condition === c.id ? 'rgba(212,255,0,0.1)' : 'var(--cm-surface-elevated)',
-                  color: condition === c.id ? 'var(--cm-primary)' : '#fff',
+                  background: condition === c.id ? 'rgba(212,255,0,0.1)' : theme.colors.premium.surfaceHover,
+                  color: condition === c.id ? theme.colors.premium.primary : '#fff',
+                  transition: 'opacity 0.15s, background-color 0.15s',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 16, fontWeight: 600 }}>
                   <span style={{ fontSize: 18 }}>{c.icon}</span>
                   {c.label}
                 </div>
-                {condition === c.id && <Check size={20} color="var(--cm-primary)" />}
+                {condition === c.id && <Check size={20} color={theme.colors.premium.primary} />}
               </button>
             ))}
           </div>
@@ -604,15 +587,14 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
           <div style={s.subSheetHeader}>
             <span style={s.subSheetTitle}>Где забирать?</span>
             <button
-              className="cm-spring-btn"
-              style={s.subSheetClose}
+              style={{ ...s.subSheetClose, transition: 'opacity 0.15s' }}
               onClick={() => setActiveSubSheet(null)}
             >
               <X size={16} />
             </button>
           </div>
           <div style={{ position: 'relative' }}>
-            <MapPin size={20} color="var(--cm-text-muted)" style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <MapPin size={20} color={theme.colors.premium.textMuted} style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             <input
               type="text"
               placeholder="Аудитория, общага или метро..."
@@ -622,8 +604,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
             />
           </div>
           <button
-            className="cm-spring-btn"
-            style={s.locSaveBtn}
+            style={{ ...s.locSaveBtn, transition: 'opacity 0.15s' }}
             onClick={() => setActiveSubSheet(null)}
           >
             Сохранить
@@ -683,6 +664,8 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
           resize: none;
           overflow: hidden;
         }
+
+        @keyframes cm-spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );
@@ -711,16 +694,16 @@ const s = {
   backdrop: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(0,0,0,0.6)',
+    background: 'rgba(0,0,0,0.75)',
     backdropFilter: 'blur(4px)',
-    zIndex: 3000,
+    zIndex: Z_MODAL_CREATE_MARKET_ITEM,
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'flex-end',
     transition: 'opacity 0.3s ease',
   },
   sheet: {
-    background: 'var(--cm-surface)',
+    background: theme.colors.premium.surfaceElevated,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     height: '92%',
@@ -729,15 +712,29 @@ const s = {
     position: 'relative',
     overflow: 'hidden',
   },
+  progressBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    background: 'rgba(255,255,255,0.08)',
+    zIndex: 2,
+  },
+  progressFill: {
+    height: '100%',
+    background: `linear-gradient(90deg, ${theme.colors.premium.primary} 0%, #8fff00 100%)`,
+    transition: 'width 0.3s ease',
+  },
   // Таб-свитчер
   switcherWrap: {
     padding: '12px 16px 10px',
-    borderBottom: '1px solid var(--cm-border)',
+    borderBottom: `1px solid ${theme.colors.premium.border}`,
     flexShrink: 0,
   },
   switcher: {
     display: 'flex',
-    background: 'var(--cm-surface-elevated)',
+    background: theme.colors.premium.surfaceHover,
     borderRadius: 12,
     padding: 4,
   },
@@ -746,25 +743,22 @@ const s = {
     border: 'none',
     borderRadius: 8,
     background: 'transparent',
-    color: 'var(--cm-text-muted)',
+    color: theme.colors.premium.textMuted,
     padding: '8px',
     fontWeight: 700,
     fontSize: 15,
     cursor: 'pointer',
-    transition: 'all 0.2s',
   },
   switcherBtnActive: {
-    background: 'var(--cm-primary)',
+    background: theme.colors.premium.primary,
     color: '#000',
   },
-
   // Скролл-область
   scroll: {
     flex: 1,
     overflowY: 'auto',
     overflowX: 'hidden',
   },
-
   slide: {
     width: '50%',
     flexShrink: 0,
@@ -773,7 +767,6 @@ const s = {
     padding: '0 20px 150px',
     boxSizing: 'border-box',
   },
-
   // Категории
   catGrid: {
     display: 'grid',
@@ -785,7 +778,7 @@ const s = {
   catBtn: {
     border: '1px solid transparent',
     borderRadius: 20,
-    background: 'var(--cm-surface-elevated)',
+    background: theme.colors.premium.surfaceHover,
     color: '#fff',
     padding: '8px 10px',
     fontSize: 13,
@@ -798,7 +791,6 @@ const s = {
     minWidth: 0,
     overflow: 'hidden',
   },
-
   // Фото
   photosRow: {
     display: 'grid',
@@ -835,7 +827,6 @@ const s = {
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
     flexShrink: 0,
   },
-
   // Цена
   priceRow: {
     display: 'flex',
@@ -862,17 +853,16 @@ const s = {
     fontFamily: 'inherit',
     background: 'transparent',
     border: 'none',
-    color: 'var(--cm-primary)',
+    color: theme.colors.premium.primary,
     outline: 'none',
     padding: 0,
   },
   priceCurrency: {
     fontSize: 36,
     fontWeight: 800,
-    color: 'var(--cm-primary)',
+    color: theme.colors.premium.primary,
     marginLeft: 8,
   },
-
   // Название
   titleInput: {
     background: 'transparent',
@@ -883,7 +873,6 @@ const s = {
     marginTop: 16,
     width: '100%',
   },
-
   // Описание grow-wrap
   growWrap: {
     marginTop: 12,
@@ -893,14 +882,13 @@ const s = {
     width: '100%',
     background: 'transparent',
     border: 'none',
-    color: 'var(--cm-text-body)',
+    color: theme.colors.premium.textBody,
     fontSize: 16,
     outline: 'none',
     minHeight: 80,
     lineHeight: 1.4,
     padding: 0,
   },
-
   // Чипы метаданных
   metaChips: {
     display: 'flex',
@@ -909,8 +897,8 @@ const s = {
     marginTop: 16,
   },
   metaChip: {
-    background: 'var(--cm-surface-elevated)',
-    border: '1px solid var(--cm-border)',
+    background: theme.colors.premium.surfaceHover,
+    border: `1px solid ${theme.colors.premium.border}`,
     color: '#fff',
     padding: '6px 12px',
     borderRadius: 12,
@@ -920,16 +908,15 @@ const s = {
     alignItems: 'center',
     cursor: 'pointer',
   },
-
   // Нижний тулбар
   toolbar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 'calc(12px) 16px calc(12px + env(safe-area-inset-bottom, 20px))',
-    background: 'var(--cm-surface)',
-    borderTop: '1px solid var(--cm-border)',
+    padding: 'calc(12px) 16px calc(12px + var(--screen-bottom-offset))',
+    background: theme.colors.premium.surfaceElevated,
+    borderTop: `1px solid ${theme.colors.premium.border}`,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -937,23 +924,22 @@ const s = {
   },
   toolGroup: {
     display: 'flex',
-    gap: 8,
+    gap: 12,
   },
   toolBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    background: 'var(--cm-surface-elevated)',
-    color: 'var(--cm-text-muted)',
+    background: theme.colors.premium.surfaceHover,
+    color: theme.colors.premium.textMuted,
     border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    transition: 'all 0.2s',
     flexShrink: 0,
   },
-  toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--cm-primary)' },
+  toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: theme.colors.premium.primary },
   publishBtn: {
     width: 40,
     height: 40,
@@ -963,10 +949,8 @@ const s = {
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    transition: 'all 0.2s',
     flexShrink: 0,
   },
-
   // Sub-sheet
   subSheet: {
     position: 'absolute',
@@ -974,11 +958,11 @@ const s = {
     left: 0,
     right: 0,
     zIndex: 20,
-    background: 'var(--cm-surface)',
-    borderTop: '1px solid var(--cm-border)',
+    background: theme.colors.premium.surfaceElevated,
+    borderTop: `1px solid ${theme.colors.premium.border}`,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: '24px 16px calc(env(safe-area-inset-bottom,20px) + 24px)',
+    padding: 'calc(24px) 16px calc(24px + var(--screen-bottom-offset))',
     display: 'flex',
     flexDirection: 'column',
     maxHeight: '70%',
@@ -997,7 +981,7 @@ const s = {
     color: '#fff',
   },
   subSheetClose: {
-    background: 'var(--cm-surface-elevated)',
+    background: theme.colors.premium.surfaceHover,
     border: 'none',
     width: 32,
     height: 32,
@@ -1017,15 +1001,13 @@ const s = {
     border: 'none',
     marginBottom: 4,
     cursor: 'pointer',
-    transition: 'background 0.15s',
     width: '100%',
   },
-
   // Локация
   locInput: {
     width: '100%',
-    background: 'var(--cm-surface-elevated)',
-    border: '1px solid var(--cm-border)',
+    background: theme.colors.premium.surfaceHover,
+    border: `1px solid ${theme.colors.premium.border}`,
     color: '#fff',
     fontSize: 16,
     padding: '16px 20px 16px 52px',
@@ -1039,7 +1021,7 @@ const s = {
     width: '100%',
     padding: 16,
     borderRadius: 16,
-    background: 'var(--cm-primary)',
+    background: theme.colors.premium.primary,
     color: '#000',
     fontWeight: 700,
     fontSize: 16,
@@ -1047,7 +1029,6 @@ const s = {
     marginTop: 12,
     cursor: 'pointer',
   },
-
   spinner: {
     width: 20,
     height: 20,
@@ -1059,5 +1040,3 @@ const s = {
 };
 
 export default CreateMarketItem;
-
-

@@ -23,7 +23,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS } from '../../types';
 import DropdownMenu from '../DropdownMenu';
-import PhotoViewer from '../shared/PhotoViewer';
+import MediaViewer from '../shared/MediaViewer';
 import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
@@ -104,7 +104,15 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
     return resolveImageUrl(filename, 'images');
   };
 
-  const viewerPhotos = useMemo(() => images.map((img) => getImageUrl(img)), [images]);
+  const viewerMedia = useMemo(
+    () => images
+      .map((img) => ({ type: 'image', url: getImageUrl(img) })),
+    [images]
+  );
+  const viewerMeta = useMemo(() => ({
+    author: safeRequest?.author || null,
+    caption: safeRequest?.title || safeRequest?.body || null,
+  }), [safeRequest?.author, safeRequest?.title, safeRequest?.body]);
   const isOwner = useMemo(() => isEntityOwner('request', safeRequest, user), [safeRequest, user]);
   const actionSet = useMemo(
     () => getEntityActionSet('request', isOwner, { shareEnabled: false }),
@@ -649,9 +657,10 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
       />
 
       {isPhotoViewerOpen && (
-        <PhotoViewer
-          photos={viewerPhotos}
+        <MediaViewer
+          mediaList={viewerMedia}
           initialIndex={currentImageIndex}
+          meta={viewerMeta}
           onClose={() => {
             setIsPhotoViewerOpen(false);
             setIsPhotoViewerJustClosed(true);

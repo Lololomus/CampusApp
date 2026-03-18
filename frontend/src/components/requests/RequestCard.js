@@ -18,7 +18,7 @@ import theme from '../../theme';
 import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS } from '../../types';
 import DropdownMenu from '../DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
-import PhotoViewer from '../shared/PhotoViewer';
+import MediaViewer from '../shared/MediaViewer';
 import ReportModal from '../shared/ReportModal';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
@@ -52,6 +52,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
   const [isMenuPressing, setIsMenuPressing] = useState(false);
+  const [isImagePressing, setIsImagePressing] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -97,10 +98,15 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
     return resolveImageUrl(filename, 'images');
   };
 
-  const viewerPhotos = useMemo(
-    () => images.map((img) => getImageUrl(img)),
+  const viewerMedia = useMemo(
+    () => images
+      .map((img) => ({ type: 'image', url: getImageUrl(img) })),
     [images]
   );
+  const viewerMeta = useMemo(() => ({
+    author: request.author || null,
+    caption: request.title || request.body || null,
+  }), [request.author, request.title, request.body]);
 
   const markImageLoaded = (url) => {
     if (!url) return;
@@ -271,6 +277,15 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
     setIsPhotoViewerOpen(true);
   };
 
+  const handleImagePressStart = (e) => {
+    e.stopPropagation();
+    setIsImagePressing(true);
+  };
+
+  const handleImagePressEnd = () => {
+    setIsImagePressing(false);
+  };
+
   const menuItems = [
     ...(actionSet.canCopyLink
       ? [{
@@ -343,7 +358,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
       <div
         style={cardStyle}
         onClick={handleCardClick}
-        className={`request-card-spring${isMenuPressing ? ' request-card-no-active' : ''}`}
+        className={`request-card-spring${(isMenuPressing || isImagePressing) ? ' request-card-no-active' : ''}`}
       >
         <div style={styles.mainRow}>
           <div
@@ -452,6 +467,10 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
                       key={`${request.id}-img-${index}`}
                       type="button"
                       onClick={(e) => handleImageClick(e, index)}
+                      onPointerDown={handleImagePressStart}
+                      onPointerUp={handleImagePressEnd}
+                      onPointerCancel={handleImagePressEnd}
+                      onPointerLeave={handleImagePressEnd}
                       style={styles.imageButton}
                     >
                       {!isLoaded && !isFailed && <div style={styles.imageSkeleton} />}
@@ -478,6 +497,10 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
                 <button
                   type="button"
                   onClick={(e) => handleImageClick(e, 3)}
+                  onPointerDown={handleImagePressStart}
+                  onPointerUp={handleImagePressEnd}
+                  onPointerCancel={handleImagePressEnd}
+                  onPointerLeave={handleImagePressEnd}
                   style={styles.imageButton}
                 >
                   <div style={styles.imageOverlay}>
@@ -504,11 +527,13 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
       </div>
 
       {isPhotoViewerOpen && (
-        <PhotoViewer
-          photos={viewerPhotos}
+        <MediaViewer
+          mediaList={viewerMedia}
           initialIndex={currentImageIndex}
+          meta={viewerMeta}
           onClose={() => {
             setIsPhotoViewerOpen(false);
+            setIsImagePressing(false);
             setIsPhotoViewerJustClosed(true);
             setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
           }}

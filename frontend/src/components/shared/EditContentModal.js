@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
@@ -13,14 +13,14 @@ import {
   Image as ImageIcon,
   Lock,
   MapPin,
+  Play,
   Plus,
-  Send,
-  Settings,
+  Loader2,
   Users,
   VenetianMask,
   X,
 } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
+import { compressImage } from '../../utils/media';
 import { useSwipe } from '../../hooks/useSwipe';
 import { DragHandle } from './SwipeableModal';
 import { updatePost, updateRequest } from '../../api';
@@ -39,11 +39,7 @@ import {
   CREATE_CONTENT_REQUEST_REWARD_OPTIONS,
   CREATE_CONTENT_SUGGESTED_TAGS,
 } from '../../constants/createContentUiConfig';
-import {
-  composeSingleTextFromTitleBody,
-  parsePostSingleText,
-  parseRequestSingleText,
-} from '../../utils/contentTextParser';
+import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { toast } from './Toast';
 import ConfirmationDialog from './ConfirmationDialog';
@@ -53,6 +49,7 @@ import { useTelegramScreen } from './telegram/useTelegramScreen';
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
 const ALLOWED_FORMATS = IMAGE_SETTINGS.ALLOWED_FORMATS;
+const TOOL_ICON_SIZE = 26;
 
 const normalizeTag = (raw) =>
   String(raw || '')
@@ -119,11 +116,6 @@ const formatCustomDate = (value) => {
   });
 };
 
-const firstLine = (text) =>
-  String(text || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean) || '';
 
 const buildEventDateIso = (mode, customDate) => {
   const now = new Date();
@@ -207,7 +199,6 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
     (item) => item.value === (isPost ? postCategory : requestCategory)
   );
 
-  const initialText = composeSingleTextFromTitleBody(initialData?.title, initialData?.body);
   const initialEventPreset = deriveEventPreset(initialData?.event_date);
   const initialRequestDeadline = deriveRequestDeadline(initialData?.expires_at);
   const initialTags = useMemo(() => parseInitialTags(initialData?.tags), [initialData?.tags]);
@@ -219,10 +210,13 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
-  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
-  const [postText, setPostText] = useState(initialText);
-  const [reqText, setReqText] = useState(initialText);
+  const [postTitle, setPostTitle] = useState(initialData?.title || '');
+  const [postBody, setPostBody] = useState(initialData?.body || '');
+  const [reqTitle, setReqTitle] = useState(initialData?.title || '');
+  const [reqBody, setReqBody] = useState(initialData?.body || '');
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoThumb, setVideoThumb] = useState(null);
   const [tags, setTags] = useState(initialTags);
   const [tagInput, setTagInput] = useState('');
   const [showTagTool, setShowTagTool] = useState(false);
@@ -248,7 +242,6 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
   const pollCorrectOption = Number.isInteger(poll?.correct_option) ? poll.correct_option : null;
   const pollMulti = Boolean(poll?.allow_multiple);
   const pollAnon = Boolean(poll?.is_anonymous);
-  const [showPollSettings, setShowPollSettings] = useState(false);
 
   const [showReqReward, setShowReqReward] = useState(false);
   const [reqRewardType, setReqRewardType] = useState(mapRewardTypeToUi(initialData?.reward_type));
@@ -268,7 +261,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
     CREATE_CONTENT_POST_PLACEHOLDERS[postCategory] || CREATE_CONTENT_POST_PLACEHOLDERS.default;
   const requestPlaceholder =
     CREATE_CONTENT_REQUEST_PLACEHOLDERS[requestCategory] || CREATE_CONTENT_REQUEST_PLACEHOLDERS.default;
-  const requestParsed = useMemo(() => parseRequestSingleText(reqText), [reqText]);
+  // requestParsed removed — using reqTitle/reqBody directly
   const resolvedRequestExpiresAt = useMemo(
     () => buildRequestExpiresAtIso(reqDeadlineType, reqCustomDate),
     [reqDeadlineType, reqCustomDate]
@@ -284,7 +277,8 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
 
   const baseline = useMemo(
     () => ({
-      text: initialText.trim(),
+      title: (initialData?.title || '').trim(),
+      body: (initialData?.body || '').trim(),
       tags: initialTags,
       photos: initialImages.map((item) => item.key).filter(Boolean),
       isAnonymous: Boolean(initialData?.is_anonymous) || postCategory === 'confessions',
@@ -295,12 +289,14 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
       rewardValue: (initialData?.reward_value || '').trim(),
       requestExpiresAt: toIso(initialData?.expires_at),
     }),
-    [initialData, initialEventPreset.custom, initialEventPreset.mode, initialImages, initialTags, initialText, postCategory]
+    [initialData, initialEventPreset.custom, initialEventPreset.mode, initialImages, initialTags, postCategory]
   );
 
   const hasChanges = useMemo(() => {
-    const currentText = (isPost ? postText : reqText).trim();
-    if (currentText !== baseline.text) return true;
+    const currentTitle = (isPost ? postTitle : reqTitle).trim();
+    const currentBody = (isPost ? postBody : reqBody).trim();
+    if (currentTitle !== baseline.title) return true;
+    if (currentBody !== baseline.body) return true;
 
     const currentTags = tags.join('|');
     const baselineTags = baseline.tags.join('|');
@@ -337,18 +333,20 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
     location,
     photos,
     postCategory,
-    postText,
+    postTitle,
+    postBody,
+    reqTitle,
+    reqBody,
     reqRewardType,
     reqRewardValue,
-    reqText,
     resolvedRequestExpiresAt,
     tags,
   ]);
 
   const isPostValid = () => {
-    if (postCategory === 'polls') return postText.trim().length >= 3;
-    if (postCategory === 'memes') return photos.length > 0 || countLetters(postText) >= 3;
-    if (postText.trim().length < POST_LIMITS.BODY_MIN) return false;
+    if (postCategory === 'polls') return postTitle.trim().length >= 3;
+    if (postCategory === 'memes') return photos.length > 0 || countLetters(postBody) >= 3;
+    if (postBody.trim().length < POST_LIMITS.BODY_MIN) return false;
     if (postCategory === 'lost_found') return location.trim().length >= 3;
     if (postCategory === 'events') {
       return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
@@ -357,8 +355,8 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
   };
 
   const isRequestValid = () =>
-    requestParsed.title.length >= REQUEST_LIMITS.TITLE_MIN &&
-    requestParsed.body.length >= REQUEST_LIMITS.BODY_MIN &&
+    reqTitle.trim().length >= REQUEST_LIMITS.TITLE_MIN &&
+    reqBody.trim().length >= REQUEST_LIMITS.BODY_MIN &&
     Boolean(resolvedRequestExpiresAt);
 
   const canSend = hasChanges && (isPost ? isPostValid() : isRequestValid()) && !isSubmitting;
@@ -471,6 +469,26 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
     hapticFeedback('light');
   };
 
+  const captureVideoThumbnail = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.src = url;
+    video.currentTime = 1;
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 360;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/webp', 0.7));
+    };
+    video.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    video.load();
+  });
+
   const handleImageSelect = async (event) => {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
@@ -478,6 +496,23 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
     if (isPost && !categoryCapabilities.allowImages) {
       toast.error('В этой категории фото недоступны');
       hapticFeedback('error');
+      return;
+    }
+
+    // Видео-файл — обработать отдельно
+    const videoCandidate = files.find((f) => isVideoFileCandidate(f));
+    if (videoCandidate) {
+      const validation = await validateVideoFile(videoCandidate);
+      if (!validation.valid) {
+        hapticFeedback('error');
+        toast.error(validation.error);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+      setVideoFile(videoCandidate);
+      captureVideoThumbnail(videoCandidate).then(setVideoThumb);
+      hapticFeedback('success');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
@@ -501,15 +536,11 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
           continue;
         }
 
-        const compressed = await imageCompression(file, {
-          maxSizeMB: 1,
-          maxWidthOrHeight: 1600,
-          useWebWorker: true,
-          onProgress: (progress) =>
-            setProcessingImages((prev) =>
-              prev.map((item) => (item.id === processorId ? { ...item, progress } : item))
-            ),
-        });
+        const compressed = await compressImage(file, (progress) =>
+          setProcessingImages((prev) =>
+            prev.map((item) => (item.id === processorId ? { ...item, progress } : item))
+          )
+        );
 
         const preview = await new Promise((resolve) => {
           const reader = new FileReader();
@@ -541,7 +572,6 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
   };
 
   const handleSubmit = async () => {
-    setAttemptedSubmit(true);
     setError('');
     if (!canSend) {
       setError('Заполните обязательные поля');
@@ -554,31 +584,33 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
 
     try {
       if (isPost) {
-        const parsed = postCategory === 'polls'
-          ? { title: postText.trim().slice(0, POST_LIMITS.TITLE_MAX), body: postText.trim() }
-          : parsePostSingleText(postText, {
-              titleMax: POST_LIMITS.TITLE_MAX,
-              bodyMin: postCategory === 'memes' ? 3 : POST_LIMITS.BODY_MIN,
-            });
         const formData = new FormData();
         formData.append('category', postCategory);
-        formData.append('title', parsed.title || '');
-        formData.append('body', parsed.body || '');
+        if (postCategory === 'polls') {
+          const question = postTitle.trim() || 'Опрос';
+          formData.append('title', question.slice(0, POST_LIMITS.TITLE_MAX));
+          formData.append('body', question);
+        } else {
+          formData.append('title', postTitle.trim().slice(0, POST_LIMITS.TITLE_MAX));
+          formData.append('body', postBody.trim());
+        }
         formData.append('tags', JSON.stringify(tags));
         formData.append('is_anonymous', String(Boolean(isAnonymous)));
 
         if (postCategory === 'lost_found') {
           formData.append('lost_or_found', lfType);
-          formData.append('item_description', (parsed.body || '').trim());
+          formData.append('item_description', postBody.trim());
           formData.append('location', location.trim());
         }
 
         if (postCategory === 'events') {
           const eventDateIso = buildEventDateIso(eventDateMode, customDate);
-          formData.append('event_name', firstLine(postText).slice(0, 200) || 'Событие');
+          formData.append('event_name', (postTitle.trim() || postBody.trim()).slice(0, 200) || 'Событие');
           if (eventDateIso) formData.append('event_date', eventDateIso);
           formData.append('event_location', location.trim());
         }
+
+        if (videoFile) formData.append('video', videoFile);
 
         const keepImages = photos
           .filter((photo) => !photo.isNew)
@@ -597,10 +629,9 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
         onSuccess?.(updatedPost);
         toast.success('Пост обновлён');
       } else {
-        const payload = parseRequestSingleText(reqText, { titleMax: REQUEST_LIMITS.TITLE_MAX });
         const requestBody = {
-          title: payload.title,
-          body: payload.body,
+          title: reqTitle.trim(),
+          body: reqBody.trim(),
           tags,
           expires_at: resolvedRequestExpiresAt,
         };
@@ -660,7 +691,11 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
       <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}>
         <div style={styles.backdrop} onClick={handleClose} />
         <div ref={sheetRef} style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }} onClick={(e) => e.stopPropagation()}>
-          {isSubmitting ? <div style={{ ...styles.progress, width: `${uploadProgress}%` }} /> : null}
+          {isSubmitting && (
+            <div style={styles.progressBar}>
+              <div style={{ ...styles.progressFill, width: `${uploadProgress}%` }} />
+            </div>
+          )}
           <DragHandle handlers={swipeHandlers} gap={6} />
 
           <div className="hide-scroll" style={styles.content}>
@@ -681,19 +716,42 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
               fontWeight: 600,
               color: '#fff',
             }}>
-              <Lock size={14} />
               <span>{categoryItem?.icon || '📌'} {categoryItem?.label || (isPost ? 'Пост' : 'Запрос')}</span>
-              <span style={{ marginLeft: 'auto', color: 'var(--create-text-muted)', fontSize: 11 }}>категория зафиксирована</span>
+              <span style={{ marginLeft: 'auto', color: 'var(--create-text-muted)', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Lock size={12} /> категория зафиксирована</span>
             </div>
 
-            <div className="create-grow-wrap" data-replicated-value={(isPost ? postText : reqText) || ' '} style={{ marginBottom: 14 }}>
+            {!(isPost && postCategory === 'polls') && (
+              <input
+                type="text"
+                value={isPost ? postTitle : reqTitle}
+                onChange={(e) => isPost ? setPostTitle(e.target.value) : setReqTitle(e.target.value)}
+                placeholder={isPost ? (postPlaceholder.split('\n')[0] || 'Заголовок...') : 'Заголовок запроса...'}
+                style={isPost ? styles.postTitleInput : styles.reqTitleInput}
+                maxLength={POST_LIMITS.TITLE_MAX}
+                disabled={isSubmitting}
+              />
+            )}
+            <div
+              className="create-grow-wrap"
+              data-replicated-value={(isPost ? (postCategory === 'polls' ? postTitle : postBody) : reqBody) || ' '}
+              style={{ marginBottom: 16 }}
+            >
               <textarea
                 ref={isPost ? postTextareaRef : reqTextareaRef}
-                value={isPost ? postText : reqText}
-                onChange={(e) => (isPost ? setPostText(e.target.value) : setReqText(e.target.value))}
-                placeholder={isPost ? postPlaceholder : requestPlaceholder}
-                className="hide-scroll create-input"
-                style={styles.textarea}
+                value={isPost ? (postCategory === 'polls' ? postTitle : postBody) : reqBody}
+                onChange={(e) => {
+                  if (isPost) {
+                    if (postCategory === 'polls') setPostTitle(e.target.value);
+                    else setPostBody(e.target.value);
+                  } else {
+                    setReqBody(e.target.value);
+                  }
+                }}
+                placeholder={isPost
+                  ? (postCategory === 'polls' ? postPlaceholder : (postPlaceholder.split('\n')[1] || 'Подробности...'))
+                  : requestPlaceholder}
+                className="hide-scroll create-post-input"
+                style={isPost ? styles.postTextareaInput : styles.requestTextareaInput}
                 maxLength={isPost ? POST_LIMITS.BODY_MAX : REQUEST_LIMITS.BODY_MAX}
                 disabled={isSubmitting}
               />
@@ -718,11 +776,37 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
               </div>
             ) : null}
 
-            {(photos.length > 0 || processingImages.length > 0) ? (
-              <div className="hide-scroll" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 12 }}>
+            {videoFile && (
+              <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: photos.length > 0 || processingImages.length > 0 ? 8 : 16, background: '#111' }}>
+                {videoThumb
+                  ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
+                  : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />
+                }
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
+                  </div>
+                </div>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
+                  <button
+                    type="button"
+                    className="create-spring-btn"
+                    onClick={() => { setVideoFile(null); setVideoThumb(null); }}
+                    style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}
+                    disabled={isSubmitting}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(photos.length > 0 || processingImages.length > 0) && (
+              <div className="hide-scroll smart-block" style={styles.photoRow}>
                 {photos.map((photo) => (
                   <div key={photo.id} style={styles.photoCard}>
-                    <img src={photo.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={photo.preview} alt="" style={styles.photoImage} />
                     <button
                       type="button"
                       className="create-spring-btn"
@@ -730,19 +814,19 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
                       onClick={() => setPhotos((prev) => prev.filter((item) => item.id !== photo.id))}
                       disabled={isSubmitting}
                     >
-                      <X size={13} />
+                      <X size={14} />
                     </button>
                   </div>
                 ))}
                 {processingImages.map((processor) => (
                   <div key={processor.id} style={styles.photoCard}>
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--create-primary)', fontSize: 13, fontWeight: 700 }}>
+                    <div style={{ width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--create-primary)', fontSize: 13, fontWeight: 700 }}>
                       {Math.round(processor.progress)}%
                     </div>
                   </div>
                 ))}
               </div>
-            ) : null}
+            )}
 
             {isPost && postCategory === 'lost_found' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
@@ -793,7 +877,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
             ) : null}
 
             {isPost && (postCategory === 'polls' || poll) ? (
-              <div style={styles.pollCard}>
+              <div style={{ ...styles.pollCard, ...(poll ? { border: 'none' } : {}) }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <span style={{ fontSize: 12, color: 'var(--create-text-muted)', fontWeight: 700 }}>ОПРОС</span>
                   <span style={{ fontSize: 11, color: 'var(--create-text-muted)', display: 'inline-flex', gap: 4, alignItems: 'center' }}><Lock size={12} /> структура фиксирована</span>
@@ -810,20 +894,28 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
                     </div>
                   ))}
                 </div>
-                <button type="button" className="create-spring-btn" style={{ marginTop: 10, border: 'none', background: 'transparent', color: 'var(--create-text-muted)', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, cursor: 'pointer' }} onClick={() => setShowPollSettings((prev) => !prev)} disabled={isSubmitting}>
-                  <Settings size={14} /> Настройки
-                </button>
-                {showPollSettings ? (
-                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    <span style={styles.pollFlag}><HelpCircle size={12} /> {pollType === 'quiz' ? 'Викторина' : 'Опрос'}</span>
-                    <span style={styles.pollFlag}><Users size={12} /> {pollMulti ? 'Мультивыбор' : 'Один выбор'}</span>
-                    <span style={styles.pollFlag}><VenetianMask size={12} /> {pollAnon ? 'Анонимный' : 'Публичный'}</span>
-                  </div>
-                ) : null}
+                <div style={{
+                  marginTop: 8,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  ...(poll ? {
+                    marginLeft: -12, marginRight: -12, marginBottom: -12,
+                    padding: '8px 12px 10px',
+                    borderTop: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.03)',
+                    borderBottomLeftRadius: 14,
+                    borderBottomRightRadius: 14,
+                  } : {}),
+                }}>
+                  <span style={styles.pollFlag}><HelpCircle size={12} /> {pollType === 'quiz' ? 'Викторина' : 'Опрос'}</span>
+                  <span style={styles.pollFlag}><Users size={12} /> {pollMulti ? 'Мультивыбор' : 'Один выбор'}</span>
+                  <span style={styles.pollFlag}><VenetianMask size={12} /> {pollAnon ? 'Анонимный' : 'Публичный'}</span>
+                </div>
               </div>
             ) : null}
 
-            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageSelect} style={{ display: 'none' }} />
+            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handleImageSelect} style={{ display: 'none' }} />
 
             <div style={{ height: 150 }} />
           </div>
@@ -916,33 +1008,33 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
             <div style={styles.toolbar}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="button" className="create-spring-btn" style={styles.toolBtn} onClick={() => fileInputRef.current?.click()} disabled={isSubmitting}>
-                  <ImageIcon size={18} />
+                  <ImageIcon size={TOOL_ICON_SIZE} />
                 </button>
                 <button type="button" className="create-spring-btn" style={showTagTool ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => { setShowTagTool((prev) => !prev); setShowReqReward(false); setShowReqDeadline(false); }} disabled={isSubmitting}>
-                  <Hash size={18} />
+                  <Hash size={TOOL_ICON_SIZE} />
                 </button>
                 {isPost ? (
-                  <button type="button" className="create-spring-btn" style={showPollSettings ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => setShowPollSettings((prev) => !prev)} disabled={isSubmitting || !(postCategory === 'polls' || poll)}>
-                    <BarChart2 size={18} />
+                  <button type="button" className="create-spring-btn" style={(postCategory === 'polls' || poll) ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} disabled={isSubmitting || !(postCategory === 'polls' || poll)}>
+                    <BarChart2 size={TOOL_ICON_SIZE} />
                   </button>
                 ) : (
                   <button type="button" className="create-spring-btn" style={showReqReward ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => { setShowReqReward((prev) => !prev); setShowReqDeadline(false); setShowTagTool(false); }} disabled={isSubmitting}>
-                    <Gift size={18} />
+                    <Gift size={TOOL_ICON_SIZE} />
                   </button>
                 )}
                 {isPost ? (
                   <button type="button" className="create-spring-btn" style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => setIsAnonymous((prev) => !prev)} disabled={isSubmitting || postCategory === 'confessions'}>
-                    <VenetianMask size={18} />
+                    <VenetianMask size={TOOL_ICON_SIZE} />
                   </button>
                 ) : (
                   <button type="button" className="create-spring-btn" style={showReqDeadline ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => { setShowReqDeadline((prev) => !prev); setShowReqReward(false); setShowTagTool(false); }} disabled={isSubmitting}>
-                    <Clock size={18} />
+                    <Clock size={TOOL_ICON_SIZE} />
                   </button>
                 )}
               </div>
 
               <button type="button" className="create-spring-btn" style={canSend ? { ...styles.sendBtn, ...styles.sendBtnActive } : styles.sendBtn} onClick={handleSubmit} disabled={!canSend}>
-                {isPost ? <Check size={18} strokeWidth={2.5} /> : <Send size={18} />}
+                {isSubmitting ? <Loader2 size={TOOL_ICON_SIZE} style={{ animation: 'createSpin 0.7s linear infinite' }} /> : <Check size={TOOL_ICON_SIZE} strokeWidth={2.5} />}
               </button>
             </div>
           </div>
@@ -989,7 +1081,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
 
 const styles = {
   overlay: { position: 'fixed', inset: 0, zIndex: getOverlayZIndex(Z_MODAL_EDIT_POST), transition: 'opacity 0.3s ease' },
-  backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(2px)' },
+  backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(2px)' },
   sheet: {
     position: 'absolute',
     left: 0,
@@ -1006,21 +1098,28 @@ const styles = {
     transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
     boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
   },
-  progress: { position: 'absolute', top: 0, left: 0, height: 3, background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)' },
+  progressBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.08)', zIndex: 2 },
+  progressFill: { height: '100%', background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.3s ease' },
   content: { flex: 1, padding: '0 16px 16px', overflowY: 'auto', overflowX: 'hidden', color: '#fff', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' },
-  textarea: {
-    width: '100%',
-    minHeight: 84,
-    border: 'none',
-    resize: 'none',
-    background: 'transparent',
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 500,
-    lineHeight: 1.4,
-    padding: 0,
-    outline: 'none',
-    fontFamily: 'inherit',
+  postTitleInput: {
+    width: '100%', border: 'none', background: 'transparent',
+    color: '#fff', caretColor: '#fff',
+    fontSize: 22, fontWeight: 700, lineHeight: 1.3, padding: 0, outline: 'none', fontFamily: 'inherit', marginBottom: 12,
+  },
+  postTextareaInput: {
+    width: '100%', minHeight: 76, resize: 'none', overflow: 'hidden', border: 'none', background: 'transparent',
+    color: '#fff', caretColor: '#fff',
+    fontSize: 16, fontWeight: 400, lineHeight: 1.4, padding: 0, outline: 'none', fontFamily: 'inherit',
+  },
+  reqTitleInput: {
+    width: '100%', border: 'none', background: 'transparent',
+    color: '#fff', caretColor: '#fff',
+    fontSize: 22, fontWeight: 700, lineHeight: 1.3, padding: 0, outline: 'none', fontFamily: 'inherit', marginBottom: 12,
+  },
+  requestTextareaInput: {
+    width: '100%', minHeight: 76, resize: 'none', overflow: 'hidden', border: 'none', background: 'transparent',
+    color: '#fff', caretColor: '#fff',
+    fontSize: 16, fontWeight: 400, lineHeight: 1.4, padding: 0, outline: 'none', fontFamily: 'inherit',
   },
   tagChip: {
     display: 'inline-flex',
@@ -1046,31 +1145,40 @@ const styles = {
     padding: 0,
     cursor: 'pointer',
   },
+  photoRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: 8,
+    marginBottom: 16,
+  },
   photoCard: {
-    position: 'relative',
-    width: 96,
-    height: 96,
-    borderRadius: 14,
-    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
+  },
+  photoImage: {
+    width: '100%',
+    aspectRatio: '1',
+    objectFit: 'cover',
+    borderRadius: 16,
     border: '1px solid var(--create-border)',
-    background: 'var(--create-surface-elevated)',
-    flexShrink: 0,
   },
   removePhotoBtn: {
-    position: 'absolute',
-    top: 7,
-    right: 7,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    border: '1px solid rgba(255,255,255,0.16)',
-    background: 'rgba(24,24,26,0.86)',
-    color: '#fff',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(36,36,40,0.9)',
+    color: 'rgba(255,255,255,0.92)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 0,
     cursor: 'pointer',
+    backdropFilter: 'blur(8px)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    flexShrink: 0,
   },
   switchBtn: {
     flex: 1,
@@ -1112,6 +1220,7 @@ const styles = {
     background: 'var(--create-surface-elevated)',
     padding: 12,
     marginBottom: 12,
+    overflow: 'hidden',
   },
   pollRow: {
     display: 'flex',
@@ -1226,7 +1335,7 @@ const styles = {
     justifyContent: 'center',
     cursor: 'pointer',
   },
-  toolBtnActive: { background: 'rgba(212,255,0,0.16)', color: 'var(--create-primary)' },
+  toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
   sendBtn: {
     width: 40,
     height: 40,
@@ -1239,7 +1348,7 @@ const styles = {
     justifyContent: 'center',
     cursor: 'pointer',
   },
-  sendBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  sendBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
   pickerOverlay: {
     position: 'fixed',
     inset: 0,
@@ -1298,6 +1407,11 @@ const keyframeStyles = `
 }
 
 .create-input::placeholder { color: #666; }
+
+@keyframes createSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
 `;
 
 export default EditContentModal;

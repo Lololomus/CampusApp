@@ -324,7 +324,6 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
     const newIndex = Math.round(e.target.scrollLeft / e.target.clientWidth);
     if (newIndex !== currentIndex) {
       setCurrentIndex(newIndex);
-      setFooterOpen(true);
     }
   }, [currentIndex]);
 

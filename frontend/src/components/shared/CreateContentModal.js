@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -15,7 +15,7 @@ import {
   Clock,
   Play,
 } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
+import { compressImage } from '../../utils/media';
 import { useSwipe } from '../../hooks/useSwipe';
 import { DragHandle } from './SwipeableModal';
 import { useStore } from '../../store';
@@ -137,7 +137,6 @@ function CreateContentModal({ onClose }) {
   const [isAwaitingMedia, setIsAwaitingMedia] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
-  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   const [activeTab, setActiveTab] = useState(feedSubTab === 'requests' ? 'request' : 'post');
 
@@ -517,6 +516,13 @@ function CreateContentModal({ onClose }) {
     // Handle video separately (no compression on client; backend processes it)
     const videoCandidate = files.find((file) => isVideoFileCandidate(file));
     if (videoCandidate) {
+      if (activeTab === 'request') {
+        hapticFeedback('error');
+        toast.error('В запросах можно прикреплять только фото');
+        clearPostFileInput();
+        return;
+      }
+
       const validation = await validateVideoFile(videoCandidate);
       if (!validation.valid) {
         hapticFeedback('error');
@@ -564,16 +570,8 @@ function CreateContentModal({ onClose }) {
         try {
           let processedFile = file;
           try {
-            // useWebWorker: false — в Telegram WebView нажатие кнопки может приостановить/убить
-            // web worker в iOS, вешая imageCompression Promise навсегда. Main-thread async сжатие
-            // не зависит от жизненного цикла воркеров и надёжно работает при любых фокус-событиях.
-            processedFile = await imageCompression(file, {
-              maxSizeMB: 1,
-              maxWidthOrHeight: 1600,
-              useWebWorker: false,
-              onProgress: (progress) => {
-                setProcessingImages((prev) => prev.map((p) => (p.id === processorId ? { ...p, progress } : p)));
-              },
+            processedFile = await compressImage(file, (progress) => {
+              setProcessingImages((prev) => prev.map((p) => (p.id === processorId ? { ...p, progress } : p)));
             });
           } catch (compressionError) {
             // Keep original file if compression fails to avoid silently dropping media.
@@ -581,11 +579,8 @@ function CreateContentModal({ onClose }) {
             processedFile = file;
           }
 
-          // [FIX] imageCompression может resolve(undefined) при сбое web-worker на мобильном WebKit
-          // без throw — тогда processedFile === undefined и reader.readAsDataURL(undefined) бросает TypeError.
-          // Падаем обратно на оригинальный файл.
           if (!processedFile) {
-            if (import.meta.env.DEV) console.warn('[FileSelect] imageCompression вернул falsy, используем оригинал:', file?.name);
+            if (import.meta.env.DEV) console.warn('[FileSelect] compressImage вернул falsy, используем оригинал:', file?.name);
             processedFile = file;
           }
 
@@ -667,7 +662,6 @@ function CreateContentModal({ onClose }) {
   };
 
   const handleSubmit = async () => {
-    setAttemptedSubmit(true);
     setError('');
 
     if (mediaProcessingTasksRef.current.size > 0 || processingImagesRef.current.length > 0) {
@@ -871,6 +865,7 @@ function CreateContentModal({ onClose }) {
   const pollVisible = hasPoll || postCategory === 'polls';
   const sendDisabled = !canSend || isSubmitting || isAwaitingMedia;
   const sendLoading = isSubmitting || isAwaitingMedia;
+  const mediaInputAccept = activeTab === 'request' ? 'image/*' : 'image/*,video/mp4,video/quicktime,video/webm';
 
   const content = (
     <>
@@ -933,50 +928,7 @@ function CreateContentModal({ onClose }) {
                   </div>
 
                   <div style={styles.slideContent}>
-                    {postCategory !== 'polls' && (
-                      <input
-                        type="text"
-                        value={postTitle}
-                        onChange={(e) => setPostTitle(e.target.value)}
-                        placeholder={postPlaceholder.split('\n')[0] || 'Заголовок...'}
-                        style={styles.postTitleInput}
-                        maxLength={POST_LIMITS.TITLE_MAX}
-                        disabled={isSubmitting}
-                      />
-                    )}
-                    <div className="create-grow-wrap" data-replicated-value={(postCategory === 'polls' ? postTitle : postBody) || ' '} style={{ marginBottom: 16 }}>
-                      <textarea
-                        ref={postBodyRef}
-                        value={postCategory === 'polls' ? postTitle : postBody}
-                        onChange={(e) => postCategory === 'polls' ? setPostTitle(e.target.value) : setPostBody(e.target.value)}
-                        placeholder={postCategory === 'polls' ? postPlaceholder : (postPlaceholder.split('\n')[1] || 'Подробности...')}
-                        className="hide-scroll create-post-input"
-                        style={styles.postTextareaInput}
-                        maxLength={POST_LIMITS.BODY_MAX}
-                        disabled={isSubmitting}
-                      />
-                    </div>
-
-                    {postTags.length > 0 && (
-                      <div className="smart-block" style={styles.tagsWrap}>
-                        {postTags.map((tag) => (
-                          <span key={tag} style={styles.tagChip}>
-                            #{tag}
-                            <button
-                              type="button"
-                              onClick={() => setPostTags((prev) => prev.filter((item) => item !== tag))}
-                              style={styles.tagRemove}
-                              className="create-spring-btn"
-                              disabled={isSubmitting}
-                            >
-                              <X size={12} />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Видео-превью — отдельная карточка на всю ширину */}
+                    {/* Медиа-блок сверху: сначала видео, затем фото */}
                     {videoFile && (
                       <div className="smart-block" style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: photos.length > 0 || processingImages.length > 0 ? 8 : 16, background: '#111' }}>
                         {videoThumb
@@ -1027,6 +979,49 @@ function CreateContentModal({ onClose }) {
                           <div key={proc.id} style={styles.photoCard}>
                             <div style={styles.processingPlaceholder}>{Math.round(proc.progress)}%</div>
                           </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {postCategory !== 'polls' && (
+                      <input
+                        type="text"
+                        value={postTitle}
+                        onChange={(e) => setPostTitle(e.target.value)}
+                        placeholder={postPlaceholder.split('\n')[0] || 'Заголовок...'}
+                        style={styles.postTitleInput}
+                        maxLength={POST_LIMITS.TITLE_MAX}
+                        disabled={isSubmitting}
+                      />
+                    )}
+                    <div className="create-grow-wrap" data-replicated-value={(postCategory === 'polls' ? postTitle : postBody) || ' '} style={{ marginBottom: 16 }}>
+                      <textarea
+                        ref={postBodyRef}
+                        value={postCategory === 'polls' ? postTitle : postBody}
+                        onChange={(e) => postCategory === 'polls' ? setPostTitle(e.target.value) : setPostBody(e.target.value)}
+                        placeholder={postCategory === 'polls' ? postPlaceholder : (postPlaceholder.split('\n')[1] || 'Подробности...')}
+                        className="hide-scroll create-post-input"
+                        style={styles.postTextareaInput}
+                        maxLength={POST_LIMITS.BODY_MAX}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+
+                    {postTags.length > 0 && (
+                      <div className="smart-block" style={styles.tagsWrap}>
+                        {postTags.map((tag) => (
+                          <span key={tag} style={styles.tagChip}>
+                            #{tag}
+                            <button
+                              type="button"
+                              onClick={() => setPostTags((prev) => prev.filter((item) => item !== tag))}
+                              style={styles.tagRemove}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
                         ))}
                       </div>
                     )}
@@ -1123,6 +1118,33 @@ function CreateContentModal({ onClose }) {
                   </div>
 
                   <div style={styles.slideContent}>
+                    {(photos.length > 0 || processingImages.length > 0) && (
+                      <div className="hide-scroll smart-block" style={styles.photoRow}>
+                        {photos.map((photo, i) => (
+                          <div key={`req-photo-${i}`} style={styles.photoCard}>
+                            <img src={photo} alt="" style={styles.photoImage} />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotos((prev) => prev.filter((_, idx) => idx !== i));
+                                setImageFiles((prev) => prev.filter((_, idx) => idx !== i));
+                              }}
+                              style={styles.removePhotoBtn}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        {processingImages.map((proc) => (
+                          <div key={`req-proc-${proc.id}`} style={styles.photoCard}>
+                            <div style={styles.processingPlaceholder}>{Math.round(proc.progress)}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <input
                       type="text"
                       value={reqTitle}
@@ -1190,33 +1212,6 @@ function CreateContentModal({ onClose }) {
                               <X size={12} />
                             </button>
                           </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {(photos.length > 0 || processingImages.length > 0) && (
-                      <div className="hide-scroll smart-block" style={styles.photoRow}>
-                        {photos.map((photo, i) => (
-                          <div key={`req-photo-${i}`} style={styles.photoCard}>
-                            <img src={photo} alt="" style={styles.photoImage} />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPhotos((prev) => prev.filter((_, idx) => idx !== i));
-                                setImageFiles((prev) => prev.filter((_, idx) => idx !== i));
-                              }}
-                              style={styles.removePhotoBtn}
-                              className="create-spring-btn"
-                              disabled={isSubmitting}
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                        {processingImages.map((proc) => (
-                          <div key={`req-proc-${proc.id}`} style={styles.photoCard}>
-                            <div style={styles.processingPlaceholder}>{Math.round(proc.progress)}%</div>
-                          </div>
                         ))}
                       </div>
                     )}
@@ -1341,7 +1336,7 @@ function CreateContentModal({ onClose }) {
               )}
 
               <div style={styles.toolbar}>
-                <input ref={postFileInputRef} type="file" multiple accept="image/*,video/mp4,video/quicktime,video/webm" onChange={handleSharedFileSelect} style={{ display: 'none' }} />
+                <input ref={postFileInputRef} type="file" multiple accept={mediaInputAccept} onChange={handleSharedFileSelect} style={{ display: 'none' }} />
                 {activeTab === 'post' ? (
                   <>
                     <div style={styles.toolGroup}>
@@ -1441,7 +1436,7 @@ const styles = {
   backdrop: {
     position: 'absolute',
     inset: 0,
-    background: 'rgba(0, 0, 0, 0.62)',
+    background: 'rgba(0, 0, 0, 0.75)',
     backdropFilter: 'blur(2px)',
     transition: 'opacity 0.3s ease',
   },
@@ -1482,13 +1477,12 @@ const styles = {
   slide: { width: '50%', display: 'flex', flexDirection: 'column', flexShrink: 0 },
   categoriesRow: {
     display: 'grid', gridTemplateRows: 'repeat(2, auto)', gridAutoFlow: 'column', gridAutoColumns: 'max-content',
-    gap: 8, padding: '12px 16px', borderBottom: '1px solid var(--create-border)', overflowX: 'auto', flexShrink: 0,
+    gap: 8, padding: '12px 16px', overflowX: 'auto', flexShrink: 0,
   },
   requestCategoriesRow: {
     display: 'flex',
     gap: 8,
     padding: '12px 16px',
-    borderBottom: '1px solid var(--create-border)',
     overflowX: 'auto',
     flexShrink: 0,
   },
@@ -1763,7 +1757,7 @@ const styles = {
   toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
   toolBtnDisabled: { opacity: 0.5 },
   sendBtn: { width: 40, height: 40, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
-  sendBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  sendBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
   pickerOverlay: {
     position: 'fixed',
     inset: 0,
