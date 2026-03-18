@@ -47,10 +47,13 @@ def format_followup(followup_type: str, payload: dict) -> str:
     """Форматирует текст follow-up сообщения (клавиатура добавляется отдельно)."""
     if followup_type == "market_sold":
         title = _escape(payload.get("item_title", "товар"))
+        buyer = _escape(payload.get("buyer_name", "покупатель"))
+        buyer_username = _escape(payload.get("buyer_username")) if payload.get("buyer_username") else None
+        buyer_label = f"{buyer} (@{buyer_username})" if buyer_username else buyer
         item_type = payload.get("item_type", "product")
         question = "Услуга оказана?" if item_type == "service" else "Удалось продать?"
         return (
-            f"🤝 <b>Как дела с «{title}»?</b>\n"
+            f"🤝 <b>Пользователь {buyer_label} хотел купить «{title}».</b>\n"
             "\n"
             f"{question}"
         )

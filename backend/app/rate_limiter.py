@@ -3,6 +3,7 @@
 #
 # ✅ Фаза 4.2: Заменяет in-memory _rate_buckets из auth_router.py
 
+import secrets
 import time
 from typing import Optional
 
@@ -75,7 +76,7 @@ async def check_rate_limit(
     pipe = r.pipeline(transaction=True)
     pipe.zremrangebyscore(bucket_key, 0, window_start)
     pipe.zcard(bucket_key)
-    pipe.zadd(bucket_key, {f"{now}": now})
+    pipe.zadd(bucket_key, {f"{now}:{secrets.token_hex(4)}": now})
     pipe.expire(bucket_key, window_sec + 1)
     results = await pipe.execute()
 

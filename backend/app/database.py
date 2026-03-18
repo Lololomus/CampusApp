@@ -35,6 +35,8 @@ async def get_db():
 
 
 async def init_db():
+    if settings.is_prod:
+        return
     async with engine.begin() as conn:
         from app import models  # noqa: F401
 

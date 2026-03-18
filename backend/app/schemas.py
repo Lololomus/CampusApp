@@ -988,7 +988,7 @@ class MarketCategoriesResponse(BaseModel):
 
 class MarketReviewCreate(BaseModel):
     item_id: int
-    seller_id: int
+    seller_id: Optional[int] = None  # игнорируется, резолвится из item в БД
     rating: int = Field(..., ge=1, le=5)
     text: Optional[str] = Field(None, max_length=300)
     source: str = Field('app', pattern="^(bot|app)$")

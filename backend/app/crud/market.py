@@ -424,7 +424,26 @@ async def create_review(
     status: str = 'completed',
 ) -> models.MarketReview:
     """Создать отзыв покупателя о продавце."""
-    if reviewer_id == data.seller_id:
+    # Резолвим seller_id из товара (не доверяем клиенту)
+    item = await db.get(models.MarketItem, data.item_id)
+    if not item:
+        raise ValueError("Товар не найден")
+    seller_id = item.seller_id
+
+    # Отзыв доступен только после подтверждения продажи продавцом (review_request follow-up).
+    eligibility = await db.execute(
+        select(models.Followup.id).where(
+            models.Followup.user_id == reviewer_id,
+            models.Followup.type == 'review_request',
+            models.Followup.target_type == 'market_item',
+            models.Followup.target_id == data.item_id,
+            models.Followup.status.in_(['pending', 'sent', 'skipped']),
+        )
+    )
+    if not eligibility.scalar_one_or_none():
+        raise ValueError("Оставить отзыв можно только после подтверждения продажи продавцом")
+
+    if reviewer_id == seller_id:
         raise ValueError("Нельзя оставить отзыв себе")
 
     existing = await db.execute(
@@ -438,7 +457,7 @@ async def create_review(
 
     review = models.MarketReview(
         reviewer_id=reviewer_id,
-        seller_id=data.seller_id,
+        seller_id=seller_id,
         item_id=data.item_id,
         rating=data.rating,
         text=data.text,

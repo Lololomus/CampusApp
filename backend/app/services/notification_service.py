@@ -150,6 +150,7 @@ async def notify_market_contact(db: AsyncSession, seller, buyer, item):
             "item_type": item.item_type,
             "buyer_id": buyer.id,
             "buyer_name": buyer.name,
+            "buyer_username": buyer.username,
         },
         delay_hours=24,
     )

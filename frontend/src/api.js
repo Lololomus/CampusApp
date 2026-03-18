@@ -789,6 +789,13 @@ export async function getMarketItem(itemId) {
   }
 }
 
+export async function contactMarketSeller(itemId) {
+  const telegram_id = getTelegramId();
+  await api.post(`/market/${itemId}/contact`, null, {
+    params: { telegram_id }
+  });
+}
+
 export async function createMarketItem(itemData, onProgress = null) {
   try {
     const telegram_id = getTelegramId();
@@ -891,11 +898,8 @@ export async function getMarketCategories() {
   }
 }
 
-export async function createMarketReview({ seller_id, item_id, rating, text }) {
-  const telegram_id = getTelegramId();
-  const response = await api.post('/market/reviews', { seller_id, item_id, rating, text, source: 'app' }, {
-    params: { telegram_id },
-  });
+export async function createMarketReview({ item_id, rating, text }) {
+  const response = await api.post('/market/reviews', { item_id, rating, text, source: 'app' });
   return response.data;
 }
 

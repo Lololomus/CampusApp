@@ -21,7 +21,7 @@ from app.utils import (
     process_uploaded_files,
 )
 from app.video_utils import process_uploaded_video
-from app.auth_service import decode_authorization_header
+from app.auth_service import decode_authorization_header, require_user
 from app.config import get_settings
 from app.rate_limiter import close_redis
 from app.time_utils import ensure_utc, normalize_datetime_payload
@@ -29,7 +29,7 @@ import json
 import re
 from pydantic import ValidationError
 from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router, analytics
-from app.services import analytics_service
+from app.services import analytics_service, notification_service
 import os
 import logging
 from datetime import datetime, timedelta, timezone
@@ -1672,6 +1672,10 @@ async def bind_user_to_campus_endpoint(
     if not admin or admin.role not in ('ambassador', 'admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Нет доступа")
 
+    # Амбассадор может привязывать только к своему кампусу
+    if admin.role == 'ambassador' and admin.campus_id != campus_id:
+        raise HTTPException(status_code=403, detail="Амбассадор может привязывать только к своему кампусу")
+
     user = await crud.bind_user_to_campus(db, user_id, campus_id, university, city)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -1708,7 +1712,7 @@ async def get_market_categories_endpoint(
 
 @app.get("/market/feed", response_model=schemas.MarketFeedResponse)
 async def get_market_feed_endpoint(
-    telegram_id: Optional[int] = Query(None),
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     category: Optional[str] = Query(None),
@@ -1724,6 +1728,14 @@ async def get_market_feed_endpoint(
     city: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
+    # Персонализация только при наличии JWT (не из query param)
+    auth_payload = getattr(request.state, "auth_payload", None)
+    telegram_id = None
+    if auth_payload:
+        try:
+            telegram_id = int(auth_payload.get("tgid"))
+        except (TypeError, ValueError):
+            telegram_id = None
     user = await crud.get_user_by_telegram_id(db, telegram_id) if telegram_id else None
     current_user_id = user.id if user else None
 
@@ -1967,6 +1979,39 @@ async def get_market_item_endpoint(
         "is_favorited": is_favorited
     })
 
+
+@app.post("/market/{item_id}/contact")
+async def contact_market_seller_endpoint(
+    item_id: int,
+    telegram_id: int = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    buyer = await crud.get_user_by_telegram_id(db, telegram_id)
+    if not buyer:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    item = await db.get(models.MarketItem, item_id)
+    if not item or item.is_deleted or item.status != 'active':
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.seller_id == buyer.id:
+        raise HTTPException(status_code=400, detail="Cannot contact your own item")
+
+    seller = await db.get(models.User, item.seller_id)
+    if not seller:
+        raise HTTPException(status_code=404, detail="Seller not found")
+
+    await notification_service.notify_market_contact(db, seller, buyer, item)
+    await db.commit()
+
+    await analytics_service.record_server_event(
+        db,
+        buyer.id,
+        "market_contact",
+        entity_type="market_item",
+        entity_id=item_id,
+    )
+    return {"ok": True}
+
 @app.post("/market/items", response_model=schemas.MarketItemResponse)
 async def create_market_item_endpoint(
     telegram_id: int = Query(...),
@@ -2202,18 +2247,38 @@ def _verify_bot_secret(x_bot_secret: str = Header(..., alias="X-Bot-Secret")):
         raise HTTPException(status_code=403, detail="Invalid bot secret")
 
 
+async def _resolve_review_user(
+    request: Request,
+    db: AsyncSession,
+    telegram_id: Optional[int],
+    x_bot_secret: Optional[str],
+) -> models.User:
+    """JWT user (front) or bot-auth user (X-Bot-Secret + telegram_id)."""
+    if x_bot_secret is not None:
+        if x_bot_secret != settings.bot_secret:
+            raise HTTPException(status_code=403, detail="Invalid bot secret")
+        if telegram_id is None:
+            raise HTTPException(status_code=400, detail="telegram_id is required for bot requests")
+        user = await crud.get_user_by_telegram_id(db, telegram_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+
+    return await require_user(request, db)
+
+
 @app.post("/market/reviews", response_model=schemas.MarketReviewResponse)
 async def create_market_review(
     data: schemas.MarketReviewCreate,
-    telegram_id: int = Query(...),
+    request: Request,
+    telegram_id: Optional[int] = Query(None),
+    x_bot_secret: Optional[str] = Header(None, alias="X-Bot-Secret"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Создать отзыв. Используется фронтом (JWT) и ботом (bot-secret)."""
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    """Создать отзыв (front через JWT или bot через X-Bot-Secret)."""
+    user = await _resolve_review_user(request, db, telegram_id, x_bot_secret)
 
-    source = data.source or 'app'
+    source = 'bot' if x_bot_secret is not None else 'app'
     status = 'pending_text' if source == 'bot' else 'completed'
     try:
         review = await crud.create_review(db, user.id, data, source=source, status=status)

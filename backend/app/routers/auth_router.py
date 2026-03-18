@@ -63,7 +63,7 @@ async def telegram_login(
         httponly=True,
         secure=settings.cookie_secure or settings.is_prod,
         samesite=settings.cookie_samesite,
-        path="/auth",
+        path="/api/auth",
         max_age=settings.refresh_ttl_days * 24 * 60 * 60,
     )
 
@@ -126,7 +126,7 @@ async def refresh_token(
         httponly=True,
         secure=settings.cookie_secure or settings.is_prod,
         samesite=settings.cookie_samesite,
-        path="/auth",
+        path="/api/auth",
         max_age=settings.refresh_ttl_days * 24 * 60 * 60,
     )
 
@@ -141,5 +141,5 @@ async def logout(
 ):
     refresh_token_cookie = request.cookies.get("refresh_token")
     await revoke_auth_session(db, refresh_token_cookie)
-    response.delete_cookie("refresh_token", path="/auth")
+    response.delete_cookie("refresh_token", path="/api/auth")
     return {"success": True}

@@ -67,8 +67,6 @@ async def update_user(db: AsyncSession, user_id: int, user_update: schemas.UserU
         if key in _ALLOWED_USER_UPDATE_FIELDS:
             setattr(db_user, key, value)
 
-    db_user.last_profile_edit = datetime.utcnow()
-
     await db.commit()
     await db.refresh(db_user)
     return db_user

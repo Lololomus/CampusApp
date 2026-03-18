@@ -238,7 +238,10 @@ async def get_request_by_id(db: AsyncSession, request_id: int, current_user_id: 
             selectinload(models.Request.author),
             selectinload(models.Request.responses),
         )
-        .where(models.Request.id == request_id)
+        .where(
+            models.Request.id == request_id,
+            models.Request.is_deleted == False,
+        )
     )
     request = result.scalar_one_or_none()
 

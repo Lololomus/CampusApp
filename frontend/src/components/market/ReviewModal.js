@@ -49,7 +49,7 @@ const ReviewModal = ({ sellerId, sellerName, itemId, itemTitle, onClose, onSucce
     }
     setLoading(true);
     try {
-      await createMarketReview({ seller_id: sellerId, item_id: itemId, rating, text: text.trim() || undefined });
+      await createMarketReview({ item_id: itemId, rating, text: text.trim() || undefined });
       hapticFeedback('success');
       toast.success('Отзыв оставлен!');
       onSuccess?.();

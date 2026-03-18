@@ -170,6 +170,15 @@ async def create_comment(db: AsyncSession, comment: schemas.CommentCreate, autho
         images=payload_images,
     )
 
+    # Валидация parent_id: должен принадлежать тому же посту
+    parent_comment = None
+    if comment.parent_id:
+        parent_comment = await db.get(models.Comment, comment.parent_id)
+        if not parent_comment:
+            raise ValueError("Родительский комментарий не найден")
+        if parent_comment.post_id != comment.post_id:
+            raise ValueError("Родительский комментарий принадлежит другому посту")
+
     db.add(db_comment)
     await db.execute(
         sa_update(models.Post)
@@ -180,10 +189,8 @@ async def create_comment(db: AsyncSession, comment: schemas.CommentCreate, autho
 
     commenter = await db.get(models.User, author_id)
     if commenter:
-        if comment.parent_id:
-            parent = await db.get(models.Comment, comment.parent_id)
-            if parent:
-                await notif.notify_comment_reply(db, parent, db_comment, commenter)
+        if comment.parent_id and parent_comment:
+            await notif.notify_comment_reply(db, parent_comment, db_comment, commenter)
         else:
             await notif.notify_new_comment(db, post, db_comment, commenter)
 

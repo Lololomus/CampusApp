@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info, MapPin, Link, Edit2, Flag } from 'lucide-react';
 import { useStore } from '../../store';
-import { toggleMarketFavorite, deleteMarketItem, getSellerRating } from '../../api';
+import { toggleMarketFavorite, deleteMarketItem, getSellerRating, contactMarketSeller } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
 import PhotoViewer from '../shared/PhotoViewer';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
@@ -163,11 +163,17 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     }
   };
 
-  const handleContact = () => {
+  const handleContact = async () => {
     hapticFeedback('medium');
     const username = currentItem.seller?.username;
     
     if (username) {
+      try {
+        await contactMarketSeller(currentItem.id);
+      } catch (error) {
+        console.error('Ошибка регистрации контакта с продавцом:', error);
+      }
+
       const message = encodeURIComponent(
         `Привет! Интересует "${currentItem.title}" за ${formatPrice(currentItem.price)} ₽.\n\nКогда можем встретиться?`
       );
