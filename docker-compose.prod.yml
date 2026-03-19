@@ -1,0 +1,76 @@
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    mem_limit: 1g
+    memswap_limit: 1g
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    mem_limit: 256m
+    memswap_limit: 256m
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    mem_limit: 1g
+    memswap_limit: 1g
+    command: ["/bin/bash", "/app/entrypoint.prod.sh"]
+    volumes:
+      - ${CAMPUSAPP_UPLOADS_DIR:-/srv/campusapp/uploads}:/app/uploads
+      - ${CAMPUSAPP_REPORTS_DIR:-/srv/campusapp/reports}:/app/reports
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    init: true
+    logging: *json-logging
+
+  bot:
+    mem_limit: 512m
+    memswap_limit: 512m
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    init: true
+    logging: *json-logging
+
+  frontend:
+    mem_limit: 256m
+    memswap_limit: 256m
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${CAMPUSAPP_UPLOADS_DIR:-/srv/campusapp/uploads}:/var/www/uploads:ro
+      - ${CAMPUSAPP_ACME_DIR:-/srv/campusapp/acme}:/var/www/acme:ro
+      - ${CAMPUSAPP_SSL_DIR:-/srv/campusapp/ssl}:/etc/nginx/ssl:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /var/cache/nginx:rw,nosuid,size=64m
+      - /var/run:rw,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    init: true
+    logging: *json-logging

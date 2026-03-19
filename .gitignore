@@ -3,6 +3,7 @@ node_modules/
 
 # Environment
 .env
+.env.production
 
 # Database
 *.db
@@ -28,10 +29,19 @@ venv/
 
 # Uploads file
 backend/uploads/
+uploads/
 
 # Analytics reports
 reports/
 backend/reports/
+
+# Runtime nginx/certbot artifacts
+nginx/ssl/
+nginx/acme/
+*.pem
+
+# Server-side backups
+backups/
 
 # Desktop generated updates
 updates/

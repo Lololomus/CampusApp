@@ -14,6 +14,7 @@ from typing import List, Optional, Dict, Tuple
 from app import models, schemas, crud
 from app.database import engine, get_db, init_db
 from app.utils import (
+    UPLOADS_ROOT,
     delete_images,
     get_image_urls,
     normalize_uploads_path,
@@ -236,9 +237,9 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 # ===== STATIC FILES =====
-os.makedirs("uploads/avatars", exist_ok=True)
-os.makedirs("uploads/images", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+os.makedirs(UPLOADS_ROOT / "avatars", exist_ok=True)
+os.makedirs(UPLOADS_ROOT / "images", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_ROOT)), name="uploads")
 
 @app.get("/")
 def root():

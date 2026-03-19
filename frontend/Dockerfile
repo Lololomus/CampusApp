@@ -1,31 +1,24 @@
-# --- Этап 1: Сборка (Build) ---
-FROM node:20-alpine as build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Копируем файлы зависимостей
 COPY package*.json ./
-
-# Ставим зависимости
 RUN npm ci
 
-# Копируем исходный код
 COPY . .
-
-# Собираем проект (создается папка build)
 RUN npm run build
 
-# --- Этап 2: Запуск (Production) ---
-FROM nginx:stable-alpine
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 
-# Копируем собранные файлы из первого этапа в папку Nginx
 COPY --from=build /app/build /usr/share/nginx/html
 
-# Копируем наш конфиг Nginx
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+USER root
+RUN chown -R 101:0 /usr/share/nginx/html
+USER 101
 
-# Открываем порт 80
-EXPOSE 80
+EXPOSE 8080 8443
 
-# Запускаем Nginx
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health || exit 1
+
 CMD ["nginx", "-g", "daemon off;"]

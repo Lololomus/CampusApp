@@ -20,7 +20,7 @@ except Exception:
 
 # ================= CONFIG =================
 
-UPLOADS_ROOT = Path("uploads")
+UPLOADS_ROOT = Path(os.getenv("UPLOADS_DIR", "uploads")).resolve()
 ALLOWED_UPLOAD_KINDS = {"images", "avatars", "videos", "thumbs"}
 
 MAX_IMAGE_SIZE = 1600

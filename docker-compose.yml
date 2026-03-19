@@ -1,24 +1,33 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: campus_postgres
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
-      - internal_network
+      - campus_internal
 
   redis:
     image: redis:7-alpine
-    container_name: campus_redis
-    restart: always
+    restart: unless-stopped
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    command: ["sh", "-c", "redis-server /usr/local/etc/redis/redis.conf --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-local-redis-password}
+    command:
+      [
+        "sh",
+        "-c",
+        "exec redis-server /usr/local/etc/redis/redis.conf --appendonly yes --protected-mode yes --requirepass \"$${REDIS_PASSWORD}\"",
+      ]
     volumes:
       - redis_data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -27,71 +36,96 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     networks:
-      - internal_network
+      - campus_internal
 
   backend:
-    build: ./backend
-    container_name: campus_backend
-    restart: always
-    depends_on:
-      - postgres
-      - redis
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
     env_file:
-      - .env
-    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-2}"]
+      - ./.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    volumes:
-      - campus_uploads:/app/uploads
+      REDIS_URL: redis://:${REDIS_PASSWORD:-local-redis-password}@redis:6379/0
+      UPLOADS_DIR: /app/uploads
+      ANALYTICS_REPORTS_DIR: /app/reports
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
-      - campus_network
-      - internal_network
+      - campus_internal
+
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-local-redis-password}@redis:6379/0
+      API_BASE_URL: http://backend:8000
+      BOT_HEARTBEAT_FILE: /tmp/campusapp-bot-heartbeat
+      BOT_HEARTBEAT_INTERVAL: ${BOT_HEARTBEAT_INTERVAL:-15}
+      BOT_HEARTBEAT_TIMEOUT: ${BOT_HEARTBEAT_TIMEOUT:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import os, pathlib, sys, time; path = pathlib.Path(os.environ.get('BOT_HEARTBEAT_FILE', '/tmp/campusapp-bot-heartbeat')); timeout = int(os.environ.get('BOT_HEARTBEAT_TIMEOUT', '60')); sys.exit(0 if path.exists() and time.time() - path.stat().st_mtime <= timeout else 1)\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks:
+      - campus_internal
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: campus_frontend
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
+    restart: unless-stopped
     depends_on:
-      - backend
-    volumes:
-      - campus_uploads:/var/www/uploads:ro
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
-      - campus_network
-
-  bot:
-    build: ./bot
-    container_name: campus_bot
-    restart: always
-    depends_on:
-      - backend
-      - postgres
-      - redis
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      API_BASE_URL: http://backend:8000
-    networks:
-      - campus_network
-      - internal_network
+      - campus_internal
 
 volumes:
   postgres_data:
   redis_data:
-  campus_uploads:
 
 networks:
-  campus_network:
+  campus_internal:
     driver: bridge
-  internal_network:
-    driver: bridge
-    internal: true
