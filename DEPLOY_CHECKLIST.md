@@ -117,13 +117,15 @@ Tuna terminates HTTPS for you. The VPS serves plain HTTP only on loopback `127.0
 Build and start the beta stack:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.tuna.yml up -d --build
+chmod +x scripts/deploy-tuna.sh
+./scripts/deploy-tuna.sh
 ```
 
 This mode uses:
 
 - `nginx/nginx.tuna.conf`
 - `docker-compose.tuna.yml`
+- `scripts/deploy-tuna.sh`
 
 Do **not** run:
 
@@ -131,6 +133,14 @@ Do **not** run:
 - `./scripts/deploy-prod.sh`
 
 Those scripts are for the own-domain TLS path only.
+
+`deploy-tuna.sh` does:
+
+- `git fetch` + `git pull --ff-only`
+- `docker compose -f docker-compose.yml -f docker-compose.tuna.yml up -d --build`
+- `docker compose ... up -d --force-recreate --no-deps frontend` so the bind-mounted `nginx.tuna.conf` is always refreshed after `git pull`
+- waits for `postgres`, `redis`, `backend`, `frontend`, `bot`
+- verifies `http://127.0.0.1/health` and `http://127.0.0.1/api/health`
 
 ### 5.2. Verify the local HTTP stack on the VPS
 
@@ -199,8 +209,7 @@ sudo systemctl status tuna-campusapp.service --no-pager
 
 ```bash
 cd /home/deploy/CampusApp
-git pull --ff-only origin main
-docker compose -f docker-compose.yml -f docker-compose.tuna.yml up -d --build
+./scripts/deploy-tuna.sh
 ```
 
 ## 6. Path B: Production via your own domain
