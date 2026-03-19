@@ -28,7 +28,7 @@ async def telegram_login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    await check_rate_limit(request, "auth_login")
+    await check_rate_limit(request, "auth_login", limit=5, window_sec=60)
     auth_data = verify_telegram_auth(payload.init_data)
     user_data_raw = auth_data.get("user")
     if not user_data_raw:
@@ -110,7 +110,7 @@ async def refresh_token(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    await check_rate_limit(request, "auth_refresh")
+    await check_rate_limit(request, "auth_refresh", limit=5, window_sec=60)
     refresh_token_cookie = request.cookies.get("refresh_token")
     if not refresh_token_cookie:
         raise HTTPException(status_code=401, detail="Refresh token missing")

@@ -4,9 +4,6 @@
 #    - legacy_query_api() → select() + await db.execute()
 #    - joinedload → selectinload
 #    - legacy_query_api(Model).get(id) → await db.get(Model, id)
-#
-# ⚠️ NOTE: Этот роутер всё ещё использует telegram_id=Query(...)
-#    вместо require_user. Это будет исправлено отдельно (Фаза 0.2 follow-up).
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy import select, func, or_, desc
@@ -16,6 +13,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
 from app.database import get_db
+from app.auth_service import require_user
 from app import models, schemas
 from app.services import notification_service as notif
 from app.services.analytics_service import record_server_event
@@ -30,16 +28,6 @@ router = APIRouter(tags=["moderation"])
 # ========================================
 # ХЕЛПЕРЫ АВТОРИЗАЦИИ
 # ========================================
-
-
-async def get_user_or_404(db: AsyncSession, telegram_id: int) -> models.User:
-    result = await db.execute(
-        select(models.User).where(models.User.telegram_id == telegram_id)
-    )
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
 
 
 def require_moderator(user: models.User) -> models.User:
@@ -132,10 +120,10 @@ async def auto_expire_shadow_bans(db: AsyncSession):
 async def moderate_delete_post(
     post_id: int,
     action: schemas.ModerationAction = Body(...),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
 
     result = await db.execute(
         select(models.Post).options(selectinload(models.Post.author)).where(models.Post.id == post_id)
@@ -170,10 +158,10 @@ async def moderate_delete_post(
 async def moderate_delete_comment(
     comment_id: int,
     action: schemas.ModerationAction = Body(...),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
 
     result = await db.execute(
         select(models.Comment).options(selectinload(models.Comment.author)).where(models.Comment.id == comment_id)
@@ -218,10 +206,10 @@ async def moderate_delete_comment(
 async def moderate_delete_request(
     request_id: int,
     action: schemas.ModerationAction = Body(...),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
 
     result = await db.execute(
         select(models.Request).options(selectinload(models.Request.author)).where(models.Request.id == request_id)
@@ -256,10 +244,10 @@ async def moderate_delete_request(
 async def moderate_delete_market_item(
     item_id: int,
     action: schemas.ModerationAction = Body(...),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
 
     result = await db.execute(
         select(models.MarketItem).options(selectinload(models.MarketItem.seller)).where(models.MarketItem.id == item_id)
@@ -298,11 +286,11 @@ async def moderate_delete_market_item(
 @router.post("/moderation/posts/{post_id}/pin")
 async def toggle_pin_post(
     post_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     action: schemas.PinPostAction = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
 
     result = await db.execute(
         select(models.Post).options(selectinload(models.Post.author)).where(
@@ -371,10 +359,10 @@ async def toggle_pin_post(
 @router.post("/moderation/ban")
 async def shadow_ban_user(
     data: schemas.ShadowBanCreate = Body(...),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
 
     target = await db.get(models.User, data.user_id)
     if not target:
@@ -414,10 +402,10 @@ async def shadow_ban_user(
 @router.delete("/moderation/ban/{user_id}")
 async def shadow_unban_user(
     user_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
 
     target = await db.get(models.User, user_id)
     if not target:
@@ -448,10 +436,10 @@ async def shadow_unban_user(
 @router.post("/reports")
 async def create_report(
     data: schemas.ReportCreate = Body(...),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    reporter = await get_user_or_404(db, telegram_id)
+    reporter = user
 
     existing_res = await db.execute(
         select(models.Report).where(
@@ -548,14 +536,14 @@ async def _get_content_university(db: AsyncSession, target_type: str, target_id:
 
 @router.get("/reports")
 async def get_reports(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     status: str = Query('pending'),
     target_type: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
     normalized_status = 'reviewed' if status == 'resolved' else status
 
     filters = []
@@ -606,10 +594,10 @@ async def review_report(
     report_id: int,
     status: str = Query(..., pattern="^(reviewed|dismissed|resolved)$"),
     moderator_note: Optional[str] = Query(None),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    moderator = require_moderator(await get_user_or_404(db, telegram_id))
+    moderator = require_moderator(user)
     normalized_status = 'reviewed' if status == 'resolved' else status
 
     report = await db.get(models.Report, report_id)
@@ -652,11 +640,9 @@ async def review_report(
 @router.post("/appeals")
 async def create_appeal(
     data: schemas.AppealCreate = Body(...),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await get_user_or_404(db, telegram_id)
-
     mod_log = await db.get(models.ModerationLog, data.moderation_log_id)
     if not mod_log:
         raise HTTPException(status_code=404, detail="Действие модерации не найдено")
@@ -687,13 +673,13 @@ async def create_appeal(
 
 @router.get("/appeals")
 async def get_appeals(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     status: str = Query('pending'),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    require_superadmin(await get_user_or_404(db, telegram_id))
+    require_superadmin(user)
 
     filters = []
     if status and status != 'all':
@@ -737,10 +723,10 @@ async def review_appeal(
     appeal_id: int,
     status: str = Query(..., pattern="^(approved|rejected)$"),
     reviewer_note: Optional[str] = Query(None),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    admin = require_superadmin(await get_user_or_404(db, telegram_id))
+    admin = require_superadmin(user)
 
     result = await db.execute(
         select(models.Appeal)
@@ -834,10 +820,10 @@ async def _rollback_moderation(db: AsyncSession, mod_log: models.ModerationLog, 
 
 @router.get("/admin/ambassadors")
 async def list_ambassadors(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    require_superadmin(await get_user_or_404(db, telegram_id))
+    require_superadmin(user)
 
     result = await db.execute(
         select(models.User)
@@ -871,10 +857,10 @@ async def list_ambassadors(
 @router.post("/admin/ambassadors")
 async def assign_ambassador(
     data: schemas.AssignAmbassadorRequest = Body(...),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    admin = require_superadmin(await get_user_or_404(db, telegram_id))
+    admin = require_superadmin(user)
 
     result = await db.execute(
         select(models.User).where(models.User.telegram_id == data.telegram_id)
@@ -918,10 +904,10 @@ async def assign_ambassador(
 @router.delete("/admin/ambassadors/{user_id}")
 async def remove_ambassador(
     user_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    admin = require_superadmin(await get_user_or_404(db, telegram_id))
+    admin = require_superadmin(user)
 
     target = await db.get(models.User, user_id)
     if not target:
@@ -949,7 +935,7 @@ async def remove_ambassador(
 
 @router.get("/admin/logs")
 async def get_moderation_logs(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     moderator_id: Optional[int] = Query(None),
     action: Optional[str] = Query(None),
     university: Optional[str] = Query(None),
@@ -957,7 +943,7 @@ async def get_moderation_logs(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    user = require_moderator(await get_user_or_404(db, telegram_id))
+    user = require_moderator(user)
 
     filters = []
     if user.role == 'ambassador':
@@ -1010,10 +996,10 @@ async def get_moderation_logs(
 
 @router.get("/admin/stats")
 async def get_admin_stats(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    require_superadmin(await get_user_or_404(db, telegram_id))
+    require_superadmin(user)
 
     now = datetime.utcnow()
     day_ago = now - timedelta(days=1)
@@ -1071,10 +1057,9 @@ async def get_admin_stats(
 
 @router.get("/moderation/my-role")
 async def get_my_moderation_role(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await get_user_or_404(db, telegram_id)
 
     await auto_expire_shadow_bans(db)
 

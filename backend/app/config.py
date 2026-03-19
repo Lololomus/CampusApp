@@ -103,6 +103,10 @@ def get_settings() -> Settings:
             raise RuntimeError("BOT_SECRET must be set when APP_ENV=prod")
         bot_secret = "dev-bot-secret"
 
+    bot_token = os.getenv("BOT_TOKEN", "test_token")
+    if is_prod_env and (not bot_token or bot_token == "test_token"):
+        raise RuntimeError("BOT_TOKEN must be set to a real token when APP_ENV=prod")
+
     analytics_salt = os.getenv("ANALYTICS_SALT")
     if not analytics_salt:
         if is_prod_env:
@@ -119,6 +123,12 @@ def get_settings() -> Settings:
     if is_prod_env and dev_auth_enabled:
         raise RuntimeError("DEV_AUTH_ENABLED must be false when APP_ENV is production")
 
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        if is_prod_env:
+            raise RuntimeError("DATABASE_URL must be set when APP_ENV=prod")
+        database_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/campus_app_dev"
+
     cookie_secure = os.getenv("COOKIE_SECURE", "false").lower() == "true"
     cookie_samesite = os.getenv("COOKIE_SAMESITE", "lax")
     if is_prod_env and not cookie_secure:
@@ -128,9 +138,9 @@ def get_settings() -> Settings:
 
     return Settings(
         app_env=app_env,
-        database_url=os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/campus_app_dev"),
+        database_url=database_url,
         
-        bot_token=os.getenv("BOT_TOKEN", "test_token"),
+        bot_token=bot_token,
         bot_secret=bot_secret,
         webhook_host=os.getenv("WEBHOOK_HOST", ""),
         webhook_path=os.getenv("WEBHOOK_PATH", ""),

@@ -250,8 +250,7 @@ export async function registerUser(userData) {
 
 export async function getCurrentUser() {
   try {
-    const telegram_id = getTelegramId(true);
-    const response = await api.get('/users/me', { params: telegram_id ? { telegram_id } : {} });
+    const response = await api.get('/users/me');
     return response.data;
   } catch (error) {
     console.error('Ошибка получения пользователя:', error);
@@ -261,10 +260,7 @@ export async function getCurrentUser() {
 
 export async function updateUserProfile(updates) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.patch('/users/me', updates, {
-      params: { telegram_id },
-    });
+    const response = await api.patch('/users/me', updates);
     return response.data;
   } catch (error) {
     console.error('Ошибка обновления профиля:', error);
@@ -274,9 +270,8 @@ export async function updateUserProfile(updates) {
 
 export async function getUserPosts(userId, limit = 5, offset = 0) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.get(`/users/${userId}/posts`, {
-      params: { telegram_id, limit, offset }
+      params: { limit, offset }
     });
     return response.data;
   } catch (error) {
@@ -297,13 +292,11 @@ export async function getUserStats(userId) {
 
 export async function getPosts(filters = {}) {
   try {
-    const telegram_id = getTelegramId(true);
     const params = {
       skip: Number.isFinite(filters.skip) ? filters.skip : 0,
       limit: Number.isFinite(filters.limit) ? filters.limit : 20,
     };
-    if (telegram_id) params.telegram_id = telegram_id;
-    
+
     if (filters.category && filters.category !== 'all') {
       params.category = filters.category;
     }
@@ -339,10 +332,7 @@ export async function getPosts(filters = {}) {
 
 export async function getPost(id) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get(`/posts/${id}`, {
-      params: { telegram_id }
-    });
+    const response = await api.get(`/posts/${id}`);
     return response.data;
   } catch (error) {
     console.error('Ошибка получения поста:', error);
@@ -352,10 +342,7 @@ export async function getPost(id) {
 
 export async function createPost(postData, onProgress = null) {
   try {
-    const telegram_id = getTelegramId();
-    
     const config = {
-      params: { telegram_id },
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -379,10 +366,7 @@ export async function createPost(postData, onProgress = null) {
 
 export async function updatePost(postId, postData, onProgress = null) {
   try {
-    const telegram_id = getTelegramId();
-    
     const config = {
-      params: { telegram_id },
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -402,10 +386,7 @@ export async function updatePost(postId, postData, onProgress = null) {
 
 export async function deletePost(postId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.delete(`/posts/${postId}`, {
-      params: { telegram_id }
-    });
+    const response = await api.delete(`/posts/${postId}`);
     return response.data;
   } catch (error) {
     console.error('Ошибка удаления поста:', error);
@@ -415,10 +396,7 @@ export async function deletePost(postId) {
 
 export async function likePost(postId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.post(`/posts/${postId}/like`, null, {
-      params: { telegram_id }
-    });
+    const response = await api.post(`/posts/${postId}/like`);
     return response.data;
   } catch (error) {
     console.error('Ошибка лайка поста:', error);
@@ -429,11 +407,8 @@ export async function likePost(postId) {
 // ✅ НОВАЯ ФУНКЦИЯ ДЛЯ ОПРОСОВ
 export async function votePoll(pollId, optionIndices) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.post(`/polls/${pollId}/vote`, {
       option_indices: optionIndices
-    }, {
-      params: { telegram_id }
     });
     return response.data;
   } catch (error) {
@@ -444,10 +419,7 @@ export async function votePoll(pollId, optionIndices) {
 
 export async function getPostComments(postId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get(`/posts/${postId}/comments`, {
-      params: { telegram_id }
-    });
+    const response = await api.get(`/posts/${postId}/comments`);
     return response.data.items || [];
   } catch (error) {
     console.error('Ошибка получения комментариев:', error);
@@ -457,8 +429,6 @@ export async function getPostComments(postId) {
 
 export async function createComment(postId, bodyOrPayload, parentId = null) {
   try {
-    const telegram_id = getTelegramId();
-
     let body = '';
     let actualParentId = parentId;
     let isAnonymous = false;
@@ -491,7 +461,6 @@ export async function createComment(postId, bodyOrPayload, parentId = null) {
       images.forEach((file) => formData.append('images', file));
 
       const response = await api.post(`/posts/${postId}/comments`, formData, {
-        params: { telegram_id },
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return response.data;
@@ -504,9 +473,7 @@ export async function createComment(postId, bodyOrPayload, parentId = null) {
       parent_id: actualParentId
     };
 
-    const response = await api.post(`/posts/${postId}/comments`, payload, {
-      params: { telegram_id },
-    });
+    const response = await api.post(`/posts/${postId}/comments`, payload);
     return response.data;
   } catch (error) {
     console.error('Ошибка создания комментария:', error);
@@ -516,10 +483,7 @@ export async function createComment(postId, bodyOrPayload, parentId = null) {
 
 export async function likeComment(commentId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.post(`/comments/${commentId}/like`, null, {
-      params: { telegram_id }
-    });
+    const response = await api.post(`/comments/${commentId}/like`);
     return response.data;
   } catch (error) {
     console.error('Ошибка лайка комментария:', error);
@@ -529,10 +493,7 @@ export async function likeComment(commentId) {
 
 export async function deleteComment(commentId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.delete(`/comments/${commentId}`, {
-      params: { telegram_id }
-    });
+    const response = await api.delete(`/comments/${commentId}`);
     return response.data;
   } catch (error) {
     console.error('Ошибка удаления комментария:', error);
@@ -542,11 +503,9 @@ export async function deleteComment(commentId) {
 
 export async function updateComment(commentId, text) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.patch(
       `comments/${commentId}`,
       { body: text },
-      { params: { telegram_id } }
     );
     return response.data;
   } catch (error) {
@@ -562,10 +521,7 @@ export async function reportComment(commentId, reason, description = null) {
 
 export async function createRequest(requestData, onProgress = null) {
   try {
-    const telegram_id = getTelegramId();
-    
     const config = {
-      params: { telegram_id },
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -573,7 +529,7 @@ export async function createRequest(requestData, onProgress = null) {
     if (onProgress) {
       config.onUploadProgress = onProgress;
     }
-    
+
     const response = await api.post('/api/requests/create', requestData, config);
     return response.data;
   } catch (error) {
@@ -584,14 +540,11 @@ export async function createRequest(requestData, onProgress = null) {
 
 export async function getRequestsFeed(filters = {}) {
   try {
-    const telegram_id = getTelegramId(true);
-    const params = { 
-      limit: filters.limit || 20, 
-      offset: filters.offset || 0 
+    const params = {
+      limit: filters.limit || 20,
+      offset: filters.offset || 0
     };
-    
-    if (telegram_id) params.telegram_id = telegram_id;
-    
+
     if (filters.category && filters.category !== 'all') {
       params.category = filters.category;
     }
@@ -630,10 +583,7 @@ export async function getRequestsFeed(filters = {}) {
 
 export async function getRequestById(requestId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get(`/api/requests/${requestId}`, {
-      params: { telegram_id }
-    });
+    const response = await api.get(`/api/requests/${requestId}`);
     return response.data;
   } catch (error) {
     console.error('Ошибка получения запроса:', error);
@@ -643,10 +593,7 @@ export async function getRequestById(requestId) {
 
 export async function updateRequest(requestId, data) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.put(`/api/requests/${requestId}`, data, {
-      params: { telegram_id }
-    });
+    const response = await api.put(`/api/requests/${requestId}`, data);
     return response.data;
   } catch (error) {
     console.error('Ошибка обновления запроса:', error);
@@ -656,10 +603,7 @@ export async function updateRequest(requestId, data) {
 
 export async function deleteRequest(requestId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.delete(`/api/requests/${requestId}`, {
-      params: { telegram_id }
-    });
+    const response = await api.delete(`/api/requests/${requestId}`);
     return response.data;
   } catch (error) {
     console.error('Ошибка удаления запроса:', error);
@@ -669,9 +613,8 @@ export async function deleteRequest(requestId) {
 
 export async function getMyRequests(limit = 20, offset = 0) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.get(`/api/requests/my-items`, {
-      params: { telegram_id, limit, offset }
+      params: { limit, offset }
     });
     return response.data;
   } catch (error) {
@@ -682,12 +625,9 @@ export async function getMyRequests(limit = 20, offset = 0) {
 
 export async function respondToRequest(requestId, message = null, telegram_contact = null) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.post(`/api/requests/${requestId}/respond`, {
       message: message,
       telegram_contact: telegram_contact
-    }, {
-      params: { telegram_id }
     });
     return response.data;
   } catch (error) {
@@ -698,10 +638,7 @@ export async function respondToRequest(requestId, message = null, telegram_conta
 
 export async function getRequestResponses(requestId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get(`/api/requests/${requestId}/responses`, {
-      params: { telegram_id }
-    });
+    const response = await api.get(`/api/requests/${requestId}/responses`);
     return response.data;
   } catch (error) {
     console.error('Ошибка получения откликов:', error);
@@ -711,10 +648,7 @@ export async function getRequestResponses(requestId) {
 
 export async function deleteResponse(responseId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.delete(`/api/responses/${responseId}`, {
-      params: { telegram_id }
-    });
+    const response = await api.delete(`/api/responses/${responseId}`);
     return response.data;
   } catch (error) {
     console.error('Ошибка удаления отклика:', error);
@@ -724,13 +658,12 @@ export async function deleteResponse(responseId) {
 
 export async function getMarketItems(filters = {}) {
   try {
-    const telegram_id = getTelegramId(true);
     const skip = filters.skip || 0;
     const limit = filters.limit || 20;
 
     if (filters.favorites_only) {
       const response = await api.get('/market/favorites', {
-        params: { telegram_id, limit, offset: skip }
+        params: { limit, offset: skip }
       });
       const items = response.data || [];
       return {
@@ -742,7 +675,7 @@ export async function getMarketItems(filters = {}) {
 
     if (filters.seller_id) {
       const response = await api.get('/market/my-items', {
-        params: { telegram_id, limit, offset: skip }
+        params: { limit, offset: skip }
       });
       const items = response.data || [];
       return {
@@ -753,7 +686,6 @@ export async function getMarketItems(filters = {}) {
     }
 
     const params = { skip, limit };
-    if (telegram_id) params.telegram_id = telegram_id;
     
     if (filters.item_type) params.item_type = filters.item_type;
     if (filters.category && filters.category !== 'all') params.category = filters.category;
@@ -778,10 +710,7 @@ export async function getMarketItems(filters = {}) {
 
 export async function getMarketItem(itemId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get(`/market/${itemId}`, {
-      params: { telegram_id }
-    });
+    const response = await api.get(`/market/${itemId}`);
     return response.data;
   } catch (error) {
     console.error('Ошибка получения товара:', error);
@@ -790,23 +719,17 @@ export async function getMarketItem(itemId) {
 }
 
 export async function contactMarketSeller(itemId) {
-  const telegram_id = getTelegramId();
-  await api.post(`/market/${itemId}/contact`, null, {
-    params: { telegram_id }
-  });
+  await api.post(`/market/${itemId}/contact`);
 }
 
 export async function createMarketItem(itemData, onProgress = null) {
   try {
-    const telegram_id = getTelegramId();
-    
     const config = {
-      params: { telegram_id },
       headers: { 'Content-Type': 'multipart/form-data' }
     };
-    
+
     if (onProgress) config.onUploadProgress = onProgress;
-    
+
     const response = await api.post('/market/items', itemData, config);
     return response.data;
   } catch (error) {
@@ -817,15 +740,12 @@ export async function createMarketItem(itemData, onProgress = null) {
 
 export async function updateMarketItem(itemId, itemData, onProgress = null) {
   try {
-    const telegram_id = getTelegramId();
-    
     const config = {
-      params: { telegram_id },
       headers: { 'Content-Type': 'multipart/form-data' }
     };
-    
+
     if (onProgress) config.onUploadProgress = onProgress;
-    
+
     const response = await api.patch(`/market/${itemId}`, itemData, config);
     return response.data;
   } catch (error) {
@@ -836,10 +756,7 @@ export async function updateMarketItem(itemId, itemData, onProgress = null) {
 
 export async function deleteMarketItem(itemId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.delete(`/market/${itemId}`, {
-      params: { telegram_id }
-    });
+    const response = await api.delete(`/market/${itemId}`);
     return response.data;
   } catch (error) {
     console.error('Ошибка удаления товара:', error);
@@ -849,10 +766,7 @@ export async function deleteMarketItem(itemId) {
 
 export async function toggleMarketFavorite(itemId) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.post(`/market/${itemId}/favorite`, null, {
-      params: { telegram_id }
-    });
+    const response = await api.post(`/market/${itemId}/favorite`);
     return response.data;
   } catch (error) {
     console.error('Ошибка toggle избранного:', error);
@@ -862,9 +776,8 @@ export async function toggleMarketFavorite(itemId) {
 
 export async function getMarketFavorites(limit = 20, offset = 0) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.get('/market/favorites', {
-      params: { telegram_id, limit, offset }
+      params: { limit, offset }
     });
     return response.data;
   } catch (error) {
@@ -875,9 +788,8 @@ export async function getMarketFavorites(limit = 20, offset = 0) {
 
 export async function getMyMarketItems(limit = 20, offset = 0) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.get(`/market/my-items`, {
-      params: { telegram_id, limit, offset }
+      params: { limit, offset }
     });
     return response.data;
   } catch (error) {
@@ -925,8 +837,7 @@ export async function skipReviewRequest({ itemId = null, dealId = null } = {}) {
 
 export async function getMyDatingProfile() {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get('/dating/profile/me', { params: { telegram_id } });
+    const response = await api.get('/dating/profile/me');
     return response.data;
   } catch (error) {
     if (error.response?.status === 404) return null;
@@ -935,7 +846,6 @@ export async function getMyDatingProfile() {
 }
 
 export async function createDatingProfile(data) {
-  const telegram_id = getTelegramId();
   const formData = new FormData();
 
   formData.append('gender', data.gender);
@@ -966,7 +876,6 @@ export async function createDatingProfile(data) {
   }
 
   const response = await api.post('/dating/profile', formData, {
-    params: { telegram_id },
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 
@@ -975,9 +884,7 @@ export async function createDatingProfile(data) {
 
 export async function updateDatingProfile(formData) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.post('/dating/profile', formData, {
-      params: { telegram_id },
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -990,49 +897,37 @@ export async function updateDatingProfile(formData) {
 }
 
 export async function getDatingFeed(limit = 10, offset = 0) {
-  const telegram_id = getTelegramId();
   const response = await api.get('/dating/feed', {
-    params: { telegram_id, limit, offset }
+    params: { limit, offset }
   });
   return response.data;
 }
 
 export async function likeUser(targetUserId) {
-  const telegram_id = getTelegramId();
-  const response = await api.post(`/dating/${targetUserId}/like`, null, {
-    params: { telegram_id }
-  });
+  const response = await api.post(`/dating/${targetUserId}/like`);
   return response.data;
 }
 
 export async function dislikeUser(targetUserId) {
-  const telegram_id = getTelegramId();
-  const response = await api.post(`/dating/${targetUserId}/dislike`, null, {
-    params: { telegram_id }
-  });
+  const response = await api.post(`/dating/${targetUserId}/dislike`);
   return response.data;
 }
 
 export async function getDatingStats() {
-  const telegram_id = getTelegramId();
-  const response = await api.get('/dating/stats', { params: { telegram_id } });
+  const response = await api.get('/dating/stats');
   return response.data;
 }
 
 export async function getWhoLikedMe(limit = 20, offset = 0) {
-  const telegram_id = getTelegramId();
   const response = await api.get('/dating/likes-received', {
-    params: { telegram_id, limit, offset }
+    params: { limit, offset }
   });
   return response.data;
 }
 
 export async function getMyMatches() {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get('/dating/matches-active', {
-      params: { telegram_id }
-    });
+    const response = await api.get('/dating/matches-active');
     
     return response.data;
   } catch (error) {
@@ -1047,10 +942,7 @@ export async function getMyMatches() {
 
 export async function updateDatingSettings(settings) {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.patch('/dating/settings', settings, {
-      params: { telegram_id }
-    });
+    const response = await api.patch('/dating/settings', settings);
     return response.data;
   } catch (error) {
     console.error('Ошибка обновления настроек dating:', error);
@@ -1059,12 +951,10 @@ export async function updateDatingSettings(settings) {
 }
 
 export async function uploadUserAvatar(file) {
-  const telegram_id = getTelegramId();
   const formData = new FormData();
   formData.append('file', file);
 
   const response = await api.post('/users/me/avatar', formData, {
-    params: { telegram_id },
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -1080,10 +970,7 @@ export async function uploadUserAvatar(file) {
 /** Получить свою роль и возможности */
 export async function getMyModerationRole() {
   try {
-    const telegram_id = getTelegramId();
-    const response = await api.get('/moderation/my-role', {
-      params: { telegram_id }
-    });
+    const response = await api.get('/moderation/my-role');
     return response.data;
   } catch (error) {
     console.error('Ошибка получения роли:', error);
@@ -1093,9 +980,7 @@ export async function getMyModerationRole() {
 
 /** Удалить пост (модерация) */
 export async function moderateDeletePost(postId, reason) {
-  const telegram_id = getTelegramId();
   const response = await api.delete(`/moderation/posts/${postId}`, {
-    params: { telegram_id },
     data: { reason }
   });
   return response.data;
@@ -1103,9 +988,7 @@ export async function moderateDeletePost(postId, reason) {
 
 /** Удалить комментарий (модерация) */
 export async function moderateDeleteComment(commentId, reason) {
-  const telegram_id = getTelegramId();
   const response = await api.delete(`/moderation/comments/${commentId}`, {
-    params: { telegram_id },
     data: { reason }
   });
   return response.data;
@@ -1113,9 +996,7 @@ export async function moderateDeleteComment(commentId, reason) {
 
 /** Удалить запрос (модерация) */
 export async function moderateDeleteRequest(requestId, reason) {
-  const telegram_id = getTelegramId();
   const response = await api.delete(`/moderation/requests/${requestId}`, {
-    params: { telegram_id },
     data: { reason }
   });
   return response.data;
@@ -1123,9 +1004,7 @@ export async function moderateDeleteRequest(requestId, reason) {
 
 /** Удалить товар (модерация) */
 export async function moderateDeleteMarketItem(itemId, reason) {
-  const telegram_id = getTelegramId();
   const response = await api.delete(`/moderation/market/${itemId}`, {
-    params: { telegram_id },
     data: { reason }
   });
   return response.data;
@@ -1133,29 +1012,21 @@ export async function moderateDeleteMarketItem(itemId, reason) {
 
 /** Закрепить/открепить пост */
 export async function togglePinPost(postId, reason = null) {
-  const telegram_id = getTelegramId();
-  const response = await api.post(`/moderation/posts/${postId}/pin`, 
-    { reason },
-    { params: { telegram_id } }
+  const response = await api.post(`/moderation/posts/${postId}/pin`,
+    { reason }
   );
   return response.data;
 }
 
 /** Теневой бан */
 export async function shadowBanUser(data) {
-  const telegram_id = getTelegramId();
-  const response = await api.post('/moderation/ban', data, {
-    params: { telegram_id }
-  });
+  const response = await api.post('/moderation/ban', data);
   return response.data;
 }
 
 /** Снять теневой бан */
 export async function shadowUnbanUser(userId) {
-  const telegram_id = getTelegramId();
-  const response = await api.delete(`/moderation/ban/${userId}`, {
-    params: { telegram_id }
-  });
+  const response = await api.delete(`/moderation/ban/${userId}`);
   return response.data;
 }
 
@@ -1166,7 +1037,6 @@ export async function shadowUnbanUser(userId) {
 
 /** Отправить жалобу (любой пользователь) */
 export async function createReport(targetType, targetId, reason, description = null, meta = null) {
-  const telegram_id = getTelegramId();
   const payload = {
     target_type: targetType,
     target_id: targetId,
@@ -1179,16 +1049,13 @@ export async function createReport(targetType, targetId, reason, description = n
     payload.source_id = meta.sourceId;
   }
 
-  const response = await api.post('/reports', payload, {
-    params: { telegram_id }
-  });
+  const response = await api.post('/reports', payload);
   return response.data;
 }
 
 /** Получить список жалоб (модератор) */
 export async function getReports(status = 'pending', targetType = null, limit = 20, offset = 0) {
-  const telegram_id = getTelegramId();
-  const params = { telegram_id, status, limit, offset };
+  const params = { status, limit, offset };
   if (targetType) params.target_type = targetType;
   const response = await api.get('/reports', { params });
   return response.data;
@@ -1196,8 +1063,7 @@ export async function getReports(status = 'pending', targetType = null, limit = 
 
 /** Обработать жалобу (модератор) */
 export async function reviewReport(reportId, status, moderatorNote = null) {
-  const telegram_id = getTelegramId();
-  const params = { telegram_id, status };
+  const params = { status };
   if (moderatorNote) params.moderator_note = moderatorNote;
   const response = await api.patch(`/reports/${reportId}`, null, { params });
   return response.data;
@@ -1210,29 +1076,24 @@ export async function reviewReport(reportId, status, moderatorNote = null) {
 
 /** Создать обжалование */
 export async function createAppeal(moderationLogId, message) {
-  const telegram_id = getTelegramId();
   const response = await api.post('/appeals', {
     moderation_log_id: moderationLogId,
     message
-  }, {
-    params: { telegram_id }
   });
   return response.data;
 }
 
 /** Получить список обжалований (суперадмин) */
 export async function getAppeals(status = 'pending', limit = 20, offset = 0) {
-  const telegram_id = getTelegramId();
   const response = await api.get('/appeals', {
-    params: { telegram_id, status, limit, offset }
+    params: { status, limit, offset }
   });
   return response.data;
 }
 
 /** Рассмотреть обжалование (суперадмин) */
 export async function reviewAppeal(appealId, status, reviewerNote = null) {
-  const telegram_id = getTelegramId();
-  const params = { telegram_id, status };
+  const params = { status };
   if (reviewerNote) params.reviewer_note = reviewerNote;
   const response = await api.patch(`/appeals/${appealId}`, null, { params });
   return response.data;
@@ -1245,39 +1106,28 @@ export async function reviewAppeal(appealId, status, reviewerNote = null) {
 
 /** Список амбассадоров */
 export async function getAmbassadors() {
-  const telegram_id = getTelegramId();
-  const response = await api.get('/admin/ambassadors', {
-    params: { telegram_id }
-  });
+  const response = await api.get('/admin/ambassadors');
   return response.data;
 }
 
 /** Назначить амбассадора */
 export async function assignAmbassador(targetTelegramId, university = null) {
-  const telegram_id = getTelegramId();
   const response = await api.post('/admin/ambassadors', {
     telegram_id: targetTelegramId,
     university
-  }, {
-    params: { telegram_id }
   });
   return response.data;
 }
 
 /** Снять амбассадора */
 export async function removeAmbassador(userId) {
-  const telegram_id = getTelegramId();
-  const response = await api.delete(`/admin/ambassadors/${userId}`, {
-    params: { telegram_id }
-  });
+  const response = await api.delete(`/admin/ambassadors/${userId}`);
   return response.data;
 }
 
 /** Логи модерации */
 export async function getModerationLogs(filters = {}) {
-  const telegram_id = getTelegramId();
-  const params = { 
-    telegram_id,
+  const params = {
     limit: filters.limit || 50,
     offset: filters.offset || 0
   };
@@ -1290,10 +1140,7 @@ export async function getModerationLogs(filters = {}) {
 
 /** Статистика (суперадмин) */
 export async function getAdminStats() {
-  const telegram_id = getTelegramId();
-  const response = await api.get('/admin/stats', {
-    params: { telegram_id }
-  });
+  const response = await api.get('/admin/stats');
   return response.data;
 }
 
@@ -1576,8 +1423,7 @@ export async function markAllNotificationsRead() {
 
 export async function getUnboundUsers(search = '', limit = 100, offset = 0) {
   try {
-    const telegram_id = getTelegramId();
-    const params = { telegram_id, limit, offset };
+    const params = { limit, offset };
     if (search) params.search = search;
     const response = await api.get('/admin/campuses/unbound-users', { params });
     return response.data;
@@ -1589,13 +1435,12 @@ export async function getUnboundUsers(search = '', limit = 100, offset = 0) {
 
 export async function bindUserToCampus(userId, campusId, university, city = null) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.post('/admin/campuses/bind-user', {
       user_id: userId,
       campus_id: campusId,
       university: university,
       city: city,
-    }, { params: { telegram_id } });
+    });
     return response.data;
   } catch (error) {
     console.error('Ошибка привязки к кампусу:', error);
@@ -1605,10 +1450,9 @@ export async function bindUserToCampus(userId, campusId, university, city = null
 
 export async function unbindUserFromCampus(userId) {
   try {
-    const telegram_id = getTelegramId();
     const response = await api.post('/admin/campuses/unbind-user', {
       user_id: userId,
-    }, { params: { telegram_id } });
+    });
     return response.data;
   } catch (error) {
     console.error('Ошибка отвязки от кампуса:', error);

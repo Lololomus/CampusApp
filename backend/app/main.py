@@ -21,9 +21,9 @@ from app.utils import (
     process_uploaded_files,
 )
 from app.video_utils import process_uploaded_video
-from app.auth_service import decode_authorization_header, require_user
+from app.auth_service import decode_authorization_header, require_user, optional_user
 from app.config import get_settings
-from app.rate_limiter import close_redis
+from app.rate_limiter import check_rate_limit, close_redis
 from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
 import re
@@ -141,15 +141,19 @@ async def lifespan(app: FastAPI):
     await close_redis()
     logger.info("Engines disposed")
 
+settings = get_settings()
+
 app = FastAPI(
     title="Campus App API",
     description="Backend API for campus social app",
     version="2.2.0",
     lifespan=lifespan,
+    docs_url=None if settings.is_prod else "/docs",
+    redoc_url=None if settings.is_prod else "/redoc",
+    openapi_url=None if settings.is_prod else "/openapi.json",
 )
 
 # ===== ROUTERS =====
-settings = get_settings()
 
 app.include_router(dating.router)
 app.include_router(moderation.router)
@@ -171,10 +175,8 @@ app.add_middleware(
 )
 
 
-PUBLIC_PATHS = ("/", "/health", "/openapi.json")
+PUBLIC_PATHS = ("/", "/health")
 public_prefixes = [
-    "/docs",
-    "/redoc",
     "/uploads",
     "/auth/telegram/login",
     "/auth/refresh",
@@ -198,6 +200,8 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if settings.is_prod:
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
 
 
@@ -223,16 +227,6 @@ async def auth_middleware(request: Request, call_next):
     if payload is not None:
         request.state.auth_payload = payload
 
-    query_telegram_id = request.query_params.get("telegram_id")
-    if query_telegram_id is not None and payload is not None:
-        try:
-            token_tgid = int(payload.get("tgid"))
-            query_tgid = int(query_telegram_id)
-        except (TypeError, ValueError):
-            return JSONResponse(status_code=401, content={"detail": "Invalid telegram_id"})
-        if token_tgid != query_tgid:
-            return JSONResponse(status_code=403, content={"detail": "telegram_id mismatch"})
-
     if is_public_path:
         return await call_next(request)
 
@@ -257,22 +251,15 @@ def health_check():
 # ===== USER ENDPOINTS =====
 
 @app.get("/users/me", response_model=schemas.UserResponse)
-async def get_current_user(telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+async def get_current_user(user: models.User = Depends(require_user)):
     return user
 
 @app.post("/users/me/avatar")
 async def upload_avatar(
     file: UploadFile = File(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
-    telegram_id: int = Query(...)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     old_avatar = user.avatar
     try:
         avatars_meta = await process_uploaded_files([file], kind="avatars")
@@ -299,14 +286,10 @@ async def upload_avatar(
 
 @app.patch("/users/me", response_model=schemas.UserResponse)
 async def update_current_user(
-    telegram_id: int = Query(...),
     user_update: schemas.UserUpdate = Body(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     update_data = user_update.model_dump(exclude_unset=True)
     
     critical_fields = ["campus_id", "university", "institute", "course"]
@@ -337,13 +320,9 @@ async def get_user_posts_endpoint(
     user_id: int,
     limit: int = Query(5, ge=1, le=50),
     offset: int = Query(0, ge=0),
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    requesting_user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not requesting_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     target_user = await crud.get_user_by_id(db, user_id)
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -447,19 +426,12 @@ async def get_posts_feed(
     tags: Optional[str] = Query(None),            # Comma-separated: "help,urgent"
     date_range: Optional[str] = Query(None),      # 'today' | 'week' | 'month'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'popular' | 'discussed'
-    
+
+    user: Optional[models.User] = Depends(optional_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Posts feed with filtering."""
-    auth_payload = getattr(request.state, "auth_payload", None)
-    telegram_id = None
-    if auth_payload:
-        try:
-            telegram_id = int(auth_payload.get("tgid"))
-        except (TypeError, ValueError):
-            telegram_id = None
-
-    user = await crud.get_user_by_telegram_id(db, telegram_id) if telegram_id else None
+    await check_rate_limit(request, "feed_posts", limit=60, window_sec=60)
     current_user_id = user.id if user else None
     if user:
         await analytics_service.record_server_event(
@@ -577,29 +549,29 @@ async def get_posts_feed(
 
 @app.post("/posts/create", response_model=schemas.PostResponse)
 async def create_post_endpoint(
-    telegram_id: int = Query(...),
     category: str = Form(...),
     body: str = Form(...),
     title: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
     is_anonymous: Optional[bool] = Form(False),
-    
+
     lost_or_found: Optional[str] = Form(None),
     item_description: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
     reward_type: Optional[str] = Form(None),
     reward_value: Optional[str] = Form(None),
-    
+
     event_name: Optional[str] = Form(None),
     event_date: Optional[str] = Form(None),
     event_location: Optional[str] = Form(None),
     event_contact: Optional[str] = Form(None),
-    
+
     is_important: Optional[bool] = Form(False),
     images: List[UploadFile] = File(default=[]),
     video: Optional[UploadFile] = File(None),
 
     poll_data: Optional[str] = Form(None),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
     raw_title = title
@@ -633,11 +605,7 @@ async def create_post_endpoint(
         logger.debug(f"  Image [{idx}]: filename={img.filename!r}, content_type={img.content_type}")
 
     logger.debug(f"{'='*60}\n")
-    
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
+
     tags_list = _parse_json_list_form_field(tags, "tags")
     
     # FILTER OUT EMPTY FILES (KEY FIX)
@@ -721,12 +689,10 @@ async def create_post_endpoint(
         properties_json={"category": category},
     )
     
-    return await get_post_endpoint(post.id, telegram_id, db)
+    return await get_post_endpoint(post.id, user=user, db=db)
 
 @app.get("/posts/{post_id}", response_model=schemas.PostResponse)
-async def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    
+async def get_post_endpoint(post_id: int, user: models.User = Depends(require_user), db: AsyncSession = Depends(get_db)):
     post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -823,11 +789,7 @@ async def get_post_endpoint(post_id: int, telegram_id: int = Query(...), db: Asy
     })
 
 @app.delete("/posts/{post_id}")
-async def delete_post_endpoint(post_id: int, telegram_id: int = Query(...), db: AsyncSession = Depends(get_db)):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
+async def delete_post_endpoint(post_id: int, user: models.User = Depends(require_user), db: AsyncSession = Depends(get_db)):
     post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -844,7 +806,6 @@ async def delete_post_endpoint(post_id: int, telegram_id: int = Query(...), db: 
 @app.patch("/posts/{post_id}", response_model=schemas.PostResponse)
 async def update_post_endpoint(
     post_id: int,
-    telegram_id: int = Query(...),
     title: Optional[str] = Form(None),
     body: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
@@ -862,12 +823,9 @@ async def update_post_endpoint(
     keep_images: Optional[str] = Form(None),
     new_video: Optional[UploadFile] = File(None),
     keep_video: Optional[bool] = Form(True),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -928,18 +886,14 @@ async def update_post_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    return await get_post_endpoint(updated_post.id, telegram_id, db)
+    return await get_post_endpoint(updated_post.id, user=user, db=db)
 
 @app.post("/posts/{post_id}/like")
 async def toggle_post_like_endpoint(
     post_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     result = await crud.toggle_post_like(db, post_id, user.id)
     if result.get("is_liked"):
         await analytics_service.record_server_event(
@@ -957,13 +911,9 @@ async def toggle_post_like_endpoint(
 async def vote_poll_endpoint(
     poll_id: int,
     vote_data: schemas.PollVoteCreate,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     try:
         result = await crud.vote_poll(db, poll_id, user.id, vote_data.option_indices)
         return result
@@ -975,11 +925,10 @@ async def vote_poll_endpoint(
 @app.get("/posts/{post_id}/comments", response_model=schemas.CommentsFeedResponse)
 async def get_post_comments_endpoint(
     post_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    comments = await crud.get_post_comments(db, post_id, user.id if user else None)
+    comments = await crud.get_post_comments(db, post_id, user.id)
     
     result = []
     for comment in comments:
@@ -1031,13 +980,9 @@ async def get_post_comments_endpoint(
 async def create_comment_endpoint(
     post_id: int,
     request: Request,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     content_type = (request.headers.get("content-type") or "").lower()
 
     try:
@@ -1129,26 +1074,18 @@ async def create_comment_endpoint(
 @app.delete("/comments/{comment_id}")
 async def delete_comment_endpoint(
     comment_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     return await crud.delete_comment(db, comment_id, user.id)
 
 @app.patch("/comments/{comment_id}", response_model=schemas.CommentResponse)
 async def update_comment_endpoint(
     comment_id: int,
-    telegram_id: int = Query(...),
     comment_update: schemas.CommentUpdate = Body(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     comment = await crud.update_comment(db, comment_id, comment_update.body, user.id)
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found or permission denied")
@@ -1185,21 +1122,15 @@ async def update_comment_endpoint(
 @app.post("/comments/{comment_id}/like")
 async def toggle_comment_like_endpoint(
     comment_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     return await crud.toggle_comment_like(db, comment_id, user.id)
 
 # ===== REQUEST ENDPOINTS =====
 
 @app.post("/api/requests/create", response_model=schemas.RequestResponse)
 async def create_request_endpoint(
-    telegram_id: int = Query(...),
-    
     # Multipart form fields
     category: str = Form(...),
     title: str = Form(...),
@@ -1207,18 +1138,15 @@ async def create_request_endpoint(
     expires_at: str = Form(...),
     tags: Optional[str] = Form(None),
     max_responses: Optional[int] = Form(5),
-    
+
     # REWARD FIELDS
     reward_type: Optional[str] = Form(None),
     reward_value: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
-    
+
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     tags_list = _parse_json_list_form_field(tags, "tags")
     valid_images = [img for img in images if img.filename and len(img.filename) > 0]
 
@@ -1302,23 +1230,13 @@ async def get_requests_feed_endpoint(
     has_reward: Optional[str] = Query(None),      # 'with' | 'without'
     urgency: Optional[str] = Query(None),         # 'soon' (<24h) | 'later'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'expires_soon' | 'most_responses'
-    
+
+    user: Optional[models.User] = Depends(optional_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Requests feed with filtering."""
-    current_user_id = None
-    auth_payload = getattr(request.state, "auth_payload", None)
-    telegram_id = None
-    if auth_payload:
-        try:
-            telegram_id = int(auth_payload.get("tgid"))
-        except (TypeError, ValueError):
-            telegram_id = None
-
-    if telegram_id:
-        user = await crud.get_user_by_telegram_id(db, telegram_id)
-        if user:
-            current_user_id = user.id
+    await check_rate_limit(request, "feed_requests", limit=60, window_sec=60)
+    current_user_id = user.id if user else None
 
     # Pass all filter params into CRUD
     feed_data = await crud.get_requests_feed(
@@ -1376,16 +1294,12 @@ async def get_requests_feed_endpoint(
 
 @app.get("/api/requests/my-items", response_model=List[schemas.RequestResponse])
 async def get_my_requests_endpoint(
-    telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get my requests."""
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     requests = await crud.get_my_requests(db, user.id, limit=limit, offset=offset)
     
     result = []
@@ -1428,15 +1342,11 @@ async def get_my_requests_endpoint(
 @app.get("/api/requests/{request_id}", response_model=schemas.RequestResponse)
 async def get_request_endpoint(
     request_id: int,
-    telegram_id: Optional[int] = Query(None),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    current_user_id = None
-    if telegram_id:
-        user = await crud.get_user_by_telegram_id(db, telegram_id)
-        if user:
-            current_user_id = user.id
-    
+    current_user_id = user.id
+
     request_dict = await crud.get_request_by_id(db, request_id, current_user_id)
     if not request_dict:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -1482,14 +1392,10 @@ async def get_request_endpoint(
 @app.put("/api/requests/{request_id}", response_model=schemas.RequestResponse)
 async def update_request_endpoint(
     request_id: int,
-    telegram_id: int = Query(...),
     data: schemas.RequestUpdate = Body(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     try:
         request = await crud.update_request(db, request_id, user.id, data)
     except ValueError as e:
@@ -1529,13 +1435,9 @@ async def update_request_endpoint(
 @app.delete("/api/requests/{request_id}")
 async def delete_request_endpoint(
     request_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     try:
         await crud.delete_request(db, request_id, user.id)
         return {"success": True}
@@ -1545,14 +1447,10 @@ async def delete_request_endpoint(
 @app.post("/api/requests/{request_id}/respond", response_model=schemas.ResponseItem)
 async def create_response_endpoint(
     request_id: int,
-    telegram_id: int = Query(...),
     data: schemas.ResponseCreate = Body(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     try:
         response = await crud.create_response(db, request_id, user.id, data)
     except ValueError as e:
@@ -1584,13 +1482,9 @@ async def create_response_endpoint(
 @app.get("/api/requests/{request_id}/responses", response_model=List[schemas.ResponseItem])
 async def get_responses_endpoint(
     request_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     try:
         responses = await crud.get_request_responses(db, request_id, user.id)
     except ValueError as e:
@@ -1616,13 +1510,9 @@ async def get_responses_endpoint(
 @app.delete("/api/responses/{response_id}")
 async def delete_response_endpoint(
     response_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     try:
         await crud.delete_response(db, response_id, user.id)
         return {"success": True}
@@ -1633,16 +1523,15 @@ async def delete_response_endpoint(
 
 @app.get("/admin/campuses/unbound-users")
 async def get_unbound_users_endpoint(
-    telegram_id: int = Query(...),
     search: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
     """List users without campus binding (for ambassadors/admins)."""
     # Access check
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user or user.role not in ('ambassador', 'admin', 'superadmin'):
+    if user.role not in ('ambassador', 'admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Access denied")
 
     data = await crud.get_unbound_users(db, search=search, limit=limit, offset=offset)
@@ -1669,16 +1558,15 @@ async def get_unbound_users_endpoint(
 
 @app.post("/admin/campuses/bind-user")
 async def bind_user_to_campus_endpoint(
-    telegram_id: int = Query(...),
     user_id: int = Body(...),
     campus_id: str = Body(...),
     university: str = Body(...),
     city: Optional[str] = Body(None),
+    admin: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
     """   ."""
-    admin = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not admin or admin.role not in ('ambassador', 'admin', 'superadmin'):
+    if admin.role not in ('ambassador', 'admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Нет доступа")
 
     # Амбассадор может привязывать только к своему кампусу
@@ -1694,13 +1582,12 @@ async def bind_user_to_campus_endpoint(
 
 @app.post("/admin/campuses/unbind-user")
 async def unbind_user_from_campus_endpoint(
-    telegram_id: int = Query(...),
     user_id: int = Body(..., embed=True),
+    admin: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
     """   ."""
-    admin = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not admin or admin.role not in ('admin', 'superadmin'):
+    if admin.role not in ('admin', 'superadmin'):
         raise HTTPException(status_code=403, detail="Только для админов")
 
     user = await crud.unbind_user_from_campus(db, user_id)
@@ -1735,17 +1622,10 @@ async def get_market_feed_endpoint(
     institute: Optional[str] = Query(None),
     campus_id: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
+    user: Optional[models.User] = Depends(optional_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Персонализация только при наличии JWT (не из query param)
-    auth_payload = getattr(request.state, "auth_payload", None)
-    telegram_id = None
-    if auth_payload:
-        try:
-            telegram_id = int(auth_payload.get("tgid"))
-        except (TypeError, ValueError):
-            telegram_id = None
-    user = await crud.get_user_by_telegram_id(db, telegram_id) if telegram_id else None
+    await check_rate_limit(request, "feed_market", limit=60, window_sec=60)
     current_user_id = user.id if user else None
 
     feed_data = await crud.get_market_items(
@@ -1819,15 +1699,11 @@ async def get_market_feed_endpoint(
 
 @app.get("/market/favorites", response_model=List[schemas.MarketItemResponse])
 async def get_market_favorites_endpoint(
-    telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     items = await crud.get_user_favorites(db, user.id, limit, offset)
     
     result = []
@@ -1878,16 +1754,12 @@ async def get_market_favorites_endpoint(
 
 @app.get("/market/my-items", response_model=List[schemas.MarketItemResponse])
 async def get_my_market_items_endpoint(
-    telegram_id: int = Query(...),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get my market items (items I am selling)."""
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     items = await crud.get_user_market_items(db, user.id, limit, offset)
     
     result = []
@@ -1937,10 +1809,9 @@ async def get_my_market_items_endpoint(
 @app.get("/market/{item_id}", response_model=schemas.MarketItemResponse)
 async def get_market_item_endpoint(
     item_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
     item = await crud.get_market_item(db, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -2009,13 +1880,9 @@ async def get_market_item_endpoint(
 @app.post("/market/{item_id}/contact")
 async def contact_market_seller_endpoint(
     item_id: int,
-    telegram_id: int = Query(...),
+    buyer: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    buyer = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not buyer:
-        raise HTTPException(status_code=404, detail="User not found")
-
     item = await db.get(models.MarketItem, item_id)
     if not item or item.is_deleted:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -2306,7 +2173,6 @@ async def get_market_deal_endpoint(
 
 @app.post("/market/items", response_model=schemas.MarketItemResponse)
 async def create_market_item_endpoint(
-    telegram_id: int = Query(...),
     category: str = Form(...),
     item_type: str = Form('product'),
     title: str = Form(...),
@@ -2317,11 +2183,9 @@ async def create_market_item_endpoint(
     location: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
     video: Optional[UploadFile] = File(None),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
 
     valid_images = [img for img in images if img.filename and len(img.filename) > 0]
     valid_video = video if (video and video.filename) else None
@@ -2404,7 +2268,6 @@ async def create_market_item_endpoint(
 @app.patch("/market/{item_id}", response_model=schemas.MarketItemResponse)
 async def update_market_item_endpoint(
     item_id: int,
-    telegram_id: int = Query(...),
     item_type: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
@@ -2418,11 +2281,9 @@ async def update_market_item_endpoint(
     keep_images: Optional[str] = Form(None),
     new_video: Optional[UploadFile] = File(None),
     keep_video: Optional[bool] = Form(True),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
 
     try:
         keep_images_list = parse_keep_file_list(keep_images, kind="images")
@@ -2509,13 +2370,9 @@ async def update_market_item_endpoint(
 @app.delete("/market/{item_id}")
 async def delete_market_item_endpoint(
     item_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     success = await crud.delete_market_item(db, item_id, user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -2525,13 +2382,9 @@ async def delete_market_item_endpoint(
 @app.post("/market/{item_id}/favorite")
 async def toggle_market_favorite_endpoint(
     item_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     result = await crud.toggle_market_favorite(db, item_id, user.id)
     if result.get("is_favorited"):
         await analytics_service.record_server_event(

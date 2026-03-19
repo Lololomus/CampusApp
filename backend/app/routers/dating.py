@@ -1,4 +1,4 @@
-﻿# ===== 📄 ФАЙЛ: backend/app/routers/dating.py =====
+# ===== 📄 ФАЙЛ: backend/app/routers/dating.py =====
 #
 # ✅ Фаза 3: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
 #    - legacy_query_api() → select() + await db.execute()
@@ -15,6 +15,7 @@ import re
 
 from app.database import get_db
 from app import models, schemas, crud
+from app.auth_service import require_user
 from app.services.analytics_service import record_server_event
 from app.utils import (
     delete_images,
@@ -34,11 +35,7 @@ async def save_dating_photos(files: List[UploadFile]) -> List[dict]:
 
 
 @router.get("/profile/me", response_model=Optional[schemas.DatingProfileResponse])
-async def get_my_dating_profile(telegram_id: int, db: AsyncSession = Depends(get_db)):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
+async def get_my_dating_profile(user: models.User = Depends(require_user), db: AsyncSession = Depends(get_db)):
     profile = await crud.get_dating_profile(db, user.id)
     if not profile:
         return None
@@ -64,7 +61,6 @@ async def get_my_dating_profile(telegram_id: int, db: AsyncSession = Depends(get
 
 @router.post("/profile")
 async def create_or_update_dating_profile(
-    telegram_id: int = Query(...),
     gender: str = Form(...),
     looking_for: str = Form(...),
     age: int = Form(...),
@@ -75,12 +71,9 @@ async def create_or_update_dating_profile(
     prompt_answer: Optional[str] = Form(None),
     photos: List[UploadFile] = File(None),
     keep_photos: Optional[str] = Form(None),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     if age < 16 or age > 50:
         raise HTTPException(status_code=400, detail="Age must be between 16 and 50")
 
@@ -236,16 +229,12 @@ async def create_or_update_dating_profile(
 
 @router.get("/feed")
 async def get_dating_feed(
-    telegram_id: int,
     limit: int = 10,
     offset: int = 0,
     debug: bool = Query(False, description="Показать breakdown скоринга"),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     my_profile = await crud.get_dating_profile(db, user.id)
     looking_for = my_profile.looking_for if my_profile else None
 
@@ -255,14 +244,10 @@ async def get_dating_feed(
 @router.post("/{target_user_id}/like", response_model=schemas.LikeResult)
 async def like_user(
     target_user_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
     from datetime import datetime
-
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
 
     if target_user_id == user.id:
         raise HTTPException(status_code=400, detail="Нельзя лайкнуть себя")
@@ -330,13 +315,9 @@ async def like_user(
 @router.post("/{target_user_id}/dislike")
 async def dislike_user(
     target_user_id: int,
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(404, detail="Пользователь не найден")
-
     if target_user_id == user.id:
         raise HTTPException(400, detail="Нельзя дизлайкнуть себя")
 
@@ -349,15 +330,11 @@ async def dislike_user(
 
 @router.get("/likes-received", response_model=List[schemas.DatingProfile])
 async def get_likes_received(
-    telegram_id: int = Query(...),
     limit: int = 20,
     offset: int = 0,
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     users = await crud.get_who_liked_me(db, user.id, limit, offset)
     result = []
 
@@ -389,15 +366,11 @@ async def get_likes_received(
 
 @router.get("/matches", response_model=List[schemas.MatchResponse])
 async def get_my_matches(
-    telegram_id: int = Query(...),
     limit: int = 20,
     offset: int = 0,
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     matches = await crud.get_my_matches(db, user.id, limit, offset)
     result = []
 
@@ -415,41 +388,29 @@ async def get_my_matches(
 
 @router.get("/stats", response_model=schemas.DatingStatsResponse)
 async def get_dating_stats(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     return await crud.get_dating_stats(db, user.id)
 
 
 @router.patch("/settings", response_model=schemas.UserResponse)
 async def update_dating_settings(
-    telegram_id: int = Query(...),
     settings: schemas.DatingSettings = Body(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     settings_dict = settings.model_dump(exclude_unset=True)
     return await crud.update_dating_settings(db, user.id, settings_dict)
 
 
 @router.get("/matches-active")
 async def get_active_matches(
-    telegram_id: int = Query(...),
+    user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Получить активные мэтчи (в течение 24 часов)"""
     from datetime import datetime, timedelta
-
-    user = await crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
 
     now = datetime.utcnow()
     cutoff = now - timedelta(hours=24)

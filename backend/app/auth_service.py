@@ -285,16 +285,22 @@ async def require_user(
     return user
 
 
-async def get_current_user(db: AsyncSession, telegram_id: int) -> models.User:
-    """✅ Async"""
+async def optional_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Optional[models.User]:
+    """Возвращает User если JWT валидный, иначе None. Для публичных фидов."""
+    payload = getattr(request.state, "auth_payload", None)
+    if not payload:
+        return None
+    try:
+        identity = get_identity_from_request(request)
+    except HTTPException:
+        return None
     result = await db.execute(
-        select(models.User).where(models.User.telegram_id == telegram_id)
+        select(models.User).where(models.User.telegram_id == identity.telegram_id)
     )
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+    return result.scalar_one_or_none()
 
 
 # ===== HEADER UTILS (чистый Python) =====

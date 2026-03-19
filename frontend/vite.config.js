@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
   return {
     build: {
       outDir: 'build',
@@ -11,6 +11,7 @@ export default defineConfig(() => {
       loader: "jsx",
       include: /src\/.*\.jsx?$/,
       exclude: [],
+      drop: mode === 'production' ? ['console', 'debugger'] : [],
     },
     // 2. Настройка для сканера зависимостей
     optimizeDeps: {
