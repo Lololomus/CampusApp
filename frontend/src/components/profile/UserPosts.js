@@ -1,6 +1,6 @@
 // ===== FILE: UserPosts.js =====
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { FileText, CheckCircle } from 'lucide-react';
 import { getUserPosts } from '../../api';
 import { useStore } from '../../store';
@@ -24,6 +24,7 @@ const C = {
   textMuted: '#8E8E93',
   textTertiary: '#666666',
   accent: '#D4FF00',
+  accentText: '#000000',
 };
 
 function UserPosts() {
@@ -144,18 +145,18 @@ function UserPosts() {
       <DrilldownHeader title={`Мои посты (${counts.all})`} onBack={closeScreen} />
 
       <div style={styles.filterBar}>
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => { hapticFeedback('selection'); setFilter(f.key); }}
-            style={{
-              ...styles.chip,
-              ...(filter === f.key ? styles.chipActive : {}),
-            }}
-          >
-            {f.label}{f.count > 0 ? ` ${f.count}` : ''}
-          </button>
-        ))}
+        <div style={styles.tabsWrapper}>
+          <div style={{ ...styles.activeIndicator, transform: `translateX(${FILTERS.findIndex(f => f.key === filter) * 100}%)` }} />
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => { hapticFeedback('selection'); setFilter(f.key); }}
+              style={{ ...styles.tabBtn, color: filter === f.key ? '#000000' : '#8E8E93' }}
+            >
+              {f.label}{f.count > 0 ? ` ${f.count}` : ''}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={styles.content}>
@@ -213,34 +214,42 @@ const styles = {
     overflowY: 'auto',
   },
 
-  // Фильтры — дизайн-код 4.1
   filterBar: {
-    display: 'flex',
-    gap: 8,
     padding: '12px 16px',
     backgroundColor: C.bg,
     position: 'sticky',
     top: 'calc(var(--drilldown-header-height) + env(safe-area-inset-top, 0px))',
     zIndex: 9,
   },
-  chip: {
-    flex: 1,
-    height: 36,
-    padding: '0 12px',
-    border: '1px solid transparent',
-    borderRadius: 18,
-    backgroundColor: C.surfaceElevated,
-    color: C.text,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
-    WebkitTapHighlightColor: 'transparent',
+  tabsWrapper: {
+    display: 'flex',
+    background: '#1C1C1E',
+    borderRadius: 14,
+    position: 'relative',
+    height: 42,
+    overflow: 'hidden',
+    border: '1px solid rgba(255,255,255,0.06)',
   },
-  chipActive: {
-    backgroundColor: 'transparent',
-    borderColor: C.accent,
-    color: C.accent,
+  activeIndicator: {
+    position: 'absolute',
+    top: 0, bottom: 0, left: 0,
+    width: 'calc(100% / 3)',
+    background: C.accent,
+    borderRadius: 14,
+    boxShadow: '0 2px 10px rgba(212,255,0,0.2)',
+    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+    zIndex: 1,
+  },
+  tabBtn: {
+    flex: 1,
+    background: 'transparent',
+    border: 'none',
+    fontSize: 13, fontWeight: 700,
+    cursor: 'pointer',
+    position: 'relative',
+    zIndex: 2,
+    transition: 'color 0.2s',
+    WebkitTapHighlightColor: 'transparent',
   },
 
   content: {

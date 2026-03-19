@@ -178,6 +178,22 @@ button {
   animation: fade-in 0.2s ease;
 }
 
+@keyframes tab-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-enter {
+  animation: tab-enter 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+  will-change: transform, opacity;
+}
+
 /* ===== ФИКС: Кнопки навигации фото НЕ ДЁРГАЮТСЯ ===== */
 button[style*="navButton"],
 button[style*="translateY(-50%)"] {

@@ -346,7 +346,10 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
 const styles = {
   card: {
     position: 'relative',
-    background: theme.colors.premium.surfaceElevated,
+    background: 'rgba(28, 28, 30, 0.5)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
     borderRadius: 20,
     overflow: 'hidden',
     transition: 'transform 0.1s ease',

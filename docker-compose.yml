@@ -7,29 +7,28 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - campus_network
+      - internal_network
 
   redis:
     image: redis:7-alpine
     container_name: campus_redis
     restart: always
-    command: redis-server --appendonly yes
-    ports:
-      - "127.0.0.1:6380:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: ["sh", "-c", "redis-server /usr/local/etc/redis/redis.conf --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
     volumes:
       - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - campus_network
+      - internal_network
 
   backend:
     build: ./backend
@@ -40,14 +39,16 @@ services:
       - redis
     env_file:
       - .env
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-2}"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     volumes:
       - campus_uploads:/app/uploads
     networks:
       - campus_network
+      - internal_network
 
   frontend:
     build:
@@ -57,8 +58,11 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - backend
+    volumes:
+      - campus_uploads:/var/www/uploads:ro
     networks:
       - campus_network
 
@@ -74,10 +78,11 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       API_BASE_URL: http://backend:8000
     networks:
       - campus_network
+      - internal_network
 
 volumes:
   postgres_data:
@@ -87,3 +92,6 @@ volumes:
 networks:
   campus_network:
     driver: bridge
+  internal_network:
+    driver: bridge
+    internal: true

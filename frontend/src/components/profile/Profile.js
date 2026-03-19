@@ -336,7 +336,7 @@ function Profile() {
         <div style={styles.feedContainer}>
 
           {activeTab === 'posts' && (
-            <div className="fade-in">
+            <div className="tab-enter">
               <ActionCard
                 icon={<FileText size={20} color="#fff" />}
                 title="Мои публикации"
@@ -361,7 +361,7 @@ function Profile() {
           )}
 
           {activeTab === 'requests' && (
-            <div className="fade-in">
+            <div className="tab-enter">
               <ActionCard
                 icon={<Zap size={20} color="#fff" />}
                 title="Мои запросы"
@@ -388,7 +388,7 @@ function Profile() {
           )}
 
           {activeTab === 'market' && (
-            <div className="fade-in">
+            <div className="tab-enter">
               <ActionCard
                 icon={<ShoppingBag size={20} color="#fff" />}
                 title="Мои товары"
@@ -396,7 +396,7 @@ function Profile() {
                 onClick={handleOpenMyMarketItems}
               />
               {previewMarket.length > 0 ? (
-                <div style={styles.listGap}>
+                <div style={styles.marketList}>
                   {previewMarket.map((item) => (
                     <MyMarketCard
                       key={item.id}
@@ -1083,6 +1083,13 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 0,
+  },
+
+  marketList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: '0 16px',
   },
 
   actionCard: {
