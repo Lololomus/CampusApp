@@ -37,6 +37,7 @@ class Settings(BaseModel):
     access_ttl_min: int = Field(default=15)
     refresh_ttl_days: int = Field(default=30)
     auth_max_skew_seconds: int = Field(default=300)
+    auth_session_binding_enabled: bool = Field(default=False)
 
     # --- Настройки фронтенда и CORS ---
     cors_origins: List[str] = Field(default_factory=list)
@@ -58,6 +59,16 @@ class Settings(BaseModel):
     analytics_nightly_hour_msk: int = Field(default=3)
     analytics_raw_retention_days: int = Field(default=180)
     analytics_agg_retention_days: int = Field(default=730)
+
+    # --- Market ---
+    deal_flow_v2_enabled: bool = Field(default=False)
+    market_expiry_worker_enabled: bool = Field(default=False)
+    market_expiry_poll_seconds: int = Field(default=60)
+    market_lead_ttl_hours: int = Field(default=168)
+    market_deal_selected_ttl_hours: int = Field(default=24)
+    market_service_in_progress_ttl_hours: int = Field(default=168)
+    market_deal_provider_confirmed_ttl_hours: int = Field(default=72)
+    market_review_strict_completed_at: bool = Field(default=False)
 
     @property
     def is_prod(self) -> bool:
@@ -129,6 +140,10 @@ def get_settings() -> Settings:
         access_ttl_min=int(os.getenv("ACCESS_TTL_MIN", "15")),
         refresh_ttl_days=int(os.getenv("REFRESH_TTL_DAYS", "30")),
         auth_max_skew_seconds=int(os.getenv("AUTH_MAX_SKEW_SECONDS", "300")),
+        auth_session_binding_enabled=os.getenv(
+            "AUTH_SESSION_BINDING_ENABLED",
+            "true" if is_prod_env else "false",
+        ).lower() in {"1", "true", "yes", "on"},
         
         cors_origins=cors_list,
         cookie_secure=cookie_secure,
@@ -144,4 +159,18 @@ def get_settings() -> Settings:
         analytics_nightly_hour_msk=max(0, min(23, int(os.getenv("ANALYTICS_NIGHTLY_HOUR_MSK", "3")))),
         analytics_raw_retention_days=max(1, int(os.getenv("ANALYTICS_RAW_RETENTION_DAYS", "180"))),
         analytics_agg_retention_days=max(1, int(os.getenv("ANALYTICS_AGG_RETENTION_DAYS", "730"))),
+        deal_flow_v2_enabled=os.getenv("DEAL_FLOW_V2_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
+        market_expiry_worker_enabled=os.getenv(
+            "MARKET_EXPIRY_WORKER_ENABLED",
+            "true" if is_prod_env else "false",
+        ).lower() in {"1", "true", "yes", "on"},
+        market_expiry_poll_seconds=max(10, int(os.getenv("MARKET_EXPIRY_POLL_SECONDS", "60"))),
+        market_lead_ttl_hours=max(1, int(os.getenv("MARKET_LEAD_TTL_HOURS", "168"))),
+        market_deal_selected_ttl_hours=max(1, int(os.getenv("MARKET_DEAL_SELECTED_TTL_HOURS", "24"))),
+        market_service_in_progress_ttl_hours=max(1, int(os.getenv("MARKET_SERVICE_IN_PROGRESS_TTL_HOURS", "168"))),
+        market_deal_provider_confirmed_ttl_hours=max(1, int(os.getenv("MARKET_DEAL_PROVIDER_CONFIRMED_TTL_HOURS", "72"))),
+        market_review_strict_completed_at=os.getenv(
+            "MARKET_REVIEW_STRICT_COMPLETED_AT",
+            "true" if is_prod_env else "false",
+        ).lower() in {"1", "true", "yes", "on"},
     )

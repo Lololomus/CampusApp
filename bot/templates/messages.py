@@ -5,6 +5,7 @@ from keyboards.inline import (
     admin_report_kb,
     match_kb,
     open_dating_kb,
+    open_market_deal_kb,
     open_miniapp_kb,
     open_post_kb,
     welcome_kb,
@@ -28,6 +29,7 @@ def format_notification(notif_type: str, payload: dict) -> dict:
         "comment": _format_comment,
         "comment_reply": _format_comment_reply,
         "market_contact": _format_market_contact,
+        "market_deal_update": _format_market_deal_update,
         "request_response": _format_request_response,
         "milestone": _format_milestone,
         "admin_report": _format_admin_report,
@@ -165,6 +167,37 @@ def _format_market_contact(payload: dict) -> dict:
     text += "\nНаписал тебе в ЛС, проверь сообщения 👆"
 
     return {"text": text, "reply_markup": open_miniapp_kb("📦 Открыть объявление")}
+
+
+def _format_market_deal_update(payload: dict) -> dict:
+    title = _escape(payload.get("item_title", "объявление"))
+    event = payload.get("event", "updated")
+    deal_id = payload.get("deal_id")
+
+    event_map = {
+        "selected": "Продавец выбрал вас по сделке.",
+        "in_progress": "Исполнитель начал выполнение услуги.",
+        "provider_confirmed": "Продавец подтвердил выполнение. Нужна ваша проверка.",
+        "customer_confirmed": "Покупатель подтвердил получение.",
+        "completed": "Сделка завершена.",
+        "expired": "Срок сделки истёк.",
+        "dispute_open": "Открыт спор по сделке.",
+        "cancelled": "Сделка отменена.",
+        "resolved_completed": "Спор решён: сделка завершена.",
+        "resolved_cancelled": "Спор решён: сделка отменена.",
+        "reassigned": "Покупатель в сделке изменён.",
+    }
+    status_line = event_map.get(event, "Статус сделки обновлён.")
+
+    text = (
+        "📦 <b>Обновление по сделке</b>\n"
+        "\n"
+        f"«{title}»\n"
+        f"{status_line}"
+    )
+
+    kb = open_market_deal_kb(int(deal_id)) if deal_id else open_miniapp_kb("📦 Открыть маркет")
+    return {"text": text, "reply_markup": kb}
 
 
 def _format_request_response(payload: dict) -> dict:

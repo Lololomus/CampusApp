@@ -60,12 +60,22 @@ async def get_inbox(
 
         # Для review_request добавить is_review_done — чтобы фронт не показывал кнопку повторно
         if n.type == 'review_request':
+            deal_id = payload.get("deal_id")
             item_id = payload.get("item_id")
-            if item_id:
+            if deal_id:
+                review_check = await db.execute(
+                    select(models.MarketReview).where(
+                        models.MarketReview.reviewer_id == user.id,
+                        models.MarketReview.deal_id == deal_id,
+                    )
+                )
+                payload["is_review_done"] = review_check.scalar_one_or_none() is not None
+            elif item_id:
                 review_check = await db.execute(
                     select(models.MarketReview).where(
                         models.MarketReview.reviewer_id == user.id,
                         models.MarketReview.item_id == item_id,
+                        models.MarketReview.deal_id.is_(None),
                     )
                 )
                 payload["is_review_done"] = review_check.scalar_one_or_none() is not None
@@ -189,6 +199,7 @@ NOTIF_TYPE_TO_SETTING = {
     'comment': 'comments_enabled',
     'comment_reply': 'comments_enabled',
     'market_contact': 'market_enabled',
+    'market_deal_update': 'market_enabled',
     'request_response': 'requests_enabled',
     'milestone': 'milestones_enabled',
     'admin_report': None,
@@ -299,7 +310,7 @@ async def get_pending_followups(
             f.status = 'expired'
             continue
 
-        setting_field = 'market_enabled' if f.target_type == 'market_item' else 'requests_enabled'
+        setting_field = 'market_enabled' if f.target_type in ('market_item', 'market_deal') else 'requests_enabled'
         if await _should_skip_by_setting(db, f.user_id, setting_field):
             f.status = 'skipped'
             continue
@@ -453,6 +464,11 @@ async def _is_target_active(db: AsyncSession, target_type: str, target_id: int) 
     if target_type == 'market_item':
         item = await db.get(models.MarketItem, target_id)
         if not item or item.status != 'active' or item.is_deleted:
+            return False
+        return True
+    elif target_type == 'market_deal':
+        deal = await db.get(models.MarketDeal, target_id)
+        if not deal or deal.status in ('completed', 'cancelled', 'expired'):
             return False
         return True
     elif target_type == 'request':

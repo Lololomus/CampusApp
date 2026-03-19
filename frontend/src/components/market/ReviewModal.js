@@ -18,7 +18,7 @@ const C = {
   lime: '#D4FF00',
 };
 
-const ReviewModal = ({ sellerId, sellerName, itemId, itemTitle, onClose, onSuccess }) => {
+const ReviewModal = ({ sellerId, sellerName, itemId, dealId, itemTitle, onClose, onSuccess }) => {
   const [rating, setRating] = useState(0);
   const [hovered, setHovered] = useState(0);
   const [text, setText] = useState('');
@@ -49,7 +49,12 @@ const ReviewModal = ({ sellerId, sellerName, itemId, itemTitle, onClose, onSucce
     }
     setLoading(true);
     try {
-      await createMarketReview({ item_id: itemId, rating, text: text.trim() || undefined });
+      await createMarketReview({
+        deal_id: dealId,
+        item_id: itemId,
+        rating,
+        text: text.trim() || undefined,
+      });
       hapticFeedback('success');
       toast.success('Отзыв оставлен!');
       onSuccess?.();

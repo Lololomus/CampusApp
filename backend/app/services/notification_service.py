@@ -188,6 +188,60 @@ async def notify_review_request(db: AsyncSession, buyer, seller, item):
     await create_notification(db, buyer.id, "review_request", review_payload)
 
 
+async def notify_review_request_for_deal(db: AsyncSession, buyer, seller, item, deal):
+    """Deal Flow v2: review eligibility tied to completed deal."""
+    existing = await db.execute(
+        select(models.MarketReview).where(
+            models.MarketReview.reviewer_id == buyer.id,
+            models.MarketReview.deal_id == deal.id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return
+
+    review_payload = {
+        "seller_id": seller.id,
+        "seller_name": seller.name,
+        "item_id": item.id,
+        "item_title": item.title,
+        "deal_id": deal.id,
+        "item_type": item.item_type,
+    }
+
+    await create_followup(
+        db,
+        user_id=buyer.id,
+        followup_type="review_request",
+        target_type="market_deal",
+        target_id=deal.id,
+        payload=review_payload,
+        delay_hours=0,
+    )
+    await create_notification(db, buyer.id, "review_request", review_payload)
+
+
+async def notify_market_deal_update(
+    db: AsyncSession,
+    recipient_id: int,
+    item,
+    deal,
+    event: str,
+):
+    await create_notification(
+        db,
+        recipient_id,
+        "market_deal_update",
+        {
+            "deal_id": deal.id,
+            "item_id": item.id,
+            "item_title": item.title,
+            "item_type": item.item_type,
+            "status": deal.status,
+            "event": event,
+        },
+    )
+
+
 async def notify_request_response(db: AsyncSession, request_obj, responder):
     await create_notification(
         db,

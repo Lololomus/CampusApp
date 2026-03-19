@@ -155,20 +155,29 @@ class ApiClient:
     async def create_review(
         self,
         telegram_id: int,
-        item_id: int,
-        seller_id: int,
         rating: int,
+        deal_id: Optional[int] = None,
+        item_id: Optional[int] = None,
         source: str = "bot",
         status: str = "pending_text",
     ) -> dict:
         """Создать отзыв покупателя через бот."""
+        if not deal_id and not item_id:
+            return {"error": "deal_id or item_id is required"}
+
+        payload = {"rating": rating, "source": source}
+        if deal_id:
+            payload["deal_id"] = deal_id
+        else:
+            payload["item_id"] = item_id
+
         try:
             session = await self._get_session()
             async with session.post(
                 "/market/reviews",
                 headers=BOT_HEADERS,
                 params={"telegram_id": telegram_id},
-                json={"item_id": item_id, "seller_id": seller_id, "rating": rating, "source": source},
+                json=payload,
             ) as resp:
                 if resp.status == 200:
                     return await resp.json()
@@ -217,14 +226,28 @@ class ApiClient:
             logger.error(f"Сетевая ошибка add_review_text: {e}")
             return False
 
-    async def skip_review_request(self, telegram_id: int, item_id: int) -> bool:
+    async def skip_review_request(
+        self,
+        telegram_id: int,
+        deal_id: Optional[int] = None,
+        item_id: Optional[int] = None,
+    ) -> bool:
         """Пропустить запрос отзыва (бот)."""
+        if not deal_id and not item_id:
+            return False
+
+        params = {"telegram_id": telegram_id}
+        if deal_id:
+            params["deal_id"] = deal_id
+        else:
+            params["item_id"] = item_id
+
         try:
             session = await self._get_session()
             async with session.post(
                 "/market/reviews/skip",
                 headers=BOT_HEADERS,
-                params={"telegram_id": telegram_id, "item_id": item_id},
+                params=params,
             ) as resp:
                 return resp.status == 200
         except aiohttp.ClientError as e:

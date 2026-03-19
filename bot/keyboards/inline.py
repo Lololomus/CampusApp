@@ -42,6 +42,20 @@ def open_dating_kb() -> InlineKeyboardMarkup:
     )
 
 
+def open_market_deal_kb(deal_id: int) -> InlineKeyboardMarkup:
+    """Кнопка открытия сделки в mini app."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📦 Открыть сделку",
+                    web_app=WebAppInfo(url=f"{MINIAPP_URL}?tab=market&deal={deal_id}"),
+                )
+            ]
+        ]
+    )
+
+
 def match_kb(username: str | None = None) -> InlineKeyboardMarkup:
     """Кнопки при мэтче: написать + открыть профиль в приложении."""
     buttons = []
@@ -123,13 +137,13 @@ def admin_report_kb() -> InlineKeyboardMarkup:
     )
 
 
-def review_stars_kb(item_id: int, seller_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура оценки продавца: звёзды 1–5 + Пропустить."""
+def review_stars_kb(target_id: int, target_type: str = "deal") -> InlineKeyboardMarkup:
+    """Клавиатура оценки: target_type = deal|item."""
     stars = [
-        InlineKeyboardButton(text=f"{i}⭐", callback_data=f"rv:{item_id}:{seller_id}:{i}")
+        InlineKeyboardButton(text=f"{i}⭐", callback_data=f"rv:{target_type}:{target_id}:{i}")
         for i in range(1, 6)
     ]
-    skip = InlineKeyboardButton(text="Пропустить", callback_data=f"rv_skip:{item_id}")
+    skip = InlineKeyboardButton(text="Пропустить", callback_data=f"rv_skip:{target_type}:{target_id}")
     return InlineKeyboardMarkup(inline_keyboard=[stars, [skip]])
 
 

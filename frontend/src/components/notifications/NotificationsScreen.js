@@ -398,6 +398,7 @@ const NotificationItem = React.memo(({ notif }) => {
           <ReviewModal
             sellerId={reviewModal.seller_id}
             sellerName={reviewModal.seller_name}
+            dealId={reviewModal.deal_id}
             itemId={reviewModal.item_id}
             itemTitle={reviewModal.item_title}
             onClose={() => setReviewModal(null)}

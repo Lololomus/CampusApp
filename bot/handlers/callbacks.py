@@ -64,21 +64,30 @@ async def handle_followup_answer(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("rv:"))
 async def handle_review_rating(callback: CallbackQuery):
-    """Покупатель выбрал оценку ⭐."""
+    """Покупатель выбрал оценку по review_request."""
     try:
-        _, item_id_str, seller_id_str, rating_str = callback.data.split(":")
-        item_id, seller_id, rating = int(item_id_str), int(seller_id_str), int(rating_str)
+        parts = callback.data.split(":")
+        target_type = "item"  # legacy format rv:{item_id}:{rating}
+        if len(parts) == 4:
+            _, target_type, target_id_str, rating_str = parts
+        elif len(parts) == 3:
+            _, target_id_str, rating_str = parts
+        else:
+            raise ValueError("invalid callback format")
+
+        target_id = int(target_id_str)
+        rating = int(rating_str)
     except (ValueError, TypeError):
         await callback.answer("⚠️ Некорректные данные", show_alert=True)
         return
 
+    review_kwargs = {"deal_id": target_id} if target_type == "deal" else {"item_id": target_id}
     result = await api_client.create_review(
         telegram_id=callback.from_user.id,
-        item_id=item_id,
-        seller_id=seller_id,
         rating=rating,
         source="bot",
         status="pending_text",
+        **review_kwargs,
     )
 
     if result.get("error") == "already_exists":
@@ -106,14 +115,24 @@ async def handle_review_rating(callback: CallbackQuery):
 async def handle_review_skip(callback: CallbackQuery):
     """Покупатель пропустил весь отзыв."""
     try:
-        item_id = int(callback.data.split(":")[1])
+        parts = callback.data.split(":")
+        target_type = "item"  # legacy format rv_skip:{item_id}
+        if len(parts) == 3:
+            _, target_type, target_id_str = parts
+        elif len(parts) == 2:
+            _, target_id_str = parts
+        else:
+            raise ValueError("invalid callback format")
+
+        target_id = int(target_id_str)
     except (ValueError, IndexError):
         await callback.answer("⚠️ Некорректные данные", show_alert=True)
         return
 
+    skip_kwargs = {"deal_id": target_id} if target_type == "deal" else {"item_id": target_id}
     await api_client.skip_review_request(
         telegram_id=callback.from_user.id,
-        item_id=item_id,
+        **skip_kwargs,
     )
     await callback.message.edit_text(
         f"{callback.message.text}\n\n👋 Хорошо, пропускаем",

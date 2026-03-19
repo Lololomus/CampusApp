@@ -4,7 +4,7 @@
 # ✅ Фаза 1.3: MarketItem.institute → nullable=True
 # ✅ Фаза 1.4: JSON (Text) → JSONB для всех JSON-полей
 
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, DateTime, Date, Float, ForeignKey, Enum, CheckConstraint, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, DateTime, Date, Float, ForeignKey, Enum, CheckConstraint, UniqueConstraint, Index, text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone 
@@ -112,6 +112,24 @@ class User(Base):
         'MarketFavorite', 
         foreign_keys='[MarketFavorite.user_id]',
         back_populates='user', 
+        cascade='all, delete-orphan'
+    )
+    market_leads = relationship(
+        'MarketLead',
+        foreign_keys='[MarketLead.buyer_id]',
+        back_populates='buyer',
+        cascade='all, delete-orphan'
+    )
+    market_deals_as_seller = relationship(
+        'MarketDeal',
+        foreign_keys='[MarketDeal.seller_id]',
+        back_populates='seller',
+        cascade='all, delete-orphan'
+    )
+    market_deals_as_buyer = relationship(
+        'MarketDeal',
+        foreign_keys='[MarketDeal.buyer_id]',
+        back_populates='buyer',
         cascade='all, delete-orphan'
     )
     auth_sessions = relationship(
@@ -456,10 +474,15 @@ class MarketItem(Base):
     images = Column(JSONB, nullable=False)                  # ✅ JSONB
     
     status = Column(
-        Enum('active', 'sold', name='market_status_enum'),
+        Enum('active', 'reserved', 'sold', 'paused', 'archived', name='market_status_enum'),
         nullable=False,
         default='active',
         index=True
+    )
+    capacity = Column(Integer, nullable=False, default=3, server_default='3')
+    pause_reason = Column(
+        Enum('manual', 'capacity', name='market_pause_reason_enum'),
+        nullable=True,
     )
     
     university = Column(String(255), nullable=False)
@@ -485,6 +508,8 @@ class MarketItem(Base):
     back_populates='market_items'
     )
     favorites = relationship('MarketFavorite', back_populates='item', cascade='all, delete-orphan')
+    leads = relationship('MarketLead', back_populates='item', cascade='all, delete-orphan')
+    deals = relationship('MarketDeal', back_populates='item', cascade='all, delete-orphan')
 
     # ✅ Фаза 1.2: Составные индексы
     __table_args__ = (
@@ -510,12 +535,122 @@ class MarketFavorite(Base):
     )
 
 
+class MarketLead(Base):
+    """Интерес к объявлению (waitlist/queue)."""
+    __tablename__ = 'market_leads'
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False, index=True)
+    buyer_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    status = Column(
+        Enum('active', 'cancelled', 'converted', 'expired', 'rejected', name='market_lead_status_enum'),
+        nullable=False,
+        default='active',
+        index=True,
+    )
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+
+    item = relationship('MarketItem', back_populates='leads')
+    buyer = relationship('User', back_populates='market_leads')
+
+    __table_args__ = (
+        Index(
+            'uq_market_leads_active_item_buyer',
+            'item_id',
+            'buyer_id',
+            unique=True,
+            postgresql_where=sa_text("status = 'active'"),
+        ),
+        Index('ix_market_leads_item_status_created', 'item_id', 'status', 'created_at'),
+    )
+
+
+class MarketDeal(Base):
+    """Сделка (единая модель для product и service)."""
+    __tablename__ = 'market_deals'
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False, index=True)
+    seller_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    buyer_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+
+    status = Column(
+        Enum(
+            'selected',
+            'in_progress',
+            'provider_confirmed',
+            'customer_confirmed',
+            'completed',
+            'dispute_open',
+            'cancelled',
+            'expired',
+            name='market_deal_status_enum',
+        ),
+        nullable=False,
+        default='selected',
+        index=True,
+    )
+    customer_result = Column(
+        Enum('received', 'not_received', name='market_customer_result_enum'),
+        nullable=True,
+    )
+    selected_at = Column(DateTime, default=lambda: datetime.utcnow(), nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    provider_confirmed_at = Column(DateTime, nullable=True)
+    customer_confirmed_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    disputed_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+
+    item = relationship('MarketItem', back_populates='deals')
+    seller = relationship('User', foreign_keys=[seller_id], back_populates='market_deals_as_seller')
+    buyer = relationship('User', foreign_keys=[buyer_id], back_populates='market_deals_as_buyer')
+    events = relationship('MarketDealEvent', back_populates='deal', cascade='all, delete-orphan')
+    reviews = relationship('MarketReview', back_populates='deal')
+
+    __table_args__ = (
+        CheckConstraint('seller_id <> buyer_id', name='check_market_deal_distinct_participants'),
+        Index('ix_market_deals_item_status', 'item_id', 'status'),
+        Index('ix_market_deals_buyer_status', 'buyer_id', 'status'),
+        Index('ix_market_deals_seller_status', 'seller_id', 'status'),
+    )
+
+
+class MarketDealEvent(Base):
+    """Аудит переходов статусов сделки."""
+    __tablename__ = 'market_deal_events'
+
+    id = Column(Integer, primary_key=True, index=True)
+    deal_id = Column(Integer, ForeignKey('market_deals.id', ondelete='CASCADE'), nullable=False, index=True)
+    item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    event_type = Column(String(50), nullable=False, index=True)
+    from_status = Column(String(30), nullable=True)
+    to_status = Column(String(30), nullable=True)
+    payload = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+
+    deal = relationship('MarketDeal', back_populates='events')
+    actor = relationship('User', foreign_keys=[actor_id])
+    item = relationship('MarketItem')
+
+    __table_args__ = (
+        Index('ix_market_deal_events_deal_created', 'deal_id', 'created_at'),
+        Index('ix_market_deal_events_item_created', 'item_id', 'created_at'),
+    )
+
+
 class MarketReview(Base):
     """Отзывы покупателей о продавцах на барахолке"""
     __tablename__ = 'market_reviews'
 
     id = Column(Integer, primary_key=True, index=True)
     item_id = Column(Integer, ForeignKey('market_items.id', ondelete='CASCADE'), nullable=False)
+    deal_id = Column(Integer, ForeignKey('market_deals.id', ondelete='CASCADE'), nullable=True, index=True)
     reviewer_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     seller_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     rating = Column(Integer, nullable=False)          # 1–5
@@ -527,11 +662,25 @@ class MarketReview(Base):
     reviewer = relationship('User', foreign_keys=[reviewer_id])
     seller   = relationship('User', foreign_keys=[seller_id])
     item     = relationship('MarketItem')
+    deal     = relationship('MarketDeal', back_populates='reviews')
 
     __table_args__ = (
-        UniqueConstraint('reviewer_id', 'item_id', name='unique_review_per_item'),
         Index('ix_market_reviews_seller_id', 'seller_id'),
         Index('ix_market_reviews_item_id', 'item_id'),
+        Index(
+            'uq_market_review_per_deal',
+            'reviewer_id',
+            'deal_id',
+            unique=True,
+            postgresql_where=sa_text('deal_id IS NOT NULL'),
+        ),
+        Index(
+            'uq_market_review_legacy_item',
+            'reviewer_id',
+            'item_id',
+            unique=True,
+            postgresql_where=sa_text('deal_id IS NULL'),
+        ),
     )
 
 

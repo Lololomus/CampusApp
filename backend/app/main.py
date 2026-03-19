@@ -29,7 +29,7 @@ import json
 import re
 from pydantic import ValidationError
 from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router, analytics
-from app.services import analytics_service, notification_service
+from app.services import analytics_service, market_expiry_service, notification_service
 import os
 import logging
 from datetime import datetime, timedelta, timezone
@@ -117,10 +117,14 @@ async def lifespan(app: FastAPI):
     runtime_settings = get_settings()
     stop_event = asyncio.Event()
     nightly_task = None
+    market_expiry_task = None
     if runtime_settings.analytics_nightly_enabled:
         nightly_task = asyncio.create_task(analytics_service.run_nightly_rebuild_loop(stop_event))
+    if runtime_settings.is_prod and runtime_settings.deal_flow_v2_enabled and runtime_settings.market_expiry_worker_enabled:
+        market_expiry_task = asyncio.create_task(market_expiry_service.run_market_expiry_loop(stop_event))
     app.state.analytics_stop_event = stop_event
     app.state.analytics_nightly_task = nightly_task
+    app.state.market_expiry_task = market_expiry_task
     yield
     stop_event.set()
     if nightly_task:
@@ -128,6 +132,11 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(nightly_task, timeout=5)
         except asyncio.TimeoutError:
             nightly_task.cancel()
+    if market_expiry_task:
+        try:
+            await asyncio.wait_for(market_expiry_task, timeout=5)
+        except asyncio.TimeoutError:
+            market_expiry_task.cancel()
     await engine.dispose()
     await close_redis()
     logger.info("Engines disposed")
@@ -1786,6 +1795,8 @@ async def get_market_feed_endpoint(
             "description": item.description,
             "price": item.price,
             "condition": item.condition,
+            "capacity": item.capacity,
+            "pause_reason": item.pause_reason,
             "location": item.location,
             "images": images,
             "status": item.status,
@@ -1847,6 +1858,8 @@ async def get_market_favorites_endpoint(
             "description": item.description,
             "price": item.price,
             "condition": item.condition,
+            "capacity": item.capacity,
+            "pause_reason": item.pause_reason,
             "location": item.location,
             "images": images,
             "status": item.status,
@@ -1903,6 +1916,8 @@ async def get_my_market_items_endpoint(
             "description": item.description,
             "price": item.price,
             "condition": item.condition,
+            "capacity": item.capacity,
+            "pause_reason": item.pause_reason,
             "location": item.location,
             "images": images,
             "status": item.status,
@@ -1929,6 +1944,15 @@ async def get_market_item_endpoint(
     item = await crud.get_market_item(db, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    if item.status == 'archived':
+        can_view_archived = bool(
+            user and (
+                user.id == item.seller_id or
+                user.role in ('ambassador', 'admin', 'superadmin')
+            )
+        )
+        if not can_view_archived:
+            raise HTTPException(status_code=404, detail="Item not found")
 
     if user:
         await analytics_service.record_server_event(
@@ -1966,6 +1990,8 @@ async def get_market_item_endpoint(
         "description": item.description,
         "price": item.price,
         "condition": item.condition,
+        "capacity": item.capacity,
+        "pause_reason": item.pause_reason,
         "location": item.location,
         "images": images,
         "status": item.status,
@@ -1991,17 +2017,46 @@ async def contact_market_seller_endpoint(
         raise HTTPException(status_code=404, detail="User not found")
 
     item = await db.get(models.MarketItem, item_id)
-    if not item or item.is_deleted or item.status != 'active':
+    if not item or item.is_deleted:
         raise HTTPException(status_code=404, detail="Item not found")
     if item.seller_id == buyer.id:
         raise HTTPException(status_code=400, detail="Cannot contact your own item")
 
-    seller = await db.get(models.User, item.seller_id)
-    if not seller:
-        raise HTTPException(status_code=404, detail="Seller not found")
+    if settings.deal_flow_v2_enabled:
+        try:
+            _, is_waitlist, is_new_interest = await crud.create_market_interest(db, item_id, buyer.id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
-    await notification_service.notify_market_contact(db, seller, buyer, item)
-    await db.commit()
+        seller = await db.get(models.User, item.seller_id)
+        if not seller:
+            raise HTTPException(status_code=404, detail="Seller not found")
+
+        if is_new_interest:
+            await notification_service.create_notification(
+                db,
+                seller.id,
+                "market_contact",
+                {
+                    "item_id": item.id,
+                    "item_title": item.title,
+                    "item_type": item.item_type,
+                    "buyer_name": buyer.name,
+                    "buyer_username": buyer.username,
+                    "is_waitlist": is_waitlist,
+                },
+            )
+            await db.commit()
+    else:
+        if item.status != 'active':
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        seller = await db.get(models.User, item.seller_id)
+        if not seller:
+            raise HTTPException(status_code=404, detail="Seller not found")
+
+        await notification_service.notify_market_contact(db, seller, buyer, item)
+        await db.commit()
 
     await analytics_service.record_server_event(
         db,
@@ -2012,6 +2067,243 @@ async def contact_market_seller_endpoint(
     )
     return {"ok": True}
 
+
+@app.post("/market/{item_id}/interest", response_model=schemas.MarketInterestResponse)
+async def create_market_interest_endpoint(
+    item_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+
+    try:
+        lead, is_waitlist, is_new_interest = await crud.create_market_interest(db, item_id, user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    item = await db.get(models.MarketItem, item_id)
+    seller = await db.get(models.User, item.seller_id) if item else None
+    if item and seller and is_new_interest:
+        await notification_service.create_notification(
+            db,
+            seller.id,
+            "market_contact",
+            {
+                "item_id": item.id,
+                "item_title": item.title,
+                "item_type": item.item_type,
+                "buyer_name": user.name,
+                "buyer_username": user.username,
+                "is_waitlist": is_waitlist,
+            },
+        )
+        await db.commit()
+
+    return normalize_datetime_payload({
+        "id": lead.id,
+        "item_id": lead.item_id,
+        "buyer": schemas.UserShort.from_orm(user),
+        "status": lead.status,
+        "is_waitlist": is_waitlist,
+        "created_at": lead.created_at,
+        "updated_at": lead.updated_at,
+    })
+
+
+@app.delete("/market/{item_id}/interest")
+async def cancel_market_interest_endpoint(
+    item_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+
+    removed = await crud.cancel_market_interest(db, item_id, user.id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Interest not found")
+    return {"ok": True}
+
+
+@app.get("/market/{item_id}/waitlist", response_model=List[schemas.MarketInterestResponse])
+async def get_market_waitlist_endpoint(
+    item_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+
+    try:
+        leads = await crud.get_market_waitlist(db, item_id, user.id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    payload = []
+    for lead in leads:
+        payload.append({
+            "id": lead.id,
+            "item_id": lead.item_id,
+            "buyer": schemas.UserShort.from_orm(lead.buyer),
+            "status": lead.status,
+            "is_waitlist": True,
+            "created_at": lead.created_at,
+            "updated_at": lead.updated_at,
+        })
+    return normalize_datetime_payload(payload)
+
+
+@app.post("/market/{item_id}/deals/select-buyer", response_model=schemas.MarketDealResponse)
+async def select_market_buyer_endpoint(
+    item_id: int,
+    data: schemas.MarketSelectBuyerRequest,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+
+    try:
+        deal = await crud.select_market_buyer(db, item_id, user.id, data.buyer_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    deal = await crud.get_market_deal(db, deal.id, user.id, user.role)
+    return normalize_datetime_payload(_serialize_market_deal(deal))
+
+
+@app.post("/market/deals/{deal_id}/start", response_model=schemas.MarketDealResponse)
+async def start_market_deal_endpoint(
+    deal_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+    try:
+        deal = await crud.start_market_deal(db, deal_id, user.id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    deal = await crud.get_market_deal(db, deal.id, user.id, user.role)
+    return normalize_datetime_payload(_serialize_market_deal(deal))
+
+
+@app.post("/market/deals/{deal_id}/provider-confirm", response_model=schemas.MarketDealResponse)
+async def provider_confirm_market_deal_endpoint(
+    deal_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+    try:
+        deal = await crud.provider_confirm_market_deal(db, deal_id, user.id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    deal = await crud.get_market_deal(db, deal.id, user.id, user.role)
+    return normalize_datetime_payload(_serialize_market_deal(deal))
+
+
+@app.post("/market/deals/{deal_id}/customer-confirm", response_model=schemas.MarketDealResponse)
+async def customer_confirm_market_deal_endpoint(
+    deal_id: int,
+    data: schemas.MarketCustomerConfirmRequest,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+    try:
+        deal = await crud.customer_confirm_market_deal(db, deal_id, user.id, data.outcome)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    deal = await crud.get_market_deal(db, deal.id, user.id, user.role)
+    return normalize_datetime_payload(_serialize_market_deal(deal))
+
+
+@app.post("/market/deals/{deal_id}/reassign", response_model=schemas.MarketDealResponse)
+async def reassign_market_deal_endpoint(
+    deal_id: int,
+    data: schemas.MarketReassignDealRequest,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+    try:
+        deal = await crud.reassign_market_deal(db, deal_id, user.id, data.buyer_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    deal = await crud.get_market_deal(db, deal.id, user.id, user.role)
+    return normalize_datetime_payload(_serialize_market_deal(deal))
+
+
+@app.post("/market/deals/{deal_id}/cancel", response_model=schemas.MarketDealResponse)
+async def cancel_market_deal_endpoint(
+    deal_id: int,
+    data: schemas.MarketCancelDealRequest,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+    try:
+        deal = await crud.cancel_market_deal(db, deal_id, user.id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    deal = await crud.get_market_deal(db, deal.id, user.id, user.role)
+    return normalize_datetime_payload(_serialize_market_deal(deal))
+
+
+@app.post("/market/deals/{deal_id}/resolve-dispute", response_model=schemas.MarketDealResponse)
+async def resolve_market_dispute_endpoint(
+    deal_id: int,
+    data: schemas.MarketResolveDisputeRequest,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+    if user.role not in ("ambassador", "admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Moderator role required")
+    try:
+        deal = await crud.resolve_market_dispute(db, deal_id, user.id, data.resolution, data.note)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    deal = await crud.get_market_deal(db, deal.id, user.id, user.role)
+    return normalize_datetime_payload(_serialize_market_deal(deal))
+
+
+@app.get("/market/deals/{deal_id}", response_model=schemas.MarketDealResponse)
+async def get_market_deal_endpoint(
+    deal_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.deal_flow_v2_enabled:
+        raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
+    try:
+        deal = await crud.get_market_deal(db, deal_id, user.id, user.role)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    return normalize_datetime_payload(_serialize_market_deal(deal))
+
 @app.post("/market/items", response_model=schemas.MarketItemResponse)
 async def create_market_item_endpoint(
     telegram_id: int = Query(...),
@@ -2021,6 +2313,7 @@ async def create_market_item_endpoint(
     description: str = Form(...),
     price: int = Form(...),
     condition: Optional[str] = Form(None),
+    capacity: Optional[int] = Form(3),
     location: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
     video: Optional[UploadFile] = File(None),
@@ -2046,6 +2339,7 @@ async def create_market_item_endpoint(
         description=description,
         price=price,
         condition=condition,
+        capacity=capacity,
         location=location,
         images=["placeholder"]
     )
@@ -2092,6 +2386,8 @@ async def create_market_item_endpoint(
         "description": item.description,
         "price": item.price,
         "condition": item.condition,
+        "capacity": item.capacity,
+        "pause_reason": item.pause_reason,
         "location": item.location,
         "images": images_urls,
         "status": item.status,
@@ -2114,6 +2410,8 @@ async def update_market_item_endpoint(
     description: Optional[str] = Form(None),
     price: Optional[int] = Form(None),
     condition: Optional[str] = Form(None),
+    capacity: Optional[int] = Form(None),
+    pause_reason: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
     status: Optional[str] = Form(None),
     new_images: List[UploadFile] = File(default=[]),
@@ -2143,6 +2441,8 @@ async def update_market_item_endpoint(
         description=description,
         price=price,
         condition=condition,
+        capacity=capacity,
+        pause_reason=pause_reason if pause_reason in ('manual', 'capacity') else None,
         location=location,
         status=status,
         images=None
@@ -2191,6 +2491,8 @@ async def update_market_item_endpoint(
         "description": updated_item.description,
         "price": updated_item.price,
         "condition": updated_item.condition,
+        "capacity": updated_item.capacity,
+        "pause_reason": updated_item.pause_reason,
         "location": updated_item.location,
         "images": images_urls,
         "status": updated_item.status,
@@ -2267,6 +2569,40 @@ async def _resolve_review_user(
     return await require_user(request, db)
 
 
+def _serialize_market_deal(deal: models.MarketDeal) -> dict:
+    events = []
+    for ev in sorted((deal.events or []), key=lambda e: e.created_at or datetime.min):
+        events.append({
+            "id": ev.id,
+            "event_type": ev.event_type,
+            "from_status": ev.from_status,
+            "to_status": ev.to_status,
+            "actor_id": ev.actor_id,
+            "payload": ev.payload,
+            "created_at": ev.created_at,
+        })
+
+    return {
+        "id": deal.id,
+        "item_id": deal.item_id,
+        "seller_id": deal.seller_id,
+        "buyer_id": deal.buyer_id,
+        "status": deal.status,
+        "customer_result": deal.customer_result,
+        "selected_at": deal.selected_at,
+        "started_at": deal.started_at,
+        "provider_confirmed_at": deal.provider_confirmed_at,
+        "customer_confirmed_at": deal.customer_confirmed_at,
+        "completed_at": deal.completed_at,
+        "disputed_at": deal.disputed_at,
+        "cancelled_at": deal.cancelled_at,
+        "expires_at": deal.expires_at,
+        "created_at": deal.created_at,
+        "updated_at": deal.updated_at,
+        "events": events,
+    }
+
+
 @app.post("/market/reviews", response_model=schemas.MarketReviewResponse)
 async def create_market_review(
     data: schemas.MarketReviewCreate,
@@ -2277,6 +2613,8 @@ async def create_market_review(
 ):
     """Создать отзыв (front через JWT или bot через X-Bot-Secret)."""
     user = await _resolve_review_user(request, db, telegram_id, x_bot_secret)
+    if settings.deal_flow_v2_enabled and not data.deal_id:
+        raise HTTPException(status_code=400, detail="deal_id is required")
 
     source = 'bot' if x_bot_secret is not None else 'app'
     status = 'pending_text' if source == 'bot' else 'completed'
@@ -2285,7 +2623,7 @@ async def create_market_review(
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
-        if 'unique_review_per_item' in str(e):
+        if 'unique_review_per_item' in str(e) or 'unique_review_per_deal' in str(e):
             raise HTTPException(status_code=409, detail="Отзыв уже оставлен")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
     return review
@@ -2328,15 +2666,18 @@ async def add_review_text(
 @app.post("/market/reviews/skip")
 async def skip_review_request(
     telegram_id: int = Query(...),
-    item_id: int = Query(...),
+    item_id: Optional[int] = Query(None),
+    deal_id: Optional[int] = Query(None),
     _: None = Depends(_verify_bot_secret),
     db: AsyncSession = Depends(get_db),
 ):
     """Пропустить запрос отзыва (бот)."""
+    if not item_id and not deal_id:
+        raise HTTPException(status_code=400, detail="item_id or deal_id is required")
     user = await crud.get_user_by_telegram_id(db, telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    await crud.skip_review_request(db, user.id, item_id)
+    await crud.skip_review_request(db, user.id, item_id=item_id, deal_id=deal_id)
     return {"ok": True}
 
 

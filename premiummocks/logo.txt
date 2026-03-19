@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus | Единая экосистема студенчества</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --lime: #CCFF00;
+            --white: #FFFFFF;
+            --bg-color: #030303;
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--white);
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at center, #141414 0%, #030303 100%);
+            overflow: hidden;
+        }
+
+        /* =========================================
+           ПРЕЗЕНТАЦИОННЫЙ КОНТЕЙНЕР
+        ========================================= */
+        .hero-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: 1000px;
+            padding: 2rem;
+            z-index: 10;
+        }
+
+        /* =========================================
+           ЛОГОТИП И ГЕОМЕТРИЯ
+        ========================================= */
+        .logo-wrapper {
+            display: flex;
+            align-items: baseline; 
+            position: relative;
+            margin-bottom: 4rem;
+        }
+
+        .text-campus {
+            font-size: 130px; /* Сделали чуть крупнее для Hero-секции */
+            font-weight: 900;
+            letter-spacing: -0.05em;
+            line-height: 1;
+            display: flex;
+            position: relative;
+            z-index: 5;
+            color: var(--white); 
+        }
+
+        .bubble-mark {
+            width: 95px; /* Математически подогнано под Cap Height 130px шрифта */
+            height: 95px; 
+            margin-left: 26px; /* Идеальная пропорция отступа (Вариант 1) */
+            position: relative;
+            z-index: 1;
+        }
+
+        .bubble-base {
+            width: 100%;
+            height: 100%;
+            background-color: var(--white);
+            border-radius: 36px 36px 36px 0px; 
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            opacity: 0; 
+            transform: scale(0.8) translateY(10px);
+            transform-origin: left bottom;
+        }
+
+        .notification-dot {
+            width: 30px;
+            height: 30px;
+            background-color: var(--lime); 
+            border-radius: 50%;
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            opacity: 0; 
+            transform: scale(0);
+            box-shadow: 0 0 0 7px var(--bg-color); /* Вырез цвета фона */
+            z-index: 10;
+        }
+
+        /* =========================================
+           АНИМАЦИИ ЛОГОТИПА
+        ========================================= */
+        .letter { 
+            display: inline-block; 
+            opacity: 0; 
+            transform: translateY(30px) scale(0.95); 
+        }
+
+        .playing .l1 { animation: letterPop 0.8s var(--ease-out-expo) forwards 0.1s; }
+        .playing .l2 { animation: letterPop 0.8s var(--ease-out-expo) forwards 0.15s; }
+        .playing .l3 { animation: letterPop 0.8s var(--ease-out-expo) forwards 0.2s; }
+        .playing .l4 { animation: letterPop 0.8s var(--ease-out-expo) forwards 0.25s; }
+        .playing .l5 { animation: letterPop 0.8s var(--ease-out-expo) forwards 0.3s; }
+        .playing .l6 { animation: letterPop 0.8s var(--ease-out-expo) forwards 0.35s; }
+
+        .playing .bubble-base { animation: popMark 0.8s var(--ease-out-expo) forwards 0.5s; }
+        .playing .notification-dot { animation: popBadge 0.6s var(--ease-out-back) forwards 0.65s; }
+
+        @keyframes letterPop { to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes popMark { to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes popBadge { to { opacity: 1; transform: scale(1); } }
+
+        /* =========================================
+           МАНИФЕСТ / ОПИСАНИЕ ПЛАТФОРМЫ
+        ========================================= */
+        .manifesto {
+            text-align: center;
+            max-width: 680px;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .manifesto h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--white);
+            margin-bottom: 1.25rem;
+            letter-spacing: -0.03em;
+        }
+
+        .manifesto p {
+            font-size: 1.25rem; /* Слегка увеличил шрифт, так как текста стало меньше */
+            line-height: 1.5;
+            color: #A1A1AA; /* Мягкий серый для контраста */
+            font-weight: 400;
+        }
+
+        .manifesto strong {
+            color: var(--white);
+            font-weight: 500;
+        }
+        
+        .manifesto .highlight {
+            color: var(--lime);
+        }
+
+        /* Анимация описания (Появляется после лого) */
+        .playing .manifesto {
+            animation: slideUpFade 1.2s var(--ease-out-expo) forwards 1.2s;
+        }
+
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* =========================================
+           UI ЭЛЕМЕНТЫ
+        ========================================= */
+        .controls {
+            position: fixed;
+            bottom: 3rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            opacity: 0;
+        }
+
+        .playing .controls {
+            animation: fadeIn 1s ease forwards 2s;
+        }
+
+        @keyframes fadeIn { to { opacity: 1; } }
+        
+        .btn-replay {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            transition: all 0.3s var(--ease-out-expo);
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .btn-replay:hover {
+            background: var(--lime);
+            color: #000;
+            border-color: var(--lime);
+            box-shadow: 0 10px 30px rgba(204, 255, 0, 0.2);
+            transform: scale(1.05);
+        }
+
+        /* Адаптив под мобильные устройства */
+        @media (max-width: 768px) {
+            .text-campus { font-size: 70px; }
+            .bubble-mark { width: 51px; height: 51px; margin-left: 14px; }
+            .bubble-base { border-radius: 18px 18px 18px 0px; }
+            .notification-dot { width: 16px; height: 16px; top: -5px; right: -5px; box-shadow: 0 0 0 4px var(--bg-color); }
+            
+            .logo-wrapper { margin-bottom: 2.5rem; }
+            
+            .manifesto h2 { font-size: 1.25rem; margin-bottom: 1rem; }
+            .manifesto p { font-size: 1rem; padding: 0 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hero-container" id="presentation-zone">
+        
+        <!-- ЛОГОТИП -->
+        <div class="logo-wrapper">
+            <div class="text-campus">
+                <span class="letter l1">C</span>
+                <span class="letter l2">a</span>
+                <span class="letter l3">m</span>
+                <span class="letter l4">p</span>
+                <span class="letter l5">u</span>
+                <span class="letter l6">s</span>
+            </div>
+            
+            <!-- СИМВОЛ (The Bubble) -->
+            <div class="bubble-mark">
+                <div class="bubble-base"></div>
+                <div class="notification-dot"></div>
+            </div>
+        </div>
+
+        <!-- МАНИФЕСТ ПЛАТФОРМЫ -->
+        <div class="manifesto">
+            <h2>Глобальная сеть студентов.</h2>
+            <p>
+                <strong>Campus</strong> стирает границы между вузами и факультетами. <br>Здесь <span class="highlight">ваши связи строят ваше будущее</span>.
+            </p>
+        </div>
+
+    </div>
+
+    <!-- КНОПКА ПОВТОРА (Появляется в самом конце) -->
+    <div class="controls">
+        <button class="btn-replay flex items-center gap-2" onclick="playAnim()">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg> 
+            Повторить анимацию
+        </button>
+    </div>
+
+    <script>
+        function playAnim() {
+            const container = document.getElementById('presentation-zone');
+            const body = document.body;
+            
+            // Сбрасываем классы
+            container.classList.remove('playing');
+            body.classList.remove('playing');
+            
+            // Триггер reflow
+            void container.offsetWidth; 
+            
+            // Запускаем заново
+            container.classList.add('playing');
+            body.classList.add('playing');
+        }
+
+        // Автозапуск при старте с приятной задержкой
+        window.onload = () => {
+            setTimeout(playAnim, 400);
+        };
+    </script>
+</body>
+</html>

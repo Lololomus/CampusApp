@@ -129,9 +129,14 @@ class NotificationSender:
 
             # Выбираем клавиатуру по типу
             if followup_type == "review_request":
+                deal_id = payload.get("deal_id")
                 item_id = payload.get("item_id")
-                seller_id = payload.get("seller_id")
-                kb = review_stars_kb(item_id, seller_id)
+                if deal_id:
+                    kb = review_stars_kb(deal_id, "deal")
+                elif item_id:
+                    kb = review_stars_kb(item_id, "item")
+                else:
+                    kb = followup_market_kb(followup_id)
             elif target_type == "market_item":
                 kb = followup_market_kb(followup_id)
             elif target_type == "request":

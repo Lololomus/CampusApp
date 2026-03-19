@@ -892,6 +892,7 @@ class MarketItemCreate(BaseModel):
     description: str = Field(..., min_length=10, max_length=1000)
     price: int = Field(..., ge=0, le=1000000)
     condition: Optional[str] = Field(None, pattern="^(new|like_new|good|fair)$")
+    capacity: Optional[int] = Field(3, ge=1, le=50)
     location: Optional[str] = Field(None, max_length=200)
     images: List[str] = Field(..., min_length=1, max_length=3)
     
@@ -919,6 +920,10 @@ class MarketItemCreate(BaseModel):
         if self.item_type == 'service' and not self.condition:
             # Сохраняем консистентное дефолтное состояние для услуг.
             self.condition = 'good'
+        if self.item_type == 'product':
+            self.capacity = 1
+        if self.item_type == 'service' and not self.capacity:
+            self.capacity = 3
         return self
 
 class MarketItemUpdate(BaseModel):
@@ -928,9 +933,11 @@ class MarketItemUpdate(BaseModel):
     description: Optional[str] = Field(None, min_length=10, max_length=1000)
     price: Optional[int] = Field(None, ge=0, le=1000000)
     condition: Optional[str] = Field(None, pattern="^(new|like_new|good|fair)$")
+    capacity: Optional[int] = Field(None, ge=1, le=50)
+    pause_reason: Optional[str] = Field(None, pattern="^(manual|capacity)$")
     location: Optional[str] = Field(None, max_length=200)
     images: Optional[List[str]] = Field(None, min_length=1, max_length=3)
-    status: Optional[str] = Field(None, pattern="^(active|sold)$")
+    status: Optional[str] = Field(None, pattern="^(active|reserved|sold|paused|archived)$")
     
     @field_validator('images')
     @classmethod
@@ -953,6 +960,8 @@ class MarketItemResponse(BaseModel):
     description: str
     price: int
     condition: str
+    capacity: int = 3
+    pause_reason: Optional[str] = None
     location: Optional[str] = None
     images: List[ImageMeta] = []
     status: str
@@ -986,17 +995,94 @@ class MarketCategoriesResponse(BaseModel):
     popular_custom: List[str]
 
 
-class MarketReviewCreate(BaseModel):
+class MarketInterestResponse(BaseModel):
+    id: int
     item_id: int
-    seller_id: Optional[int] = None  # игнорируется, резолвится из item в БД
+    buyer: UserShort
+    status: str
+    is_waitlist: bool = False
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MarketSelectBuyerRequest(BaseModel):
+    buyer_id: int
+
+
+class MarketCustomerConfirmRequest(BaseModel):
+    outcome: str = Field(..., pattern="^(received|not_received)$")
+
+
+class MarketReassignDealRequest(BaseModel):
+    buyer_id: int
+
+
+class MarketCancelDealRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=500)
+
+
+class MarketResolveDisputeRequest(BaseModel):
+    resolution: str = Field(..., pattern="^(completed|cancelled)$")
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class MarketDealEventResponse(BaseModel):
+    id: int
+    event_type: str
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    actor_id: Optional[int] = None
+    payload: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('payload', mode='before')
+    @classmethod
+    def coerce_payload(cls, v):
+        return _coerce_json_dict_or_none(v)
+
+
+class MarketDealResponse(BaseModel):
+    id: int
+    item_id: int
+    seller_id: int
+    buyer_id: int
+    status: str
+    customer_result: Optional[str] = None
+    selected_at: datetime
+    started_at: Optional[datetime] = None
+    provider_confirmed_at: Optional[datetime] = None
+    customer_confirmed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    disputed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    events: List[MarketDealEventResponse] = Field(default_factory=list)
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MarketReviewCreate(BaseModel):
+    deal_id: Optional[int] = None
+    item_id: Optional[int] = None
+    seller_id: Optional[int] = None  # legacy compatibility, ignored
     rating: int = Field(..., ge=1, le=5)
     text: Optional[str] = Field(None, max_length=300)
     source: str = Field('app', pattern="^(bot|app)$")
+
+    @model_validator(mode='after')
+    def validate_target(self):
+        if not self.deal_id and not self.item_id:
+            raise ValueError("deal_id or item_id is required")
+        return self
 
 
 class MarketReviewResponse(BaseModel):
     id: int
     item_id: int
+    deal_id: Optional[int] = None
     seller_id: int
     reviewer: UserShort
     rating: int
@@ -1007,9 +1093,16 @@ class MarketReviewResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SellerRatingSegment(BaseModel):
+    avg: Optional[float] = None
+    count: int = 0
+
+
 class SellerRatingResponse(BaseModel):
     avg: Optional[float] = None
     count: int = 0
+    product: SellerRatingSegment = Field(default_factory=SellerRatingSegment)
+    service: SellerRatingSegment = Field(default_factory=SellerRatingSegment)
 
 # Схема для создания/обновления анкеты
 class DatingProfileCreate(BaseModel):

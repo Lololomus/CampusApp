@@ -898,8 +898,11 @@ export async function getMarketCategories() {
   }
 }
 
-export async function createMarketReview({ item_id, rating, text }) {
-  const response = await api.post('/market/reviews', { item_id, rating, text, source: 'app' });
+export async function createMarketReview({ deal_id, item_id, rating, text }) {
+  const payload = { rating, text, source: 'app' };
+  if (deal_id) payload.deal_id = deal_id;
+  if (!deal_id && item_id) payload.item_id = item_id;
+  const response = await api.post('/market/reviews', payload);
   return response.data;
 }
 
@@ -908,13 +911,16 @@ export async function getSellerRating(userId) {
     const response = await api.get(`/users/${userId}/rating`);
     return response.data;
   } catch {
-    return { avg: null, count: 0 };
+    return { avg: null, count: 0, product: { avg: null, count: 0 }, service: { avg: null, count: 0 } };
   }
 }
 
-export async function skipReviewRequest(itemId) {
+export async function skipReviewRequest({ itemId = null, dealId = null } = {}) {
   const telegram_id = getTelegramId();
-  await api.post('/market/reviews/skip', null, { params: { telegram_id, item_id: itemId } });
+  const params = { telegram_id };
+  if (dealId) params.deal_id = dealId;
+  if (!dealId && itemId) params.item_id = itemId;
+  await api.post('/market/reviews/skip', null, { params });
 }
 
 export async function getMyDatingProfile() {

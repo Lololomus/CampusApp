@@ -226,12 +226,17 @@ def get_identity_from_request(request: Request) -> AuthIdentity:
 
     user_id_raw = payload.get("sub")
     user_id = int(user_id_raw) if str(user_id_raw).isdigit() else None
+    sid_raw = payload.get("sid", 0)
+    try:
+        session_id = int(sid_raw)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid token payload")
 
     return AuthIdentity(
         telegram_id=telegram_id,
         user_id=user_id,
         role=payload.get("role", "user"),
-        session_id=int(payload.get("sid", 0)),
+        session_id=session_id,
     )
 
 
@@ -247,6 +252,7 @@ async def require_user(
     db: AsyncSession = Depends(get_db),
 ) -> models.User:
     """✅ Async: select() + await db.execute()"""
+    settings = get_settings()
     identity = get_identity_from_request(request)
 
     result = await db.execute(
@@ -256,6 +262,26 @@ async def require_user(
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if settings.is_prod and settings.auth_session_binding_enabled:
+        if identity.session_id <= 0:
+            raise HTTPException(status_code=401, detail="Invalid token session")
+
+        now = _utcnow()
+        session_result = await db.execute(
+            select(models.AuthSession).where(
+                models.AuthSession.id == identity.session_id,
+                models.AuthSession.telegram_id == identity.telegram_id,
+                models.AuthSession.revoked_at.is_(None),
+                models.AuthSession.expires_at > now,
+            )
+        )
+        session = session_result.scalar_one_or_none()
+        if not session:
+            raise HTTPException(status_code=401, detail="Session is not active")
+        if session.user_id is not None and session.user_id != user.id:
+            raise HTTPException(status_code=401, detail="Session user mismatch")
+
     return user
 
 
