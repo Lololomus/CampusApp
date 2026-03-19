@@ -1,16 +1,24 @@
-# CampusApp Production Runbook
+# CampusApp Deployment Runbook
 
-## 1. Target topology
+## 1. Choose ingress mode first
 
-- One Ubuntu 22.04+ VPS.
-- Docker Compose runs `postgres`, `redis`, `backend`, `bot`, `frontend`.
-- Public traffic goes only to `frontend` on `80/443`.
-- Bot stays on polling. Telegram webhook is not used in production.
-- Frontend uses CSP `frame-ancestors` for Telegram Mini App embedding instead of `X-Frame-Options`.
-- Production memory budgets are fixed in compose: `postgres=1g`, `backend=1g`, `bot=512m`, `redis=256m`, `frontend=256m`.
-- Redis hardening comes from the repo `redis.conf`, mounted read-only into the container.
+Choose one of these modes before doing anything else:
 
-## 2. Server bootstrap
+- **Beta via Tuna tunnel**
+  - Use this when you do not want to buy a domain yet.
+  - Public HTTPS ends on Tuna, not on your VPS.
+  - Deploy with `docker-compose.tuna.yml`.
+  - Do **not** use `certbot`, `check-prod-env.sh`, or `deploy-prod.sh` in this mode.
+- **Production via your own domain**
+  - Use this when you have your own domain or subdomain.
+  - Public HTTPS ends on your VPS with local Nginx and Let's Encrypt.
+  - Deploy with `docker-compose.prod.yml`, `check-prod-env.sh`, and `deploy-prod.sh`.
+
+The rest of this runbook is split by mode. Follow only one path.
+
+## 2. Shared server bootstrap
+
+These steps are common for both Tuna beta and full production.
 
 Install base packages:
 
@@ -27,6 +35,7 @@ Create a dedicated deploy user and allow Docker access:
 ```bash
 sudo adduser deploy
 sudo usermod -aG docker deploy
+sudo usermod -aG sudo deploy
 ```
 
 SSH hardening:
@@ -52,7 +61,7 @@ sudo ufw allow 443/tcp
 sudo ufw --force enable
 ```
 
-## 3. Project checkout and host directories
+## 3. Shared project checkout and host directories
 
 Clone the repository as `deploy`:
 
@@ -70,7 +79,7 @@ sudo chown -R deploy:deploy /srv/campusapp
 chmod 700 /srv/campusapp/ssl
 ```
 
-## 4. Environment
+## 4. Shared environment
 
 Create the production env file:
 
@@ -85,14 +94,118 @@ Required production rules:
 - `DEV_AUTH_ENABLED=false`
 - `COOKIE_SECURE=true`
 - `SQL_ECHO=false`
-- `CORS_ORIGINS` contains only real `https://` origins
 - `API_BASE_URL=http://backend:8000`
-- `MINIAPP_URL=https://<your-domain>`
 - `SECRET_KEY`, `BOT_SECRET`, `ANALYTICS_SALT`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD` are long random values
 - `BOT_TOKEN` is the real token from BotFather
-- Do not set `DATABASE_URL` or `REDIS_URL` manually in `.env`; production compose builds them from the component variables above.
+- Do not set `DATABASE_URL` or `REDIS_URL` manually in `.env`; compose builds them from the component variables
 
-## 5. TLS certificates
+Mode-specific env:
+
+- For **Tuna beta**:
+  - `CORS_ORIGINS=https://<your-tuna-domain>`
+  - `MINIAPP_URL=https://<your-tuna-domain>`
+- For **own domain production**:
+  - `CORS_ORIGINS=https://<your-domain>`
+  - `MINIAPP_URL=https://<your-domain>`
+
+## 5. Path A: Beta via Tuna
+
+### 5.1. Deploy the HTTP-only stack
+
+Tuna terminates HTTPS for you. The VPS serves plain HTTP only on loopback `127.0.0.1:80`, and Tuna connects to that local listener.
+
+Build and start the beta stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tuna.yml up -d --build
+```
+
+This mode uses:
+
+- `nginx/nginx.tuna.conf`
+- `docker-compose.tuna.yml`
+
+Do **not** run:
+
+- `./scripts/check-prod-env.sh`
+- `./scripts/deploy-prod.sh`
+
+Those scripts are for the own-domain TLS path only.
+
+### 5.2. Verify the local HTTP stack on the VPS
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tuna.yml ps
+docker compose -f docker-compose.yml -f docker-compose.tuna.yml logs --tail=100 backend frontend bot
+curl -I http://127.0.0.1/health
+curl -I http://127.0.0.1/api/health
+```
+
+Expected result:
+
+- `frontend`, `backend`, `bot`, `postgres`, `redis` are up
+- `http://127.0.0.1/health` returns `200`
+- `http://127.0.0.1/api/health` returns `200`
+- frontend serves plain HTTP only on loopback and is not exposed directly on the public interface
+
+### 5.3. Run Tuna on the VPS
+
+Install the official Tuna CLI on the VPS and log in to your account.
+
+Start the tunnel manually first:
+
+```bash
+tuna http 80 --subdomain=<your-subdomain>
+```
+
+Then open the Tuna HTTPS domain in your browser and confirm that:
+
+- the frontend opens
+- `/api` works through the tunnel
+- Mini App opens on the Tuna HTTPS URL
+
+### 5.4. Make Tuna persistent with systemd
+
+After you confirm the manual tunnel works, create a systemd service for Tuna.
+
+Example unit file:
+
+```ini
+[Unit]
+Description=Tuna tunnel for CampusApp beta
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=deploy
+WorkingDirectory=/home/deploy/CampusApp
+ExecStart=/usr/local/bin/tuna http 80 --subdomain=<your-subdomain>
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now tuna-campusapp.service
+sudo systemctl status tuna-campusapp.service --no-pager
+```
+
+### 5.5. Routine beta update
+
+```bash
+cd /home/deploy/CampusApp
+git pull --ff-only origin main
+docker compose -f docker-compose.yml -f docker-compose.tuna.yml up -d --build
+```
+
+## 6. Path B: Production via your own domain
+
+### 6.1. TLS certificates
 
 Place real certificate files into:
 
@@ -110,7 +223,7 @@ sudo chmod 644 /srv/campusapp/ssl/fullchain.pem
 sudo chmod 600 /srv/campusapp/ssl/privkey.pem
 ```
 
-### Automated certificate renewal
+### 6.2. Automated certificate renewal
 
 After the first deploy, port 80 is occupied by the frontend container. Use webroot mode for renewals because nginx already serves `/.well-known/acme-challenge/` from `/var/www/acme`.
 
@@ -158,7 +271,7 @@ Test the full renewal flow with a dry run:
 sudo certbot renew --dry-run
 ```
 
-## 6. First production deploy
+### 6.3. First production deploy
 
 Validate env and certificates:
 
@@ -183,16 +296,14 @@ What the script does:
 - waits for healthchecks, including the bot heartbeat check
 - prints status and recent logs
 
-## 7. Routine production update
-
-For every next release:
+### 6.4. Routine production update
 
 ```bash
 cd /home/deploy/CampusApp
 ./scripts/deploy-prod.sh
 ```
 
-## 8. Manual backup and restore
+## 7. Shared backup and restore
 
 Create a backup:
 
@@ -213,14 +324,14 @@ Retention:
 
 Basic restore flow:
 
-1. Stop the stack: `docker compose -f docker-compose.yml -f docker-compose.prod.yml down`
+1. Stop the stack with the compose files for your chosen mode
 2. Restore uploads: `tar -C /srv/campusapp/uploads -xzf uploads.tar.gz`
 3. Restore reports: `tar -C /srv/campusapp/reports -xzf reports.tar.gz`
-4. Start only Postgres: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d postgres`
-5. Restore DB: `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U campus -d campusapp < postgres.sql`
-6. Start the full stack again with `./scripts/deploy-prod.sh`
+4. Start only Postgres: `docker compose -f docker-compose.yml -f <mode-file> up -d postgres`
+5. Restore DB: `docker compose -f docker-compose.yml -f <mode-file> exec -T postgres psql -U campus -d campusapp < postgres.sql`
+6. Start the full stack again for the same mode
 
-## 9. Verification after deploy
+## 8. Shared verification after deploy
 
 Check public ports:
 
@@ -228,7 +339,12 @@ Check public ports:
 ss -tlnp
 ```
 
-You should only see public listeners on:
+For Tuna beta you should normally see:
+
+- `22`
+- `127.0.0.1:80`
+
+For own-domain production you should normally see:
 
 - `22`
 - `80`
@@ -237,11 +353,8 @@ You should only see public listeners on:
 Application checks:
 
 ```bash
-curl -I https://app.example.com/
-curl -I https://app.example.com/health
-curl -I https://app.example.com/api/health
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=100 backend frontend bot
+docker compose -f docker-compose.yml -f <mode-file> ps
+docker compose -f docker-compose.yml -f <mode-file> logs --tail=100 backend frontend bot
 ```
 
 Security checks (source `.env` first so `$REDIS_PASSWORD` is available in the shell):
@@ -250,10 +363,10 @@ Security checks (source `.env` first so `$REDIS_PASSWORD` is available in the sh
 set -a; source .env; set +a
 
 # Redis auth works inside Docker
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" INFO replication | grep role
+docker compose -f docker-compose.yml -f <mode-file> exec -T redis redis-cli -a "$REDIS_PASSWORD" INFO replication | grep role
 
 # Redis rejects commands without auth even inside Docker
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T redis sh -lc 'redis-cli PING 2>&1 | grep -q "NOAUTH Authentication required"' && echo "Redis requires auth"
+docker compose -f docker-compose.yml -f <mode-file> exec -T redis sh -lc 'redis-cli PING 2>&1 | grep -q "NOAUTH Authentication required"' && echo "Redis requires auth"
 
 # Internal services are not exposed on the host
 if ss -tlnp | grep -E ':(5432|6379|8000|8001)\b'; then
@@ -262,17 +375,16 @@ if ss -tlnp | grep -E ':(5432|6379|8000|8001)\b'; then
 fi
 ```
 
-Expected result:
+Mode files:
 
-- Frontend responses include `Content-Security-Policy` with Telegram `frame-ancestors`.
-- Frontend responses do not include `X-Frame-Options`.
-- Redis requires authentication inside Docker.
-- Redis, Postgres, backend, and bot do not expose host listeners on `5432`, `6379`, `8000`, or `8001`.
-- `postgres`, `redis`, `backend`, `bot` must not expose host ports.
+- Tuna beta: `docker-compose.tuna.yml`
+- Own domain production: `docker-compose.prod.yml`
 
-## 10. Rollback
+## 9. Production rollback
 
-Rollback is git-based. Use `--skip-pull` so that `deploy-prod.sh` does not pull latest code from the remote and the checkout stays on the target SHA:
+Rollback applies to the own-domain production path with `deploy-prod.sh`.
+
+Use `--skip-pull` so that `deploy-prod.sh` does not pull latest code from the remote and the checkout stays on the target SHA:
 
 ```bash
 git log --oneline -n 5
