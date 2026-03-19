@@ -22,8 +22,8 @@ mkdir -p \
   "$UPLOADS_DIR/thumbs" \
   "$REPORTS_DIR"
 
-echo "==> Running Alembic migrations"
-alembic upgrade head
+echo "==> Bootstrapping or migrating database schema"
+python -m app.db_bootstrap
 
 echo "==> Starting backend (gunicorn + uvicorn workers)"
 exec gunicorn app.main:app \

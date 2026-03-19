@@ -614,6 +614,10 @@ class MarketDeal(Base):
 
     __table_args__ = (
         CheckConstraint('seller_id <> buyer_id', name='check_market_deal_distinct_participants'),
+        CheckConstraint(
+            "status <> 'completed' OR completed_at IS NOT NULL",
+            name='ck_market_deals_completed_requires_timestamp',
+        ),
         Index('ix_market_deals_item_status', 'item_id', 'status'),
         Index('ix_market_deals_buyer_status', 'buyer_id', 'status'),
         Index('ix_market_deals_seller_status', 'seller_id', 'status'),
