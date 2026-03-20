@@ -1,5 +1,3 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/shared/DevAuthPanel.js =====
-
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../../store';
 import { devLoginAs, devResetUser } from '../../api';
@@ -10,7 +8,7 @@ import { theme } from '../../theme';
 const DEV_ADMIN_TELEGRAM_ID = 999999;
 const DEV_AMBASSADOR_TELEGRAM_ID = 999998;
 
-function DevAuthPanel() {
+function DevAuthPanel({ onRunSplashVariant }) {
   const { setUser, setOnboardingStep, setOnboardingData, logout } = useStore();
   const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
@@ -27,6 +25,12 @@ function DevAuthPanel() {
   const toggleCollapsed = () => {
     hapticFeedback('light');
     setCollapsed((prev) => !prev);
+  };
+
+  const handleSplashPreview = (variant) => {
+    if (!onRunSplashVariant) return;
+    hapticFeedback('light');
+    onRunSplashVariant(variant);
   };
 
   const handleLoginAs = async (telegramId) => {
@@ -55,9 +59,9 @@ function DevAuthPanel() {
     hapticFeedback('light');
     try {
       await logout();
-      toast.info('Вы вышли из аккаунта');
+      toast.info('Logged out');
     } catch {
-      toast.error('Ошибка выхода');
+      toast.error('Logout failed');
       hapticFeedback('error');
     } finally {
       setBusy(false);
@@ -74,9 +78,9 @@ function DevAuthPanel() {
       setUser(null);
       setOnboardingData({});
       setOnboardingStep(1);
-      toast.success(`Профиль #${telegramId} сброшен`);
+      toast.success(`Profile #${telegramId} reset`);
       if (data.user) {
-        toast.warning('Профиль уже существует, проверьте reset flow');
+        toast.warning('Profile already exists, verify the reset flow');
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Reset failed');
@@ -109,14 +113,29 @@ function DevAuthPanel() {
           onClick={toggleCollapsed}
           aria-label="Collapse dev auth panel"
         >
-          ×
+          x
         </button>
       </div>
+
+      {onRunSplashVariant && (
+        <div style={styles.previewSection}>
+          <span style={styles.previewLabel}>Splash Preview</span>
+          <div style={styles.previewButtonsRow}>
+            <button type="button" style={styles.previewButton} onClick={() => handleSplashPreview('first')}>
+              First Launch
+            </button>
+            <button type="button" style={styles.previewButton} onClick={() => handleSplashPreview('repeat')}>
+              Repeat Launch
+            </button>
+          </div>
+        </div>
+      )}
+
       <button type="button" style={styles.button} onClick={() => handleLoginAs(DEV_ADMIN_TELEGRAM_ID)} disabled={busy}>
         Login Superadmin
       </button>
       <button type="button" style={styles.button} onClick={() => handleLoginAs(DEV_AMBASSADOR_TELEGRAM_ID)} disabled={busy}>
-        Login Ambassador (РУК Москва)
+        Login Ambassador (RUK Moscow)
       </button>
       <button type="button" style={styles.buttonSecondary} onClick={handleLogout} disabled={busy}>
         Logout
@@ -182,6 +201,25 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: '0.06em',
   },
+  previewSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing.xs,
+    paddingBottom: theme.spacing.xs,
+    marginBottom: theme.spacing.xs,
+    borderBottom: `1px solid ${theme.colors.border}`,
+  },
+  previewLabel: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+  },
+  previewButtonsRow: {
+    display: 'flex',
+    gap: theme.spacing.xs,
+  },
   collapseButton: {
     width: 26,
     height: 26,
@@ -212,6 +250,16 @@ const styles = {
     color: theme.colors.text,
     cursor: 'pointer',
     textAlign: 'left',
+  },
+  previewButton: {
+    flex: 1,
+    border: 'none',
+    borderRadius: theme.radius.md,
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.text,
+    cursor: 'pointer',
+    textAlign: 'center',
   },
   buttonDanger: {
     border: 'none',

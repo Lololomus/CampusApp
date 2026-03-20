@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/App.js =====
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from './store';
 import { initTelegramApp, setClosingConfirmation } from './utils/telegram';
 
@@ -18,6 +18,7 @@ import EditProfile from './components/profile/EditProfile';
 import DevAuthPanel from './components/shared/DevAuthPanel';
 
 import Onboarding from './components/Onboarding';
+import SplashScreen from './components/SplashScreen';
 import UserPosts from './components/profile/UserPosts';
 import UserRequests from './components/profile/UserRequests';
 import UserMarketItems from './components/profile/UserMarketItems';
@@ -34,6 +35,12 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 import './App.css';
 
 function App() {
+  const [splashAnimDone, setSplashAnimDone] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashVariant, setSplashVariant] = useState('auto');
+  const [splashInstanceKey, setSplashInstanceKey] = useState(0);
+
   const {
     activeTab,
     showCreateModal,
@@ -61,6 +68,28 @@ function App() {
     initTelegramApp();
     bootstrapAuth();
   }, [bootstrapAuth]);
+
+  useEffect(() => {
+    if (authStatus !== 'loading') {
+      setAuthReady(true);
+    }
+  }, [authStatus]);
+
+  useEffect(() => {
+    if (splashAnimDone && authReady) {
+      setShowSplash(false);
+      if (splashVariant !== 'auto') {
+        setSplashVariant('auto');
+      }
+    }
+  }, [splashAnimDone, authReady, splashVariant]);
+
+  const handleRunSplashVariant = (variant) => {
+    setSplashVariant(variant);
+    setSplashAnimDone(false);
+    setShowSplash(true);
+    setSplashInstanceKey((current) => current + 1);
+  };
 
   useEffect(() => {
     const hasUnsavedFlowOpen = Boolean(
@@ -174,7 +203,7 @@ function App() {
         )}
 
         <AuthModal />
-        <DevAuthPanel />
+        <DevAuthPanel onRunSplashVariant={handleRunSplashVariant} />
         {showEditModal && <EditProfile />}
         {showNotificationsScreen && <NotificationsScreen />}
         <ToastContainer />
@@ -192,6 +221,13 @@ function App() {
     <ErrorBoundary>
       <TelegramScreenProvider>
         {appContent}
+        {showSplash && (
+          <SplashScreen
+            key={splashInstanceKey}
+            variant={splashVariant}
+            onFinished={() => setSplashAnimDone(true)}
+          />
+        )}
       </TelegramScreenProvider>
     </ErrorBoundary>
   );
