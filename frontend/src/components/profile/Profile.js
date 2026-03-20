@@ -249,7 +249,6 @@ function Profile() {
             onClick={handleShareProfile}
           >
             <Share2 size={18} />
-            <span>ID</span>
           </button>
           <button
             style={styles.iconAction}

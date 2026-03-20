@@ -16,7 +16,6 @@ import EdgeBlur from './shared/EdgeBlur';
 import {
   POSTS_PAGE_SIZE,
   PULL_TO_REFRESH_THRESHOLD,
-  HEADER_SCROLL_THRESHOLD,
   INFINITE_SCROLL_ROOT_MARGIN,
 } from '../constants/layoutConstants';
 
@@ -25,7 +24,6 @@ const IS_DEV = import.meta.env.DEV;
 function Feed() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [headerScrolled, setHeaderScrolled] = useState(false);
   const [hasMorePosts, setHasMorePosts] = useState(true);
   const [feedAds, setFeedAds] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -399,20 +397,11 @@ function Feed() {
 
   const postCardWrapperStyle = useMemo(() => ({ marginBottom: 0 }), []);
 
-  // Следим за скроллом для динамической высоты верхнего блюра (синхронно с AppHeader premium)
-  useEffect(() => {
-    const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > HEADER_SCROLL_THRESHOLD);
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
   return (
     <div style={styles.container}>
       
       {/* Верхний блюр шапки — высота меняется при сворачивании, анимируем */}
-      <EdgeBlur position="top" height={headerScrolled ? 90 : 160} zIndex={50} animateHeight />
+      <EdgeBlur position="top" height="var(--header-padding)" zIndex={50} animateHeight />
 
       {/* Нижний блюр — от края экрана вверх, прозрачный конец совпадает с верхним краем навбара */}
       <EdgeBlur position="bottom" height={100} zIndex={50} />

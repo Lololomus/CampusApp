@@ -1,6 +1,6 @@
 // ===== 📄 ФАЙЛ: src/components/market/Market.js =====
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../../store';
 import { getMarketItems, triggerRegistrationPrompt } from '../../api';
 import AppHeader from '../shared/AppHeader';
@@ -46,7 +46,6 @@ const Market = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [animationKey, setAnimationKey] = useState(0); // ✅ СОХРАНИЛИ
 
-  const [headerScrolled, setHeaderScrolled] = useState(false);
 
   // Refs
   const contentRef = useRef(null);
@@ -205,13 +204,6 @@ const Market = () => {
     };
   }, [refreshing, loading]); // ✅ ТОЛЬКО НУЖНЫЕ ЗАВИСИМОСТИ
 
-  // Scroll-детект для EdgeBlur (синхронно с premium AppHeader)
-  useEffect(() => {
-    const handleScroll = () => setHeaderScrolled(window.scrollY > 40);
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
   // ===== HANDLERS =====
   const haptic = (type = 'light') => hapticFeedback(type);
 
@@ -262,7 +254,7 @@ const Market = () => {
   return (
     <div style={styles.container}>
 
-      <EdgeBlur position="top" height={headerScrolled ? 90 : 160} zIndex={50} animateHeight />
+      <EdgeBlur position="top" height="var(--header-padding)" zIndex={50} animateHeight />
       <EdgeBlur position="bottom" height={100} zIndex={50} />
 
       <AppHeader

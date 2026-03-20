@@ -12,8 +12,10 @@ import React from 'react';
  * @param {boolean} visible      — управляет opacity с плавным переходом
  * @param {boolean} animateHeight — анимировать изменение height (только для верхнего блюра с меняющейся шапкой)
  */
+// height — число (px) или CSS-строка (напр. 'var(--header-padding)')
 function EdgeBlur({ position = 'bottom', height = 100, zIndex = 50, visible = true, animateHeight = false }) {
   const isTop = position === 'top';
+  const heightValue = typeof height === 'number' ? `${height}px` : height;
 
   // Маска: плавное затухание от края к прозрачному концу
   // — сверху: плотный старт для стекла (60% solid)
@@ -50,7 +52,7 @@ function EdgeBlur({ position = 'bottom', height = 100, zIndex = 50, visible = tr
     position: 'fixed',
     left: 0,
     right: 0,
-    height: `calc(${height}px + ${safeAreaCompensation})`,
+    height: `calc(${heightValue} + ${safeAreaCompensation})`,
     pointerEvents: 'none',
     transition,
     opacity,

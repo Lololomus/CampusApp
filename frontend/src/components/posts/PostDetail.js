@@ -538,7 +538,7 @@ function PostDetail() {
 
       <div style={containerStyle}>
         {/* Верхний блюр — всегда, независимо от скролла */}
-        <EdgeBlur position="top" height={76} zIndex={105} />
+        <EdgeBlur position="top" height="calc(var(--screen-top-offset, 0px) + var(--drilldown-header-height, 56px))" zIndex={105} />
         {/* Нижний блюр — поверх поля комментария */}
         <EdgeBlur position="bottom" height={90} zIndex={105} />
 

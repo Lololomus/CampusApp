@@ -9,7 +9,7 @@ import DrilldownHeader from '../shared/DrilldownHeader';
 import EdgeBlur from '../shared/EdgeBlur';
 import { getNotifications, markAllNotificationsRead } from '../../api';
 import { useStore } from '../../store';
-import { hapticFeedback } from '../../utils/telegram';
+import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import { Z_MODAL_NOTIFICATIONS_SCREEN } from '../../constants/zIndex';
 import ReviewModal from '../market/ReviewModal';
@@ -446,6 +446,12 @@ function NotificationsScreen() {
     setTimeout(() => setShowNotificationsScreen(false), 340);
   }, [isExiting, setShowNotificationsScreen]);
 
+  // Telegram BackButton (прод) + cleanup
+  useEffect(() => {
+    showBackButton(handleClose);
+    return () => hideBackButton();
+  }, [handleClose]);
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -498,13 +504,14 @@ function NotificationsScreen() {
         : 'nsSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards',
     }}>
       {/* Верхний блюр — до нижнего края хедера */}
-      <EdgeBlur position="top" height={76} zIndex={60} />
+      <EdgeBlur position="top" height="calc(var(--screen-top-offset, 0px) + var(--drilldown-header-height, 56px))" zIndex={60} />
       {/* Нижний блюр — плавный фейд у нижнего края экрана */}
       <EdgeBlur position="bottom" height={60} zIndex={60} />
 
       <DrilldownHeader
         title="Уведомления"
         onBack={handleClose}
+        showLocalBackInTelegram
         transparent
         rightSlot={hasUnread ? (
           <button

@@ -300,6 +300,13 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   const [footerOpen, setFooterOpen] = useState(true);
   const [footerHeight, setFooterHeight] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const closeWithAnimation = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(onClose, 280);
+  }, [isClosing, onClose]);
 
   const scrollRef = useRef(null);
   const footerRef = useRef(null);
@@ -350,13 +357,13 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   // Клавиатура
   useEffect(() => {
     const handleKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeWithAnimation();
       if (e.key === 'ArrowLeft' && scrollRef.current) scrollRef.current.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' });
       if (e.key === 'ArrowRight' && scrollRef.current) scrollRef.current.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' });
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [closeWithAnimation]);
 
   const toggleUI = useCallback(() => setShowUI(prev => !prev), []);
 
@@ -396,6 +403,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
           from { opacity: 0; transform: scale(0.95) translateY(10px); }
           to   { opacity: 1; transform: scale(1) translateY(0); }
         }
+        @keyframes mv-slide-out {
+          from { opacity: 1; transform: scale(1) translateY(0); }
+          to   { opacity: 0; transform: scale(0.96) translateY(48px); }
+        }
         .mv-play-btn {
           animation: mv-play-pulse 2s infinite;
         }
@@ -429,11 +440,19 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
       `}</style>
 
       {/* Overlay — закрывает по клику */}
-      <div style={styles.overlay} onClick={onClose} />
+      <div style={{
+        ...styles.overlay,
+        animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards' : styles.overlay.animation,
+      }} onClick={closeWithAnimation} />
 
       {/* Контейнер */}
       <div
-        style={styles.container}
+        style={{
+          ...styles.container,
+          animation: isClosing
+            ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards'
+            : styles.container.animation,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header: центрированная пилюля-счётчик + X при отсутствии футера ── */}
@@ -462,7 +481,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
             transform: showUI ? 'translateY(0)' : 'translateY(-100px)',
             transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
             zIndex: 10,
-          }} onClick={onClose}>
+          }} onClick={closeWithAnimation}>
             <X size={22} />
           </button>
         )}
@@ -501,7 +520,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
                     const dy = e.touches[0].clientY - swipeTouchStartY.current;
                     if (dy > 80) {
                       swipeTouchStartY.current = null;
-                      onClose();
+                      closeWithAnimation();
                     }
                   }}
                   onTouchEnd={() => { swipeTouchStartY.current = null; }}
@@ -609,7 +628,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
                 <Download size={16} />
                 Скачать
               </button>
-              <button style={styles.closeButtonFooter} onClick={onClose}>
+              <button style={styles.closeButtonFooter} onClick={closeWithAnimation}>
                 <X size={16} strokeWidth={3} />
                 Закрыть
               </button>
