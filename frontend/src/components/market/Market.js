@@ -436,6 +436,7 @@ const styles = {
 
   content: {
     paddingTop: 'var(--header-padding, 140px)',
+    transition: 'padding-top 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
   },
 
   grid: {

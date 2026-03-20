@@ -224,27 +224,42 @@ function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onN
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!isValid) { toast.error('Введите имя (минимум 2 символа)'); return; }
     hapticFeedback('medium');
     const cleanUsername = username.replace(/^@/, '').trim();
     setOnboardingData({ name: name.trim(), username: cleanUsername || null });
+
+    // Если аватар из Telegram — скачиваем и сохраняем как файл для загрузки после регистрации
+    if (avatarSource === 'telegram' && avatarPreview) {
+      try {
+        const response = await fetch(avatarPreview);
+        if (response.ok) {
+          const blob = await response.blob();
+          const file = new File([blob], 'avatar.jpg', { type: blob.type || 'image/jpeg' });
+          const compressed = await compressImage(file);
+          onSetPendingFile(compressed);
+        }
+      } catch {
+        // Не критично — аватар можно добавить позже
+      }
+    }
+
     onNext();
   };
 
   return (
     <div style={styles.stepPage}>
-      {/* Шапка */}
-      <div style={styles.stepHeader}>
-        <div style={{ width: 40 }} />
-        <span style={styles.stepIndicator}>ШАГ 1 ИЗ 2</span>
-        <div style={{ width: 40 }} />
-      </div>
+      {/* Шапка — без индикатора шага (перенесён рядом с заголовком) */}
+      <div style={styles.stepHeader} />
 
-      <div style={styles.stepScrollable}>
+      <div style={{ ...styles.stepScrollable, overflowY: 'hidden' }}>
         <div style={styles.stepCenterContent}>
 
-          <h2 style={styles.bigTitle}>Как тебя зовут?</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+            <h2 style={{ ...styles.bigTitle, marginBottom: 0 }}>Как тебя зовут?</h2>
+            <span style={styles.stepIndicator}>ШАГ 1 ИЗ 2</span>
+          </div>
 
           {/* Аватар — весь блок кликабельный, включая плюс-бейдж */}
           <div style={styles.avatarZone}>

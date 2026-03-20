@@ -73,18 +73,6 @@ function Feed() {
     { id: 'hangout', label: 'Движ', emoji: '🎉' }
   ];
 
-  const getDynamicTitle = () => {
-    if (feedSubTab === 'posts') {
-      if (activeCategory === 'all') return 'Посты';
-      const cat = postCategories.find(c => c.id === activeCategory);
-      return cat ? cat.label : 'Посты';
-    } else {
-      if (requestsCategory === 'all') return 'Помощь';
-      const cat = requestCategories.find(c => c.id === requestsCategory);
-      return cat ? cat.label : 'Помощь';
-    }
-  };
-
   // МЕМОИЗАЦИЯ СЧЁТЧИКА ФИЛЬТРОВ
   const countActiveFilters = useMemo(() => {
     if (feedSubTab === 'posts') {
@@ -430,7 +418,7 @@ function Feed() {
       <EdgeBlur position="bottom" height={100} zIndex={50} />
 
       <AppHeader
-        title={getDynamicTitle()}
+        title="Лента"
         showSearch={true}
         searchValue={searchQuery}
         searchPlaceholder={feedSubTab === 'posts' ? 'Поиск постов...' : 'Поиск запросов...'}

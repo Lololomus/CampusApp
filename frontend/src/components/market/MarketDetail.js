@@ -337,6 +337,8 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     ];
   };
 
+  const showBackBtn = import.meta.env.DEV;
+
   return (
     <>
       <div style={{
@@ -346,16 +348,18 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
           : 'slideInRight 0.38s cubic-bezier(0.32, 0.72, 0, 1) forwards',
         pointerEvents: isExiting ? 'none' : 'auto',
       }}>
-        {/* Floating back button поверх изображения */}
-        <div style={styles.floatingHeader}>
-          <button
-            className="market-detail-back-btn"
-            onClick={() => { hapticFeedback('light'); closeDetail(); }}
-            style={styles.floatingBackBtn}
-          >
-            <ChevronLeft size={24} style={{ marginLeft: -2 }} />
-          </button>
-        </div>
+        {/* Floating back button — только в DEV (в проде используется TMA BackButton) */}
+        {showBackBtn && (
+          <div style={styles.floatingHeader}>
+            <button
+              className="market-detail-back-btn"
+              onClick={() => { hapticFeedback('light'); closeDetail(); }}
+              style={styles.floatingBackBtn}
+            >
+              <ChevronLeft size={24} style={{ marginLeft: -2 }} />
+            </button>
+          </div>
+        )}
 
         <div style={styles.content}>
           {images.length > 0 && (
@@ -721,6 +725,8 @@ const styles = {
     overflowY: 'auto',
     overflowX: 'hidden',
     WebkitOverflowScrolling: 'touch',
+    wordBreak: 'break-word',
+    overflowWrap: 'break-word',
   },
 
   mainInfo: {
@@ -794,6 +800,8 @@ const styles = {
     lineHeight: 1.3,
     margin: 0,
     marginBottom: 12,
+    wordBreak: 'break-word',
+    overflowWrap: 'break-word',
   },
 
   metaRow: {
@@ -841,6 +849,8 @@ const styles = {
     color: theme.colors.text,
     lineHeight: 1.6,
     whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    overflowWrap: 'break-word',
     margin: 0,
   },
 

@@ -61,6 +61,22 @@ const SwipeableModal = ({
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const contentRef = useRef(null);
+  const overlayRef = useRef(null);
+
+  // Блокируем touch-события под модалкой (pull-to-refresh и свайп ленты)
+  useEffect(() => {
+    if (!isOpen) return;
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const block = (e) => e.stopPropagation();
+    const blockPrevent = (e) => { e.stopPropagation(); e.preventDefault(); };
+    overlay.addEventListener('touchstart', block, { passive: true });
+    overlay.addEventListener('touchmove', blockPrevent, { passive: false });
+    return () => {
+      overlay.removeEventListener('touchstart', block);
+      overlay.removeEventListener('touchmove', blockPrevent);
+    };
+  }, [isOpen]);
 
   // Блокировка скролла фона
   useEffect(() => {
@@ -110,6 +126,7 @@ const SwipeableModal = ({
 
   return createPortal(
     <div
+      ref={overlayRef}
       style={{
         position: 'fixed',
         inset: 0,
@@ -122,6 +139,7 @@ const SwipeableModal = ({
         opacity: isOpen ? 1 : 0,
         transition: 'opacity 0.3s ease',
         zIndex,
+        touchAction: 'none',
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();

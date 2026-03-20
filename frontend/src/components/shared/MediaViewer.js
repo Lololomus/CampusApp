@@ -45,15 +45,20 @@ const normalizeItem = (item) => {
 };
 
 // ─── Pinch-to-zoom обёртка ────────────────────────────────────────────────────
-const Zoomable = ({ children, onTap }) => {
+const Zoomable = ({ children, onTap, onZoomStart, onZoomEnd }) => {
   const [scale, setScale] = useState(1);
   const startDist = useRef(null);
+  const isPinching = useRef(false);
 
   const handleTouchStart = (e) => {
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       startDist.current = Math.hypot(dx, dy);
+      if (!isPinching.current) {
+        isPinching.current = true;
+        onZoomStart?.();
+      }
     }
   };
 
@@ -69,6 +74,10 @@ const Zoomable = ({ children, onTap }) => {
   const handleTouchEnd = () => {
     setScale(1);
     startDist.current = null;
+    if (isPinching.current) {
+      isPinching.current = false;
+      onZoomEnd?.();
+    }
   };
 
   const handleDoubleClick = () => {
@@ -290,9 +299,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   const [showUI, setShowUI] = useState(true);
   const [footerOpen, setFooterOpen] = useState(true);
   const [footerHeight, setFooterHeight] = useState(0);
+  const [isZoomed, setIsZoomed] = useState(false);
 
   const scrollRef = useRef(null);
   const footerRef = useRef(null);
+  const swipeTouchStartY = useRef(null);
 
   const footerSwipe = useSwipe({
     elementRef: footerRef,
@@ -300,6 +311,15 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
     threshold: 60,
     onSwipeDown: () => setFooterOpen(false),
   });
+
+  // Авто-сворачивание футера при пинче, восстановление при отпускании
+  useEffect(() => {
+    if (isZoomed) {
+      setFooterOpen(false);
+    } else {
+      setFooterOpen(true);
+    }
+  }, [isZoomed]);
 
   // Инициализация позиции scroll без анимации
   useEffect(() => {
@@ -471,8 +491,26 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
                 <div
                   onClick={toggleUI}
                   style={styles.imageSlide}
+                  onTouchStart={(e) => {
+                    if (e.touches.length === 1) {
+                      swipeTouchStartY.current = e.touches[0].clientY;
+                    }
+                  }}
+                  onTouchMove={(e) => {
+                    if (isZoomed || e.touches.length !== 1 || swipeTouchStartY.current === null) return;
+                    const dy = e.touches[0].clientY - swipeTouchStartY.current;
+                    if (dy > 80) {
+                      swipeTouchStartY.current = null;
+                      onClose();
+                    }
+                  }}
+                  onTouchEnd={() => { swipeTouchStartY.current = null; }}
                 >
-                  <Zoomable onTap={(e) => { e.stopPropagation(); toggleUI(); }}>
+                  <Zoomable
+                    onTap={(e) => { e.stopPropagation(); toggleUI(); }}
+                    onZoomStart={() => setIsZoomed(true)}
+                    onZoomEnd={() => setIsZoomed(false)}
+                  >
                     <img
                       src={media.url}
                       alt={`Медиа ${idx + 1}`}

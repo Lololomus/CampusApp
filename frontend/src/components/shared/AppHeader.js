@@ -199,7 +199,7 @@ const AppHeader = ({
       backdropFilter: transparent ? 'blur(20px)' : 'blur(0px)',
       WebkitBackdropFilter: transparent ? 'blur(20px)' : 'blur(0px)',
       borderBottom: `1px solid ${theme.colors.border}`,
-      paddingTop: 'var(--screen-top-offset)',
+      paddingTop: 'calc(var(--screen-top-offset) + 4px)',
       transition: 'background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), backdrop-filter 0.3s cubic-bezier(0.4, 0, 0.2, 1), -webkit-backdrop-filter 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     },
     
@@ -328,7 +328,7 @@ const AppHeader = ({
         background: 'transparent',
         display: 'flex',
         flexDirection: 'column',
-        paddingTop: 'var(--screen-top-offset, 0px)',
+        paddingTop: 'calc(var(--screen-top-offset, 0px) + 4px)',
         paddingLeft: 16,
         paddingRight: 16,
         paddingBottom: 0,

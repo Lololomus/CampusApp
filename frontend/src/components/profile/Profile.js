@@ -215,17 +215,6 @@ function Profile() {
         {/* ХЕДЕР */}
         <div style={styles.header}>
           <div style={styles.headerTitle}>Профиль</div>
-          <button
-            style={styles.bellButton}
-            onClick={() => { hapticFeedback('light'); setShowNotificationsScreen(true); }}
-          >
-            <Bell size={22} strokeWidth={2} color="#FFF" />
-            {unreadNotificationsCount > 0 && (
-              <div style={styles.bellBadge}>
-                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
-              </div>
-            )}
-          </button>
         </div>
 
         {/* CAMPUS ID КАРТА */}
@@ -239,12 +228,28 @@ function Profile() {
 
         {/* КНОПКИ ДЕЙСТВИЙ */}
         <div style={styles.actionsRow}>
+          {/* Уведомления — лайм, с бейджем */}
           <button
-            style={styles.primaryAction}
+            style={styles.notifAction}
+            onClick={() => { hapticFeedback('light'); setShowNotificationsScreen(true); }}
+          >
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Bell size={20} color="#000" />
+              {unreadNotificationsCount > 0 && (
+                <div style={styles.notifBadge}>
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </div>
+              )}
+            </div>
+            <span>Уведомления</span>
+          </button>
+          {/* Поделиться ID — серый */}
+          <button
+            style={styles.secondaryAction}
             onClick={handleShareProfile}
           >
             <Share2 size={18} />
-            <span>Поделиться ID</span>
+            <span>ID</span>
           </button>
           <button
             style={styles.iconAction}
@@ -702,8 +707,8 @@ const cardStyles = {
     width: '100%',
     transition: 'transform 0.6s cubic-bezier(0.4, 0.2, 0.1, 1)',
     transformStyle: 'preserve-3d',
+    WebkitTransformStyle: 'preserve-3d',
     cursor: 'pointer',
-    // Высота определяется контентом лицевой стороны
   },
   flipFront: {
     background: '#0A0A0C',
@@ -711,7 +716,8 @@ const cardStyles = {
     border: '1px solid rgba(255,255,255,0.08)',
     boxShadow: '0 24px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
     padding: 24,
-    overflow: 'hidden',
+    // overflow: hidden ломает backface-visibility в iOS Safari — используем clipPath
+    clipPath: 'inset(0 round 24px)',
     position: 'relative',
     WebkitBackfaceVisibility: 'hidden',
     backfaceVisibility: 'hidden',
@@ -729,6 +735,7 @@ const cardStyles = {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
     transform: 'rotateY(180deg)',
+    WebkitTransform: 'rotateY(180deg)',
     WebkitBackfaceVisibility: 'hidden',
     backfaceVisibility: 'hidden',
   },
@@ -884,32 +891,18 @@ const styles = {
   contentWrapper: {
     position: 'relative',
     zIndex: 2,
-    paddingTop: 'calc(var(--safe-area-top, 20px) + 16px)',
+    paddingTop: 'calc(var(--safe-area-top, 20px) + 28px)',
   },
 
   header: {
     padding: '0 16px 16px',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 28, fontWeight: 800,
     letterSpacing: '-0.5px', color: '#FFF',
-  },
-  bellButton: {
-    position: 'relative',
-    background: 'none', border: 'none',
-    padding: 8, cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  bellBadge: {
-    position: 'absolute', top: 2, right: 2,
-    minWidth: 18, height: 18, borderRadius: 9,
-    background: '#FF453A', fontSize: 10, fontWeight: 800, color: '#FFF',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: '0 4px',
   },
 
   cardWrapper: {
@@ -924,20 +917,42 @@ const styles = {
     gap: 10,
     alignItems: 'stretch',
   },
-  primaryAction: {
+  notifAction: {
     flex: 1,
     background: '#D4FF00',
     color: '#000',
     border: 'none',
     borderRadius: 16,
-    padding: '14px 16px',
-    fontSize: 15, fontWeight: 800,
+    padding: '14px 12px',
+    fontSize: 14, fontWeight: 800,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     cursor: 'pointer',
     boxShadow: '0 8px 24px rgba(212,255,0,0.15)',
+    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
+  },
+  notifBadge: {
+    position: 'absolute', top: -6, right: -6,
+    minWidth: 16, height: 16, borderRadius: 8,
+    background: '#FF453A', fontSize: 9, fontWeight: 800, color: '#FFF',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 3px',
+  },
+  secondaryAction: {
+    background: '#2C2C2E',
+    color: '#FFF',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    padding: '14px 14px',
+    fontSize: 14, fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    cursor: 'pointer',
+    flexShrink: 0,
     transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
   },
   iconAction: {

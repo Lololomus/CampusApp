@@ -29,7 +29,16 @@ function EdgeBlur({ position = 'bottom', height = 100, zIndex = 50, visible = tr
     ? 'linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.28) 55%, transparent 100%)'
     : 'linear-gradient(to top, rgba(0,0,0,0.30) 0%, transparent 100%)';
 
-  const edgeAnchor = isTop ? { top: 0 } : { bottom: 0 };
+  // Растягиваем блюр за safe-area край (Dynamic Island сверху, home indicator снизу).
+  // Используем те же переменные, что и AppHeader (--screen-top-offset), чтобы EdgeBlur
+  // всегда совпадал с хедером даже если Telegram SDK сообщает safe-area больше, чем env().
+  // Снизу --screen-bottom-offset не берём — там есть --dev-action-bar-height, нам не нужен.
+  const safeAreaTop = 'var(--screen-top-offset, env(safe-area-inset-top, 0px))';
+  const safeAreaBottom = 'max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-bottom, 0px), var(--tg-content-safe-area-bottom, 0px))';
+  const safeAreaCompensation = isTop ? safeAreaTop : safeAreaBottom;
+  const edgeAnchor = isTop
+    ? { top: `calc(-1 * ${safeAreaTop})` }
+    : { bottom: `calc(-1 * ${safeAreaBottom})` };
 
   // height-анимация только там, где height реально меняется (иначе браузер может анимировать при ремаунте)
   const transition = animateHeight
@@ -41,7 +50,7 @@ function EdgeBlur({ position = 'bottom', height = 100, zIndex = 50, visible = tr
     position: 'fixed',
     left: 0,
     right: 0,
-    height,
+    height: `calc(${height}px + ${safeAreaCompensation})`,
     pointerEvents: 'none',
     transition,
     opacity,
