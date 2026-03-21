@@ -555,6 +555,28 @@ export const useStore = create(
       // ACTIONS
       bootstrapAuth: async () => {
         set({ authStatus: 'loading' });
+        const loadModerationRole = (user) => {
+          if (user?.role && user.role !== 'user') {
+            import('./api').then(({ getMyModerationRole }) => {
+              getMyModerationRole()
+                .then(roleData => {
+                  set({ moderationRole: roleData });
+                })
+                .catch(() => {});
+            });
+            return;
+          }
+
+          set({
+            moderationRole: {
+              role: 'user',
+              can_moderate: false,
+              can_admin: false,
+              scope: null,
+            }
+          });
+        };
+
         const setRegisteredState = (user) => {
           set({
             user,
@@ -562,6 +584,7 @@ export const useStore = create(
             authStatus: 'ready',
             showAuthModal: false,
           });
+          loadModerationRole(user);
         };
 
         const setUnregisteredState = () => {
@@ -571,6 +594,7 @@ export const useStore = create(
             isRegistered: false,
             authStatus: 'ready',
             showAuthModal: false,
+            moderationRole: null,
           });
         };
 
