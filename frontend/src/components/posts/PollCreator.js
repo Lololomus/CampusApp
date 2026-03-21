@@ -96,7 +96,7 @@ const PollCreator = ({ pollData, onChange, onClose }) => {
                   placeholder={`Вариант ${index + 1}`}
                   value={option}
                   onChange={(e) => handleOptionChange(index, e.target.value)}
-                  style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF', fontSize: 15, outline: 'none', fontFamily: 'inherit' }}
+                  style={{ flex: 1, background: 'transparent', border: 'none', color: '#FFF', fontSize: 16, outline: 'none', fontFamily: 'inherit' }}
                 />
               </div>
               {index > 1 && (

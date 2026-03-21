@@ -108,6 +108,17 @@ button {
   user-select: none;
 }
 
+/* Запрет браузерного пинч-зума и pull-to-refresh браузера */
+html, body, #root {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: none;
+}
+
+/* Запрет iOS auto-zoom при фокусе на инпут (срабатывает при font-size < 16px) */
+input, textarea, select {
+  font-size: 16px;
+}
+
 /* ========== BUTTON SPINNER ANIMATION ========== */
 @keyframes spin {
   from {

@@ -237,6 +237,21 @@ export function initTelegramApp() {
   bindTelegramEvents(tg);
   setVerticalSwipesEnabled(false);
 
+  // JS-резерв для старых WebView, где CSS touch-action может не работать
+  const _blockPinch = (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  };
+  document.addEventListener('touchmove', _blockPinch, { passive: false });
+
+  // Блокировка double-tap зума
+  let _lastTap = 0;
+  const _blockDoubleTap = (e) => {
+    const now = Date.now();
+    if (now - _lastTap < 300) e.preventDefault();
+    _lastTap = now;
+  };
+  document.addEventListener('touchend', _blockDoubleTap, { passive: false });
+
   try {
     if (typeof tg.requestFullscreen === 'function') {
       tg.requestFullscreen();
