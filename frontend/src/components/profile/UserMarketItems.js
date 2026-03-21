@@ -13,6 +13,7 @@ import MarketDetail from '../market/MarketDetail';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_USER_MARKET_ITEMS } from '../../constants/zIndex';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
@@ -152,6 +153,11 @@ function UserMarketItems() {
   );
 
   return (
+    <EdgeSwipeBack
+      onBack={() => { hapticFeedback('light'); closeScreen(); }}
+      disabled={Boolean(selectedItem)}
+      zIndex={Z_USER_MARKET_ITEMS}
+    >
     <div style={styles.container} onScroll={handleScroll}>
       <DrilldownHeader title={`Мои товары (${counts.all})`} onBack={closeScreen} />
 
@@ -216,6 +222,7 @@ function UserMarketItems() {
 
       {renderModals()}
     </div>
+    </EdgeSwipeBack>
   );
 }
 

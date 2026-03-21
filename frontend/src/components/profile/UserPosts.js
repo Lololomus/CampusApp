@@ -9,6 +9,7 @@ import { toast } from '../shared/Toast';
 import PostCard from '../posts/PostCard';
 import { Z_USER_POSTS } from '../../constants/zIndex';
 import PostCardSkeleton from '../posts/PostCardSkeleton';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
@@ -28,7 +29,7 @@ const C = {
 };
 
 function UserPosts() {
-  const { user, setViewPostId, setShowUserPosts, updatedPostId, updatedPostData, clearUpdatedPost } = useStore();
+  const { user, viewPostId, setViewPostId, setShowUserPosts, updatedPostId, updatedPostData, clearUpdatedPost } = useStore();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -141,6 +142,11 @@ function UserPosts() {
   ];
 
   return (
+    <EdgeSwipeBack
+      onBack={() => { hapticFeedback('light'); closeScreen(); }}
+      disabled={Boolean(viewPostId)}
+      zIndex={Z_USER_POSTS}
+    >
     <div style={styles.container} onScroll={handleScroll}>
       <DrilldownHeader title={`Мои посты (${counts.all})`} onBack={closeScreen} />
 
@@ -203,6 +209,7 @@ function UserPosts() {
         )}
       </div>
     </div>
+    </EdgeSwipeBack>
   );
 }
 

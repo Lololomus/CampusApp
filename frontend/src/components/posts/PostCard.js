@@ -227,10 +227,12 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
       case 'events':      return { label: 'Событие',     ...tc.events };
       case 'confessions': return { label: 'Подслушано',  ...tc.confessions };
       case 'lost_found':  return { label: 'Бюро',        ...tc.lostFound };
-      case 'polls':       return { label: 'Опрос',       color: theme.colors.premium.primary, bg: 'rgba(212,255,0,0.15)' };
+      case 'polls':       return post.poll?.type === 'quiz'
+        ? { label: 'Викторина', color: '#BF5AF2', bg: 'rgba(191,90,242,0.15)' }
+        : { label: 'Опрос',     color: theme.colors.premium.primary, bg: 'rgba(212,255,0,0.15)' };
       default:            return { label: 'Пост',        color: theme.colors.textSecondary, bg: 'transparent' };
     }
-  }, [post.category, isAd]);
+  }, [post.category, isAd, post.poll?.type]);
 
   const displayBody = useMemo(
     () => stripLeadingTitleFromBody(post.title, post.body),

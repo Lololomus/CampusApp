@@ -20,6 +20,7 @@ import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import EdgeBlur from '../shared/EdgeBlur';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
@@ -249,10 +250,12 @@ function PostDetail() {
       case 'events': return { label: 'Событие', color: theme.colors.events };
       case 'confessions': return { label: 'Подслушано', color: theme.colors.confessions };
       case 'lost_found': return { label: 'Бюро', color: theme.colors.lostFound };
-      case 'polls': return { label: 'Опрос', color: theme.colors.primary };
+      case 'polls': return post?.poll?.type === 'quiz'
+        ? { label: 'Викторина', color: '#BF5AF2' }
+        : { label: 'Опрос',     color: theme.colors.premium.primary };
       default: return { label: 'Пост', color: theme.colors.textSecondary };
     }
-  }, [post?.category]);
+  }, [post?.category, post?.poll?.type]);
 
   const isOwner = useMemo(() => isEntityOwner('post', post, user), [post, user]);
   const postActionSet = useMemo(
@@ -536,6 +539,11 @@ function PostDetail() {
         }
       `}</style>
 
+      <EdgeSwipeBack
+        onBack={() => setViewPostId(null)}
+        disabled={isExiting || isPhotoViewerOpen}
+        zIndex={Z_MODAL_POST_DETAIL}
+      >
       <div style={containerStyle}>
         {/* Верхний блюр — всегда, независимо от скролла */}
         <EdgeBlur position="top" height="calc(var(--screen-top-offset, 0px) + var(--drilldown-header-height, 56px))" zIndex={105} />
@@ -845,6 +853,7 @@ function PostDetail() {
           />
         )}
       </div>
+      </EdgeSwipeBack>
     </>
   );
 }

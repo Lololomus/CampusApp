@@ -8,9 +8,9 @@ import { hapticFeedback } from '../../utils/telegram';
 
 const EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
 const POLL_COLOR = '#D4FF00';
+const QUIZ_COLOR = '#BF5AF2';
 const SUCCESS = '#32D74B';
 const ERROR = '#FF453A';
-const INFO = '#0A84FF';
 
 const PollWidget = ({ poll, showQuestion = true }) => {
   const isRegistered = useStore((state) => Boolean(state.isRegistered));
@@ -111,15 +111,17 @@ const PollWidget = ({ poll, showQuestion = true }) => {
         .poll-explain-w { animation: slideInPollW 0.3s ${EASING} forwards; }
       `}</style>
 
-      {/* Шапка: бейдж + вопрос */}
+      {/* Шапка: бейдж (только вне категории опросов) + вопрос */}
       <div style={{ display: 'flex', alignItems: 'center', gap: shouldShowQuestion ? 8 : 0 }}>
-        <span style={{
-          background: isQuiz ? 'rgba(10,132,255,0.12)' : 'rgba(212,255,0,0.12)',
-          color: isQuiz ? INFO : POLL_COLOR,
-          padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', flexShrink: 0,
-        }}>
-          {isQuiz ? 'ВИКТОРИНА' : 'ОПРОС'}
-        </span>
+        {!showQuestion && (
+          <span style={{
+            background: isQuiz ? 'rgba(191,90,242,0.12)' : 'rgba(212,255,0,0.12)',
+            color: isQuiz ? QUIZ_COLOR : POLL_COLOR,
+            padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', flexShrink: 0,
+          }}>
+            {isQuiz ? 'ВИКТОРИНА' : 'ОПРОС'}
+          </span>
+        )}
         {shouldShowQuestion && (
           <span style={{ fontSize: 15, fontWeight: 600, color: '#FFF', lineHeight: 1.4 }}>{poll.question}</span>
         )}
@@ -134,7 +136,7 @@ const PollWidget = ({ poll, showQuestion = true }) => {
 
           if (hasVoted) {
             let bgColor = 'rgba(255,255,255,0.015)';
-            let borderColor = 'rgba(255,255,255,0.03)';
+            let borderColor = 'rgba(255,255,255,0.10)';
             let fillBg = 'rgba(255,255,255,0.05)';
             let textColor = '#EAEAEA';
             let fontWeight = 400;
@@ -178,7 +180,7 @@ const PollWidget = ({ poll, showQuestion = true }) => {
 
           // До голосования
           const preVoteBg = (!isQuiz && isSelected) ? 'rgba(212,255,0,0.05)' : 'rgba(255,255,255,0.015)';
-          const preVoteBorder = (!isQuiz && isSelected) ? 'rgba(212,255,0,0.5)' : 'rgba(255,255,255,0.03)';
+          const preVoteBorder = (!isQuiz && isSelected) ? 'rgba(212,255,0,0.5)' : 'rgba(255,255,255,0.10)';
           const preVoteTextColor = (!isQuiz && isSelected) ? POLL_COLOR : '#FFF';
           const preVoteFontWeight = (!isQuiz && isSelected) ? 600 : 500;
 

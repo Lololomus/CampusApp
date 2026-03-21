@@ -7,11 +7,13 @@ const LIME = '#D4FF00';
 const BG = theme.colors.premium.bg;
 const MANIFEST_SLOT_HEIGHT = 120;
 
-// Длительности: первый запуск (с манифестом) и повторные (только лого)
+// Минимальное время показа анимации лого
 const DURATION_FIRST = 4000;
-const FADE_START_FIRST = 3600;
 const DURATION_REPEAT = 1800;
-const FADE_START_REPEAT = 1400;
+
+// Прогрессивные индикаторы долгой загрузки
+const SPINNER_DELAY = 3000;
+const SLOW_MSG_DELAY = 5000;
 
 const KEYFRAMES = `
   @keyframes splashLetterPop {
@@ -27,13 +29,25 @@ const KEYFRAMES = `
     from { opacity: 0; margin-top: 20px; }
     to { opacity: 1; margin-top: 0; }
   }
+  @keyframes splashSpinnerSpin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes splashFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 `;
 
-export default function SplashScreen({ onFinished, variant = 'auto' }) {
+export default function SplashScreen({ onFinished, variant = 'auto', authReady = false }) {
   const hasSeenSplash = localStorage.getItem('campus-splash-seen') === '1';
   const resolvedVariant = variant === 'auto' ? (hasSeenSplash ? 'repeat' : 'first') : variant;
   const isFirstTime = resolvedVariant === 'first';
+
   const [isExiting, setIsExiting] = useState(false);
+  const [animDone, setAnimDone] = useState(false);
+  const [showSpinner, setShowSpinner] = useState(false);
+  const [showSlowMsg, setShowSlowMsg] = useState(false);
+
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
 
@@ -42,19 +56,36 @@ export default function SplashScreen({ onFinished, variant = 'auto' }) {
       localStorage.setItem('campus-splash-seen', '1');
     }
 
-    const fadeDelay = isFirstTime ? FADE_START_FIRST : FADE_START_REPEAT;
-    const doneDelay = isFirstTime ? DURATION_FIRST : DURATION_REPEAT;
+    // Минимальное время анимации лого
+    const animTimer = setTimeout(() => setAnimDone(true), isFirstTime ? DURATION_FIRST : DURATION_REPEAT);
 
-    const fadeTimer = setTimeout(() => setIsExiting(true), fadeDelay);
-    const doneTimer = setTimeout(() => onFinishedRef.current(), doneDelay);
+    // Спиннер после 3 секунд
+    const spinnerTimer = setTimeout(() => setShowSpinner(true), SPINNER_DELAY);
+
+    // Сообщение о нестабильном соединении после 5 секунд
+    const slowTimer = setTimeout(() => setShowSlowMsg(true), SLOW_MSG_DELAY);
 
     return () => {
-      clearTimeout(fadeTimer);
-      clearTimeout(doneTimer);
+      clearTimeout(animTimer);
+      clearTimeout(spinnerTimer);
+      clearTimeout(slowTimer);
     };
   }, [isFirstTime, variant]);
 
+  // Начинаем fade-out только когда анимация завершена И авторизация готова
+  useEffect(() => {
+    if (animDone && authReady) {
+      setIsExiting(true);
+      const exitTimer = setTimeout(() => onFinishedRef.current(), 400);
+      return () => clearTimeout(exitTimer);
+    }
+  }, [animDone, authReady]);
+
   const letters = ['C', 'a', 'm', 'p', 'u', 's'];
+
+  // Показываем индикаторы только пока авторизация не завершена
+  const displaySpinner = showSpinner && !authReady && !showSlowMsg;
+  const displaySlowMsg = showSlowMsg && !authReady;
 
   return (
     <>
@@ -202,6 +233,48 @@ export default function SplashScreen({ onFinished, variant = 'auto' }) {
                 </p>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Прогрессивные индикаторы при долгой загрузке */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '80px',
+            left: 0,
+            right: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
+          {displaySpinner && (
+            <div
+              style={{
+                width: '22px',
+                height: '22px',
+                borderRadius: '50%',
+                border: `2.5px solid rgba(212,255,0,0.18)`,
+                borderTopColor: LIME,
+                animation: 'splashSpinnerSpin 0.75s linear infinite, splashFadeIn 0.5s ease forwards',
+              }}
+            />
+          )}
+          {displaySlowMsg && (
+            <p
+              style={{
+                margin: 0,
+                fontSize: '13px',
+                color: '#8E8E93',
+                textAlign: 'center',
+                padding: '0 40px',
+                lineHeight: 1.4,
+                animation: 'splashFadeIn 0.5s ease forwards',
+              }}
+            >
+              Нестабильное соединение, пробуем ещё раз...
+            </p>
           )}
         </div>
       </div>

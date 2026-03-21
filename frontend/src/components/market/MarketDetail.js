@@ -11,6 +11,7 @@ import ReportModal from '../shared/ReportModal';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import { Z_MARKET_DETAIL } from '../../constants/zIndex';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { hapticFeedback } from '../../utils/telegram';
 import DropdownMenu from '../DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
@@ -341,13 +342,18 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
   return (
     <>
-      <div style={{
-        ...styles.container,
-        animation: isExiting
-          ? 'slideOutRight 0.32s cubic-bezier(0.32, 0.72, 0, 1) forwards'
-          : 'slideInRight 0.38s cubic-bezier(0.32, 0.72, 0, 1) forwards',
-        pointerEvents: isExiting ? 'none' : 'auto',
-      }}>
+      <EdgeSwipeBack
+        onBack={() => onClose?.()}
+        disabled={isExiting || showPhotoViewer || showEditModal}
+        zIndex={Z_MARKET_DETAIL}
+      >
+        <div style={{
+          ...styles.container,
+          animation: isExiting
+            ? 'slideOutRight 0.32s cubic-bezier(0.32, 0.72, 0, 1) forwards'
+            : 'slideInRight 0.38s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+          pointerEvents: isExiting ? 'none' : 'auto',
+        }}>
         {/* Floating back button — только в DEV (в проде используется TMA BackButton) */}
         {showBackBtn && (
           <div style={styles.floatingHeader}>
@@ -364,6 +370,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
         <div style={styles.content}>
           {images.length > 0 && (
             <div
+              data-no-edge-swipe="true"
               style={styles.gallery}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
@@ -555,7 +562,8 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
             </button>
           )}
         </div>
-      </div>
+        </div>
+      </EdgeSwipeBack>
 
       {showEditModal && (
         <EditMarketItemModal

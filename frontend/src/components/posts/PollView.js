@@ -8,9 +8,9 @@ import { toast } from '../shared/Toast';
 
 const EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
 const POLL_COLOR = '#D4FF00';
+const QUIZ_COLOR = '#BF5AF2';
 const SUCCESS = '#32D74B';
 const ERROR = '#FF453A';
-const INFO = '#0A84FF';
 
 const PollView = ({ poll, onVoteUpdate, showQuestion = true }) => {
   const isRegistered = useStore((state) => Boolean(state.isRegistered));
@@ -93,17 +93,18 @@ const PollView = ({ poll, onVoteUpdate, showQuestion = true }) => {
         .poll-spring-btn:active { transform: scale(0.96); opacity: 0.8; }
       `}</style>
 
-      {/* Шапка: бейдж + анонимность */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <span style={{
-          background: isQuiz ? 'rgba(10,132,255,0.12)' : 'rgba(212,255,0,0.12)',
-          color: isQuiz ? INFO : POLL_COLOR,
-          padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px',
-        }}>
-          {isQuiz ? 'ВИКТОРИНА' : 'ОПРОС'}
-        </span>
-        {poll.is_anonymous && <span style={{ fontSize: 12, color: '#8E8E93' }}>Анонимно</span>}
-      </div>
+      {/* Бейдж только вне категории опросов — чип в шапке поста уже показывает тип */}
+      {!showQuestion && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <span style={{
+            background: isQuiz ? 'rgba(191,90,242,0.12)' : 'rgba(212,255,0,0.12)',
+            color: isQuiz ? QUIZ_COLOR : POLL_COLOR,
+            padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px',
+          }}>
+            {isQuiz ? 'ВИКТОРИНА' : 'ОПРОС'}
+          </span>
+        </div>
+      )}
 
       {shouldShowQuestion && (
         <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#FFF' }}>{poll.question}</h3>
@@ -118,7 +119,7 @@ const PollView = ({ poll, onVoteUpdate, showQuestion = true }) => {
 
           if (showResults) {
             let bgColor = 'rgba(255,255,255,0.015)';
-            let borderColor = 'rgba(255,255,255,0.03)';
+            let borderColor = 'rgba(255,255,255,0.10)';
             let fillBg = 'rgba(255,255,255,0.05)';
             let textColor = '#EAEAEA';
             let fontWeight = 400;
@@ -162,7 +163,7 @@ const PollView = ({ poll, onVoteUpdate, showQuestion = true }) => {
 
           // До голосования
           const preVoteBg = (!isQuiz && isSelected) ? 'rgba(212,255,0,0.05)' : 'rgba(255,255,255,0.015)';
-          const preVoteBorder = (!isQuiz && isSelected) ? 'rgba(212,255,0,0.5)' : 'rgba(255,255,255,0.03)';
+          const preVoteBorder = (!isQuiz && isSelected) ? 'rgba(212,255,0,0.5)' : 'rgba(255,255,255,0.10)';
           const preVoteTextColor = (!isQuiz && isSelected) ? POLL_COLOR : '#FFF';
           const preVoteFontWeight = (!isQuiz && isSelected) ? 600 : 500;
 

@@ -7,6 +7,7 @@ import {
 
 import DrilldownHeader from '../shared/DrilldownHeader';
 import EdgeBlur from '../shared/EdgeBlur';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { getNotifications, markAllNotificationsRead } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/telegram';
@@ -494,6 +495,11 @@ function NotificationsScreen() {
   const hasUnread = notifications.some(n => !n.is_read);
 
   return (
+    <EdgeSwipeBack
+      onBack={() => setShowNotificationsScreen(false)}
+      disabled={isExiting}
+      zIndex={Z_MODAL_NOTIFICATIONS_SCREEN}
+    >
     <div style={{
       position: 'fixed', inset: 0,
       zIndex: Z_MODAL_NOTIFICATIONS_SCREEN,
@@ -615,6 +621,7 @@ function NotificationsScreen() {
         }
       `}</style>
     </div>
+    </EdgeSwipeBack>
   );
 }
 

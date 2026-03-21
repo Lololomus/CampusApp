@@ -12,6 +12,7 @@ import EditContentModal from '../shared/EditContentModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
@@ -132,6 +133,11 @@ function UserRequests() {
   ];
 
   return (
+    <EdgeSwipeBack
+      onBack={() => { hapticFeedback('light'); closeScreen(); }}
+      disabled={showRequestDetail}
+      zIndex={Z_MODAL_REQUEST_DETAIL}
+    >
     <div style={styles.container} onScroll={handleScroll}>
       <DrilldownHeader title={`Мои запросы (${counts.all})`} onBack={closeScreen} />
 
@@ -227,6 +233,7 @@ function UserRequests() {
         onCancel={() => setRequestToDelete(null)}
       />
     </div>
+    </EdgeSwipeBack>
   );
 }
 

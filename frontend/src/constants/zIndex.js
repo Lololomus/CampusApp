@@ -68,6 +68,7 @@ export const Z_MODAL_MARKET_FILTERS = 2980;
 
 // ========== ONBOARDING FLOWS (3000-3999) ==========
 export const Z_ONBOARDING_MAIN = 3000;
+export const Z_EDGE_SWIPE_INDICATOR = 3500;  // Edge-swipe wrapper, выше drilldown экранов, ниже photo viewer
 export const Z_ONBOARDING_DATING = 3100;
 export const Z_AUTH_MODAL = 3200;
 
@@ -176,6 +177,7 @@ export const zIndex = {
   
   // Onboarding
   onboardingMain: Z_ONBOARDING_MAIN,
+  edgeSwipeIndicator: Z_EDGE_SWIPE_INDICATOR,
   onboardingDating: Z_ONBOARDING_DATING,
   authModal: Z_AUTH_MODAL,
   

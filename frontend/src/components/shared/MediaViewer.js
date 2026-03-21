@@ -447,6 +447,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
 
       {/* Контейнер */}
       <div
+        data-no-edge-swipe="true"
         style={{
           ...styles.container,
           animation: isClosing

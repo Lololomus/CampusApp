@@ -34,7 +34,6 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 import './App.css';
 
 function App() {
-  const [splashAnimDone, setSplashAnimDone] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [splashVariant, setSplashVariant] = useState('auto');
@@ -74,18 +73,8 @@ function App() {
     }
   }, [authStatus]);
 
-  useEffect(() => {
-    if (splashAnimDone && authReady) {
-      setShowSplash(false);
-      if (splashVariant !== 'auto') {
-        setSplashVariant('auto');
-      }
-    }
-  }, [splashAnimDone, authReady, splashVariant]);
-
   const handleRunSplashVariant = (variant) => {
     setSplashVariant(variant);
-    setSplashAnimDone(false);
     setShowSplash(true);
     setSplashInstanceKey((current) => current + 1);
   };
@@ -261,7 +250,11 @@ function App() {
           <SplashScreen
             key={splashInstanceKey}
             variant={splashVariant}
-            onFinished={() => setSplashAnimDone(true)}
+            authReady={authReady}
+            onFinished={() => {
+              setShowSplash(false);
+              if (splashVariant !== 'auto') setSplashVariant('auto');
+            }}
           />
         )}
       </TelegramScreenProvider>
