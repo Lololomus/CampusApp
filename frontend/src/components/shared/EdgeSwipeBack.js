@@ -18,6 +18,7 @@ function EdgeSwipeBack({ onBack, disabled = false, zIndex, children }) {
   return (
     <div
       ref={wrapperRef}
+      data-edge-swipe-wrapper=""
       style={{
         position: 'fixed',
         inset: 0,

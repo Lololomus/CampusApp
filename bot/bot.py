@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from config import (
     BOT_HEARTBEAT_FILE,
     BOT_HEARTBEAT_INTERVAL,
+    BOT_FORCE_IPV4,
     BOT_TOKEN,
     FOLLOWUP_POLL_INTERVAL,
     LOG_LEVEL,
@@ -22,6 +24,9 @@ from services.scheduler import poll_followups, poll_notifications
 
 heartbeat_stop_event: asyncio.Event | None = None
 heartbeat_task: asyncio.Task | None = None
+_original_getaddrinfo = socket.getaddrinfo
+_ipv4_patch_applied = False
+TELEGRAM_API_HOST = "api.telegram.org"
 
 
 def setup_logging():
@@ -34,6 +39,21 @@ def setup_logging():
     logging.getLogger("aiohttp").setLevel(logging.WARNING)
     logging.getLogger("aiogram").setLevel(logging.WARNING)
     logging.getLogger("apscheduler").setLevel(logging.WARNING)
+
+
+def force_ipv4_for_telegram():
+    global _ipv4_patch_applied
+
+    if _ipv4_patch_applied:
+        return
+
+    def _telegram_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        if host == TELEGRAM_API_HOST and family in (0, socket.AF_UNSPEC):
+            family = socket.AF_INET
+        return _original_getaddrinfo(host, port, family, type, proto, flags)
+
+    socket.getaddrinfo = _telegram_ipv4_getaddrinfo
+    _ipv4_patch_applied = True
 
 
 async def heartbeat_loop(stop_event: asyncio.Event):
@@ -81,6 +101,10 @@ async def main():
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN is not set in .env")
         sys.exit(1)
+
+    if BOT_FORCE_IPV4:
+        force_ipv4_for_telegram()
+        logger.info("BOT_FORCE_IPV4 enabled: forcing IPv4 for %s", TELEGRAM_API_HOST)
 
     bot = Bot(
         token=BOT_TOKEN,

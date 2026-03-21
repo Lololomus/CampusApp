@@ -33,6 +33,13 @@ def _require_prod_value(name: str, value: str | None, *, min_len: int = 1) -> st
 APP_ENV = os.getenv("APP_ENV", "dev").lower()
 IS_PROD = APP_ENV in PROD_ENV_VALUES
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if IS_PROD:
     BOT_TOKEN = _require_prod_value("BOT_TOKEN", BOT_TOKEN, min_len=20)
@@ -62,6 +69,7 @@ if IS_PROD and not MINIAPP_URL.startswith("https://"):
     sys.exit("Error: MINIAPP_URL must start with https:// when APP_ENV=prod")
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+BOT_FORCE_IPV4 = _env_bool("BOT_FORCE_IPV4", default=False)
 
 BOT_HEARTBEAT_FILE = os.getenv("BOT_HEARTBEAT_FILE", "/tmp/campusapp-bot-heartbeat")
 BOT_HEARTBEAT_INTERVAL = int(os.getenv("BOT_HEARTBEAT_INTERVAL", "15"))

@@ -82,6 +82,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD:-local-redis-password}@redis:6379/0
       API_BASE_URL: http://backend:8000
+      BOT_FORCE_IPV4: ${BOT_FORCE_IPV4:-1}
       BOT_HEARTBEAT_FILE: /tmp/campusapp-bot-heartbeat
       BOT_HEARTBEAT_INTERVAL: ${BOT_HEARTBEAT_INTERVAL:-15}
       BOT_HEARTBEAT_TIMEOUT: ${BOT_HEARTBEAT_TIMEOUT:-60}

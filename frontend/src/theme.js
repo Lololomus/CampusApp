@@ -16,7 +16,7 @@ export const theme = {
       tagColors: {
         news:        { color: '#4DA6FF', bg: 'rgba(77, 166, 255, 0.15)' },
         memes:       { color: '#FF9F0A', bg: 'rgba(255, 159, 10, 0.15)' },
-        events:      { color: '#D4FF00', bg: 'rgba(212, 255, 0, 0.15)' },
+        events:      { color: '#00C7BE', bg: 'rgba(0, 199, 190, 0.15)' },
         confessions: { color: '#FF4D4D', bg: 'rgba(255, 77, 77, 0.15)' },
         lostFound:   { color: '#A78BFA', bg: 'rgba(167, 139, 250, 0.15)' },
       },
@@ -68,7 +68,7 @@ export const theme = {
     // Категории постов
     news: '#3b82f6',
     memes: '#f97316',
-    events: '#f59e0b',
+    events: '#00C7BE',
     confessions: '#ec4899',
     lostFound: '#10b981',
     

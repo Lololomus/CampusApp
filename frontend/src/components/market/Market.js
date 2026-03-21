@@ -52,6 +52,7 @@ const Market = () => {
   const observerRef = useRef(null);
   const loadMoreTriggerRef = useRef(null);
   const startYRef = useRef(0); // ✅ ДЛЯ PULL TO REFRESH
+  const pullToRefreshLockRef = useRef(false);
 
   // ===== CATEGORIES =====
   const goodsCategories = [
@@ -185,22 +186,35 @@ const Market = () => {
   // ✅ ОПТИМИЗИРОВАННЫЙ Pull to Refresh
   useEffect(() => {
     const handleTouchStart = (e) => { 
+      pullToRefreshLockRef.current = false;
       if (window.scrollY === 0) startYRef.current = e.touches[0].clientY; 
     };
     
     const handleTouchMove = (e) => {
-      if (window.scrollY === 0 && e.touches[0].clientY - startYRef.current > PULL_TO_REFRESH_THRESHOLD && !refreshing) {
+      if (
+        window.scrollY === 0 &&
+        e.touches[0].clientY - startYRef.current > PULL_TO_REFRESH_THRESHOLD &&
+        !refreshing &&
+        !pullToRefreshLockRef.current
+      ) {
+        pullToRefreshLockRef.current = true;
         setRefreshing(true);
         handleRefresh();
       }
     };
+
+    const handleTouchEnd = () => {
+      pullToRefreshLockRef.current = false;
+    };
     
     window.addEventListener('touchstart', handleTouchStart);
     window.addEventListener('touchmove', handleTouchMove);
+    window.addEventListener('touchend', handleTouchEnd);
     
     return () => {
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
   }, [refreshing, loading]); // ✅ ТОЛЬКО НУЖНЫЕ ЗАВИСИМОСТИ
 
@@ -427,8 +441,8 @@ const styles = {
   },
 
   content: {
-    paddingTop: 'var(--header-padding, 140px)',
-    transition: 'padding-top 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+    // Фиксированный отступ как в Feed — без дёрганья при анимации AppHeader
+    paddingTop: 'calc(var(--screen-top-offset, 0px) + 192px)',
   },
 
   grid: {

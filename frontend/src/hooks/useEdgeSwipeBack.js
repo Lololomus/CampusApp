@@ -77,6 +77,11 @@ export const useEdgeSwipeBack = ({
         return;
       }
 
+      // Горизонталь зафиксирована — блокируем вертикальный скролл
+      if (t.dirLocked === 'horizontal') {
+        e.preventDefault();
+      }
+
       if (!t.dirLocked) return;
 
       // Только движение правее
@@ -142,6 +147,14 @@ export const useEdgeSwipeBack = ({
       // Игнорируем если внутри галереи/карусели
       if (e.target?.closest?.('[data-no-edge-swipe]')) return;
 
+      // Отвечает только самый верхний EdgeSwipeBack (по z-index)
+      // Если под пальцем есть другой EdgeSwipeBack с более высоким z-index — уступаем ему
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+      const topEdgeWrapper = document.elementsFromPoint(touch.clientX, touch.clientY)
+        .find(el => el.hasAttribute('data-edge-swipe-wrapper'));
+      if (topEdgeWrapper !== wrapper) return;
+
       trackingRef.current = {
         active: true,
         startX: touch.clientX,
@@ -153,7 +166,8 @@ export const useEdgeSwipeBack = ({
       setIsDragging(true);
 
       // Динамически вешаем move/end/cancel
-      document.addEventListener('touchmove', handleTouchMove, { passive: true });
+      // passive: false чтобы можно было вызвать preventDefault при горизонтальном свайпе
+      document.addEventListener('touchmove', handleTouchMove, { passive: false });
       document.addEventListener('touchend', handleTouchEnd, { passive: true });
       document.addEventListener('touchcancel', handleTouchCancel, { passive: true });
     };
