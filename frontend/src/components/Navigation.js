@@ -29,13 +29,13 @@ function Navigation() {
   const prevActiveTabRef = useRef(activeTab);
   const bounceTimeoutRef = useRef(null);
   const outerRef = useRef(null);
+  const isProd = import.meta.env.PROD;
 
-  // 4 боковых таба (без кнопки создания)
+  // В prod dating-сегмент скрыт; в dev доступен для тестирования
   const sideTabs = [
     { id: 'feed', icon: Home, label: 'Лента' },
     { id: 'market', icon: ShoppingBag, label: 'Маркет' },
-    // — центральная кнопка "+" вставляется между 2-м и 3-м —
-    { id: 'people', icon: Heart, label: 'Знакомства' },
+    ...(!isProd ? [{ id: 'people', icon: Heart, label: 'Знакомства' }] : []),
     { id: 'profile', icon: User, label: 'Профиль' },
   ];
 

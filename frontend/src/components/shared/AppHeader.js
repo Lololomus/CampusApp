@@ -473,7 +473,7 @@ const AppHeader = ({
                   {categories && (
                     <div style={{
                       display: 'flex', gap: 8, overflowX: 'auto', flex: 1,
-                      scrollbarWidth: 'none', msOverflowStyle: 'none',
+                      scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y',
                     }}>
                       {categories.map((cat) => {
                         const isActive = selectedCategory === cat.id;

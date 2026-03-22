@@ -8,6 +8,7 @@ import Navigation from './components/Navigation';
 import Feed from './components/Feed';
 import Market from './components/market/Market';
 import Profile from './components/profile/Profile';
+import DatingFeed from './components/dating/DatingFeed';
 
 import CreateContentModal from './components/shared/CreateContentModal';
 import EditContentModal from './components/shared/EditContentModal';
@@ -60,7 +61,9 @@ function App() {
     authStatus,
     bootstrapAuth,
     showNotificationsScreen,
+    setActiveTab,
   } = useStore();
+  const isProd = import.meta.env.PROD;
 
   useEffect(() => {
     initTelegramApp();
@@ -110,6 +113,13 @@ function App() {
     };
   }, [activeTab]);
 
+  // Safety: если activeTab='people' был сохранён в storage, в prod возвращаем на ленту
+  useEffect(() => {
+    if (isProd && activeTab === 'people') {
+      setActiveTab('feed');
+    }
+  }, [activeTab, isProd, setActiveTab]);
+
   const renderContent = () => {
     if (showUserMarketItems) return <UserMarketItems />;
     if (showUserPosts) return <UserPosts />;
@@ -121,6 +131,7 @@ function App() {
       case 'market':
         return <Market />;
       case 'people':
+        if (!isProd) return <DatingFeed />;
         return (
           <div style={{
             position: 'fixed', inset: 0,

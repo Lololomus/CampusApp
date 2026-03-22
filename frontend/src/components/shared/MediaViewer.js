@@ -203,6 +203,8 @@ const VideoSlide = ({ media, isActive, showUI, footerHeight, footerOpen, hasFoot
       {/* ── Единая строка контролов: [ползунок──────] [🔈] [⌃?] ── */}
       <div
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
         style={{
           position: 'absolute',
           bottom: barBottom,
@@ -301,12 +303,25 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   const [footerHeight, setFooterHeight] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [swipeClosing, setSwipeClosing] = useState(false);
+  const dragYRef = useRef(0);
+  const isDraggingDownRef = useRef(false);
 
   const closeWithAnimation = useCallback(() => {
     if (isClosing) return;
     setIsClosing(true);
     setTimeout(onClose, 280);
   }, [isClosing, onClose]);
+
+  // Закрытие свайпом вниз: слайд улетает вниз + фон гаснет
+  const closeViaSwipe = useCallback(() => {
+    if (isClosing || swipeClosing) return;
+    isDraggingDownRef.current = false;
+    setDragY(window.innerHeight);
+    setSwipeClosing(true);
+    setTimeout(onClose, 300);
+  }, [isClosing, swipeClosing, onClose]);
 
   const scrollRef = useRef(null);
   const footerRef = useRef(null);
@@ -351,6 +366,8 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
     const newIndex = Math.round(e.target.scrollLeft / e.target.clientWidth);
     if (newIndex !== currentIndex) {
       setCurrentIndex(newIndex);
+      setDragY(0);
+      dragYRef.current = 0;
     }
   }, [currentIndex]);
 
@@ -443,6 +460,8 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
       <div style={{
         ...styles.overlay,
         animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards' : styles.overlay.animation,
+        opacity: swipeClosing ? 0 : (dragY > 0 ? Math.max(0.05, 1 - dragY / 250) : undefined),
+        transition: swipeClosing ? 'opacity 0.3s ease' : (dragY > 0 ? 'none' : undefined),
       }} onClick={closeWithAnimation} />
 
       {/* Контейнер */}
@@ -453,6 +472,9 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
           animation: isClosing
             ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards'
             : styles.container.animation,
+          background: dragY > 0 ? `rgba(0,0,0,${Math.max(0.15, 1 - dragY / 250)})` : '#000',
+          opacity: swipeClosing ? 0 : 1,
+          transition: swipeClosing ? 'opacity 0.3s ease' : undefined,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -492,57 +514,80 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
           ref={scrollRef}
           onScroll={handleScroll}
           className="mv-swiper"
-          style={styles.swiper}
+          style={{ ...styles.swiper, touchAction: 'pan-x pan-y' }}
         >
-          {items.map((media, idx) => (
-            <div key={idx} style={styles.slide}>
-              {media.type === 'video' ? (
-                <VideoSlide
-                  media={media}
-                  isActive={idx === currentIndex}
-                  showUI={showUI}
-                  footerHeight={footerHeight}
-                  footerOpen={footerOpen}
-                  hasFooter={hasFooter}
-                  toggleUI={toggleUI}
-                  onFooterOpen={openFooter}
-                />
-              ) : (
-                <div
-                  onClick={toggleUI}
-                  style={styles.imageSlide}
-                  onTouchStart={(e) => {
-                    if (e.touches.length === 1) {
-                      swipeTouchStartY.current = e.touches[0].clientY;
+          {items.map((media, idx) => {
+            const isCurrentSlide = idx === currentIndex;
+            const slideDragY = isCurrentSlide && dragY > 0 ? dragY : 0;
+            return (
+              <div
+                key={idx}
+                style={{
+                  ...styles.slide,
+                  transform: slideDragY > 0 ? `translateY(${slideDragY}px)` : undefined,
+                  transition: isDraggingDownRef.current ? 'none' : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
+                }}
+                onTouchStart={(e) => {
+                  if (e.touches.length === 1) {
+                    swipeTouchStartY.current = e.touches[0].clientY;
+                  }
+                }}
+                onTouchMove={(e) => {
+                  if (!isCurrentSlide || isZoomed || e.touches.length !== 1 || swipeTouchStartY.current === null) return;
+                  const dy = e.touches[0].clientY - swipeTouchStartY.current;
+                  if (dy > 0) {
+                    isDraggingDownRef.current = true;
+                    dragYRef.current = dy;
+                    setDragY(dy);
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (isDraggingDownRef.current) {
+                    isDraggingDownRef.current = false;
+                    if (dragYRef.current > 120) {
+                      closeViaSwipe();
+                    } else {
+                      dragYRef.current = 0;
+                      setDragY(0);
                     }
-                  }}
-                  onTouchMove={(e) => {
-                    if (isZoomed || e.touches.length !== 1 || swipeTouchStartY.current === null) return;
-                    const dy = e.touches[0].clientY - swipeTouchStartY.current;
-                    if (dy > 80) {
-                      swipeTouchStartY.current = null;
-                      closeWithAnimation();
-                    }
-                  }}
-                  onTouchEnd={() => { swipeTouchStartY.current = null; }}
-                >
-                  <Zoomable
-                    onTap={(e) => { e.stopPropagation(); toggleUI(); }}
-                    onZoomStart={() => setIsZoomed(true)}
-                    onZoomEnd={() => setIsZoomed(false)}
+                  }
+                  swipeTouchStartY.current = null;
+                }}
+              >
+                {media.type === 'video' ? (
+                  <VideoSlide
+                    media={media}
+                    isActive={idx === currentIndex}
+                    showUI={showUI}
+                    footerHeight={footerHeight}
+                    footerOpen={footerOpen}
+                    hasFooter={hasFooter}
+                    toggleUI={toggleUI}
+                    onFooterOpen={openFooter}
+                  />
+                ) : (
+                  <div
+                    onClick={toggleUI}
+                    style={styles.imageSlide}
                   >
-                    <img
-                      src={media.url}
-                      alt={`Медиа ${idx + 1}`}
-                      style={styles.image}
-                      loading={idx === initialIndex ? 'eager' : 'lazy'}
-                      decoding="async"
-                    />
-                  </Zoomable>
-                </div>
-              )}
-            </div>
-          ))}
+                    <Zoomable
+                      onTap={(e) => { e.stopPropagation(); toggleUI(); }}
+                      onZoomStart={() => setIsZoomed(true)}
+                      onZoomEnd={() => setIsZoomed(false)}
+                    >
+                      <img
+                        src={media.url}
+                        alt={`Медиа ${idx + 1}`}
+                        style={styles.image}
+                        loading={idx === initialIndex ? 'eager' : 'lazy'}
+                        decoding="async"
+                      />
+                    </Zoomable>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* ── Кнопки Prev/Next (desktop) ── */}
