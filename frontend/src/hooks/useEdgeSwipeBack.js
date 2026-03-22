@@ -5,6 +5,7 @@ import { hapticFeedback } from '../utils/telegram';
 
 export const useEdgeSwipeBack = ({
   onBack,
+  onInterceptBack,
   disabled = false,
   edgeZone = 28,
   threshold = 90,
@@ -15,6 +16,8 @@ export const useEdgeSwipeBack = ({
   // Держим onBack в рефе — не пересоздаём слушатели при каждом рендере
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
+  const onInterceptBackRef = useRef(onInterceptBack);
+  onInterceptBackRef.current = onInterceptBack;
 
   const trackingRef = useRef({
     active: false,
@@ -102,6 +105,14 @@ export const useEdgeSwipeBack = ({
       const progress = t.currentX / threshold;
 
       if (progress >= 1) {
+        // Позволяем экрану перехватить edge-back (например, шаг назад внутри вложенного экрана)
+        const isIntercepted = onInterceptBackRef.current?.() === true;
+        if (isIntercepted) {
+          cancelTracking();
+          removeDynamicListeners();
+          return;
+        }
+
         // Порог достигнут — анимируем выход и вызываем onBack
         hapticFeedback('light');
         const el = wrapperRef.current;

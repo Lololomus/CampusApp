@@ -205,7 +205,7 @@ function ActionFeed({ onReverse }) {
               >
                 <div style={styles.feedHeader}>
                   <div style={styles.feedMod}>
-                    <Shield size={14} color={theme.colors.primary} />
+                    <Shield size={14} color={theme.colors.premium.primary} />
                     <span style={styles.modName}>
                       {moderatorName}
                       {isCurrentModerator ? ' (Вы)' : ''}
@@ -432,7 +432,7 @@ const styles = {
     height: 28,
     borderRadius: '50%',
     border: `3px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
 
@@ -441,7 +441,7 @@ const styles = {
     height: 18,
     borderRadius: '50%',
     border: `2px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
 };

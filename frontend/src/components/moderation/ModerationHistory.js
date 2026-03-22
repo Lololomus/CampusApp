@@ -322,7 +322,7 @@ const styles = {
     height: 32,
     borderRadius: '50%',
     border: `3px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
 
@@ -331,7 +331,7 @@ const styles = {
     height: 18,
     borderRadius: '50%',
     border: `2px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
 };

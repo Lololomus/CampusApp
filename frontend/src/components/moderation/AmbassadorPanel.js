@@ -6,6 +6,7 @@ import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { getReports, getAdminStats } from '../../api';
 import theme from '../../theme';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 
 import AmbassadorDashboard from './AmbassadorDashboard';
 import ReportQueue from './ReportQueue';
@@ -63,6 +64,17 @@ function AmbassadorPanel() {
     hapticFeedback('light');
     setNavigationTab('profile');
   };
+  const showBackBtn = import.meta.env.DEV;
+
+  useTelegramScreen({
+    id: 'ambassador-panel-screen',
+    title: 'Модерация',
+    priority: 70,
+    back: {
+      visible: true,
+      onClick: handleBack,
+    },
+  });
 
   const handleReportProcessed = (reportId) => {
     setReports(prev => prev.filter(r => r.id !== reportId));
@@ -86,9 +98,13 @@ function AmbassadorPanel() {
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <button style={styles.backButton} onClick={handleBack}>
-          <ArrowLeft size={22} color="#fff" />
-        </button>
+        {showBackBtn ? (
+          <button style={styles.backButton} onClick={handleBack}>
+            <ArrowLeft size={22} color="#fff" />
+          </button>
+        ) : (
+          <div style={styles.backButtonPlaceholder} />
+        )}
         <div style={styles.headerTitle}>
           <span>🛡️ Модерация</span>
           {pendingCount > 0 && (
@@ -255,6 +271,12 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
+  },
+
+  backButtonPlaceholder: {
+    width: 40,
+    height: 40,
+    flexShrink: 0,
   },
 
   headerTitle: {

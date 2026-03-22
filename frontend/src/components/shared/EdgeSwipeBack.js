@@ -8,12 +8,13 @@ import { useEdgeSwipeBack } from '../../hooks/useEdgeSwipeBack';
  * При достижении порога — анимированно улетает вправо и вызывает onBack().
  *
  * @param {function} onBack    — прямой unmount-коллбэк (НЕ handleBack с isExiting)
+ * @param {function} onInterceptBack — перехват edge-back без закрытия экрана (вернуть true)
  * @param {boolean}  disabled  — отключить жест (e.g. когда открыт PhotoViewer)
  * @param {number}   zIndex    — z-index обёртки (передаётся от экрана)
  * @param {ReactNode} children — содержимое экрана
  */
-function EdgeSwipeBack({ onBack, disabled = false, zIndex, children }) {
-  const { wrapperRef, isDragging } = useEdgeSwipeBack({ onBack, disabled });
+function EdgeSwipeBack({ onBack, onInterceptBack, disabled = false, zIndex, children }) {
+  const { wrapperRef, isDragging } = useEdgeSwipeBack({ onBack, onInterceptBack, disabled });
 
   return (
     <div

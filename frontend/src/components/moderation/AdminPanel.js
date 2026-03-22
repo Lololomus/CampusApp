@@ -16,6 +16,7 @@ import {
 } from '../../api';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import ActionFeed from './ActionFeed';
 import CampaignManager from './CampaignManager';
 import CampusManager from './CampusManager';
@@ -41,6 +42,17 @@ function AdminPanel() {
     hapticFeedback('light');
     setNavigationTab('profile');
   };
+  const showBackBtn = import.meta.env.DEV;
+
+  useTelegramScreen({
+    id: 'admin-panel-screen',
+    title: 'Админ-панель',
+    priority: 71,
+    back: {
+      visible: true,
+      onClick: handleBack,
+    },
+  });
 
   if (!canAdmin) {
     return (
@@ -59,9 +71,13 @@ function AdminPanel() {
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <button style={styles.backButton} onClick={handleBack}>
-          <ArrowLeft size={22} color="#fff" />
-        </button>
+        {showBackBtn ? (
+          <button style={styles.backButton} onClick={handleBack}>
+            <ArrowLeft size={22} color="#fff" />
+          </button>
+        ) : (
+          <div style={styles.backButtonPlaceholder} />
+        )}
         <div style={styles.headerTitle}>⚡ Админ-панель</div>
         <div style={{ width: 40 }} />
       </div>
@@ -696,6 +712,12 @@ const styles = {
     background: 'transparent', border: 'none',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     cursor: 'pointer',
+  },
+
+  backButtonPlaceholder: {
+    width: 40,
+    height: 40,
+    flexShrink: 0,
   },
 
   headerTitle: {

@@ -178,7 +178,7 @@ function GroupCard({
       >
         <div style={{ flex: 1 }}>
           <div style={styles.groupName}>
-            <Building2 size={14} color={theme.colors.primary} />
+            <Building2 size={14} color={theme.colors.premium.primary} />
             <span>{group.label}</span>
             <span style={styles.groupCount}>({group.users.length})</span>
           </div>
@@ -383,7 +383,7 @@ const styles = {
   spinner: {
     width: 28, height: 28, borderRadius: '50%',
     border: `3px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
   empty: {
@@ -415,8 +415,8 @@ const styles = {
   bindAllBtn: {
     display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center',
     margin: '0 14px 8px', padding: '7px 12px', borderRadius: 8,
-    background: `${theme.colors.primary}15`, border: `1px solid ${theme.colors.primary}40`,
-    color: theme.colors.primary, fontSize: 12, fontWeight: 600, cursor: 'pointer', width: 'calc(100% - 28px)',
+    background: `${theme.colors.premium.primary}15`, border: `1px solid ${theme.colors.premium.primary}40`,
+    color: theme.colors.premium.primary, fontSize: 12, fontWeight: 600, cursor: 'pointer', width: 'calc(100% - 28px)',
   },
 
   showMoreBtn: {
@@ -448,9 +448,9 @@ const styles = {
   },
   bindBtn: {
     width: 34, height: 34, borderRadius: 10,
-    background: `${theme.colors.primary}15`, border: `1px solid ${theme.colors.primary}40`,
+    background: `${theme.colors.premium.primary}15`, border: `1px solid ${theme.colors.premium.primary}40`,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer', flexShrink: 0, color: theme.colors.primary,
+    cursor: 'pointer', flexShrink: 0, color: theme.colors.premium.primary,
   },
 
   // Campus picker

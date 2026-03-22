@@ -165,9 +165,9 @@ function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }
             key={opt.id}
             style={{
               ...styles.statusChip,
-              background: status === opt.id ? theme.colors.primary : 'transparent',
-              color: status === opt.id ? '#fff' : theme.colors.textSecondary,
-              borderColor: status === opt.id ? theme.colors.primary : theme.colors.border,
+              background: status === opt.id ? theme.colors.premium.primary : 'transparent',
+              color: status === opt.id ? theme.colors.premium.primaryText : theme.colors.textSecondary,
+              borderColor: status === opt.id ? theme.colors.premium.primary : theme.colors.border,
             }}
             onClick={() => handleStatusChange(opt.id)}
           >
@@ -177,7 +177,7 @@ function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }
         <button
           style={{
             ...styles.filterToggle,
-            color: showFilters ? theme.colors.primary : theme.colors.textTertiary,
+            color: showFilters ? theme.colors.premium.primary : theme.colors.textTertiary,
           }}
           onClick={() => setShowFilters(!showFilters)}
         >
@@ -193,8 +193,8 @@ function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }
               key={opt.id}
               style={{
                 ...styles.typeChip,
-                background: typeFilter === opt.id ? theme.colors.primaryLight : 'transparent',
-                color: typeFilter === opt.id ? theme.colors.primary : theme.colors.textSecondary,
+                background: typeFilter === opt.id ? `${theme.colors.premium.primary}1A` : 'transparent',
+                color: typeFilter === opt.id ? theme.colors.premium.primary : theme.colors.textSecondary,
               }}
               onClick={() => handleTypeFilter(opt.id)}
             >
@@ -335,7 +335,7 @@ const styles = {
     height: 28,
     borderRadius: '50%',
     border: `3px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
 
@@ -390,7 +390,7 @@ const styles = {
     height: 16,
     borderRadius: '50%',
     border: `2px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
 };

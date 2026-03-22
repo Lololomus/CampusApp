@@ -14,6 +14,7 @@ import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { useSwipe } from '../../hooks/useSwipe';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import theme from '../../theme';
 import { Z_EDIT_PROFILE } from '../../constants/zIndex';
 import {
@@ -294,6 +295,19 @@ function EditProfile() {
     handleClose();
   }, [handleClose, isExiting, loading, showCampusPicker]);
 
+  const handleCloseImmediate = useCallback(() => {
+    if (isExiting) return;
+    setShowEditModal(false);
+  }, [isExiting, setShowEditModal]);
+
+  const handleEdgeSwipeIntercept = useCallback(() => {
+    if (loading || isExiting) return true;
+    if (!showCampusPicker) return false;
+    hapticFeedback('light');
+    setShowCampusPicker(false);
+    return true;
+  }, [isExiting, loading, showCampusPicker]);
+
   // Аватар: сжать → локальный превью → загрузить
   const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
@@ -411,6 +425,12 @@ function EditProfile() {
   };
 
   return (
+    <EdgeSwipeBack
+      onBack={handleCloseImmediate}
+      onInterceptBack={handleEdgeSwipeIntercept}
+      disabled={isExiting || showEduLockedSheet}
+      zIndex={Z_EDIT_PROFILE}
+    >
     <div style={slideStyle}>
       <style>{slideCSS}</style>
       <div style={styles.container}>
@@ -696,6 +716,7 @@ function EditProfile() {
         />
       )}
     </div>
+    </EdgeSwipeBack>
   );
 }
 

@@ -33,9 +33,9 @@ function AmbassadorDashboard({ stats, pendingCount, loading }) {
       icon: Ban,
       label: 'Забанено',
       value: totalBanned,
-      color: '#8b5cf6',
-      gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.08))',
-      borderColor: 'rgba(139, 92, 246, 0.3)',
+      color: theme.colors.premium.primary,
+      gradient: 'linear-gradient(135deg, rgba(212, 255, 0, 0.15), rgba(212, 255, 0, 0.08))',
+      borderColor: 'rgba(212, 255, 0, 0.3)',
     },
     {
       icon: Clock,
@@ -86,7 +86,7 @@ function AmbassadorDashboard({ stats, pendingCount, loading }) {
       {accuracy !== null && (
         <div style={styles.accuracyCard}>
           <div style={styles.accuracyHeader}>
-            <TrendingUp size={16} color={theme.colors.primary} />
+            <TrendingUp size={16} color={theme.colors.premium.primary} />
             <span style={styles.accuracyTitle}>Точность модерации</span>
             <span style={{ ...styles.accuracyPercent, color: accuracy >= 80 ? '#22c55e' : '#f59e0b' }}>
               {accuracy}%
@@ -139,7 +139,7 @@ const styles = {
     height: 32,
     borderRadius: '50%',
     border: `3px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
 

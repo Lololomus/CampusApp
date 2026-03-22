@@ -132,7 +132,7 @@ function CampaignManager({ isAdmin = false }) {
             { v: overview.total_active, l: 'Активных', c: '#22c55e' },
             { v: overview.total_pending, l: 'Ожидают', c: '#f59e0b' },
             { v: overview.total_impressions, l: 'Показы', c: '#3b82f6' },
-            { v: `${overview.avg_ctr}%`, l: 'CTR', c: '#8b5cf6' },
+            { v: `${overview.avg_ctr}%`, l: 'CTR', c: theme.colors.premium.primary },
           ].map((x, i) => (
             <div key={i} style={s.ovCard}>
               <div style={{ ...s.ovVal, color: x.c }}>{x.v}</div>
@@ -163,9 +163,9 @@ function CampaignManager({ isAdmin = false }) {
             onClick={() => { hapticFeedback('selection'); setFilter(f.id); }}
             style={{
               ...s.chip,
-              background: filter === f.id ? theme.colors.primary : theme.colors.bgSecondary,
-              color: filter === f.id ? '#fff' : theme.colors.textSecondary,
-              border: `1px solid ${filter === f.id ? theme.colors.primary : theme.colors.border}`,
+              background: filter === f.id ? theme.colors.premium.primary : theme.colors.bgSecondary,
+              color: filter === f.id ? theme.colors.premium.primaryText : theme.colors.textSecondary,
+              border: `1px solid ${filter === f.id ? theme.colors.premium.primary : theme.colors.border}`,
             }}
           >{f.label}</button>
         ))}
@@ -232,9 +232,9 @@ function AdCard({ ad, isAdmin, expanded, stats, onToggleStats, onApprove, onReje
       <div style={s.counters}>
         <span style={s.cnt}><Eye size={13} /> {ad.impressions_count}</span>
         <span style={s.cnt}><MousePointerClick size={13} /> {ad.clicks_count}</span>
-        {ad.impressions_count > 0 && <span style={{ ...s.cnt, color: theme.colors.primary }}>CTR {ctr}%</span>}
+        {ad.impressions_count > 0 && <span style={{ ...s.cnt, color: theme.colors.premium.primary }}>CTR {ctr}%</span>}
         {ad.impression_limit && <span style={s.cnt}>{ad.impressions_count}/{ad.impression_limit}</span>}
-        {ad.cta_url && <span style={{ ...s.cnt, color: theme.colors.primary }}><ExternalLink size={12} /> {ad.cta_text || 'CTA'}</span>}
+        {ad.cta_url && <span style={{ ...s.cnt, color: theme.colors.premium.primary }}><ExternalLink size={12} /> {ad.cta_text || 'CTA'}</span>}
       </div>
 
       {/* Действия */}
@@ -263,7 +263,7 @@ function AdCard({ ad, isAdmin, expanded, stats, onToggleStats, onApprove, onReje
                 { n: stats.impressions_count, l: 'Показы' },
                 { n: stats.unique_views_count, l: 'Уник.' },
                 { n: stats.clicks_count, l: 'Клики' },
-                { n: `${stats.ctr}%`, l: 'CTR', color: theme.colors.primary },
+                { n: `${stats.ctr}%`, l: 'CTR', color: theme.colors.premium.primary },
               ].map((x, i) => (
                 <div key={i} style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: x.color || theme.colors.text }}>{x.n}</div>
@@ -546,7 +546,7 @@ const s = {
   hdr: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   hdrTitle: { fontSize: 15, fontWeight: 700, color: theme.colors.text, display: 'flex', alignItems: 'center', gap: 6 },
   badge: { minWidth: 20, height: 20, borderRadius: 10, background: '#f59e0b', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' },
-  createBtn: { display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px', borderRadius: 10, background: theme.colors.primary, color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  createBtn: { display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px', borderRadius: 10, background: theme.colors.premium.primary, color: theme.colors.premium.primaryText, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
 
   chips: { display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' },
   chip: { padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
@@ -708,7 +708,7 @@ const s = {
 
   empty: { textAlign: 'center', padding: '40px 20px' },
   center: { display: 'flex', justifyContent: 'center', padding: '40px 0' },
-  spinner: { width: 28, height: 28, borderRadius: '50%', border: `3px solid ${theme.colors.border}`, borderTopColor: theme.colors.primary, animation: 'spin 0.8s linear infinite' },
+  spinner: { width: 28, height: 28, borderRadius: '50%', border: `3px solid ${theme.colors.border}`, borderTopColor: theme.colors.premium.primary, animation: 'spin 0.8s linear infinite' },
 };
 
 export default CampaignManager;

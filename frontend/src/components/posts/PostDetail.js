@@ -728,8 +728,8 @@ function PostDetail() {
                       <span style={styles.readonlyMetricText}>{post.views_count || 0}</span>
                     </div>
                     <div style={styles.statItem}>
-                      <MessageCircle size={18} color={theme.colors.textSecondary} strokeWidth={2} />
-                      <span style={{...styles.statText, color: theme.colors.textSecondary}}>
+                      <MessageCircle size={18} color={theme.colors.premium.textMuted} strokeWidth={2} />
+                      <span style={{...styles.statText, color: theme.colors.premium.textMuted}}>
                         {comments.length}
                       </span>
                     </div>

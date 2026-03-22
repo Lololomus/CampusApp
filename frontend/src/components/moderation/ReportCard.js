@@ -252,8 +252,8 @@ function ReportCard({ report, onProcessed, compact = false }) {
                       key={d}
                       style={{
                         ...styles.dayChip,
-                        background: banDays === d ? theme.colors.primary : theme.colors.bgSecondary,
-                        color: banDays === d ? '#fff' : theme.colors.textSecondary,
+                        background: banDays === d ? theme.colors.premium.primary : theme.colors.bgSecondary,
+                        color: banDays === d ? theme.colors.premium.primaryText : theme.colors.textSecondary,
                       }}
                       onClick={() => setBanDays(d)}
                     >
@@ -386,8 +386,8 @@ const styles = {
   reasonTag: {
     fontSize: 11,
     fontWeight: 600,
-    color: theme.colors.primary,
-    background: theme.colors.primaryLight,
+    color: theme.colors.premium.primary,
+    background: `${theme.colors.premium.primary}1A`,
     padding: '3px 8px',
     borderRadius: 8,
   },
@@ -459,8 +459,8 @@ const styles = {
   selfBadge: {
     fontSize: 11,
     fontWeight: 700,
-    color: theme.colors.primary,
-    background: theme.colors.primaryLight,
+    color: theme.colors.premium.primary,
+    background: `${theme.colors.premium.primary}1A`,
     padding: '2px 8px',
     borderRadius: 6,
   },

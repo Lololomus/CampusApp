@@ -85,7 +85,7 @@ function ReportQueue({ reports, loading, onProcessed, onRefresh }) {
               style={{
                 ...styles.dot,
                 backgroundColor: i === 0
-                  ? theme.colors.primary
+                  ? theme.colors.premium.primary
                   : theme.colors.border,
               }}
             />
@@ -175,8 +175,8 @@ const styles = {
     gap: 6,
     padding: '10px 20px',
     borderRadius: 12,
-    background: theme.colors.primary,
-    color: '#fff',
+    background: theme.colors.premium.primary,
+    color: theme.colors.premium.primaryText,
     border: 'none',
     fontSize: 14,
     fontWeight: 600,
@@ -189,7 +189,7 @@ const styles = {
     height: 32,
     borderRadius: '50%',
     border: `3px solid ${theme.colors.border}`,
-    borderTopColor: theme.colors.primary,
+    borderTopColor: theme.colors.premium.primary,
     animation: 'spin 0.8s linear infinite',
   },
 };
