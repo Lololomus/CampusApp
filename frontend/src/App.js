@@ -61,7 +61,6 @@ function App() {
     authStatus,
     bootstrapAuth,
     showNotificationsScreen,
-    setActiveTab,
   } = useStore();
   const isProd = import.meta.env.PROD;
 
@@ -112,13 +111,6 @@ function App() {
       body.classList.remove('custom-scroll');
     };
   }, [activeTab]);
-
-  // Safety: если activeTab='people' был сохранён в storage, в prod возвращаем на ленту
-  useEffect(() => {
-    if (isProd && activeTab === 'people') {
-      setActiveTab('feed');
-    }
-  }, [activeTab, isProd, setActiveTab]);
 
   const renderContent = () => {
     if (showUserMarketItems) return <UserMarketItems />;

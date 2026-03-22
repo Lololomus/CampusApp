@@ -8,6 +8,7 @@ import { X, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX, Download, 
 import { useSwipe } from '../../hooks/useSwipe';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
 import Avatar, { AVATAR_BORDER_RADIUS } from './Avatar';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 // ─── URL-резолвер для медиа (image / video / thumbs) ──────────────────────────
 // Принимает относительный путь вида "2026/03/uuid.mp4" или уже полный "/uploads/..."
@@ -335,6 +336,12 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   });
 
   // Авто-сворачивание футера при пинче, восстановление при отпускании
+  // Блокировка скролла страницы пока MediaViewer открыт
+  useEffect(() => {
+    lockBodyScroll();
+    return () => unlockBodyScroll();
+  }, []);
+
   useEffect(() => {
     if (isZoomed) {
       setFooterOpen(false);

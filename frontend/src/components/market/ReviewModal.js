@@ -7,6 +7,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import { DragHandle } from '../shared/SwipeableModal';
 import { useSwipe } from '../../hooks/useSwipe';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 const C = {
   bg: '#050505',
@@ -27,8 +28,12 @@ const ReviewModal = ({ sellerId, sellerName, itemId, dealId, itemTitle, onClose,
   const sheetRef = useRef(null);
 
   useEffect(() => {
+    lockBodyScroll();
     const t = setTimeout(() => setIsVisible(true), 20);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      unlockBodyScroll();
+    };
   }, []);
 
   const handleClose = useCallback(() => {

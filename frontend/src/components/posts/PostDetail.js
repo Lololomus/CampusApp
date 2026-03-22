@@ -27,6 +27,7 @@ import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 import { IMAGE_ASPECT_RATIO_MIN, IMAGE_ASPECT_RATIO_MAX } from '../../constants/layoutConstants';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 const parseImages = (value) => {
   if (!value) return [];
@@ -147,6 +148,12 @@ function PostDetail() {
     return () => {
       if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
     };
+  }, []);
+
+  // Блокировка скролла страницы пока PostDetail открыт
+  useEffect(() => {
+    lockBodyScroll();
+    return () => unlockBodyScroll();
   }, []);
 
   useEffect(() => {

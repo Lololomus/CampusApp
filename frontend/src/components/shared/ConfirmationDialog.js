@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import theme from '../../theme';
 import { Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 function ConfirmationDialog({
   isOpen,
@@ -22,6 +23,12 @@ function ConfirmationDialog({
     setMounted(true);
     return () => setMounted(false);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    lockBodyScroll();
+    return () => unlockBodyScroll();
+  }, [isOpen]);
 
   if (!isOpen || !mounted) return null;
 

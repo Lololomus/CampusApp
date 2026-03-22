@@ -17,6 +17,7 @@ import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
 import { parseApiDate } from '../../utils/datetime';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 const C = {
   bg: '#000000',
@@ -51,7 +52,12 @@ function UserRequests() {
     back: { visible: true, onClick: () => { hapticFeedback('light'); closeScreen(); } },
   });
 
-  useEffect(() => { loadRequests(); }, []);
+  useEffect(() => {
+    lockBodyScroll();
+    loadRequests();
+    return () => unlockBodyScroll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadRequests = async () => {
     if (loading || !hasMore) return;

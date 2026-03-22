@@ -14,6 +14,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 // Premium palette (единый источник, без legacy theme)
 const C = {
@@ -48,7 +49,9 @@ function UserPosts() {
   });
 
   useEffect(() => {
+    lockBodyScroll();
     loadPosts();
+    return () => unlockBodyScroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

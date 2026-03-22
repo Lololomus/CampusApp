@@ -29,13 +29,12 @@ function Navigation() {
   const prevActiveTabRef = useRef(activeTab);
   const bounceTimeoutRef = useRef(null);
   const outerRef = useRef(null);
-  const isProd = import.meta.env.PROD;
 
-  // В prod dating-сегмент скрыт; в dev доступен для тестирования
+  // 4 боковых таба (без кнопки создания)
   const sideTabs = [
     { id: 'feed', icon: Home, label: 'Лента' },
     { id: 'market', icon: ShoppingBag, label: 'Маркет' },
-    ...(!isProd ? [{ id: 'people', icon: Heart, label: 'Знакомства' }] : []),
+    { id: 'people', icon: Heart, label: 'Знакомства' },
     { id: 'profile', icon: User, label: 'Профиль' },
   ];
 

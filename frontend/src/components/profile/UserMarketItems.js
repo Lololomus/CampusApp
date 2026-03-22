@@ -17,6 +17,7 @@ import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 const C = {
   bg: '#000000',
@@ -50,7 +51,12 @@ function UserMarketItems() {
     back: { visible: true, onClick: () => { hapticFeedback('light'); closeScreen(); } },
   });
 
-  useEffect(() => { loadItems(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    lockBodyScroll();
+    loadItems();
+    return () => unlockBodyScroll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadItems = async () => {
     if (loading || !hasMore) return;

@@ -14,6 +14,7 @@ import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/tele
 import { toast } from '../shared/Toast';
 import { Z_MODAL_NOTIFICATIONS_SCREEN } from '../../constants/zIndex';
 import ReviewModal from '../market/ReviewModal';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 // ========== КОНСТАНТЫ ==========
 
@@ -446,6 +447,12 @@ function NotificationsScreen() {
     setIsExiting(true);
     setTimeout(() => setShowNotificationsScreen(false), 340);
   }, [isExiting, setShowNotificationsScreen]);
+
+  // Блокировка скролла страницы пока экран уведомлений открыт
+  useEffect(() => {
+    lockBodyScroll();
+    return () => unlockBodyScroll();
+  }, []);
 
   // Telegram BackButton (прод) + cleanup
   useEffect(() => {

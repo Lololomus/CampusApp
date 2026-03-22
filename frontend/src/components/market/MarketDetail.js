@@ -20,6 +20,7 @@ import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate } from '../../utils/datetime';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 
@@ -51,6 +52,12 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   
   const menuRef = useRef(null);
   const sellerAvatarRef = useRef(null);
+
+  // Блокировка скролла страницы пока MarketDetail открыт
+  useEffect(() => {
+    lockBodyScroll();
+    return () => unlockBodyScroll();
+  }, []);
 
   useEffect(() => {
     const sellerId = currentItem?.seller_id || currentItem?.seller?.id;

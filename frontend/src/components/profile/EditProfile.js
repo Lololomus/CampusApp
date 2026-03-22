@@ -20,6 +20,7 @@ import {
   searchCampuses,
   getCampusById, ONBOARDING_LIMITS,
 } from '../../constants/universityData';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
 const normalizeText = (value) => String(value ?? '').trim();
 const normalizeUsername = (value) => normalizeText(value).replace(/^@/, '');
@@ -202,6 +203,12 @@ function EditProfile() {
   const canEditEdu = user?.can_edit_edu !== false;
   const eduCooldownDays = user?.edu_cooldown_days ?? 0;
   const hasUsedFreeChange = Boolean(user?.last_profile_edit);
+
+  // Блокировка скролла страницы пока экран редактирования открыт
+  useEffect(() => {
+    lockBodyScroll();
+    return () => unlockBodyScroll();
+  }, []);
 
   // Инициализация из user
   useEffect(() => {
