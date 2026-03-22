@@ -241,7 +241,7 @@ export function initTelegramApp() {
   const _blockPinch = (e) => {
     if (e.touches.length > 1) e.preventDefault();
   };
-  document.addEventListener('touchmove', _blockPinch, { passive: false });
+  document.addEventListener('touchmove', _blockPinch, { passive: false, capture: true });
 
   // Блокировка double-tap зума
   let _lastTap = 0;

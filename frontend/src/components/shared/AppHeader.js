@@ -143,6 +143,13 @@ const AppHeader = ({
     }
   }, [premium, isScrolled, isManualExpanded]);
 
+  // Снимаем фокус (закрываем клавиатуру) когда drawer скрывается
+  useEffect(() => {
+    if (!showDrawer && premiumSearchRef.current) {
+      premiumSearchRef.current.blur();
+    }
+  }, [showDrawer]);
+
   // ===== DEBOUNCE SEARCH =====
   useEffect(() => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -425,7 +432,7 @@ const AppHeader = ({
                     placeholder={searchPlaceholder}
                     style={{
                       flex: 1, height: '100%', background: 'transparent',
-                      border: 'none', color: '#FFF', fontSize: 15, outline: 'none',
+                      border: 'none', color: '#FFF', fontSize: 16, outline: 'none',
                     }}
                   />
                   {localSearchValue && (

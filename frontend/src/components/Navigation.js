@@ -28,6 +28,7 @@ function Navigation() {
   const [isFirstRender, setIsFirstRender] = useState(true);
   const prevActiveTabRef = useRef(activeTab);
   const bounceTimeoutRef = useRef(null);
+  const outerRef = useRef(null);
 
   // 4 боковых таба (без кнопки создания)
   const sideTabs = [
@@ -70,6 +71,25 @@ function Navigation() {
     };
   }, [activeTab, shouldShowCreateButton, isFirstRender]);
 
+  // Скрываем навигацию при открытии клавиатуры (iOS двигает fixed-элементы вверх)
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const handleResize = () => {
+      const el = outerRef.current;
+      if (!el) return;
+      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      el.style.transition = 'transform 0.25s ease';
+      el.style.transform = keyboardHeight > 50 ? `translateY(${keyboardHeight}px)` : 'translateY(0)';
+    };
+    vv.addEventListener('resize', handleResize);
+    vv.addEventListener('scroll', handleResize);
+    return () => {
+      vv.removeEventListener('resize', handleResize);
+      vv.removeEventListener('scroll', handleResize);
+    };
+  }, []);
+
   const handleTabClick = (tabId) => {
     hapticFeedback('light');
 
@@ -99,7 +119,7 @@ function Navigation() {
   const p = theme.colors.premium;
 
   return (
-    <div style={styles.outerWrapper}>
+    <div ref={outerRef} style={styles.outerWrapper}>
       <nav style={styles.nav}>
         {/* Контейнер для боковых кнопок */}
         <div style={styles.tabsContainer}>
