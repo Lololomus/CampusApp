@@ -21,8 +21,28 @@ const MIN_TITLE_LEN = 3;
 const MIN_DESC_LEN = 10;
 const TOOL_ICON_SIZE = 26;
 
+const hasCreateMarketDraftData = (draft) => {
+  if (!draft || typeof draft !== 'object') return false;
+  return (
+    String(draft.title || '').trim().length > 0 ||
+    String(draft.desc || '').trim().length > 0 ||
+    String(draft.price || '').trim().length > 0 ||
+    String(draft.location || '').trim().length > 0 ||
+    String(draft.cat || '').trim().length > 0 ||
+    String(draft.condition || '').trim().length > 0 ||
+    (Array.isArray(draft.photos) && draft.photos.length > 0) ||
+    Boolean(draft.videoFile)
+  );
+};
+
 const CreateMarketItem = ({ onClose, onSuccess }) => {
-  const { user, addMarketItem } = useStore();
+  const {
+    user,
+    addMarketItem,
+    createMarketDraft,
+    setCreateMarketDraft,
+    clearCreateMarketDraft,
+  } = useStore();
 
   // --- Основной стейт ---
   const [itemType, setItemType] = useState('product');
@@ -44,11 +64,13 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   // --- Анимация видимости ---
   const [isVisible, setIsVisible] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showRestoreDialog, setShowRestoreDialog] = useState(false);
 
   const fileInputRef  = useRef(null);
   const titleRef      = useRef(null);
   const descRef       = useRef(null);
   const sheetRef      = useRef(null);
+  const skipItemTypeResetRef = useRef(false);
   const mediaProcessingTasksRef = useRef(new Set());
   const photosRef = useRef(photos);
   const videoFileRef = useRef(videoFile);
@@ -128,6 +150,11 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
   // Сброс категории и состояния при смене типа
   useEffect(() => {
+    if (skipItemTypeResetRef.current) {
+      skipItemTypeResetRef.current = false;
+      return;
+    }
+
     setCat('');
     if (itemType === 'service') setCondition('');
   }, [itemType]);
@@ -145,21 +172,93 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     videoFileRef.current = videoFile;
   }, [videoFile]);
 
-  const hasAnyContent = () =>
-    title.trim().length > 0 || desc.trim().length > 0 || price !== '' || photos.length > 0;
+  useEffect(() => {
+    if (hasCreateMarketDraftData(createMarketDraft)) {
+      setShowRestoreDialog(true);
+    }
+  }, [createMarketDraft]);
 
-  const confirmClose = () => {
+  const hasAnyContent = () =>
+    title.trim().length > 0 ||
+    desc.trim().length > 0 ||
+    price !== '' ||
+    photos.length > 0 ||
+    videoFile !== null ||
+    cat !== '' ||
+    condition !== '' ||
+    location.trim().length > 0;
+
+  const buildDraftSnapshot = () => ({
+    itemType,
+    cat,
+    title,
+    price,
+    desc,
+    condition,
+    location,
+    photos: [...photos],
+    videoFile,
+    videoThumb,
+    savedAt: Date.now(),
+  });
+
+  const restoreDraft = (draft) => {
+    if (!draft || typeof draft !== 'object') return;
+
+    const nextPhotos = Array.isArray(draft.photos) ? [...draft.photos] : [];
+    const nextVideo = draft.videoFile || null;
+
+    skipItemTypeResetRef.current = true;
+    setItemType(draft.itemType === 'service' ? 'service' : 'product');
+    setCat(draft.cat || '');
+    setTitle(draft.title || '');
+    setPrice(String(draft.price ?? ''));
+    setDesc(draft.desc || '');
+    setCondition(draft.condition || '');
+    setLocation(draft.location || '');
+    setPhotos(nextPhotos);
+    setVideoFile(nextVideo);
+    setVideoThumb(draft.videoThumb || null);
+    photosRef.current = nextPhotos;
+    videoFileRef.current = nextVideo;
+  };
+
+  const closeWithDraft = ({ keepDraft = true } = {}) => {
+    if (keepDraft) {
+      if (hasAnyContent()) {
+        setCreateMarketDraft(buildDraftSnapshot());
+      } else {
+        clearCreateMarketDraft();
+      }
+    } else {
+      clearCreateMarketDraft();
+    }
+
     hapticFeedback('light');
     setIsVisible(false);
     setTimeout(onClose, 320);
   };
 
+  const handleRestoreDraft = () => {
+    restoreDraft(createMarketDraft);
+    setShowRestoreDialog(false);
+  };
+
+  const handleDiscardDraft = () => {
+    clearCreateMarketDraft();
+    setShowRestoreDialog(false);
+  };
+
   const swipeHandlers = useSwipe({
     elementRef: sheetRef,
     onSwipeDown: () => {
-      if (showConfirmation) return;
-      if (hasAnyContent()) setShowConfirmation(true);
-      else confirmClose();
+      if (showConfirmation || showRestoreDialog) return false;
+      if (hasAnyContent()) {
+        setShowConfirmation(true);
+        return false;
+      }
+      closeWithDraft();
+      return true;
     },
     isModal: true,
     threshold: 120,
@@ -171,7 +270,17 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     priority: Z_MODAL_CREATE_MARKET_ITEM + 5,
     back: {
       visible: true,
-      onClick: handleClose,
+      onClick: () => {
+        if (showRestoreDialog) {
+          handleDiscardDraft();
+          return;
+        }
+        if (showConfirmation) {
+          setShowConfirmation(false);
+          return;
+        }
+        handleClose();
+      },
     },
     main: { visible: false },
   });
@@ -334,7 +443,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       hapticFeedback('success');
       toast.success('Товар опубликован');
       if (onSuccess) onSuccess(result);
-      handleClose();
+      closeWithDraft({ keepDraft: false });
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Ошибка публикации');
       hapticFeedback('error');
@@ -351,7 +460,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       setShowConfirmation(true);
       return;
     }
-    confirmClose();
+    closeWithDraft();
   }
 
   // Текст выбранного состояния
@@ -676,12 +785,22 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       <ConfirmationDialog
         isOpen={showConfirmation}
         title="Выйти из редактора?"
-        message="Весь введённый текст будет потерян"
-        confirmText="Да, выйти"
+        message="Черновик сохранится в текущей сессии и его можно будет восстановить."
+        confirmText="Выйти"
         cancelText="Продолжить"
         confirmType="danger"
-        onConfirm={confirmClose}
+        onConfirm={() => closeWithDraft()}
         onCancel={() => setShowConfirmation(false)}
+      />
+      <ConfirmationDialog
+        isOpen={showRestoreDialog}
+        title="Восстановить черновик?"
+        message="Найден незавершенный черновик из текущей сессии."
+        confirmText="Восстановить"
+        cancelText="Начать заново"
+        confirmType="primary"
+        onConfirm={handleRestoreDraft}
+        onCancel={handleDiscardDraft}
       />
     </>
   );

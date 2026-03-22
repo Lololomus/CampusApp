@@ -32,6 +32,8 @@ export const useStore = create(
             isRegistered: false,
             moderationRole: null,
             authStatus: 'ready',
+            createContentDraft: null,
+            createMarketDraft: null,
           });
         } else {
           set({ user, isRegistered: true, authStatus: 'ready' });
@@ -82,6 +84,8 @@ export const useStore = create(
           isRegistered: false,
           moderationRole: null,
           authStatus: 'ready',
+          createContentDraft: null,
+          createMarketDraft: null,
         });
       },
 
@@ -115,12 +119,18 @@ export const useStore = create(
       showCreateModal: false,
       showCreateRequestModal: false,
       showCreateMarketItem: false,
+      createContentDraft: null,
+      createMarketDraft: null,
       viewPostId: null,
       showEditModal: false,
       setShowAuthModal: (show) => set({ showAuthModal: show }),
       setShowCreateModal: (show) => set({ showCreateModal: show }),
       setShowCreateRequestModal: (show) => set({ showCreateRequestModal: show }),
       setShowCreateMarketItem: (show) => set({ showCreateMarketItem: show }),
+      setCreateContentDraft: (draft) => set({ createContentDraft: draft }),
+      clearCreateContentDraft: () => set({ createContentDraft: null }),
+      setCreateMarketDraft: (draft) => set({ createMarketDraft: draft }),
+      clearCreateMarketDraft: () => set({ createMarketDraft: null }),
       setViewPostId: (id) => set({ viewPostId: id }),
       setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
@@ -650,6 +660,8 @@ export const useStore = create(
               authStatus: 'error',
               showAuthModal: false,
               activeTab: 'feed',
+              createContentDraft: null,
+              createMarketDraft: null,
             });
           }
         }

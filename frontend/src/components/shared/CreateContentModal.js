@@ -127,12 +127,46 @@ const buildRequestExpiresAtIso = (deadlineType, customDate) => {
   return null;
 };
 
+const hasCreateContentDraftData = (draft) => {
+  if (!draft || typeof draft !== 'object') return false;
+
+  const hasPostDraft =
+    String(draft.postTitle || '').trim().length > 0 ||
+    String(draft.postBody || '').trim().length > 0 ||
+    (Array.isArray(draft.postTags) && draft.postTags.length > 0) ||
+    (Array.isArray(draft.photos) && draft.photos.length > 0) ||
+    Boolean(draft.videoFile) ||
+    Boolean(draft.hasPoll) ||
+    String(draft.location || '').trim().length > 0 ||
+    String(draft.customDate || '').trim().length > 0;
+
+  const hasRequestDraft =
+    String(draft.reqTitle || '').trim().length > 0 ||
+    String(draft.reqBody || '').trim().length > 0 ||
+    draft.reqRewardType === 'money' ||
+    draft.reqRewardType === 'barter' ||
+    String(draft.reqRewardValue || '').trim().length > 0 ||
+    (draft.reqDeadlineType && draft.reqDeadlineType !== '24h') ||
+    String(draft.reqCustomDate || '').trim().length > 0;
+
+  return hasPostDraft || hasRequestDraft;
+};
+
 function CreateContentModal({ onClose }) {
-  const { addNewPost, addNewRequest, feedSubTab, setFeedSubTab } = useStore();
+  const {
+    addNewPost,
+    addNewRequest,
+    feedSubTab,
+    setFeedSubTab,
+    createContentDraft,
+    setCreateContentDraft,
+    clearCreateContentDraft,
+  } = useStore();
 
   const [isMounted, setIsMounted] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAwaitingMedia, setIsAwaitingMedia] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -183,6 +217,7 @@ function CreateContentModal({ onClose }) {
   const reqBodyRef = useRef(null);
   const postFileInputRef = useRef(null);
   const postTagInputRef = useRef(null);
+  const skipPostCategoryResetRef = useRef(false);
   const mediaProcessingTasksRef = useRef(new Set());
   const photosRef = useRef(photos);
   const imageFilesRef = useRef(imageFiles);
@@ -326,6 +361,11 @@ function CreateContentModal({ onClose }) {
   }, [activeTab]);
 
   useEffect(() => {
+    if (skipPostCategoryResetRef.current) {
+      skipPostCategoryResetRef.current = false;
+      return;
+    }
+
     setLocation('');
     setEventDateMode('today');
     setCustomDate('');
@@ -355,12 +395,19 @@ function CreateContentModal({ onClose }) {
     }
   }, [postCategory]);
 
+  useEffect(() => {
+    if (hasCreateContentDraftData(createContentDraft)) {
+      setShowRestoreDialog(true);
+    }
+  }, [createContentDraft]);
+
   const hasAnyContent = () => {
     const hasPostDraft =
       postTitle.trim().length > 0 ||
       postBody.trim().length > 0 ||
       postTags.length > 0 ||
       photos.length > 0 ||
+      Boolean(videoFile) ||
       processingImages.length > 0 ||
       showTagTool ||
       hasPoll ||
@@ -378,18 +425,134 @@ function CreateContentModal({ onClose }) {
     return hasPostDraft || hasRequestDraft;
   };
 
-  const confirmClose = () => {
+  const buildDraftSnapshot = () => ({
+    activeTab,
+    postCategory,
+    postTitle,
+    postBody,
+    postTags: [...postTags],
+    photos: [...photos],
+    imageFiles: [...imageFiles],
+    videoFile,
+    videoThumb,
+    isAnonymous,
+    lfType,
+    eventDateMode,
+    customDate,
+    location,
+    hasPoll,
+    pollOptions: [...pollOptions],
+    pollType,
+    pollCorrectOption,
+    pollMulti,
+    pollAnon,
+    pollExplanation,
+    reqCategory,
+    reqTitle,
+    reqBody,
+    reqRewardType,
+    reqRewardValue,
+    reqDeadlineType,
+    reqCustomDate,
+    savedAt: Date.now(),
+  });
+
+  const restoreDraft = (draft) => {
+    if (!draft || typeof draft !== 'object') return;
+
+    const nextPhotos = Array.isArray(draft.photos) ? [...draft.photos] : [];
+    const nextImageFiles = Array.isArray(draft.imageFiles) ? [...draft.imageFiles] : [];
+    const nextVideo = draft.videoFile || null;
+
+    setActiveTab(draft.activeTab === 'request' ? 'request' : 'post');
+
+    skipPostCategoryResetRef.current = true;
+    setPostCategory(draft.postCategory || CREATE_CONTENT_POST_CATEGORIES[0]?.value || 'news');
+    setPostTitle(draft.postTitle || '');
+    setPostBody(draft.postBody || '');
+    setPostTags(Array.isArray(draft.postTags) ? [...draft.postTags] : []);
+    setPhotos(nextPhotos);
+    setImageFiles(nextImageFiles);
+    setVideoFile(nextVideo);
+    setVideoThumb(draft.videoThumb || null);
+    setIsAnonymous(Boolean(draft.isAnonymous));
+    setLfType(draft.lfType === 'found' ? 'found' : 'lost');
+    setEventDateMode(draft.eventDateMode || 'today');
+    setCustomDate(draft.customDate || '');
+    setLocation(draft.location || '');
+    setHasPoll(Boolean(draft.hasPoll));
+    setPollOptions(Array.isArray(draft.pollOptions) && draft.pollOptions.length >= 2 ? [...draft.pollOptions] : ['', '']);
+    setPollType(draft.pollType || 'regular');
+    setPollCorrectOption(Number.isInteger(draft.pollCorrectOption) ? draft.pollCorrectOption : null);
+    setPollMulti(Boolean(draft.pollMulti));
+    setPollAnon(typeof draft.pollAnon === 'boolean' ? draft.pollAnon : true);
+    setPollExplanation(draft.pollExplanation ?? null);
+
+    setReqCategory(draft.reqCategory || CREATE_CONTENT_REQUEST_CATEGORIES[0]?.value || 'help');
+    setReqTitle(draft.reqTitle || '');
+    setReqBody(draft.reqBody || '');
+    setReqRewardType(draft.reqRewardType || 'none');
+    setReqRewardValue(draft.reqRewardValue || '');
+    setReqDeadlineType(draft.reqDeadlineType || '24h');
+    setReqCustomDate(draft.reqCustomDate || '');
+
+    setProcessingImages([]);
+    photosRef.current = nextPhotos;
+    imageFilesRef.current = nextImageFiles;
+    videoFileRef.current = nextVideo;
+  };
+
+  const closeWithDraft = ({ keepDraft = true } = {}) => {
+    if (keepDraft) {
+      if (hasAnyContent()) {
+        setCreateContentDraft(buildDraftSnapshot());
+      } else {
+        clearCreateContentDraft();
+      }
+    } else {
+      clearCreateContentDraft();
+    }
+
     hapticFeedback('light');
     setIsVisible(false);
     setTimeout(() => onClose(), 320);
   };
 
+  const handleRestoreDraft = () => {
+    restoreDraft(createContentDraft);
+    setShowRestoreDialog(false);
+  };
+
+  const handleDiscardDraft = () => {
+    clearCreateContentDraft();
+    setShowRestoreDialog(false);
+  };
+
+  const switchContentTab = (nextTab) => {
+    if (nextTab === activeTab || isSubmitting) return;
+
+    if (nextTab === 'request') {
+      setReqTitle(postTitle);
+      setReqBody(postBody);
+    } else {
+      setPostTitle(reqTitle);
+      setPostBody(reqBody);
+    }
+
+    setActiveTab(nextTab);
+    hapticFeedback('light');
+  };
+
   const swipeHandlers = useSwipe({
     elementRef: sheetRef,
     onSwipeDown: () => {
-      if (showConfirmation) return;
-      if (hasAnyContent()) setShowConfirmation(true);
-      else confirmClose();
+      if (showConfirmation || showRestoreDialog) return false;
+      if (hasAnyContent()) {
+        setShowConfirmation(true);
+        return false;
+      }
+      closeWithDraft();
+      return true;
     },
     isModal: true,
     threshold: 120,
@@ -436,7 +599,7 @@ function CreateContentModal({ onClose }) {
       setShowConfirmation(true);
       return;
     }
-    confirmClose();
+    closeWithDraft();
   };
 
   const toggleTagTool = () => {
@@ -761,7 +924,7 @@ function CreateContentModal({ onClose }) {
         setUploadProgress(100);
         hapticFeedback('success');
         toast.success('Пост успешно опубликован!');
-        setTimeout(confirmClose, 120);
+        setTimeout(() => closeWithDraft({ keepDraft: false }), 120);
       } catch (submitError) {
         console.error(submitError);
         const detail = submitError?.response?.data?.detail;
@@ -820,7 +983,7 @@ function CreateContentModal({ onClose }) {
       setUploadProgress(100);
       hapticFeedback('success');
       toast.success('Запрос успешно создан!');
-      setTimeout(confirmClose, 120);
+      setTimeout(() => closeWithDraft({ keepDraft: false }), 120);
     } catch (submitError) {
       console.error(submitError);
       const detail = submitError?.response?.data?.detail;
@@ -842,7 +1005,17 @@ function CreateContentModal({ onClose }) {
     priority: 120,
     back: {
       visible: isVisible,
-      onClick: showConfirmation ? () => setShowConfirmation(false) : handleClose,
+      onClick: () => {
+        if (showRestoreDialog) {
+          handleDiscardDraft();
+          return;
+        }
+        if (showConfirmation) {
+          setShowConfirmation(false);
+          return;
+        }
+        handleClose();
+      },
     },
     main: {
       visible: false,
@@ -870,7 +1043,7 @@ function CreateContentModal({ onClose }) {
   const content = (
     <>
       <style>{keyframeStyles}</style>
-      <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0, pointerEvents: showConfirmation ? 'none' : 'auto' }}>
+      <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0, pointerEvents: (showConfirmation || showRestoreDialog) ? 'none' : 'auto' }}>
         <div style={{ ...styles.backdrop, opacity: isVisible ? 1 : 0 }} onClick={handleClose} />
         <div
           ref={sheetRef}
@@ -889,7 +1062,7 @@ function CreateContentModal({ onClose }) {
             <div style={styles.switcherInner}>
               <button
                 type="button"
-                onClick={() => { setActiveTab('post'); hapticFeedback('light'); }}
+                onClick={() => switchContentTab('post')}
                 style={activeTab === 'post' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn}
                 className="create-spring-btn"
                 disabled={isSubmitting}
@@ -898,7 +1071,7 @@ function CreateContentModal({ onClose }) {
               </button>
               <button
                 type="button"
-                onClick={() => { setActiveTab('request'); hapticFeedback('light'); }}
+                onClick={() => switchContentTab('request')}
                 style={activeTab === 'request' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn}
                 className="create-spring-btn"
                 disabled={isSubmitting}
@@ -1414,12 +1587,22 @@ function CreateContentModal({ onClose }) {
       <ConfirmationDialog
         isOpen={showConfirmation}
         title="Выйти из редактора?"
-        message="Весь введённый текст будет потерян"
-        confirmText="Да, выйти"
+        message="Черновик сохранится в текущей сессии и его можно будет восстановить."
+        confirmText="Выйти"
         cancelText="Продолжить"
         confirmType="danger"
-        onConfirm={confirmClose}
+        onConfirm={() => closeWithDraft()}
         onCancel={() => setShowConfirmation(false)}
+      />
+      <ConfirmationDialog
+        isOpen={showRestoreDialog}
+        title="Восстановить черновик?"
+        message="Найден незавершенный черновик из текущей сессии."
+        confirmText="Восстановить"
+        cancelText="Начать заново"
+        confirmType="primary"
+        onConfirm={handleRestoreDraft}
+        onCancel={handleDiscardDraft}
       />
     </>
   );

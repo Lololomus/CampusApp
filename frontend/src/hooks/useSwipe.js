@@ -83,8 +83,8 @@ export const useSwipe = ({
     let handled = false;
 
     if (isModal && y > threshold) {
-      onSwipeDown?.();
-      handled = true;
+      const swipeResult = onSwipeDown?.();
+      handled = swipeResult !== false;
     } else if (!isModal && Math.abs(x) > threshold) {
       if (x > 0) onSwipeRight?.();
       else onSwipeLeft?.();
