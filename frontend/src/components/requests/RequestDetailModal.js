@@ -35,6 +35,7 @@ import { parseApiDate } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
+import LinkText from '../shared/LinkText';
 import SwipeableModal from '../shared/SwipeableModal';
 
 const CATEGORY_CONFIG = {
@@ -546,7 +547,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
                 overflowY: descriptionExpanded ? 'auto' : 'hidden',
               }}
             >
-              {descriptionText}
+              <LinkText text={descriptionText} />
             </div>
             {descriptionLong && (
               <div
@@ -792,6 +793,8 @@ const styles = {
     fontSize: 15,
     lineHeight: 1.45,
     whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
     transition: 'max-height 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
   },
   descriptionTopFade: {

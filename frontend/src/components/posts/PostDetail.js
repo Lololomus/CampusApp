@@ -22,6 +22,7 @@ import DrilldownHeader from '../shared/DrilldownHeader';
 import EdgeBlur from '../shared/EdgeBlur';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
+import LinkText from '../shared/LinkText';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
@@ -630,7 +631,7 @@ function PostDetail() {
                   )}
                   {displayBody && (
                     <div style={{ marginTop: post.title ? 4 : 0 }}>
-                      <p style={styles.body}>{displayBody}</p>
+                      <p style={styles.body}><LinkText text={displayBody} /></p>
                     </div>
                   )}
                 </div>
@@ -1004,7 +1005,7 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
               fontStyle: comment.is_deleted ? 'italic' : 'normal',
               color: comment.is_deleted ? theme.colors.textDisabled : theme.colors.textSecondary
             }}>
-              {comment.body}
+              <LinkText text={comment.body} />
             </p>
           )}
 
@@ -1163,6 +1164,7 @@ const styles = {
   },
   body: {
     fontSize: 15, lineHeight: 1.45, color: theme.colors.textSecondary, margin: 0,
+    whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word',
   },
   pollWrapper: { margin: `0 ${theme.spacing.lg}px ${theme.spacing.md}px` },
   specialBlock: {

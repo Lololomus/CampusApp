@@ -8,6 +8,7 @@ import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import PollWidget from './PollWidget';
+import LinkText from '../shared/LinkText';
 import PhotoViewer from '../shared/PhotoViewer';
 import MediaGrid from '../shared/MediaGrid';
 import ReportModal from '../shared/ReportModal';
@@ -583,7 +584,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
                       overflow: isBodyExpanded ? 'visible' : 'hidden',
                     }}
                   >
-                    {displayBody}
+                    <LinkText text={displayBody} />
                   </p>
                   {!isBodyExpanded && isBodyOverflowing && (
                     <div style={styles.bodyBottomFade} />

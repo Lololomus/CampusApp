@@ -84,7 +84,11 @@ const Avatar = forwardRef(({
               const initial = displayName[0]?.toUpperCase() || 'A';
               const bg = getAvatarColor(displayName);
               parent.style.background = bg;
-              parent.innerHTML = `<span style="user-select: none; font-size: ${size * 0.45}px; font-weight: 700; color: #fff;">${initial}</span>`;
+              const span = document.createElement('span');
+              span.textContent = initial;
+              span.style.cssText = `user-select: none; font-size: ${size * 0.45}px; font-weight: 700; color: #fff;`;
+              parent.textContent = '';
+              parent.appendChild(span);
             }
           }}
         />

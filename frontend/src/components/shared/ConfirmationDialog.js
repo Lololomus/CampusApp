@@ -118,6 +118,8 @@ const styles = {
     color: '#aaa',
     marginBottom: 24,
     lineHeight: 1.4,
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
   },
   buttons: {
     display: 'grid',

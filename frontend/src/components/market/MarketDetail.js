@@ -13,6 +13,7 @@ import theme from '../../theme';
 import { Z_MARKET_DETAIL } from '../../constants/zIndex';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { hapticFeedback } from '../../utils/telegram';
+import LinkText from '../shared/LinkText';
 import DropdownMenu from '../DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import Avatar from '../shared/Avatar';
@@ -523,7 +524,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>Описание</h2>
-            <p style={styles.description}>{currentItem.description}</p>
+            <p style={styles.description}><LinkText text={currentItem.description} /></p>
           </div>
 
           {currentItem.location && (

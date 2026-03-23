@@ -242,8 +242,10 @@ export async function registerUser(userData) {
     const response = await api.post('/auth/register', userData);
     return response.data;
   } catch (error) {
-    console.error('Ошибка регистрации:', error);
-    console.error('Ответ сервера:', error.response?.data);
+    if (import.meta.env.DEV) {
+      console.error('Ошибка регистрации:', error);
+      console.error('Ответ сервера:', error.response?.data);
+    }
     throw error;
   }
 }
@@ -355,10 +357,10 @@ export async function createPost(postData, onProgress = null) {
     const response = await api.post('/posts/create', postData, config);
     return response.data;
   } catch (error) {
-    console.error('❌ Ошибка создания поста:', error);
-    console.error('📍 Response:', error.response?.data);
-    console.error('📍 Status:', error.response?.status);
-    console.error('📍 Headers:', error.response?.headers);
+    if (import.meta.env.DEV) {
+      console.error('Ошибка создания поста:', error);
+      console.error('Response:', error.response?.data);
+    }
     throw error;
   }
 }
@@ -793,8 +795,7 @@ export async function getMyMarketItems(limit = 20, offset = 0) {
     });
     return response.data;
   } catch (error) {
-    console.error('❌ Get my market items error:', error);
-    console.error('📍 Response:', error.response?.data);
+    if (import.meta.env.DEV) console.error('Get my market items error:', error);
     throw error;
   }
 }
@@ -931,12 +932,8 @@ export async function getMyMatches() {
     
     return response.data;
   } catch (error) {
-    console.error('❌ ОШИБКА getMyMatches:', error);
-    console.error('📍 Response:', error.response?.data);
-    console.error('📍 Status:', error.response?.status);
-    
-    // ⚠️ НЕ СКРЫВАЙ ОШИБКУ - пробрось её выше
-    throw error; // Вместо return []
+    if (import.meta.env.DEV) console.error('getMyMatches error:', error);
+    throw error;
   }
 }
 

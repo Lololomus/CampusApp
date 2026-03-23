@@ -257,10 +257,12 @@ async def get_current_user(user: models.User = Depends(require_user)):
 
 @app.post("/users/me/avatar")
 async def upload_avatar(
+    request: Request,
     file: UploadFile = File(...),
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_rate_limit(request, "upload_avatar", limit=5, window_sec=60)
     old_avatar = user.avatar
     try:
         avatars_meta = await process_uploaded_files([file], kind="avatars")
@@ -550,6 +552,7 @@ async def get_posts_feed(
 
 @app.post("/posts/create", response_model=schemas.PostResponse)
 async def create_post_endpoint(
+    request: Request,
     category: str = Form(...),
     body: str = Form(...),
     title: Optional[str] = Form(None),
@@ -575,6 +578,7 @@ async def create_post_endpoint(
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
+    await check_rate_limit(request, "create_post", limit=10, window_sec=300)
     raw_title = title
     raw_body = body
 
@@ -984,6 +988,7 @@ async def create_comment_endpoint(
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
+    await check_rate_limit(request, "create_comment", limit=30, window_sec=60)
     content_type = (request.headers.get("content-type") or "").lower()
 
     try:
@@ -1132,6 +1137,7 @@ async def toggle_comment_like_endpoint(
 
 @app.post("/api/requests/create", response_model=schemas.RequestResponse)
 async def create_request_endpoint(
+    request: Request,
     # Multipart form fields
     category: str = Form(...),
     title: str = Form(...),
@@ -1148,6 +1154,7 @@ async def create_request_endpoint(
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
+    await check_rate_limit(request, "create_request", limit=10, window_sec=300)
     tags_list = _parse_json_list_form_field(tags, "tags")
     valid_images = [img for img in images if img.filename and len(img.filename) > 0]
 
@@ -1448,10 +1455,12 @@ async def delete_request_endpoint(
 @app.post("/api/requests/{request_id}/respond", response_model=schemas.ResponseItem)
 async def create_response_endpoint(
     request_id: int,
+    request: Request,
     data: schemas.ResponseCreate = Body(...),
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
+    await check_rate_limit(request, "create_response", limit=20, window_sec=60)
     try:
         response = await crud.create_response(db, request_id, user.id, data)
     except ValueError as e:
@@ -1881,9 +1890,11 @@ async def get_market_item_endpoint(
 @app.post("/market/{item_id}/contact")
 async def contact_market_seller_endpoint(
     item_id: int,
+    request: Request,
     buyer: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
+    await check_rate_limit(request, "market_contact", limit=20, window_sec=60)
     item = await db.get(models.MarketItem, item_id)
     if not item or item.is_deleted:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -1939,9 +1950,11 @@ async def contact_market_seller_endpoint(
 @app.post("/market/{item_id}/interest", response_model=schemas.MarketInterestResponse)
 async def create_market_interest_endpoint(
     item_id: int,
+    request: Request,
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_rate_limit(request, "market_interest", limit=20, window_sec=60)
     if not settings.deal_flow_v2_enabled:
         raise HTTPException(status_code=404, detail="Deal flow v2 is disabled")
 
@@ -2174,6 +2187,7 @@ async def get_market_deal_endpoint(
 
 @app.post("/market/items", response_model=schemas.MarketItemResponse)
 async def create_market_item_endpoint(
+    request: Request,
     category: str = Form(...),
     item_type: str = Form('product'),
     title: str = Form(...),
@@ -2187,6 +2201,7 @@ async def create_market_item_endpoint(
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
+    await check_rate_limit(request, "create_market_item", limit=5, window_sec=300)
 
     valid_images = [img for img in images if img.filename and len(img.filename) > 0]
     valid_video = video if (video and video.filename) else None
