@@ -1,21 +1,22 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/dating/LikesTab.js =====
+// ===== FILE: src/components/dating/LikesTab.js =====
 import React from 'react';
-import { Heart, Sparkles } from 'lucide-react';
+import { Heart, Sparkles, GraduationCap } from 'lucide-react';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 import MatchCard from './MatchCard';
-import { MatchCardSkeleton, LikesCardSkeleton } from './DatingSkeletons'; 
-import { INTEREST_LABELS, GOAL_LABELS } from '../../constants/datingConstants';
+import { MatchCardSkeleton, LikesCardSkeleton } from './DatingSkeletons';
+import { INTEREST_EMOJIS, GOAL_EMOJIS } from '../../constants/datingConstants';
 
-function LikesTab({ 
+const d = theme.colors.dating;
+
+function LikesTab({
   matches = [],
-  users = [], 
-  loading = false, 
+  users = [],
+  loading = false,
   matchesLoading = false,
-  onViewProfile, 
-  onQuickLike, 
+  onViewProfile,
   onMessage,
-  onEmptyAction 
+  onEmptyAction
 }) {
 
   // ===== LOADING STATE =====
@@ -24,13 +25,12 @@ function LikesTab({
       <div style={styles.containerScroll}>
         <div style={styles.section}>
           <div style={styles.sectionHeader}>
-            <Sparkles size={20} color="#f093fb" strokeWidth={2.5} />
+            <div style={styles.iconCirclePink}>
+              <Sparkles size={16} color={d.pink} />
+            </div>
             <h2 style={styles.sectionTitle}>Взаимность</h2>
           </div>
-          <p style={styles.sectionSubtitle}>
-            Активно 24 часа, не упусти момент!
-          </p>
-          <div style={styles.matchesList}>
+          <div style={styles.matchesCarousel}>
             <MatchCardSkeleton />
             <MatchCardSkeleton />
           </div>
@@ -38,12 +38,14 @@ function LikesTab({
 
         <div style={styles.section}>
           <div style={styles.sectionHeader}>
-            <Heart size={20} color="#ff6b9d" strokeWidth={2.5} />
-            <h2 style={styles.sectionTitle}>Кто лайкнул</h2>
+            <div style={styles.iconCircleGray}>
+              <Heart size={16} color={d.textMuted} />
+            </div>
+            <div>
+              <h2 style={styles.sectionTitle}>Кто лайкнул</h2>
+              <span style={styles.sectionSubtitle}>Узнай, кому ты понравился</span>
+            </div>
           </div>
-          <p style={styles.sectionSubtitle}>
-            Узнайте, кому вы понравились
-          </p>
           <div style={styles.grid}>
             <LikesCardSkeleton />
             <LikesCardSkeleton />
@@ -59,14 +61,12 @@ function LikesTab({
   if ((!users || users.length === 0) && (!matches || matches.length === 0)) {
     return (
       <div style={styles.emptyState}>
-        <div style={styles.emptyIllustration}>
-          <div style={styles.emptyCircle}>
-            <Sparkles size={48} color="#f093fb" strokeWidth={1.5} />
-          </div>
+        <div style={styles.emptyCircle}>
+          <Sparkles size={48} color={d.pink} strokeWidth={1.5} />
         </div>
 
         <h3 style={styles.emptyTitle}>Пока нет взаимностей</h3>
-        
+
         <div style={styles.emptySteps}>
           <div style={styles.emptyStep}>
             <span style={styles.stepNumber}>1</span>
@@ -82,18 +82,10 @@ function LikesTab({
           </div>
         </div>
 
-        <p style={styles.emptyHint}>
-          💡 Совет: пролистай 10-15 анкет —<br />
-          обычно появляется хотя бы одна взаимность
-        </p>
-
         {onEmptyAction && (
           <button
             style={styles.emptyButton}
-            onClick={() => {
-              hapticFeedback('medium');
-              onEmptyAction();
-            }}
+            onClick={() => { hapticFeedback('medium'); onEmptyAction(); }}
           >
             <Heart size={20} fill="#fff" strokeWidth={0} />
             <span>Смотреть анкеты</span>
@@ -106,18 +98,19 @@ function LikesTab({
   // ===== MAIN CONTENT =====
   return (
     <div style={styles.containerScroll}>
-      {/* 1️⃣ MATCHES (24 HOURS) */}
+      {/* Взаимность — горизонтальная карусель */}
       {matches && matches.length > 0 && (
-        <div style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <Sparkles size={20} color="#f093fb" strokeWidth={2.5} />
-            <h2 style={styles.sectionTitle}>Взаимность ({matches.length})</h2>
+        <div style={styles.sectionNoSidePadding}>
+          <div style={{ ...styles.sectionHeader, padding: '0 16px' }}>
+            <div style={styles.iconCirclePink}>
+              <Sparkles size={16} color={d.pink} />
+            </div>
+            <h2 style={styles.sectionTitle}>
+              Взаимность <span style={styles.countMuted}>{matches.length}</span>
+            </h2>
           </div>
-          <p style={styles.sectionSubtitle}>
-            Активно 24 часа, не упусти момент!
-          </p>
 
-          <div style={styles.matchesList}>
+          <div style={styles.matchesCarousel}>
             {matches.map((match) => (
               <MatchCard
                 key={match.id}
@@ -136,23 +129,25 @@ function LikesTab({
         </div>
       )}
 
-      {/* 2️⃣ WHO LIKED ME */}
+      {/* Кто лайкнул — emoji grid */}
       {users && users.length > 0 && (
         <div style={styles.section}>
           <div style={styles.sectionHeader}>
-            <Heart size={20} color="#ff6b9d" strokeWidth={2.5} />
-            <h2 style={styles.sectionTitle}>
-              Кто лайкнул ({users.length})
-            </h2>
+            <div style={styles.iconCircleGray}>
+              <Heart size={16} color={d.textMuted} />
+            </div>
+            <div>
+              <h2 style={styles.sectionTitle}>
+                Кто лайкнул <span style={styles.countMuted}>{users.length}</span>
+              </h2>
+              <span style={styles.sectionSubtitle}>Узнай, кому ты понравился</span>
+            </div>
           </div>
-          <p style={styles.sectionSubtitle}>
-            Узнайте, кому вы понравились
-          </p>
 
           <div style={styles.grid}>
             {users.map((user, idx) => {
-              const photo = user?.photos?.[0]?.url || user?.photos?.[0] || user?.avatar?.url || user?.avatar || null;
-              const hasPhoto = !!photo;
+              const photo = user?.photos?.[0]?.url || user?.photos?.[0] || null;
+              const commonInterests = user?.common_interests || [];
 
               return (
                 <div
@@ -163,75 +158,58 @@ function LikesTab({
                     if (onViewProfile) onViewProfile(user, 'like');
                   }}
                 >
-                  {/* Photo */}
-                  {hasPhoto ? (
-                    <img
-                      src={photo}
-                      alt={user.name}
-                      style={styles.cardImage}
-                      draggable={false}
-                      onError={(e) => { e.target.style.display = 'none'; }}
-                    />
-                  ) : (
-                    <div style={styles.cardPlaceholder}>
-                      {user.name?.charAt(0)?.toUpperCase() || '?'}
-                    </div>
-                  )}
-
-                  <div style={styles.cardOverlay} />
-
-                  {user.university && (
-                    <div style={styles.universityBadge}>
-                      {user.university}
-                    </div>
-                  )}
-
-                  <button
-                    style={styles.likeButton}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      hapticFeedback('medium');
-                      if (onQuickLike && user.id) {
-                        await onQuickLike(user.id);
-                      }
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    <Heart size={20} strokeWidth={2.5} />
-                  </button>
-
-                  <div style={styles.cardInfo}>
-                    <div style={styles.cardName}>
-                      {user.name}{user.age ? `, ${user.age}` : ''}
-                    </div>
-
-                    {user.bio && (
-                      <div style={styles.bioPreview}>
-                        {user.bio.split('\n')[0].slice(0, 50)}
-                        {user.bio.length > 50 ? '...' : ''}
+                  {/* Фото 4:5 */}
+                  <div style={styles.photoWrapper}>
+                    {photo ? (
+                      <img src={photo} alt={user.name} style={styles.cardImage} draggable={false} />
+                    ) : (
+                      <div style={styles.cardPlaceholder}>
+                        {user.name?.charAt(0)?.toUpperCase() || '?'}
                       </div>
                     )}
+                    <div style={styles.photoGradient} />
 
-                    {user.goals && user.goals.length > 0 && (
+                    {/* Heart badge top-right */}
+                    <div style={styles.heartBadge}>
+                      <Heart size={14} fill="#fff" color="#fff" />
+                    </div>
+
+                    {/* Имя + вуз overlaid на фото (bottom) */}
+                    <div style={styles.photoInfo}>
+                      <div style={styles.cardName}>
+                        {user.name}, {user.age}
+                      </div>
+                      <div style={styles.cardUni}>
+                        <GraduationCap size={12} />
+                        {user.institute || user.university}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Инфографика под фото */}
+                  <div style={styles.infoPanel}>
+                    {/* Цели: emoji-only pills */}
+                    {user.goals?.length > 0 && (
                       <div style={styles.goalsRow}>
-                        {user.goals.slice(0, 2).map((goal) => (
-                          <span key={goal} style={styles.goalBadge}>
-                            {GOAL_LABELS[goal]?.split(' ')[0]}
-                          </span>
+                        {user.goals.map(goal => (
+                          <div key={goal} style={styles.goalPill} title={goal}>
+                            <span style={{ fontSize: 16, lineHeight: 1 }}>{GOAL_EMOJIS[goal] || '✨'}</span>
+                          </div>
                         ))}
                       </div>
                     )}
 
-                    {user.interests && user.interests.length > 0 && (
-                      <div style={styles.tagsRow}>
-                        {user.interests.slice(0, user.interests.length > 5 ? 5 : 6).map((interest) => (
-                          <span key={interest} style={styles.tag}>
-                            {INTEREST_LABELS[interest] || interest}
-                          </span>
-                        ))}
-                        {user.interests.length > 5 && (
-                          <span style={styles.tagMore}>+{user.interests.length - 5}</span>
-                        )}
+                    {/* Интересы: 24x24 emoji badges */}
+                    {user.interests?.length > 0 && (
+                      <div style={styles.interestsRow}>
+                        {user.interests.slice(0, 5).map(interest => {
+                          const isCommon = commonInterests.includes(interest);
+                          return (
+                            <div key={interest} style={isCommon ? styles.interestCommon : styles.interestBadge}>
+                              {INTEREST_EMOJIS[interest] || '⭐'}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -250,189 +228,216 @@ const styles = {
   containerScroll: {
     flex: 1,
     overflowY: 'auto',
-    paddingBottom: '100px',
+    paddingTop: 16,
+    paddingBottom: 100,
   },
   section: {
-    marginBottom: 32,
-    padding: '0 12px',
+    marginBottom: 40,
+    padding: '0 16px',
+  },
+  sectionNoSidePadding: {
+    marginBottom: 40,
   },
   sectionHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 16,
+  },
+  iconCirclePink: {
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    backgroundColor: 'rgba(255, 45, 85, 0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCircleGray: {
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    backgroundColor: d.surface,
+    border: '1px solid rgba(255, 255, 255, 0.04)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 800,
-    color: theme.colors.text,
+    color: '#fff',
     margin: 0,
+    lineHeight: 1.2,
+  },
+  countMuted: {
+    color: d.textMuted,
+    fontWeight: 600,
+    fontSize: 16,
+    marginLeft: 4,
   },
   sectionSubtitle: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    margin: '0 0 16px 0',
+    fontSize: 13,
+    color: d.textMuted,
+    fontWeight: 500,
+    marginTop: 2,
+    display: 'block',
   },
-  matchesList: {
+
+  // Карусель матчей
+  matchesCarousel: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
+    overflowX: 'auto',
+    gap: 16,
+    padding: '0 16px 8px',
+    alignItems: 'stretch',
+    msOverflowStyle: 'none',
+    scrollbarWidth: 'none',
   },
+
+  // Сетка "Кто лайкнул"
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: 10,
+    gap: 12,
   },
   card: {
-    position: 'relative',
-    aspectRatio: '3 / 4.2',
+    backgroundColor: d.cardBg,
     borderRadius: 20,
     overflow: 'hidden',
+    border: '1px solid rgba(255, 255, 255, 0.04)',
     cursor: 'pointer',
-    border: `1px solid ${theme.colors.border}`,
-    backgroundColor: theme.colors.card,
+    display: 'flex',
+    flexDirection: 'column',
     animation: 'fadeInUp 0.4s ease forwards',
     opacity: 0,
-    userSelect: 'none',
-    WebkitTapHighlightColor: 'transparent',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+  },
+  photoWrapper: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: '4 / 5',
+    backgroundColor: d.surfaceHover,
+    overflow: 'hidden',
+    flexShrink: 0,
   },
   cardImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    pointerEvents: 'none',
   },
   cardPlaceholder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
     width: '100%',
     height: '100%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 52,
+    fontSize: 48,
     fontWeight: 800,
     color: '#fff',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
   },
-  cardOverlay: {
+  photoGradient: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0.15) 75%, transparent 100%)',
+    bottom: 0, left: 0, right: 0,
+    height: '50%',
+    background: `linear-gradient(to top, ${d.cardBg}, transparent)`,
     pointerEvents: 'none',
   },
-  universityBadge: {
+  heartBadge: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    padding: '5px 10px',
-    borderRadius: 10,
-    background: 'rgba(0, 0, 0, 0.65)',
-    backdropFilter: 'blur(10px)',
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 700,
-    textShadow: '0 1px 3px rgba(0,0,0,0.5)',
-    zIndex: 2,
-    maxWidth: 'calc(100% - 70px)',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  likeButton: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 44,
-    height: 44,
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
     borderRadius: '50%',
-    border: '2px solid rgba(255,255,255,0.25)',
-    background: 'linear-gradient(135deg, rgba(255, 59, 92, 0.95), rgba(255, 107, 157, 0.95))',
-    backdropFilter: 'blur(10px)',
-    color: '#fff',
+    backgroundColor: d.pink,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 3,
-    transition: 'none',
-    outline: 'none',
-    boxShadow: '0 4px 16px rgba(255, 59, 92, 0.4)',
+    boxShadow: '0 2px 8px rgba(255, 45, 85, 0.4)',
   },
-  cardInfo: {
+  photoInfo: {
     position: 'absolute',
-    bottom: 10,
-    left: 10,
-    right: 10,
-    zIndex: 2,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 7,
+    bottom: 8,
+    left: 8,
+    right: 8,
   },
   cardName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 800,
     color: '#fff',
-    textShadow: '0 2px 10px rgba(0,0,0,0.7)',
-    lineHeight: 1.15,
+    lineHeight: 1.2,
+    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+  },
+  cardUni: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 11,
+    fontWeight: 500,
+    color: d.textLight,
+    marginTop: 2,
+    textShadow: '0 1px 4px rgba(0,0,0,0.5)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  bioPreview: {
-    fontSize: 12,
-    lineHeight: 1.35,
-    color: 'rgba(255,255,255,0.9)',
-    textShadow: '0 1px 4px rgba(0,0,0,0.6)',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
+
+  // Инфографика под фото
+  infoPanel: {
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    flex: 1,
   },
   goalsRow: {
     display: 'flex',
-    gap: 5,
-    flexWrap: 'wrap',
+    gap: 6,
   },
-  goalBadge: {
-    fontSize: 16,
-    filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.5))',
-  },
-  tagsRow: {
+  goalPill: {
+    backgroundColor: d.surface,
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    padding: '4px 10px',
+    borderRadius: 10,
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: 5,
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  tag: {
-    padding: '3px 7px',
+  interestsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'nowrap',
+    marginTop: 'auto',
+  },
+  interestBadge: {
+    width: 24,
+    height: 24,
+    flexShrink: 0,
     borderRadius: 8,
-    fontSize: 10,
-    fontWeight: 700,
-    color: 'rgba(255,255,255,0.95)',
-    background: 'rgba(255,255,255,0.15)',
-    border: '1px solid rgba(255,255,255,0.22)',
-    backdropFilter: 'blur(8px)',
-    textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+    backgroundColor: '#252525',
+    border: '1px solid rgba(255, 255, 255, 0.04)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
   },
-  tagMore: {
-    padding: '3px 7px',
+  interestCommon: {
+    width: 24,
+    height: 24,
+    flexShrink: 0,
     borderRadius: 8,
-    fontSize: 10,
-    fontWeight: 700,
-    color: 'rgba(255,255,255,0.75)',
-    background: 'rgba(255,255,255,0.10)',
-    border: '1px solid rgba(255,255,255,0.15)',
+    backgroundColor: d.commonBg,
+    border: `1px solid ${d.commonBorder}`,
+    boxShadow: d.commonGlow,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
   },
+
+  // Empty state
   emptyState: {
     flex: 1,
     display: 'flex',
@@ -443,31 +448,6 @@ const styles = {
     padding: '60px 24px 100px',
     minHeight: '60vh',
   },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: 800,
-    color: theme.colors.text,
-    margin: '0 0 12px 0',
-  },
-  emptyButton: {
-    padding: '14px 24px',
-    borderRadius: 16,
-    border: 'none',
-    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: 'pointer',
-    boxShadow: '0 4px 16px rgba(245, 87, 108, 0.35)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    transition: 'none',
-    outline: 'none',
-  },
-  emptyIllustration: {
-    marginBottom: 24,
-  },
   emptyCircle: {
     width: 120,
     height: 120,
@@ -475,9 +455,16 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(135deg, rgba(240, 147, 251, 0.15), rgba(245, 87, 108, 0.15))',
-    border: '3px solid rgba(240, 147, 251, 0.3)',
+    background: 'rgba(255, 45, 85, 0.1)',
+    border: '3px solid rgba(255, 45, 85, 0.2)',
+    marginBottom: 24,
     animation: 'float 3s ease-in-out infinite',
+  },
+  emptyTitle: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: '#fff',
+    margin: '0 0 12px 0',
   },
   emptySteps: {
     display: 'flex',
@@ -502,52 +489,47 @@ const styles = {
     justifyContent: 'center',
     fontSize: 15,
     fontWeight: 800,
-    background: 'linear-gradient(135deg, #f093fb, #f5576c)',
+    backgroundColor: d.pink,
     color: '#fff',
     flexShrink: 0,
   },
   stepText: {
     fontSize: 14,
     fontWeight: 600,
-    color: theme.colors.text,
+    color: '#fff',
     lineHeight: 1.4,
   },
-  emptyHint: {
-    fontSize: 13,
-    lineHeight: 1.6,
-    color: theme.colors.textSecondary,
-    margin: '0 0 24px 0',
-    padding: '12px 16px',
-    borderRadius: 12,
-    background: 'rgba(240, 147, 251, 0.08)',
-    border: '1px solid rgba(240, 147, 251, 0.15)',
+  emptyButton: {
+    padding: '14px 24px',
+    borderRadius: 16,
+    border: 'none',
+    backgroundColor: d.pink,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(255, 45, 85, 0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
   },
 };
 
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-  @keyframes fadeInUp {
-    from {
-      opacity: 0;
-      transform: translateY(12px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes float {
-    0%, 100% { 
-      transform: translateY(0px); 
-    }
-    50% { 
-      transform: translateY(-10px); 
-    }
-  }
-`;
-if (!document.getElementById('likes-tab-styles')) {
+// Inject keyframes
+if (typeof document !== 'undefined' && !document.getElementById('likes-tab-styles')) {
+  const styleSheet = document.createElement('style');
   styleSheet.id = 'likes-tab-styles';
+  styleSheet.textContent = `
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    .hide-scroll::-webkit-scrollbar { display: none; }
+  `;
   document.head.appendChild(styleSheet);
 }
 

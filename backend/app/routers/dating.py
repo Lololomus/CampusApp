@@ -335,7 +335,19 @@ async def get_likes_received(
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.dating_scoring import (
+        _parse_json_safe, _determine_match_reason, get_match_reason_label,
+        WEIGHT_SAME_UNIVERSITY, WEIGHT_SAME_INSTITUTE
+    )
+
     users = await crud.get_who_liked_me(db, user.id, limit, offset)
+
+    # Загружаем свой профиль один раз для вычисления совместимости
+    my_profile = await crud.get_dating_profile(db, user.id)
+    my_interests = set(
+        i.lower().strip() for i in _parse_json_safe(user.interests)
+    )
+
     result = []
 
     for u in users:
@@ -345,6 +357,33 @@ async def get_likes_received(
             photos = [{"url": u.avatar, "w": 500, "h": 500}]
 
         interests_list = u.interests or []
+        goals_list = dp.goals or [] if dp else []
+
+        # Вычисляем общие интересы
+        their_interests = set(
+            i.lower().strip() for i in _parse_json_safe(u.interests)
+        )
+        common_interests = list(my_interests & their_interests)
+
+        # Вычисляем match_reason по тем же правилам, что и в ленте
+        uni_score = 0
+        if user.university and u.university:
+            if user.university.strip().lower() == u.university.strip().lower():
+                uni_score += WEIGHT_SAME_UNIVERSITY
+                if user.institute and u.institute:
+                    if user.institute.strip().lower() == u.institute.strip().lower():
+                        uni_score += WEIGHT_SAME_INSTITUTE
+
+        my_goals_raw = _parse_json_safe(my_profile.goals) if my_profile else []
+        my_goals = set(g.lower().strip() for g in my_goals_raw)
+        their_goals_raw = _parse_json_safe(dp.goals) if dp else []
+        their_goals = set(g.lower().strip() for g in their_goals_raw)
+        goal_score = 25 if (my_goals and their_goals and my_goals & their_goals) else 0
+
+        reason_code = _determine_match_reason(
+            {}, uni_score, set(common_interests), goal_score
+        )
+        match_reason = get_match_reason_label(reason_code)
 
         result.append({
             "id": u.id,
@@ -358,6 +397,9 @@ async def get_likes_received(
             "course": u.course,
             "group": None if u.hide_course_group else u.group,
             "interests": interests_list,
+            "goals": goals_list,
+            "match_reason": match_reason,
+            "common_interests": common_interests,
             "user_id": u.id
         })
 
@@ -411,6 +453,10 @@ async def get_active_matches(
 ):
     """Получить активные мэтчи (в течение 24 часов)"""
     from datetime import datetime, timedelta
+    from app.services.dating_scoring import (
+        _parse_json_safe, _determine_match_reason, get_match_reason_label,
+        WEIGHT_SAME_UNIVERSITY, WEIGHT_SAME_INSTITUTE
+    )
 
     now = datetime.utcnow()
     cutoff = now - timedelta(hours=24)
@@ -425,6 +471,12 @@ async def get_active_matches(
         )
     )
     matches_query = res.scalars().all()
+
+    # Загружаем свой профиль один раз для вычисления совместимости
+    my_profile = await crud.get_dating_profile(db, user.id)
+    my_interests = set(
+        i.lower().strip() for i in _parse_json_safe(user.interests)
+    )
 
     result = []
 
@@ -456,6 +508,31 @@ async def get_active_matches(
             interests_list = other_user.interests or []
             goals_list = dp.goals or []
 
+            # Вычисляем общие интересы
+            their_interests = set(
+                i.lower().strip() for i in _parse_json_safe(other_user.interests)
+            )
+            common_interests = list(my_interests & their_interests)
+
+            # Вычисляем match_reason
+            uni_score = 0
+            if user.university and other_user.university:
+                if user.university.strip().lower() == other_user.university.strip().lower():
+                    uni_score += WEIGHT_SAME_UNIVERSITY
+                    if user.institute and other_user.institute:
+                        if user.institute.strip().lower() == other_user.institute.strip().lower():
+                            uni_score += WEIGHT_SAME_INSTITUTE
+
+            my_goals_raw = _parse_json_safe(my_profile.goals) if my_profile else []
+            my_goals = set(g.lower().strip() for g in my_goals_raw)
+            their_goals = set(g.lower().strip() for g in _parse_json_safe(dp.goals))
+            goal_score = 25 if (my_goals and their_goals and my_goals & their_goals) else 0
+
+            reason_code = _determine_match_reason(
+                {}, uni_score, set(common_interests), goal_score
+            )
+            match_reason = get_match_reason_label(reason_code)
+
             prompts_dict = None
             if dp.prompts:
                 prompts_dict = dp.prompts if isinstance(dp.prompts, dict) else None
@@ -472,6 +549,8 @@ async def get_active_matches(
                 "photos": photos,
                 "interests": interests_list,
                 "goals": goals_list,
+                "common_interests": common_interests,
+                "match_reason": match_reason,
                 "prompts": prompts_dict,
                 "matched_at": match.matched_at.isoformat(),
                 "expires_at": expires_at.isoformat(),

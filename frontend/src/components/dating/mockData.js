@@ -83,6 +83,8 @@ export const MOCK_LIKES = [
     ],
     interests: ['books', 'art', 'movies', 'coffee'],
     goals: ['friends', 'hangout'],
+    common_interests: ['books', 'coffee'],
+    match_reason: '2 общих интереса',
     prompts: { question: 'Какую последнюю книгу прочитал?', answer: 'Перечитываю Достоевского — каждый раз нахожу что-то новое 📖' },
   },
   {
@@ -94,6 +96,8 @@ export const MOCK_LIKES = [
     ],
     interests: ['science', 'books', 'games', 'coffee'],
     goals: ['study', 'friends'],
+    common_interests: [],
+    match_reason: 'Из твоего вуза',
   },
   {
     id: 103, name: 'Катя', age: 20, university: 'ВШЭ', institute: 'Дизайн', course: 2,
@@ -105,6 +109,8 @@ export const MOCK_LIKES = [
     ],
     interests: ['art', 'photo', 'coffee', 'music', 'travel'],
     goals: ['friends', 'relationship'],
+    common_interests: ['art', 'photo', 'travel'],
+    match_reason: '3 общих интереса',
     prompts: { question: 'Figma или Adobe XD?', answer: 'Только Figma! Там все плагины которые нужны 🔥' },
   },
   {
@@ -113,6 +119,8 @@ export const MOCK_LIKES = [
     photos: [{ url: createAvatar('Д', '%231e3a8a', '%232563eb', 600) }],
     interests: ['music', 'party', 'sport', 'coffee'],
     goals: ['friends', 'hangout'],
+    common_interests: [],
+    match_reason: 'Твой факультет',
   },
   {
     id: 105, name: 'Полина', age: 21, university: 'МГСУ', institute: 'ИЦИТ', course: 3,
@@ -124,6 +132,8 @@ export const MOCK_LIKES = [
     ],
     interests: ['fitness', 'sport', 'food', 'travel', 'music'],
     goals: ['friends', 'relationship'],
+    common_interests: ['music'],
+    match_reason: null,
     prompts: { question: 'Зал или пробежка утром?', answer: 'Зал всегда! Утренняя тренировка заряжает на весь день 💪' },
   },
   {
@@ -135,6 +145,8 @@ export const MOCK_LIKES = [
     ],
     interests: ['startup', 'it', 'coffee', 'books', 'travel'],
     goals: ['study', 'friends'],
+    common_interests: ['it', 'startup'],
+    match_reason: 'Новая анкета',
   },
 ];
 
@@ -145,6 +157,8 @@ export const MOCK_MATCHES = [
     university: 'МГУ', institute: 'Филологический', course: 1,
     photos: [{ url: createAvatar('А', '%23ff6b6b', '%23ee5a6f', 600), w: 600, h: 720 }],
     interests: ['books', 'art', 'coffee'], goals: ['friends', 'study'],
+    common_interests: ['art', 'coffee'],
+    match_reason: '2 общих интереса',
     prompts: { question: 'Моя суперспособность?', answer: 'Могу процитировать "Мастера и Маргариту" целиком 📖' },
     matched_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     expires_at: new Date(Date.now() + 22 * 60 * 60 * 1000).toISOString(),
@@ -156,6 +170,8 @@ export const MOCK_MATCHES = [
     university: 'МФТИ', institute: 'ФПМИ', course: 4,
     photos: [{ url: createAvatar('И', '%235b21b6', '%237c3aed', 600), w: 600, h: 720 }],
     interests: ['science', 'games', 'coffee'], goals: ['study', 'friends'],
+    common_interests: [],
+    match_reason: 'Из твоего вуза',
     prompts: { question: 'Идеальное свидание?', answer: 'Партия в шахматы в Парке Горького + кофе' },
     matched_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
     expires_at: new Date(Date.now() + 18 * 60 * 60 * 1000).toISOString(),
@@ -167,6 +183,8 @@ export const MOCK_MATCHES = [
     university: 'ВШЭ', institute: 'Дизайн', course: 2,
     photos: [{ url: createAvatar('К', '%2314b8a6', '%2306b6d4', 600), w: 600, h: 720 }],
     interests: ['art', 'photo', 'coffee', 'travel'], goals: ['friends', 'relationship'],
+    common_interests: ['art', 'coffee'],
+    match_reason: '2 общих интереса',
     prompts: { question: 'Figma или Adobe XD?', answer: 'Figma всегда! Collaborative design — это мощь 🔥' },
     matched_at: new Date(Date.now() - 15 * 60 * 60 * 1000).toISOString(),
     expires_at: new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString(),

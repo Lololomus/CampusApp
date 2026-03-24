@@ -74,18 +74,26 @@ export const INTEREST_EMOJIS = {
   photo: '📸', food: '🍕', science: '🎓', startup: '🚀', fitness: '🏋️',
 };
 
+// ===== GOAL EMOJIS (emoji-only для компактных карточек) =====
+export const GOAL_EMOJIS = {
+  relationship: '💘',
+  friends: '🤝',
+  study: '📚',
+  hangout: '🎉',
+};
+
 // ===== MATCH REASON (скоринг → UI) =====
 // Конфиг для отображения бейджей match_reason на карточке
 export const MATCH_REASON_CONFIG = {
   icon: '✨',
-  // Цвета бейджа
-  badgeBg: 'rgba(255, 215, 0, 0.12)',
-  badgeBorder: 'rgba(255, 215, 0, 0.3)',
-  badgeText: '#ffd700',
-  // Цвет подсветки общих интересов
-  commonInterestBg: 'rgba(255, 215, 0, 0.12)',
-  commonInterestBorder: 'rgba(255, 215, 0, 0.3)',
-  commonInterestText: '#ffd700',
+  // Цвета бейджа (лайм)
+  badgeBg: 'rgba(212, 255, 0, 0.10)',
+  badgeBorder: 'rgba(212, 255, 0, 0.20)',
+  badgeText: '#D4FF00',
+  // Цвет подсветки общих интересов (лайм)
+  commonInterestBg: 'rgba(212, 255, 0, 0.15)',
+  commonInterestBorder: 'rgba(212, 255, 0, 0.4)',
+  commonInterestText: '#D4FF00',
 };
 
 // ===== PROMPTS (ЛЕДОКОЛЫ) =====

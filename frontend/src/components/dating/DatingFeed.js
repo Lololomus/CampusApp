@@ -1,19 +1,19 @@
 // ===== 📄 ФАЙЛ: src/components/dating/DatingFeed.js =====
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, animate as animateValue } from 'framer-motion';
 import { useStore } from '../../store';
 import { getDatingFeed, likeUser, dislikeUser, getDatingStats, getWhoLikedMe, getMyDatingProfile, getMyMatches } from '../../api';
 import AppHeader from '../shared/AppHeader';
 import ProfileCard from './ProfileCard';
 import MatchModal from './MatchModal';
-import { FeedCardSkeleton, FeedInfoBarSkeleton } from './DatingSkeletons';
+import { FeedCardSkeleton } from './DatingSkeletons';
 import DatingOnboarding from './DatingOnboarding';
 import MyDatingProfileModal from './MyDatingProfileModal';
 import EditDatingProfileModal from './EditDatingProfileModal';
 import LikesTab from './LikesTab';
 import ViewingProfileModal from './ViewingProfileModal';
-import ProfileInfoBar from './ProfileInfoBar';
+import ProfileSheet from './ProfileSheet';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
@@ -51,14 +51,16 @@ function DatingFeed() {
   const [loading, setLoading] = useState(true);
   const [loadingLikes, setLoadingLikes] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [swipeDirection, setSwipeDirection] = useState(null);
   const [viewingProfile, setViewingProfile] = useState(null);
   const [showMyProfile, setShowMyProfile] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [returnToMyProfileOnEditClose, setReturnToMyProfileOnEditClose] = useState(false);
-  const [infoExpanded, setInfoExpanded] = useState(false);
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+  const [showProfileSheet, setShowProfileSheet] = useState(false);
+  const motionX = useMotionValue(0);
+  const isDraggingRef = useRef(false);
+  const cardRotation = useTransform(motionX, [-500, 0, 500], [-25, 0, 25]);
+  const likeOverlayOpacity = useTransform(motionX, [0, 50, 200], [0, 0, 0.8]);
+  const nopeOverlayOpacity = useTransform(motionX, [-200, -50, 0], [0.8, 0, 0]);
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
 
@@ -88,7 +90,7 @@ function DatingFeed() {
   const swipeThreshold = SWIPE_THRESHOLD;
 
   useEffect(() => {
-    if (currentProfile?.id) setInfoExpanded(false);
+    if (currentProfile?.id) setShowProfileSheet(false);
   }, [currentProfile?.id]);
 
   // === Check registration ===
@@ -228,35 +230,33 @@ function DatingFeed() {
     }
   };
 
-  const handleSwipeStart = () => setIsDragging(true);
-  const handleSwipeMove = (delta) => setDragX(delta);
+  const handleSwipeStart = useCallback(() => { isDraggingRef.current = true; }, []);
+  const handleSwipeMove = useCallback((delta) => { motionX.set(delta); }, [motionX]);
 
   const handleSwipeEnd = async (finalDelta = 0) => {
-    setIsDragging(false);
-    const deltaToCheck = typeof finalDelta === 'number' ? finalDelta : dragX;
+    isDraggingRef.current = false;
+    const deltaToCheck = typeof finalDelta === 'number' ? finalDelta : motionX.get();
     if (Math.abs(deltaToCheck) > swipeThreshold) {
       if (deltaToCheck > 0) await handleLike();
       else await handleSkip();
     } else {
-      setDragX(0);
+      motionX.set(0);
     }
   };
 
   const handleSkip = async () => {
     if (isAnimating || !currentProfile) return;
     hapticFeedback('light');
-    setSwipeDirection('left');
     setIsAnimating(true);
+    // Анимируем карточку за экран, потом убираем
+    await animateValue(motionX, -500, { duration: 0.1, ease: [0.4, 0, 1, 1] });
     if (!isGuestMode && currentProfile?.id) {
       dislikeUser(currentProfile.id).catch(console.error);
     }
     removeCurrentProfile();
-    setDragX(0);
-    setTimeout(() => {
-      setIsAnimating(false);
-      setSwipeDirection(null);
-      setInfoExpanded(false);
-    }, 500);
+    motionX.set(0);
+    setIsAnimating(false);
+    setShowProfileSheet(false);
   };
 
   const handleLike = async (profileId = null, fallbackUser = null) => {
@@ -272,15 +272,13 @@ function DatingFeed() {
     hapticFeedback('medium');
 
     if (!profileId) {
-      setSwipeDirection('right');
       setIsAnimating(true);
+      // Анимируем карточку вправо за экран, потом убираем
+      await animateValue(motionX, 500, { duration: 0.18, ease: [0.4, 0, 1, 1] });
       removeCurrentProfile();
-      setDragX(0);
-      setTimeout(() => {
-        setIsAnimating(false);
-        setSwipeDirection(null);
-        setInfoExpanded(false);
-      }, 500);
+      motionX.set(0);
+      setIsAnimating(false);
+      setShowProfileSheet(false);
     }
 
     try {
@@ -326,7 +324,6 @@ function DatingFeed() {
       console.error('Like error:', e);
       toast.error(e?.message || 'Не удалось поставить лайк');
       if (!profileId) {
-        setSwipeDirection(null);
         setIsAnimating(false);
       }
       return { is_match: false };
@@ -360,76 +357,74 @@ function DatingFeed() {
     );
   }
 
-  const overlayOpacity = Math.min(Math.abs(dragX) / 200, 0.8);
-  const showLikeOverlay = dragX > 50;
-  const showNopeOverlay = dragX < -50;
-
   // === RENDER: Main ===
   return (
     <div style={styles.container}>
       {!viewingProfile && (
-        <AppHeader title="Знакомства">
-          <div style={styles.tabsWrapper}>
-            <div style={styles.tabsContainer}>
-              <div 
-                style={{
-                  ...styles.activeIndicator,
-                  transform: `translateX(${activeTab === 'profiles' ? '0%' : 'calc(100% + 80px)'})`
-                }} 
-              />
-              
-              <button 
-                onClick={() => handleTabSwitch('profiles')} 
-                style={{
-                  ...styles.tabButton, 
-                  color: activeTab === 'profiles' ? '#fff' : theme.colors.textSecondary
-                }}
-              >
-                Анкеты
-              </button>
-
-              <button 
-                style={styles.avatarButtonCenter}
-                onClick={() => {
-                  hapticFeedback('medium');
-                  if (isGuestMode) {
-                    setShowOnboarding(true);
-                  } else {
-                    setShowMyProfile(true);
-                  }
-                }}
-              >
-                {datingProfile?.photos?.[0]?.url ? (
-                  <img 
-                    src={datingProfile.photos[0].url} 
-                    alt="" 
-                    style={styles.avatarImg}
-                  />
-                ) : user?.avatar ? (
-                  <img 
-                    src={user.avatar} 
-                    alt="" 
-                    style={styles.avatarImg}
-                  />
-                ) : (
-                  <div style={styles.avatarFallback}>
-                    {user?.name?.[0] || '?'}
-                  </div>
-                )}
-              </button>
-
-              <button 
-                onClick={() => handleTabSwitch('likes')} 
-                style={{
-                  ...styles.tabButton, 
-                  color: activeTab === 'likes' ? '#fff' : theme.colors.textSecondary
-                }}
-              >
-                Симпатии {likesCount > 0 && <span style={styles.badge}>{likesCount}</span>}
-              </button>
+        <>
+          <AppHeader title="Знакомства" premium>
+            {/* Premium pill-switcher + spacer для аватарки */}
+            <div style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: 1, display: 'flex', height: '100%' }}>
+                <div
+                  style={{
+                    ...styles.activeIndicator,
+                    transform: `translateX(${activeTab === 'profiles' ? '0' : '100%'})`,
+                  }}
+                />
+                <button
+                  onClick={() => handleTabSwitch('profiles')}
+                  style={{
+                    ...styles.tabButton,
+                    color: activeTab === 'profiles' ? '#000' : '#FFF',
+                  }}
+                >
+                  Анкеты
+                </button>
+                <button
+                  onClick={() => handleTabSwitch('likes')}
+                  style={{
+                    ...styles.tabButton,
+                    color: activeTab === 'likes' ? '#000' : '#FFF',
+                  }}
+                >
+                  Симпатии
+                  {likesCount > 0 && (
+                    <span style={{
+                      ...styles.pillBadge,
+                      backgroundColor: activeTab === 'likes' ? '#000' : d.pink,
+                      color: activeTab === 'likes' ? d.accent : '#fff',
+                    }}>
+                      {likesCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+              {/* Spacer под аватарку */}
+              <div style={{ width: 44, flexShrink: 0 }} />
             </div>
-          </div>
-        </AppHeader>
+          </AppHeader>
+
+          {/* Avatar — fixed справа от табов */}
+          <button
+            style={styles.avatarFixed}
+            onClick={() => {
+              hapticFeedback('medium');
+              if (isGuestMode) setShowOnboarding(true);
+              else setShowMyProfile(true);
+            }}
+          >
+            {datingProfile?.photos?.[0]?.url ? (
+              <img src={datingProfile.photos[0].url} alt="" style={styles.avatarImg} />
+            ) : user?.avatar ? (
+              <img src={user.avatar} alt="" style={styles.avatarImg} />
+            ) : (
+              <div style={styles.avatarFallback}>
+                {user?.name?.[0] || '?'}
+              </div>
+            )}
+          </button>
+        </>
       )}
 
       <div style={styles.content}>
@@ -457,9 +452,7 @@ function DatingFeed() {
                       const scale = index === 0 ? 1 : 1 - (index * 0.05);
                       const translateY = isActive ? 0 : 16;
                       const opacity = index === 0 ? 1 : 0.6 - (index * 0.1);
-                      const rotation = isActive ? dragX * 0.05 : 0;
-                      const translateX = isActive ? dragX : 0;
-                      
+
                       return (
                         <motion.div
                           key={profile.id}
@@ -467,40 +460,40 @@ function DatingFeed() {
                             position: 'absolute',
                             top: 0, left: 0, right: 0, bottom: 0,
                             zIndex,
+                            willChange: 'transform',
+                            // motionX/cardRotation обновляют DOM без re-render
+                            x: isActive ? motionX : 0,
+                            rotate: isActive ? cardRotation : 0,
                           }}
                           initial={{ scale: 0.8, opacity: 0, y: 50 }}
-                          animate={{ 
-                            scale, opacity, y: translateY, x: translateX, rotate: rotation,
-                            transition: isDragging && isActive 
-                              ? { duration: 0 }
-                              : { type: 'spring', stiffness: 260, damping: 20 }
+                          animate={{
+                            scale, opacity, y: translateY,
+                            transition: { type: 'spring', stiffness: 260, damping: 20 }
                           }}
-                          exit={isActive ? { 
-                            x: swipeDirection === 'left' ? -500 : 500,
-                            opacity: 0, scale: 0.8,
-                            rotate: swipeDirection === 'left' ? -30 : 30,
-                            transition: { duration: 0.4, ease: [0.32, 0.72, 0, 1] }
-                          } : undefined}
+                          exit={false}
                         >
-                          {isActive && showLikeOverlay && (
-                            <div style={{
-                              ...styles.swipeOverlay,
-                              background: `radial-gradient(circle at center, rgba(76, 175, 80, ${overlayOpacity}), rgba(76, 175, 80, ${overlayOpacity * 0.6}))`
-                            }}>
-                              <div style={{...styles.swipeLabel, color: '#4caf50'}}>❤️</div>
-                              <div style={{...styles.swipeLabelText, color: '#4caf50'}}>LIKE</div>
-                            </div>
+                          {/* Overlays: всегда рендерятся, opacity через motion values */}
+                          {isActive && (
+                            <>
+                              <motion.div style={{
+                                ...styles.swipeOverlay,
+                                opacity: likeOverlayOpacity,
+                                background: 'radial-gradient(circle at center, rgba(76, 175, 80, 0.8), rgba(76, 175, 80, 0.5))',
+                              }}>
+                                <div style={{...styles.swipeLabel, color: '#4caf50'}}>❤️</div>
+                                <div style={{...styles.swipeLabelText, color: '#4caf50'}}>LIKE</div>
+                              </motion.div>
+                              <motion.div style={{
+                                ...styles.swipeOverlay,
+                                opacity: nopeOverlayOpacity,
+                                background: 'radial-gradient(circle at center, rgba(244, 67, 54, 0.8), rgba(244, 67, 54, 0.5))',
+                              }}>
+                                <div style={{...styles.swipeLabel, color: '#f44336'}}>✕</div>
+                                <div style={{...styles.swipeLabelText, color: '#f44336'}}>NOPE</div>
+                              </motion.div>
+                            </>
                           )}
-                          {isActive && showNopeOverlay && (
-                            <div style={{
-                              ...styles.swipeOverlay,
-                              background: `radial-gradient(circle at center, rgba(244, 67, 54, ${overlayOpacity}), rgba(244, 67, 54, ${overlayOpacity * 0.6}))`
-                            }}>
-                              <div style={{...styles.swipeLabel, color: '#f44336'}}>✕</div>
-                              <div style={{...styles.swipeLabelText, color: '#f44336'}}>NOPE</div>
-                            </div>
-                          )}
-                          
+
                           <ProfileCard
                             profile={profile}
                             onSwipeStart={isActive ? handleSwipeStart : undefined}
@@ -509,6 +502,9 @@ function DatingFeed() {
                             isBlurred={isGuestMode}
                             onRegisterTrigger={triggerOnboarding}
                             isInteractive={isActive}
+                            onExpandProfile={() => setShowProfileSheet(true)}
+                            onLike={handleLike}
+                            onSkip={handleSkip}
                           />
                         </motion.div>
                       );
@@ -517,20 +513,14 @@ function DatingFeed() {
               )}
             </div>
 
-            {/* InfoBar — теперь получает match_reason и common_interests через profile */}
-            {!loading && currentProfile && (
-              <ProfileInfoBar
-                profile={currentProfile}
-                isExpanded={infoExpanded}
-                onToggle={setInfoExpanded}
-              />
-            )}
-
-            {loading && (
-              <div style={styles.infoBarSkeleton}>
-                <FeedInfoBarSkeleton />
-              </div>
-            )}
+            {/* ProfileSheet — bottom sheet для полной анкеты */}
+            <ProfileSheet
+              profile={currentProfile}
+              isOpen={showProfileSheet}
+              onClose={() => setShowProfileSheet(false)}
+              onLike={handleLike}
+              onSkip={handleSkip}
+            />
           </>
         )}
 
@@ -544,10 +534,6 @@ function DatingFeed() {
             onViewProfile={(user, type) => {
               hapticFeedback('light');
               setViewingProfile({ user, type });
-            }}
-            onQuickLike={async (userId) => {
-              const result = await handleLike(userId);
-              return result;
             }}
             onMessage={(user) => {
               hapticFeedback('medium');
@@ -597,10 +583,13 @@ function DatingFeed() {
   );
 }
 
+const d = theme.colors.dating;
+
 // ===== STYLES =====
 const styles = {
   container: {
-    flex: 1, backgroundColor: theme.colors.bg,
+    display: 'flex', flexDirection: 'column',
+    flex: 1, backgroundColor: theme.colors.premium.bg,
     minHeight: '100vh', maxHeight: '100vh',
     position: 'relative', overflow: 'hidden',
   },
@@ -612,31 +601,14 @@ const styles = {
     borderTopColor: theme.colors.dating.primary || '#ff3b5c',
     borderRadius: '50%', animation: 'spin 0.8s linear infinite',
   },
-  tabsWrapper: {
-    padding: '0 8px 12px 8px',
-    overflow: 'visible',
-  },
-  tabsContainer: {
-    position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-    backgroundColor: theme.colors.bg,
-    borderRadius: theme.radius.lg,
-    padding: 4,
-    height: 44,
-    border: `1px solid ${theme.colors.border}`,
-    overflow: 'visible',
-  },
   activeIndicator: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 4,
-    width: 'calc((100% - 88px) / 2)',
-    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    borderRadius: theme.radius.md,
-    boxShadow: '0 2px 8px rgba(245, 87, 108, 0.4)',
-    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    top: 0, bottom: 0, left: 0,
+    width: '50%',
+    backgroundColor: d.accent,
+    borderRadius: 15,
+    boxShadow: '0 2px 10px rgba(212, 255, 0, 0.2)',
+    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
     zIndex: 1,
   },
   tabButton: {
@@ -645,34 +617,48 @@ const styles = {
     zIndex: 2,
     background: 'transparent',
     border: 'none',
-    fontSize: 15,
-    fontWeight: 600,
+    fontSize: 14,
+    fontWeight: 700,
     cursor: 'pointer',
-    transition: 'color 0.2s ease',
+    transition: 'color 0.3s',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    padding: '0 4px',
-    height: '100%',
   },
-  badge: {
-    backgroundColor: '#fff',
-    color: '#f5576c',
+  pillBadge: {
     fontSize: 11,
     fontWeight: 800,
-    padding: '1px 6px',
-    borderRadius: 10,
-    minWidth: 18,
+    padding: '2px 6px',
+    borderRadius: 6,
+    lineHeight: 1,
+    transition: 'all 0.2s ease',
+  },
+  avatarFixed: {
+    position: 'fixed',
+    top: 'calc(var(--screen-top-offset, 0px) + 36px)',
+    right: 18,
+    width: 44,
+    height: 44,
+    borderRadius: '50%',
+    backgroundColor: d.surface,
+    border: '2px solid rgba(255, 255, 255, 0.1)',
+    padding: 0,
+    overflow: 'hidden',
+    cursor: 'pointer',
+    zIndex: 101,
+    outline: 'none',
   },
   avatarImg: {
     width: '100%',
     height: '100%',
+    borderRadius: '50%',
     objectFit: 'cover',
   },
   avatarFallback: {
     width: '100%',
     height: '100%',
+    borderRadius: '50%',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     display: 'flex',
     alignItems: 'center',
@@ -681,35 +667,14 @@ const styles = {
     fontSize: 13,
     fontWeight: 700,
   },
-  avatarButtonCenter: {
-    width: 56,
-    height: 56,
-    borderRadius: '50%',
-    border: '2px solid transparent',
-    backgroundImage: 'linear-gradient(#0a0a0a, #0a0a0a), linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 50%, #f093fb 100%)',
-    backgroundOrigin: 'border-box',
-    backgroundClip: 'padding-box, border-box',
-    padding: 0,
-    overflow: 'hidden',
-    cursor: 'pointer',
-    flexShrink: 0,
-    transition: 'transform 0.2s, box-shadow 0.2s',
-    margin: '0 12px',
-    boxShadow: '0 4px 16px rgba(255, 59, 92, 0.4), 0 0 24px rgba(240, 147, 251, 0.3)',
-    position: 'relative',
-    transform: 'translateY(0px)',
-    zIndex: 10,
-  },
   content: {
     display: 'flex', flexDirection: 'column', flex: 1,
-    paddingTop: 'calc(var(--header-padding, 104px) + 16px)',
-    paddingBottom: 0, overflow: 'hidden', maxHeight: '100vh',
+    paddingTop: 'calc(var(--header-padding, 96px) + 8px)',
+    paddingBottom: 80, overflow: 'hidden', maxHeight: '100vh',
   },
   cardWrapper: {
-    position: 'relative', padding: '0 12px', minHeight: 400,
-    height: 'calc(100vh - var(--info-bar-min-height) - var(--header-height) + 250px)',
-    maxHeight: 'calc(100vh - var(--info-bar-min-height) - var(--header-height) + 250px)',
-    marginTop: 'auto', marginBottom: 0, overflow: 'hidden',
+    position: 'relative', padding: '0 8px',
+    flex: 1, overflow: 'hidden',
   },
   swipeOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -718,15 +683,6 @@ const styles = {
   },
   swipeLabel: { fontSize: 72, fontWeight: 900, textShadow: '0 4px 16px rgba(0,0,0,0.5)' },
   swipeLabelText: { fontSize: 28, fontWeight: 900, letterSpacing: 4, textShadow: '0 2px 8px rgba(0,0,0,0.5)' },
-  infoBarSkeleton: {
-    position: 'absolute', bottom: 65, left: 0, right: 0,
-    background: 'linear-gradient(to top, rgba(10, 10, 10, 0.98) 0%, rgba(10, 10, 10, 0.95) 85%, transparent 100%)',
-    backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-    borderTopLeftRadius: 32, borderTopRightRadius: 32,
-    padding: '20px 20px 24px', zIndex: 30,
-    boxShadow: '0 -4px 20px rgba(0,0,0,0.3)',
-    maxHeight: '70vh', overflowY: 'auto',
-  },
   emptyState: {
     flex: 1, display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center',

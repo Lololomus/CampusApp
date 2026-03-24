@@ -1,38 +1,25 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/dating/MatchCard.js =====
+// ===== FILE: src/components/dating/MatchCard.js =====
+// Вертикальная карточка матча 165x260 для горизонтального скролла
+
 import React from 'react';
-import { MessageCircle, Clock } from 'lucide-react';
+import { MessageCircle, Clock, GraduationCap } from 'lucide-react';
+import { INTEREST_EMOJIS, GOAL_EMOJIS } from '../../constants/datingConstants';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 
-const INTEREST_EMOJIS = {
-  it: '💻', games: '🎮', books: '📚', music: '🎵', movies: '🎬',
-  sport: '⚽', art: '🎨', travel: '✈️', coffee: '☕', party: '🎉',
-  photo: '📷', food: '🍕', science: '🔬', startup: '🚀', fitness: '💪',
-};
+const d = theme.colors.dating;
 
 function MatchCard({ match, onClick, onMessage }) {
   const photo = match?.photos?.[0]?.url || match?.photos?.[0] || null;
-  const isCritical = match?.hours_left < 3;
-  const isUrgent = match?.hours_left < 6;
+  const commonInterests = match?.common_interests || [];
 
-  const getTimerColor = () => {
-    if (isCritical) return '#ff3b5c';
-    if (isUrgent) return '#ffc107';
-    return '#4caf50';
-  };
+  const timeLabel = match?.hours_left > 0
+    ? `${match.hours_left}ч`
+    : `${match?.minutes_left || 0}м`;
 
   return (
-    <div
-      style={{
-        ...styles.card,
-        ...(isCritical && styles.cardCritical),
-      }}
-        onClick={() => {
-        hapticFeedback('light');
-        if (onClick) onClick();
-        }}
-    >
-      {/* LEFT: Photo */}
+    <div style={styles.card} onClick={() => { hapticFeedback('light'); if (onClick) onClick(); }}>
+      {/* Фото секция */}
       <div style={styles.photoSection}>
         {photo ? (
           <img src={photo} alt={match.name} style={styles.photo} />
@@ -41,50 +28,50 @@ function MatchCard({ match, onClick, onMessage }) {
             {match.name?.charAt(0)?.toUpperCase() || '?'}
           </div>
         )}
+        <div style={styles.photoGradient} />
+        <div style={styles.timerBadge}>
+          <Clock size={10} /> {timeLabel}
+        </div>
       </div>
 
-      {/* RIGHT: Info */}
+      {/* Инфо секция */}
       <div style={styles.infoSection}>
-        {/* Name + Timer Badge */}
-        <div style={styles.topRow}>
-          <h3 style={styles.name}>
-            {match.name}, {match.age}
-          </h3>
-          <div
-            style={{
-              ...styles.timerBadge,
-              backgroundColor: getTimerColor(),
-            }}
-          >
-            <Clock size={11} strokeWidth={3} />
-            <span>
-              {match.hours_left > 0 ? `${match.hours_left}ч` : `${match.minutes_left}м`}
-            </span>
+        <div>
+          {/* Имя + возраст */}
+          <div style={styles.name}>{match.name}, {match.age}</div>
+          {/* Вуз (факультет) */}
+          <div style={styles.university}>
+            <GraduationCap size={12} />
+            {match.institute || match.university}
           </div>
         </div>
 
-        {/* University */}
-        <div style={styles.university}>
-          {match.university}
-          {match.institute && ` • ${match.institute}`}
-          {match.course && ` • ${match.course} курс`}
-        </div>
-
-        {/* Interests */}
-        {match.interests && match.interests.length > 0 && (
-          <div style={styles.interestsRow}>
-            {match.interests.slice(0, 4).map((interest, idx) => (
-              <span key={idx} style={styles.interestIcon}>
-                {INTEREST_EMOJIS[interest] || '⭐'}
-              </span>
+        {/* Цели: emoji-only pills */}
+        {match.goals?.length > 0 && (
+          <div style={styles.goalsRow}>
+            {match.goals.map(goal => (
+              <div key={goal} style={styles.goalPill} title={goal}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>{GOAL_EMOJIS[goal] || '✨'}</span>
+              </div>
             ))}
-            {match.interests.length > 4 && (
-              <span style={styles.moreCount}>+{match.interests.length - 4}</span>
-            )}
           </div>
         )}
 
-        {/* Message Button (Full-width) */}
+        {/* Интересы: 24x24 emoji badges */}
+        {match.interests?.length > 0 && (
+          <div style={styles.interestsRow}>
+            {match.interests.slice(0, 5).map(interest => {
+              const isCommon = commonInterests.includes(interest);
+              return (
+                <div key={interest} style={isCommon ? styles.interestCommon : styles.interestBadge}>
+                  {INTEREST_EMOJIS[interest] || '⭐'}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Кнопка "Написать" */}
         <button
           style={styles.messageButton}
           onClick={(e) => {
@@ -93,8 +80,7 @@ function MatchCard({ match, onClick, onMessage }) {
             if (onMessage) onMessage(match);
           }}
         >
-          <MessageCircle size={18} strokeWidth={2.5} />
-          <span>Написать сообщение</span>
+          <MessageCircle size={15} fill="currentColor" /> Написать
         </button>
       </div>
     </div>
@@ -102,41 +88,35 @@ function MatchCard({ match, onClick, onMessage }) {
 }
 
 const styles = {
-    card: {
-    display: 'flex',
-    alignItems: 'stretch',
-    gap: 12,
-    padding: 12,
-    borderRadius: 20,
-    border: `1px solid ${theme.colors.border}`,
-    backgroundColor: theme.colors.card,
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-    },
-
-  cardCritical: {
-    border: '2px solid #ff3b5c',
-    boxShadow: '0 0 16px rgba(255, 59, 92, 0.4)',
-  },
-
-  photoSection: {
-    flexShrink: 0,
-    width: 90,
-    borderRadius: 14,
+  card: {
+    width: 165,
+    minHeight: 260,
+    borderRadius: 24,
     overflow: 'hidden',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    flexShrink: 0,
+    backgroundColor: d.cardBg,
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    cursor: 'pointer',
+    transition: 'transform 0.2s ease',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
   },
-
-  photo: {
+  photoSection: {
+    position: 'relative',
     width: '100%',
-    height: '100%',
+    height: 130,
+    flexShrink: 0,
+    backgroundColor: '#111',
+  },
+  photo: {
+    position: 'absolute',
+    top: 0, left: 0, width: '100%', height: '100%',
     objectFit: 'cover',
   },
-
   photoPlaceholder: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0, left: 0, width: '100%', height: '100%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -145,87 +125,119 @@ const styles = {
     color: '#fff',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
   },
-
-  infoSection: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    minWidth: 0,
+  photoGradient: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: '50%',
+    background: `linear-gradient(to top, ${d.cardBg}, transparent)`,
+    pointerEvents: 'none',
   },
-
-  topRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-
-  name: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: theme.colors.text,
-    margin: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    flex: 1,
-  },
-
   timerBadge: {
+    position: 'absolute',
+    top: 8, right: 8,
     display: 'flex',
     alignItems: 'center',
     gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    color: d.pink,
+    fontSize: 10,
+    fontWeight: 700,
     padding: '4px 8px',
     borderRadius: 8,
-    fontSize: 12,
+  },
+  infoSection: {
+    flex: 1,
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  name: {
+    fontSize: 15,
     fontWeight: 800,
     color: '#fff',
-    flexShrink: 0,
-    boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-  },
-
-  university: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
+    lineHeight: 1.2,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    lineHeight: 1.3,
   },
-
-  interestsRow: {
+  university: {
     display: 'flex',
-    gap: 10,
     alignItems: 'center',
+    gap: 4,
+    fontSize: 11,
+    fontWeight: 500,
+    color: d.textMuted,
+    marginTop: 2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
-
-  interestIcon: {
-    fontSize: 20,
+  goalsRow: {
+    display: 'flex',
+    gap: 6,
+    marginTop: 2,
   },
-
-  moreCount: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: theme.colors.textSecondary,
-  },
-
-  messageButton: {
-    width: '100%',
+  goalPill: {
+    backgroundColor: d.surface,
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    padding: '4px 10px',
+    borderRadius: 10,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    padding: '11px 16px',
-    marginTop: 4,
+  },
+  interestsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'nowrap',
+  },
+  interestBadge: {
+    width: 24,
+    height: 24,
+    flexShrink: 0,
+    borderRadius: 8,
+    backgroundColor: '#252525',
+    border: '1px solid rgba(255, 255, 255, 0.04)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
+  },
+  interestCommon: {
+    width: 24,
+    height: 24,
+    flexShrink: 0,
+    borderRadius: 8,
+    backgroundColor: d.commonBg,
+    border: `1px solid ${d.commonBorder}`,
+    boxShadow: d.commonGlow,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
+  },
+  messageButton: {
+    width: '100%',
+    padding: '10px 0',
+    marginTop: 'auto',
     borderRadius: 12,
     border: 'none',
-    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    backgroundColor: d.pink,
     color: '#fff',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(245, 87, 108, 0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    boxShadow: '0 4px 12px rgba(255, 45, 85, 0.3)',
     transition: 'transform 0.15s ease',
   },
 };

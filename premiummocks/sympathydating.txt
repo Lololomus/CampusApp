@@ -1,0 +1,378 @@
+import React, { useState } from 'react';
+import { 
+  Heart, X, MessageCircle, ChevronLeft, 
+  MapPin, GraduationCap, Sparkles, Clock, 
+  Home, ShoppingBag, Plus, User, MoreHorizontal
+} from 'lucide-react';
+
+// Хелперы
+const getGoalEmoji = (goal) => {
+  if (goal === 'Отношения') return '💘';
+  if (goal === 'Дружба') return '🤝';
+  if (goal === 'Тусовки') return '🎉';
+  if (goal === 'Учеба') return '📚';
+  return '✨';
+};
+
+// Парсер эмодзи из строки "📚 Книги" -> "📚"
+const getEmoji = (str) => str.split(' ')[0];
+
+// === МОК-ДАННЫЕ ===
+const MUTUALS = [
+  { 
+    id: 101, name: 'Анна', age: 19, uni: 'МГУ • Филологический', course: '1 курс',
+    photo: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&q=80&w=400', 
+    timeLeft: '2ч',
+    goals: ['Отношения'],
+    interests: ['📚 Книги', '🎨 Творчество', '☕ Кофе'],
+    commonInterests: ['🎨 Творчество', '☕ Кофе'],
+    matchReason: { text: '2 общих', type: 'interests' }
+  },
+  { 
+    id: 102, name: 'Илья', age: 22, uni: 'МФТИ • ФПМИ', course: '4 курс',
+    photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=400', 
+    timeLeft: '18ч',
+    goals: ['Дружба', 'Тусовки'],
+    interests: ['💻 IT', '🎮 Игры', '☕ Кофе', '🍕 Еда'],
+    commonInterests: [],
+    matchReason: { text: 'Твой вуз', type: 'university' }
+  },
+];
+
+const INCOMING_LIKES = [
+  { 
+    id: 201, name: 'Анна', age: 19, uni: 'МГУ • Журфак', course: '1 курс',
+    photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400', 
+    about: 'Мечтаю стать журналистом и писать о культуре. Люблю театры и литературу 🎭',
+    icebreaker: { question: 'Какую последнюю книгу прочитала?', answer: 'Перечитываю Достоевского — каждый раз нахожу что-то новое 📖' },
+    goals: ['Дружба', 'Тусовки'],
+    interests: ['📚 Книги', '🎨 Творчество', '🎬 Кино', '☕ Кофе'],
+    commonInterests: ['📚 Книги', '☕ Кофе'],
+    matchReason: { text: '2 общих', type: 'interests' }
+  },
+  { 
+    id: 202, name: 'Катя', age: 20, uni: 'ВШЭ • Дизайн', course: '2 курс',
+    photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=400', 
+    about: 'UI/UX дизайнер и художник. Ищу вдохновение и компанию для походов на выставки.',
+    icebreaker: null,
+    goals: ['Отношения'],
+    interests: ['🎨 Творчество', '📸 Фото', '☕ Кофе', '🎵 Музыка', '✈️ Путешествия'],
+    commonInterests: ['🎨 Творчество', '📸 Фото', '✈️ Путешествия'],
+    matchReason: { text: '3 общих', type: 'interests' }
+  },
+  { 
+    id: 203, name: 'Даниил', age: 23, uni: 'МГТУ • Робототехника', course: 'Магистратура',
+    photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=400', 
+    about: 'Гитарист и меломан 🎸. Собираю свою инди-группу.',
+    icebreaker: null,
+    goals: ['Тусовки', 'Дружба'],
+    interests: ['🎵 Музыка', '🎉 Вечеринки', '⚽ Спорт', '☕ Кофе'],
+    commonInterests: [],
+    matchReason: { text: 'Твой факультет', type: 'faculty' }
+  },
+  { 
+    id: 204, name: 'Алина', age: 21, uni: 'МГИМО • МО', course: '3 курс',
+    photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=400', 
+    about: 'Учу китайский, люблю азиатскую кухню. Ищу с кем сходить в новую раменную на районе 🍜',
+    icebreaker: null,
+    goals: ['Отношения'],
+    interests: ['✈️ Путешествия', '🍣 Еда', '📚 Языки'],
+    commonInterests: [],
+    matchReason: { text: 'Новая анкета', type: 'new' }
+  },
+];
+
+
+// === СЦЕНА 2: ДЕТАЛЬНАЯ АНКЕТА ===
+const IncomingLikeDetail = ({ user, onClose }) => {
+  if (!user) return null;
+
+  return (
+    <div className="absolute inset-0 z-50 bg-[#050505] flex flex-col animate-in slide-in-from-right duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]">
+      <div className="absolute top-0 left-0 right-0 z-10 p-4 pt-14 flex items-center justify-between pointer-events-none">
+        <button onClick={onClose} className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white pointer-events-auto active:scale-95 transition-transform">
+          <ChevronLeft size={24} className="-ml-1" />
+        </button>
+        <span className="font-bold text-white drop-shadow-md text-[16px] pointer-events-auto">Анкета</span>
+        <div className="w-10" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto hide-scroll pb-32">
+        <div className="w-full aspect-[4/5] relative bg-[#1C1C1E]">
+          <img src={user.photo} alt={user.name} className="w-full h-full object-cover" />
+          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#050505] to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-5">
+            <h1 className="text-[36px] font-extrabold text-white leading-none mb-1 drop-shadow-lg">
+              {user.name}, {user.age}
+            </h1>
+            <div className="flex items-center gap-1.5 text-white/90 text-[15px] font-medium drop-shadow-md">
+              <GraduationCap size={16} />
+              {user.uni} • {user.course}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5">
+          {user.icebreaker && (
+            <div className="bg-[#FF2D55]/10 border border-[#FF2D55]/20 rounded-2xl p-4 mb-8 relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#FF2D55]" />
+              <h4 className="text-[#FF2D55] font-bold text-[13px] uppercase tracking-wider mb-2">{user.icebreaker.question}</h4>
+              <p className="text-white text-[16px] leading-relaxed font-medium">{user.icebreaker.answer}</p>
+            </div>
+          )}
+
+          <div className="mb-8">
+            <h3 className="text-sm font-bold text-[#8E8E93] uppercase tracking-wider mb-3">Цели</h3>
+            <div className="flex flex-wrap gap-2">
+              {user.goals.map(goal => (
+                <div key={goal} className="bg-[#1C1C1E] border border-[#ffffff14] text-white px-4 py-2 rounded-xl text-[14px] font-bold shadow-sm flex items-center gap-1.5">
+                  <span>{getGoalEmoji(goal)}</span> {goal}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <h3 className="text-sm font-bold text-[#8E8E93] uppercase tracking-wider mb-3">О себе</h3>
+            <p className="text-[16px] text-[#EAEAEA] leading-relaxed">
+              {user.about}
+            </p>
+          </div>
+
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-3">
+               <h3 className="text-sm font-bold text-[#8E8E93] uppercase tracking-wider">Интересы</h3>
+               {user.commonInterests?.length > 0 && (
+                 <span className="text-[12px] font-bold text-[#D4FF00] bg-[#D4FF00]/10 px-2 py-1 rounded-md">
+                   {user.commonInterests.length} общих
+                 </span>
+               )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {user.interests.map((interest) => {
+                const isCommon = user.commonInterests?.includes(interest);
+                return (
+                  <div key={interest} className={`border px-3 py-2 rounded-xl text-[14px] font-medium transition-colors ${isCommon ? 'bg-[#D4FF00]/10 border-[#D4FF00]/30 text-[#D4FF00]' : 'bg-[#1C1C1E] border-[#ffffff0a] text-[#EAEAEA]'}`}>
+                    {interest}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute bottom-0 left-0 right-0 p-5 pt-4 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent pb-8">
+        <button 
+          onClick={onClose}
+          className="w-full bg-[#FF2D55] text-white font-extrabold text-[18px] py-4 rounded-2xl active:scale-[0.98] transition-transform flex items-center justify-center gap-2 shadow-[0_8px_24px_rgba(255,45,85,0.35)]"
+        >
+          <Heart size={22} fill="currentColor" /> Лайкнуть в ответ
+        </button>
+      </div>
+    </div>
+  );
+};
+
+
+// === ГЛАВНАЯ СЦЕНА (СИМПАТИИ) ===
+export default function App() {
+  const [selectedLiker, setSelectedLiker] = useState(null);
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-[#050505] font-sans text-white">
+      <style>{`
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .animate-in { animation: slideInRight 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+      `}</style>
+
+      {/* IPHONE FRAME */}
+      <div className="relative w-[390px] h-[844px] bg-[#000000] rounded-[46px] border-[10px] border-[#222] overflow-hidden flex flex-col shadow-2xl">
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-[120px] h-[32px] bg-black rounded-full z-[1100]" />
+
+        {/* ШАПКА */}
+        <div className="flex flex-col relative z-40 bg-[#000000]/90 backdrop-blur-xl border-b border-[#ffffff0a]">
+          <div className="pt-14 pb-2 flex justify-center shrink-0">
+            <h1 className="text-[20px] font-extrabold tracking-tight text-white">Знакомства</h1>
+          </div>
+          <div className="px-4 py-2 shrink-0 flex items-center gap-3">
+            <div className="flex-1 h-[36px] bg-[#1C1C1E] p-[3px] rounded-[18px] flex border border-[#ffffff0a] shadow-inner relative">
+              <button className="flex-1 h-full rounded-[15px] text-[14px] font-bold text-[#8E8E93] transition-colors">Анкеты</button>
+              <div className="absolute right-[3px] top-[3px] bottom-[3px] w-[calc(50%-3px)] bg-[#D4FF00] rounded-[15px] shadow-sm z-0" />
+              <button className="flex-1 h-full rounded-[15px] text-[14px] font-bold flex items-center justify-center gap-1.5 text-black z-10 transition-colors">
+                Симпатии
+                <div className="bg-black text-[#D4FF00] text-[11px] font-extrabold px-1.5 py-0.5 rounded-md leading-none">6</div>
+              </button>
+            </div>
+            <button className="w-[40px] h-[40px] shrink-0 rounded-full bg-[#1C1C1E] border border-[#ffffff14] p-[2px] overflow-hidden active:scale-95 transition-transform shadow-md relative">
+              <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100" alt="Me" className="w-full h-full rounded-full object-cover" />
+              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#32D74B] border-2 border-[#1C1C1E] rounded-full" />
+            </button>
+          </div>
+        </div>
+
+        {/* КОНТЕНТ */}
+        <div className="flex-1 overflow-y-auto hide-scroll pb-24 pt-4 bg-[#050505]">
+          
+          {/* === БЛОК 1: ВЗАИМНОСТЬ === */}
+          <div className="mb-10">
+            <div className="px-4 flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-full bg-[#FF2D55]/10 flex items-center justify-center">
+                <Sparkles size={16} className="text-[#FF2D55]" />
+              </div>
+              <h2 className="text-[20px] font-extrabold text-white tracking-tight">Взаимность <span className="text-[#8E8E93] font-semibold text-[16px] ml-1">2</span></h2>
+            </div>
+            
+            <div className="flex overflow-x-auto hide-scroll px-4 gap-4 pb-4 items-stretch">
+              {MUTUALS.map(user => (
+                <div key={user.id} className="relative w-[165px] min-h-[260px] h-auto rounded-[24px] overflow-hidden shrink-0 active:scale-[0.97] transition-transform border border-[#ffffff14] shadow-lg group cursor-pointer flex flex-col bg-[#121212]">
+                  
+                  {/* Фото */}
+                  <div className="relative w-full h-[130px] shrink-0 bg-[#111]">
+                    <img src={user.photo} alt={user.name} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#121212] to-transparent" />
+                    <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-md border border-white/10 text-[#FF2D55] text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm">
+                      <Clock size={10} /> {user.timeLeft}
+                    </div>
+                  </div>
+                  
+                  {/* Информационный блок */}
+                  <div className="flex-1 p-3 flex flex-col justify-between relative z-10">
+                    <div className="flex flex-col mb-3">
+                      
+                      {/* Имя и ВУЗ */}
+                      <div>
+                        <div className="font-extrabold text-white text-[15px] leading-tight truncate">{user.name}, {user.age}</div>
+                        <div className="text-[#8E8E93] text-[11px] font-medium mt-0.5 truncate flex items-center gap-1">
+                          <GraduationCap size={12}/> {user.uni.split(' • ')[1]}
+                        </div>
+                      </div>
+
+                      {/* ЦЕЛИ (Отдельный крупный таб: Эмодзи Only, крупнее интересов) */}
+                      <div className="flex gap-1.5 mt-2.5">
+                         {user.goals.map(g => (
+                           <div key={g} className="bg-[#1C1C1E] border border-[#ffffff14] px-2.5 py-1 rounded-[10px] flex items-center justify-center shadow-sm" title={g}>
+                             <span className="text-[16px] leading-none">{getGoalEmoji(g)}</span>
+                           </div>
+                         ))}
+                      </div>
+
+                      {/* Интересы (Жестко до 5 в одну строку, flex-nowrap) */}
+                      <div className="flex items-center gap-1 flex-nowrap mt-2">
+                        {user.interests.slice(0, 5).map(interest => {
+                          const isCommon = user.commonInterests?.includes(interest);
+                          return (
+                            <div key={interest} className={`flex items-center justify-center w-[24px] h-[24px] shrink-0 rounded-lg text-[13px] transition-all ${
+                              isCommon ? 'bg-[#D4FF00]/15 border border-[#D4FF00]/40 shadow-[0_0_8px_rgba(212,255,0,0.15)]' : 
+                              'bg-[#252525] border border-[#ffffff0a] opacity-100 grayscale-0'
+                            }`}>
+                              {getEmoji(interest)}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                    </div>
+
+                    <button className="w-full py-2.5 mt-auto bg-[#FF2D55] text-white rounded-xl flex justify-center items-center gap-1.5 text-[13px] font-bold shadow-[0_4px_12px_rgba(255,45,85,0.3)] active:scale-95 transition-transform">
+                      <MessageCircle size={15} fill="currentColor" /> Написать
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* === БЛОК 2: КТО ЛАЙКНУЛ === */}
+          <div>
+            <div className="px-4 flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-full bg-[#1C1C1E] border border-[#ffffff0a] flex items-center justify-center">
+                <Heart size={16} className="text-[#8E8E93]" />
+              </div>
+              <div className="flex flex-col">
+                 <h2 className="text-[20px] font-extrabold text-white tracking-tight leading-none">Кто лайкнул <span className="text-[#8E8E93] font-semibold text-[16px] ml-1">{INCOMING_LIKES.length}</span></h2>
+                 <span className="text-[13px] text-[#8E8E93] mt-1 font-medium">Узнай, кому ты понравился</span>
+              </div>
+            </div>
+
+            {/* Сетка */}
+            <div className="grid grid-cols-2 gap-3 px-4">
+              {INCOMING_LIKES.map(user => (
+                <div 
+                  key={user.id} 
+                  onClick={() => setSelectedLiker(user)}
+                  className="bg-[#121212] rounded-[20px] overflow-hidden border border-[#ffffff0a] active:scale-[0.97] transition-transform cursor-pointer flex flex-col group shadow-sm h-auto"
+                >
+                  <div className="relative aspect-[4/5] bg-[#2C2C2E] overflow-hidden shrink-0">
+                    <img src={user.photo} alt={user.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#121212] to-transparent pointer-events-none" />
+                    
+                    <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-[#FF2D55] flex items-center justify-center shadow-md">
+                      <Heart size={14} fill="#FFF" className="text-white" />
+                    </div>
+
+                    <div className="absolute bottom-2 left-2 right-2">
+                       <div className="font-extrabold text-white text-[16px] leading-tight drop-shadow-md">
+                         {user.name}, {user.age}
+                       </div>
+                       <div className="text-[#EAEAEA] text-[11px] font-medium flex items-center gap-1 mt-0.5 drop-shadow-md truncate">
+                         <GraduationCap size={12} /> {user.uni.split(' • ')[1]}
+                       </div>
+                    </div>
+                  </div>
+
+                  {/* ИНФОГРАФИКА */}
+                  <div className="p-3 flex flex-col flex-1">
+                    
+                    {/* Цели (Отдельный крупный таб: Эмодзи Only) */}
+                    <div className="flex gap-1.5 mb-2.5">
+                      {user.goals.map(g => (
+                        <div key={g} className="bg-[#1C1C1E] border border-[#ffffff14] px-2.5 py-1 rounded-[10px] flex items-center justify-center shadow-sm" title={g}>
+                          <span className="text-[16px] leading-none">{getGoalEmoji(g)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Интересы прижаты к низу, ровно до 5 в одну строку, flex-nowrap */}
+                    <div className="flex items-center gap-1 flex-nowrap mt-auto pt-1">
+                      {user.interests.slice(0, 5).map(interest => {
+                        const isCommon = user.commonInterests?.includes(interest);
+                        return (
+                          <div key={interest} className={`flex items-center justify-center w-[24px] h-[24px] shrink-0 rounded-lg text-[13px] transition-all ${
+                            isCommon ? 'bg-[#D4FF00]/15 border border-[#D4FF00]/40 shadow-[0_0_8px_rgba(212,255,0,0.15)]' : 
+                            'bg-[#252525] border border-[#ffffff0a] opacity-100 grayscale-0'
+                          }`}>
+                            {getEmoji(interest)}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* BOTTOM NAV */}
+        <div className="absolute bottom-4 left-4 right-4 z-40 flex justify-center pointer-events-none">
+          <nav className="bg-[#1C1C1E] rounded-[24px] px-4 py-2 flex items-center justify-between w-full shadow-[0_20px_40px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.05)] pointer-events-auto border border-[#ffffff0a]">
+            <button className="flex-1 h-12 bg-transparent flex flex-col items-center justify-center text-[#8E8E93]"><Home size={24} /></button>
+            <button className="flex-1 h-12 bg-transparent flex items-center justify-center text-[#8E8E93]"><ShoppingBag size={24} /></button>
+            <button className="w-12 h-12 rounded-full bg-[#D4FF00] text-black flex items-center justify-center shrink-0"><Plus size={26} strokeWidth={3} /></button>
+            <button className="flex-1 h-12 bg-transparent flex flex-col items-center justify-center text-white relative">
+              <div className="absolute -top-2 w-6 h-1 bg-white rounded-b-md" />
+              <Heart size={24} fill="currentColor" />
+            </button>
+            <button className="flex-1 h-12 bg-transparent flex items-center justify-center text-[#8E8E93]"><User size={24} /></button>
+          </nav>
+        </div>
+
+        <IncomingLikeDetail user={selectedLiker} onClose={() => setSelectedLiker(null)} />
+      </div>
+    </div>
+  );
+}

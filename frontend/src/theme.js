@@ -43,6 +43,20 @@ export const theme = {
       light: 'rgba(255, 59, 92, 0.1)',
       glow: 'rgba(255, 59, 92, 0.3)',
       actionGlow: 'rgba(255, 107, 157, 0.35)',
+      // Новые токены из мок-дизайна
+      accent: '#D4FF00',
+      accentText: '#000000',
+      pink: '#FF2D55',
+      pinkGlow: 'rgba(255, 45, 85, 0.3)',
+      surface: '#1C1C1E',
+      surfaceHover: '#2C2C2E',
+      cardBg: '#121212',
+      textMuted: '#8E8E93',
+      textLight: '#EAEAEA',
+      onlineDot: '#32D74B',
+      commonBg: 'rgba(212, 255, 0, 0.15)',
+      commonBorder: 'rgba(212, 255, 0, 0.4)',
+      commonGlow: '0 0 8px rgba(212, 255, 0, 0.15)',
     },
     
     // Фоны

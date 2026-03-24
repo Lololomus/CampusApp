@@ -1,11 +1,14 @@
-// ===== 📄 ФАЙЛ: src/components/dating/ProfileCard.js =====
+// ===== FILE: src/components/dating/ProfileCard.js =====
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Lock, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef, memo } from 'react';
+import { Lock, ChevronUp, GraduationCap, Heart, X } from 'lucide-react';
+import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import theme from '../../theme';
 import PhotoViewer from '../shared/PhotoViewer';
 
-function ProfileCard({
+const d = theme.colors.dating;
+
+const ProfileCard = memo(function ProfileCard({
   profile,
   onSwipeStart,
   onSwipeMove,
@@ -13,11 +16,14 @@ function ProfileCard({
   isBlurred = false,
   onRegisterTrigger,
   isInteractive = true,
+  onExpandProfile,
+  onLike,
+  onSkip,
 }) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
   const cardRef = useRef(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
@@ -36,6 +42,12 @@ function ProfileCard({
   if (!profile) return null;
 
   const maxDrag = 350;
+
+  const isFromUni = profile.match_reason && (
+    profile.match_reason.includes('вуз') ||
+    profile.match_reason.includes('факультет') ||
+    profile.match_reason.includes('Из твоего')
+  );
 
   // ===== ЛОГИКА КЛИКА (TAP) =====
   const handleTap = (clientX) => {
@@ -57,7 +69,7 @@ function ProfileCard({
       } else if (x > width - centerZone && photoIndex < photos.length - 1) {
         setPhotoIndex(prev => prev + 1);
       } else {
-        setShowPhotoViewer(true);
+        if (onExpandProfile) onExpandProfile();
       }
     } catch (e) {
       console.error('Tap error:', e);
@@ -71,12 +83,12 @@ function ProfileCard({
     startYRef.current = e.touches[0].clientY;
     currentXRef.current = e.touches[0].clientX;
     dragDistanceRef.current = 0;
-    setIsDragging(true);
+    isDraggingRef.current = true;
     if (onSwipeStart) onSwipeStart();
   };
 
   const handleTouchMove = (e) => {
-    if (!isDragging || !isInteractive) return;
+    if (!isDraggingRef.current || !isInteractive) return;
     const currentX = e.touches[0].clientX;
     currentXRef.current = currentX;
     const deltaX = currentX - startXRef.current;
@@ -92,7 +104,7 @@ function ProfileCard({
 
   const handleTouchEnd = (e) => {
     if (!isInteractive) return;
-    setIsDragging(false);
+    isDraggingRef.current = false;
     const finalDelta = currentXRef.current - startXRef.current;
 
     if (dragDistanceRef.current < 5) {
@@ -112,7 +124,7 @@ function ProfileCard({
     startYRef.current = e.clientY;
     currentXRef.current = e.clientX;
     dragDistanceRef.current = 0;
-    setIsDragging(true);
+    isDraggingRef.current = true;
     if (onSwipeStart) onSwipeStart();
 
     const handleMouseMove = (moveEvent) => {
@@ -124,7 +136,7 @@ function ProfileCard({
     };
 
     const handleMouseUp = (upEvent) => {
-      setIsDragging(false);
+      isDraggingRef.current = false;
       const finalDelta = upEvent.clientX - startXRef.current;
 
       if (dragDistanceRef.current < 5) {
@@ -161,7 +173,6 @@ function ProfileCard({
         onMouseDown={handleMouseDown}
       >
         <div style={styles.imageContainer}>
-          {/* ✅ НОВОЕ: Crossfade для плавного переключения фото */}
           {photos.length > 0 ? (
             <div style={styles.photosStack}>
               {photos.map((photo, idx) => (
@@ -178,7 +189,7 @@ function ProfileCard({
                     opacity: idx === photoIndex ? 1 : 0,
                     zIndex: idx === photoIndex ? 2 : 1,
                     filter: isBlurred ? 'blur(24px) brightness(0.8)' : 'none',
-                    transform: isBlurred ? 'scale(1.1)' : 'scale(1)',
+                    transform: isBlurred ? 'scale(1.1)' : 'none',
                   }}
                 />
               ))}
@@ -189,7 +200,6 @@ function ProfileCard({
             </div>
           )}
 
-          {/* Loading skeleton */}
           {!imageLoaded && photos.length > 0 && (
             <div style={styles.imageSkeleton}>
               <div style={styles.skeletonShimmer} />
@@ -216,37 +226,6 @@ function ProfileCard({
             </div>
           )}
 
-          {/* Navigation buttons */}
-          {!isBlurred && photos.length > 1 && isInteractive && (
-            <>
-              {photoIndex > 0 && (
-                <button
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPhotoIndex(prev => prev - 1);
-                  }}
-                  style={styles.navButtonLeft}
-                >
-                  <ChevronLeft size={32} strokeWidth={3} />
-                </button>
-              )}
-
-              {photoIndex < photos.length - 1 && (
-                <button
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPhotoIndex(prev => prev + 1);
-                  }}
-                  style={styles.navButtonRight}
-                >
-                  <ChevronRight size={28} strokeWidth={2.5} />
-                </button>
-              )}
-            </>
-          )}
-
           {/* Photo indicators */}
           {!isBlurred && photos.length > 1 && imageLoaded && (
             <div style={styles.indicatorsRow}>
@@ -261,13 +240,118 @@ function ProfileCard({
               ))}
             </div>
           )}
+
+          {/* Нижний градиент */}
+          {!isBlurred && (
+            <div style={styles.bottomGradient} />
+          )}
+
+          {/* Инфо-оверлей поверх фото */}
+          {!isBlurred && (
+            <div style={styles.infoOverlay}>
+              <div style={styles.infoLeft}>
+                <div style={styles.nameRow}>
+                  <h2 style={styles.profileName}>
+                    {profile.name}, {profile.age}
+                  </h2>
+                </div>
+                <div style={styles.uniRow}>
+                  <GraduationCap size={16} />
+                  {profile.university}{profile.institute ? ` • ${profile.institute}` : ''}
+                </div>
+
+                {/* Бейджи */}
+                <div style={styles.badgesRow}>
+                  {isFromUni && (
+                    <div style={styles.uniBadge}>
+                      Из твоего вуза
+                    </div>
+                  )}
+                  {profile.goals?.slice(0, 2).map(goal => (
+                    <div key={goal} style={styles.goalPill}>
+                      {GOAL_LABELS[goal] || goal}
+                    </div>
+                  ))}
+                  {profile.interests?.slice(0, 2).map(interest => (
+                    <div key={interest} style={styles.interestPill}>
+                      {INTEREST_LABELS[interest] || interest}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ChevronUp кнопка */}
+              {onExpandProfile && (
+                <button
+                  style={styles.expandButton}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExpandProfile();
+                  }}
+                >
+                  <ChevronUp size={24} color="#fff" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Кнопки Heart / X справа по центру */}
+          {!isBlurred && isInteractive && (
+            <div style={styles.actionButtons}>
+              <button
+                style={styles.heartButton}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onLike) onLike();
+                }}
+              >
+                <Heart size={28} fill="currentColor" />
+              </button>
+              <button
+                style={styles.skipButton}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onSkip) onSkip();
+                }}
+              >
+                <X size={24} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </>
   );
-}
+});
 
-// ===== Profile card STYLES =====
+// ===== STYLES =====
+// Solid backgrounds вместо backdropFilter — убирает GPU-тяжёлый blur compositing
+const solidCircle = {
+  borderRadius: '50%',
+  background: 'rgba(0, 0, 0, 0.55)',
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  outline: 'none',
+};
+
+const solidPill = {
+  background: 'rgba(0, 0, 0, 0.6)',
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  color: '#fff',
+  padding: '6px 12px',
+  borderRadius: 12,
+  fontSize: 12,
+  fontWeight: 700,
+  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+  whiteSpace: 'nowrap',
+};
+
 const styles = {
   card: {
     position: 'relative',
@@ -281,6 +365,8 @@ const styles = {
     userSelect: 'none',
     display: 'flex',
     flexDirection: 'column',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    willChange: 'transform',
   },
   imageContainer: {
     position: 'relative',
@@ -289,7 +375,7 @@ const styles = {
     backgroundColor: theme.colors.bgSecondary,
     cursor: 'grab',
     overflow: 'hidden',
-    flex: 1, 
+    flex: 1,
   },
   photosStack: {
     position: 'relative',
@@ -298,89 +384,36 @@ const styles = {
   },
   avatarImage: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
+    top: 0, left: 0, width: '100%', height: '100%',
     objectFit: 'cover',
     pointerEvents: 'none',
     userSelect: 'none',
-    transition: 'opacity 0.3s ease, filter 0.3s ease, transform 0.3s ease',
+    // Только opacity transition для смены фото, без transform/filter transitions
+    transition: 'opacity 0.25s ease',
   },
   imageSkeleton: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     background: `linear-gradient(135deg, ${theme.colors.bgSecondary} 0%, ${theme.colors.card} 100%)`,
     zIndex: 5,
-    overflow: 'hidden'
+    overflow: 'hidden',
   },
   skeletonShimmer: {
     position: 'absolute',
-    top: 0,
-    left: '-100%',
-    right: 0,
-    bottom: 0,
+    top: 0, left: '-100%', right: 0, bottom: 0,
     background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
-    animation: 'shimmer 2s infinite'
-  },
-  navButtonLeft: {
-    position: 'absolute',
-    top: '50%',
-    left: 12,
-    transform: 'translateY(-50%)',
-    width: 48,
-    height: 48,
-    borderRadius: '50%',
-    background: 'rgba(0, 0, 0, 0.5)',
-    backdropFilter: 'blur(8px)',
-    border: 'none',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 20,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-    transition: 'none',
-    outline: 'none',
-  },
-  navButtonRight: {
-    position: 'absolute',
-    top: '50%',
-    right: 12,
-    transform: 'translateY(-50%)',
-    width: 48,
-    height: 48,
-    borderRadius: '50%',
-    background: 'rgba(0, 0, 0, 0.5)',
-    backdropFilter: 'blur(8px)',
-    border: 'none',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 20,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-    transition: 'none',
-    outline: 'none',
+    animation: 'shimmer 2s infinite',
   },
   blurOverlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 20,
     gap: 16,
-    background: 'rgba(0, 0, 0, 0.3)'
+    background: 'rgba(0, 0, 0, 0.3)',
   },
   blurBadge: {
     display: 'flex',
@@ -389,10 +422,9 @@ const styles = {
     background: 'rgba(0, 0, 0, 0.6)',
     padding: '6px 12px',
     borderRadius: 20,
-    backdropFilter: 'blur(4px)',
     color: '#fff',
     fontSize: 13,
-    fontWeight: 600
+    fontWeight: 600,
   },
   showPhotoButton: {
     padding: '12px 24px',
@@ -403,7 +435,7 @@ const styles = {
     fontSize: 15,
     fontWeight: 700,
     boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-    cursor: 'pointer'
+    cursor: 'pointer',
   },
   avatarPlaceholder: {
     width: '100%',
@@ -414,16 +446,14 @@ const styles = {
     fontSize: 80,
     fontWeight: 'bold',
     color: 'rgba(255,255,255,0.1)',
-    background: `linear-gradient(135deg, ${theme.colors.bgSecondary} 0%, ${theme.colors.card} 100%)`
+    background: `linear-gradient(135deg, ${theme.colors.bgSecondary} 0%, ${theme.colors.card} 100%)`,
   },
   indicatorsRow: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    right: 10,
+    top: 10, left: 10, right: 10,
     display: 'flex',
     gap: 4,
-    zIndex: 10
+    zIndex: 10,
   },
   indicator: {
     flex: 1,
@@ -431,7 +461,111 @@ const styles = {
     borderRadius: 2,
     backgroundColor: '#fff',
     boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
-    transition: 'opacity 0.2s'
+    transition: 'opacity 0.2s',
+  },
+
+  // === Инфо-оверлей ===
+  bottomGradient: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: '50%',
+    background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)',
+    pointerEvents: 'none',
+    zIndex: 3,
+  },
+  infoOverlay: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    padding: 20,
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    zIndex: 5,
+    pointerEvents: 'none',
+  },
+  infoLeft: {
+    flex: 1,
+    paddingRight: 56,
+    pointerEvents: 'none',
+  },
+  nameRow: {
+    marginBottom: 4,
+  },
+  profileName: {
+    fontSize: 32,
+    fontWeight: 800,
+    color: '#fff',
+    margin: 0,
+    lineHeight: 1,
+    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+  },
+  uniRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 15,
+    fontWeight: 500,
+    textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+    marginBottom: 12,
+  },
+  badgesRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  uniBadge: {
+    backgroundColor: 'rgba(212, 255, 0, 0.9)',
+    color: '#000',
+    padding: '6px 12px',
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: 700,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+  },
+  goalPill: {
+    ...solidPill,
+  },
+  interestPill: {
+    ...solidPill,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: 140,
+  },
+  expandButton: {
+    ...solidCircle,
+    width: 40,
+    height: 40,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    pointerEvents: 'auto',
+    flexShrink: 0,
+  },
+
+  // === Кнопки действий справа ===
+  actionButtons: {
+    position: 'absolute',
+    top: '50%',
+    right: 16,
+    transform: 'translateY(-50%)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    zIndex: 15,
+  },
+  heartButton: {
+    ...solidCircle,
+    width: 56,
+    height: 56,
+    color: d.pink,
+    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+  },
+  skipButton: {
+    ...solidCircle,
+    width: 48,
+    height: 48,
+    color: 'rgba(255, 255, 255, 0.7)',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+    marginLeft: 4,
   },
 };
 
