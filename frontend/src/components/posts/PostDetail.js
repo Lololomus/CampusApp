@@ -110,8 +110,6 @@ function PostDetail() {
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [commentViewer, setCommentViewer] = useState({ isOpen: false, photos: [], index: 0 });
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
-  const [isHeaderHidden, setIsHeaderHidden] = useState(false);
-  const lastScrollTopRef = useRef(0);
   const [isExiting, setIsExiting] = useState(false);
   const closeTimeoutRef = useRef(null);
 
@@ -251,13 +249,14 @@ function PostDetail() {
   const eventDate = useMemo(() => parseApiDate(post?.event_date), [post?.event_date]);
 
   const catInfo = useMemo(() => {
+    const tc = theme.colors.premium.tagColors;
     if (!post) return { label: '', color: theme.colors.text };
     switch(post.category) {
-      case 'news': return { label: 'Новости', color: theme.colors.news };
-      case 'memes': return { label: 'Мем', color: theme.colors.memes };
-      case 'events': return { label: 'Событие', color: theme.colors.events };
-      case 'confessions': return { label: 'Подслушано', color: theme.colors.confessions };
-      case 'lost_found': return { label: 'Бюро', color: theme.colors.lostFound };
+      case 'news':        return { label: 'Новости',     color: tc.news.color };
+      case 'memes':       return { label: 'Мем',         color: tc.memes.color };
+      case 'events':      return { label: 'Событие',     color: tc.events.color };
+      case 'confessions': return { label: 'Подслушано',  color: tc.confessions.color };
+      case 'lost_found':  return { label: 'Бюро',        color: tc.lostFound.color };
       case 'polls': return post?.poll?.type === 'quiz'
         ? { label: 'Викторина', color: '#BF5AF2' }
         : { label: 'Опрос',     color: theme.colors.premium.primary };
@@ -458,21 +457,6 @@ function PostDetail() {
     });
   };
 
-  const handleDetailScroll = (event) => {
-    const current = event.currentTarget.scrollTop || 0;
-    if (current <= 0) {
-      setIsHeaderHidden(false);
-      lastScrollTopRef.current = 0;
-      return;
-    }
-    if (current > lastScrollTopRef.current + 8 && current > 64) {
-      setIsHeaderHidden(true);
-    } else if (current < lastScrollTopRef.current - 8) {
-      setIsHeaderHidden(false);
-    }
-    lastScrollTopRef.current = current;
-  };
-
   const commentTree = useMemo(() => {
     const commentMap = {};
     const roots = [];
@@ -553,16 +537,18 @@ function PostDetail() {
         zIndex={Z_MODAL_POST_DETAIL}
       >
       <div style={containerStyle}>
-        {/* Верхний блюр — всегда, независимо от скролла */}
-        <EdgeBlur position="top" height="calc(var(--screen-top-offset, 0px) + var(--drilldown-header-height, 56px))" zIndex={105} />
         {/* Нижний блюр — поверх поля комментария */}
         <EdgeBlur position="bottom" height={90} zIndex={105} />
 
-        <div style={{ ...styles.headerWrap, transform: isHeaderHidden ? 'translateY(-100%)' : 'translateY(0)' }}>
-          <DrilldownHeader title="Пост" onBack={handleBack} transparent />
-        </div>
-
-        <div style={styles.scrollContent} onScroll={handleDetailScroll}>
+        <div style={styles.scrollContent}>
+          <DrilldownHeader
+            title=""
+            onBack={handleBack}
+            showTitle={false}
+            sticky={false}
+            showDivider={false}
+            background="#000000"
+          />
           {loading || !post ? (
             <div style={styles.cardContent}>
               <div style={styles.authorSection}>
@@ -1104,12 +1090,6 @@ const styles = {
     willChange: 'transform',
     transform: 'translate3d(0,0,0)',
     WebkitOverflowScrolling: 'touch',
-  },
-  headerWrap: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 120,
-    transition: 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
   },
   scrollContent: {
     flex: 1,

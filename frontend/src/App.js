@@ -62,7 +62,6 @@ function App() {
     bootstrapAuth,
     showNotificationsScreen,
   } = useStore();
-  const isProd = import.meta.env.PROD;
 
   useEffect(() => {
     initTelegramApp();
@@ -123,45 +122,7 @@ function App() {
       case 'market':
         return <Market />;
       case 'people':
-        if (!isProd) return <DatingFeed />;
-        return (
-          <div style={{
-            position: 'fixed', inset: 0,
-            background: '#050505',
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            gap: 20,
-            paddingBottom: 'var(--screen-bottom-offset, 80px)',
-          }}>
-            <div style={{
-              width: 88, height: 88, borderRadius: 28,
-              background: 'rgba(212,255,0,0.08)',
-              border: '1.5px solid rgba(212,255,0,0.18)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 40,
-            }}>
-              🛠️
-            </div>
-            <div style={{ textAlign: 'center', padding: '0 40px' }}>
-              <p style={{
-                margin: '0 0 8px',
-                fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px',
-              }}>
-                Раздел в разработке
-              </p>
-              <p style={{
-                margin: 0,
-                fontSize: 15, color: '#8E8E93', lineHeight: 1.45,
-              }}>
-                Скоро здесь появятся знакомства с&nbsp;людьми из&nbsp;твоего&nbsp;вуза
-              </p>
-            </div>
-            <div style={{
-              height: 3, width: 48,
-              borderRadius: 2, background: '#D4FF00', opacity: 0.7,
-            }} />
-          </div>
-        );
+        return <DatingFeed />;
       case 'profile':
         return <Profile />;
       case 'ambassador':

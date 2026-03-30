@@ -437,6 +437,8 @@ function EditProfile() {
         <DrilldownHeader
           title={showCampusPicker ? 'Выбор ВУЗа' : 'Редактирование'}
           onBack={handleBack}
+          background="#000000"
+          showDivider={false}
         />
 
         {/* Sliding track: панель 1 = форма, панель 2 = пикер ВУЗа */}

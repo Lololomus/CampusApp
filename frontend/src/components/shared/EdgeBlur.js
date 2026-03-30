@@ -1,6 +1,6 @@
 // ===== FILE: shared/EdgeBlur.js =====
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 /**
  * EdgeBlur — «Liquid Glass» размытый градиент на верхнем или нижнем крае экрана.
@@ -13,9 +13,38 @@ import React from 'react';
  * @param {boolean} animateHeight — анимировать изменение height (только для верхнего блюра с меняющейся шапкой)
  */
 // height — число (px) или CSS-строка (напр. 'var(--header-padding)')
-function EdgeBlur({ position = 'bottom', height = 100, zIndex = 50, visible = true, animateHeight = false }) {
+function EdgeBlur({
+  position = 'bottom',
+  height = 100,
+  zIndex = 50,
+  visible = true,
+  animateHeight = false,
+  compensateKeyboard = false,
+}) {
   const isTop = position === 'top';
   const heightValue = typeof height === 'number' ? `${height}px` : height;
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  useEffect(() => {
+    if (isTop || !compensateKeyboard) return undefined;
+
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+
+    const updateOffset = () => {
+      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardOffset(keyboardHeight > 50 ? Math.ceil(keyboardHeight) : 0);
+    };
+
+    updateOffset();
+    vv.addEventListener('resize', updateOffset);
+    vv.addEventListener('scroll', updateOffset);
+
+    return () => {
+      vv.removeEventListener('resize', updateOffset);
+      vv.removeEventListener('scroll', updateOffset);
+    };
+  }, [compensateKeyboard, isTop]);
 
   // Маска: плавное затухание от края к прозрачному концу
   // — сверху: плотный старт для стекла (60% solid)
@@ -44,9 +73,12 @@ function EdgeBlur({ position = 'bottom', height = 100, zIndex = 50, visible = tr
 
   // height-анимация только там, где height реально меняется (иначе браузер может анимировать при ремаунте)
   const transition = animateHeight
-    ? 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease'
-    : 'opacity 0.3s ease';
+    ? 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease, transform 0.25s ease'
+    : 'opacity 0.3s ease, transform 0.25s ease';
   const opacity = visible ? 1 : 0;
+  const transform = !isTop && compensateKeyboard
+    ? `translate3d(0, ${keyboardOffset}px, 0)`
+    : 'translate3d(0, 0, 0)';
 
   const baseStyle = {
     position: 'fixed',
@@ -56,6 +88,8 @@ function EdgeBlur({ position = 'bottom', height = 100, zIndex = 50, visible = tr
     pointerEvents: 'none',
     transition,
     opacity,
+    transform,
+    willChange: 'transform, opacity',
     ...edgeAnchor,
   };
 

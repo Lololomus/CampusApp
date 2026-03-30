@@ -8,12 +8,15 @@ import {
   MapPin,
   Check,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
   Plus,
   Hash,
   AlertCircle,
   Gift,
   Clock,
   Play,
+  Globe,
 } from 'lucide-react';
 import { compressImage } from '../../utils/media';
 import { useSwipe } from '../../hooks/useSwipe';
@@ -41,6 +44,7 @@ import ConfirmationDialog from './ConfirmationDialog';
 import { toast } from './Toast';
 import { useTelegramScreen } from './telegram/useTelegramScreen';
 import SmartDatePicker from './SmartDatePicker';
+import { getUniversityName, getUniqueUniversities } from '../../constants/universityData';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
@@ -161,6 +165,7 @@ function CreateContentModal({ onClose }) {
     createContentDraft,
     setCreateContentDraft,
     clearCreateContentDraft,
+    user,
   } = useStore();
 
   const [isMounted, setIsMounted] = useState(false);
@@ -187,6 +192,7 @@ function CreateContentModal({ onClose }) {
   const [videoThumb, setVideoThumb] = useState(null);
 
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [anonComments, setAnonComments] = useState(false);
   const [postScope, setPostScope] = useState('university');
   const [lfType, setLfType] = useState('lost');
   const [eventDateMode, setEventDateMode] = useState('today');
@@ -204,6 +210,11 @@ function CreateContentModal({ onClose }) {
   const [reqCategory, setReqCategory] = useState(CREATE_CONTENT_REQUEST_CATEGORIES[0]?.value || 'help');
   const [reqTitle, setReqTitle] = useState('');
   const [reqBody, setReqBody] = useState('');
+  const [showScopePanel, setShowScopePanel] = useState(false);
+  const [scopePanelView, setScopePanelView] = useState('root');
+  const [scopeSearchQuery, setScopeSearchQuery] = useState('');
+  const [postTargetUniversity, setPostTargetUniversity] = useState('');
+  const [isCrossUniversityScope, setIsCrossUniversityScope] = useState(false);
   const [showReqReward, setShowReqReward] = useState(false);
   const [reqRewardType, setReqRewardType] = useState('none');
   const [reqRewardValue, setReqRewardValue] = useState('');
@@ -219,6 +230,7 @@ function CreateContentModal({ onClose }) {
   const postFileInputRef = useRef(null);
   const postTagInputRef = useRef(null);
   const skipPostCategoryResetRef = useRef(false);
+  const hasCheckedInitialDraftRef = useRef(false);
   const mediaProcessingTasksRef = useRef(new Set());
   const photosRef = useRef(photos);
   const imageFilesRef = useRef(imageFiles);
@@ -239,6 +251,39 @@ function CreateContentModal({ onClose }) {
       return query ? tag.includes(query) : true;
     });
   }, [postTagInput, postTags]);
+
+  const currentUniversityName = useMemo(() => getUniversityName(user || {}), [user]);
+
+  const availableScopeUniversities = useMemo(
+    () => getUniqueUniversities().filter((option) => option.value && option.value !== currentUniversityName),
+    [currentUniversityName]
+  );
+
+  const filteredScopeUniversities = useMemo(() => {
+    const query = scopeSearchQuery.trim().toLowerCase();
+    if (!query) return availableScopeUniversities;
+    return availableScopeUniversities.filter((option) => option.label.toLowerCase().includes(query));
+  }, [availableScopeUniversities, scopeSearchQuery]);
+
+  const selectedUniversityScopeLabel = useMemo(() => {
+    if (isCrossUniversityScope && postTargetUniversity) return postTargetUniversity;
+    return currentUniversityName || 'Мой вуз';
+  }, [currentUniversityName, isCrossUniversityScope, postTargetUniversity]);
+
+  const activeScopeOption = useMemo(() => {
+    if (postScope === 'city') return 'city';
+    if (postScope === 'all') return 'all';
+    return 'university';
+  }, [postScope]);
+
+  const scopeAudienceLabel = useMemo(() => {
+    if (postScope === 'city') return 'Виден студентам из твоего города';
+    if (postScope === 'all') return 'Виден всем студентам';
+    if (isCrossUniversityScope && postTargetUniversity) return `Виден в ленте ${postTargetUniversity}`;
+    if (isCrossUniversityScope) return 'Выберите вуз, в чью ленту публикуется пост';
+    if (currentUniversityName) return `Виден в ленте ${currentUniversityName}`;
+    return 'Виден только в ленте твоего вуза';
+  }, [currentUniversityName, isCrossUniversityScope, postScope, postTargetUniversity]);
 
 
   const resolvedRequestExpiresAt = useMemo(
@@ -359,6 +404,9 @@ function CreateContentModal({ onClose }) {
     setShowReqDeadline(false);
     setShowEventPicker(false);
     setShowReqPicker(false);
+    setShowScopePanel(false);
+    setScopePanelView('root');
+    setScopeSearchQuery('');
   }, [activeTab]);
 
   useEffect(() => {
@@ -371,6 +419,8 @@ function CreateContentModal({ onClose }) {
     setEventDateMode('today');
     setCustomDate('');
     setShowTagTool(false);
+    setShowScopePanel(false);
+    setScopePanelView('root');
     setHasPoll(false);
     setPollOptions(['', '']);
 
@@ -381,11 +431,13 @@ function CreateContentModal({ onClose }) {
 
     if (postCategory === 'confessions') {
       setIsAnonymous(true);
+      setAnonComments(true);
       setPhotos([]);
       setImageFiles([]);
       setProcessingImages([]);
     } else {
       setIsAnonymous(false);
+      setAnonComments(false);
     }
 
     if (postCategory === 'polls') {
@@ -397,6 +449,9 @@ function CreateContentModal({ onClose }) {
   }, [postCategory]);
 
   useEffect(() => {
+    if (hasCheckedInitialDraftRef.current) return;
+    hasCheckedInitialDraftRef.current = true;
+
     if (hasCreateContentDraftData(createContentDraft)) {
       setShowRestoreDialog(true);
     }
@@ -437,7 +492,10 @@ function CreateContentModal({ onClose }) {
     videoFile,
     videoThumb,
     isAnonymous,
+    anonComments,
     postScope,
+    postTargetUniversity,
+    isCrossUniversityScope,
     lfType,
     eventDateMode,
     customDate,
@@ -478,7 +536,12 @@ function CreateContentModal({ onClose }) {
     setVideoFile(nextVideo);
     setVideoThumb(draft.videoThumb || null);
     setIsAnonymous(Boolean(draft.isAnonymous));
-    setPostScope(['university', 'city', 'all'].includes(draft.postScope) ? draft.postScope : 'university');
+    setAnonComments(draft.postCategory === 'confessions' ? true : Boolean(draft.anonComments));
+    const restoredPostScope = ['university', 'city', 'all'].includes(draft.postScope) ? draft.postScope : 'university';
+    const restoredTargetUniversity = typeof draft.postTargetUniversity === 'string' ? draft.postTargetUniversity : '';
+    setPostScope(restoredPostScope);
+    setPostTargetUniversity(restoredPostScope === 'university' ? restoredTargetUniversity : '');
+    setIsCrossUniversityScope(restoredPostScope === 'university' && Boolean(draft.isCrossUniversityScope || restoredTargetUniversity));
     setLfType(draft.lfType === 'found' ? 'found' : 'lost');
     setEventDateMode(draft.eventDateMode || 'today');
     setCustomDate(draft.customDate || '');
@@ -500,6 +563,7 @@ function CreateContentModal({ onClose }) {
     setReqCustomDate(draft.reqCustomDate || '');
 
     setProcessingImages([]);
+    setScopeSearchQuery('');
     photosRef.current = nextPhotos;
     imageFilesRef.current = nextImageFiles;
     videoFileRef.current = nextVideo;
@@ -582,6 +646,7 @@ function CreateContentModal({ onClose }) {
     if (postCategory === 'polls') return postTitle.trim().length >= 3 && isPollValid();
     if (postCategory === 'memes') return photos.length > 0 || countLetters(postTitle + postBody) >= 3;
     if (!textValid) return false;
+    if (postScope === 'university' && isCrossUniversityScope && !postTargetUniversity.trim()) return false;
     if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
     if (postCategory === 'lost_found') return location.trim().length >= 3;
     if (hasPoll) return isPollValid();
@@ -610,6 +675,68 @@ function CreateContentModal({ onClose }) {
     setShowTagTool((prev) => !prev);
     setShowReqReward(false);
     setShowReqDeadline(false);
+  };
+
+  const toggleScopePanel = () => {
+    hapticFeedback('light');
+    setShowScopePanel((prev) => {
+      const next = !prev;
+      if (next) {
+        setScopePanelView('root');
+      } else {
+        setScopeSearchQuery('');
+      }
+      return next;
+    });
+    setShowTagTool(false);
+  };
+
+  const selectScopeVisibility = (value) => {
+    hapticFeedback('light');
+
+    if (value === 'university') {
+      setPostScope('university');
+      if (postScope !== 'university') {
+        setIsCrossUniversityScope(false);
+        setPostTargetUniversity('');
+      }
+      setScopePanelView('root');
+      return;
+    }
+
+    setPostScope(value);
+    setIsCrossUniversityScope(false);
+    setPostTargetUniversity('');
+    setScopeSearchQuery('');
+    setScopePanelView('root');
+    setShowScopePanel(false);
+  };
+
+  const selectTargetUniversity = (universityValue) => {
+    hapticFeedback('light');
+    setPostScope('university');
+    setIsCrossUniversityScope(true);
+    setPostTargetUniversity(universityValue);
+    setScopeSearchQuery('');
+    setScopePanelView('root');
+    setShowScopePanel(false);
+  };
+
+  const openUniversityScopePicker = () => {
+    hapticFeedback('light');
+    setPostScope('university');
+    setScopePanelView('university');
+    setScopeSearchQuery('');
+  };
+
+  const resetToOwnUniversityScope = () => {
+    hapticFeedback('light');
+    setPostScope('university');
+    setIsCrossUniversityScope(false);
+    setPostTargetUniversity('');
+    setScopeSearchQuery('');
+    setScopePanelView('root');
+    setShowScopePanel(false);
   };
 
   const toggleReqReward = () => {
@@ -854,6 +981,7 @@ function CreateContentModal({ onClose }) {
       if (postCategory === 'polls') return postTitle.trim().length >= 3 && isPollValid();
       if (postCategory === 'memes') return currentPhotos.length > 0 || countLetters(postTitle + postBody) >= 3;
       if (!textValid) return false;
+      if (postScope === 'university' && isCrossUniversityScope && !postTargetUniversity.trim()) return false;
       if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
       if (postCategory === 'lost_found') return location.trim().length >= 3;
       if (hasPoll) return isPollValid();
@@ -863,6 +991,10 @@ function CreateContentModal({ onClose }) {
     if (activeTab === 'post') {
       if (!isPostFormValidForSubmit()) {
         hapticFeedback('error');
+        if (postScope === 'university' && isCrossUniversityScope && !postTargetUniversity.trim()) {
+          setError('Выберите вуз, в чью ленту публикуется пост');
+          return;
+        }
         if (postCategory === 'polls') setError('Введите текст вопроса и минимум 2 варианта ответа');
         else if (postCategory === 'memes') setError('Для категории Мемы добавьте фото или текст от 3 букв');
         else if (postCategory === 'lost_found') setError('Укажите место для категории Находки');
@@ -875,6 +1007,10 @@ function CreateContentModal({ onClose }) {
       setUploadProgress(10);
 
       try {
+        const normalizedTargetUniversity =
+          postScope === 'university' && isCrossUniversityScope
+            ? postTargetUniversity.trim()
+            : '';
         const formData = new FormData();
         formData.append('category', postCategory);
 
@@ -890,7 +1026,8 @@ function CreateContentModal({ onClose }) {
         formData.append('tags', JSON.stringify(postTags));
         formData.append('scope', postScope);
         formData.append('is_anonymous', isAnonymous);
-        formData.append('enable_anonymous_comments', postCategory === 'confessions' ? true : isAnonymous);
+        formData.append('enable_anonymous_comments', postCategory === 'confessions' ? true : anonComments);
+        if (normalizedTargetUniversity) formData.append('target_university', normalizedTargetUniversity);
 
         if (postCategory === 'lost_found') {
           formData.append('lost_or_found', lfType);
@@ -1263,12 +1400,37 @@ function CreateContentModal({ onClose }) {
                       </div>
                     )}
 
-                    {postCategory === 'confessions' && (
-                      <div className="smart-block" style={styles.confessionBlock}>
-                        <VenetianMask size={22} color="var(--create-primary)" />
-                        <div>
-                          <div style={styles.confessionTitle}>Полная анонимность</div>
-                          <div style={styles.confessionText}>Авторство скрыто. Комментарии также будут анонимными.</div>
+                    {(isAnonymous || postCategory === 'confessions') && (
+                      <div className="smart-block" style={styles.anonBlock}>
+                        <div style={styles.anonRow}>
+                          <VenetianMask size={20} color="var(--create-primary)" />
+                          <div style={styles.anonInfo}>
+                            <div style={styles.anonTitle}>Анонимный пост</div>
+                            <div style={styles.anonSubtitle}>Авторство будет скрыто</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { if (postCategory !== 'confessions') setAnonComments((prev) => !prev); }}
+                          style={styles.anonCommentsRow}
+                          disabled={postCategory === 'confessions'}
+                        >
+                          <span style={styles.anonCommentsLabel}>Анонимные комментарии</span>
+                          <div style={{ ...styles.anonToggleTrack, ...(anonComments ? styles.anonToggleTrackOn : {}) }}>
+                            <div style={{ ...styles.anonToggleDot, ...(anonComments ? styles.anonToggleDotOn : {}) }} />
+                          </div>
+                        </button>
+                      </div>
+                    )}
+
+                    {(postScope !== 'university' || isCrossUniversityScope) && (
+                      <div className="smart-block" style={styles.scopeSummaryBlock}>
+                        <div style={styles.scopeSummaryRow}>
+                          <Globe size={18} color="var(--create-primary)" />
+                          <div style={styles.scopeSummaryInfo}>
+                            <div style={styles.scopeSummaryTitle}>Видимость</div>
+                            <div style={styles.scopeSummaryText}>{scopeAudienceLabel}</div>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1512,24 +1674,126 @@ function CreateContentModal({ onClose }) {
                 </div>
               )}
 
-              {activeTab === 'post' && (
-                <div style={styles.scopeRow}>
-                  {[
-                    { value: 'university', label: '🎓 Вуз' },
-                    { value: 'city',       label: '🏙 Город' },
-                    { value: 'all',        label: '🌍 Все' },
-                  ].map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => { setPostScope(opt.value); hapticFeedback('light'); }}
-                      style={postScope === opt.value ? { ...styles.scopeBtn, ...styles.scopeBtnActive } : styles.scopeBtn}
-                      className="create-spring-btn"
-                      disabled={isSubmitting}
-                    >
-                      {opt.label}
+              {activeTab === 'post' && showScopePanel && (
+                <div className="smart-block" style={styles.popupPanel}>
+                  <div style={styles.popupHead}>
+                    <div style={styles.scopePanelHead}>
+                      {scopePanelView === 'university' ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => { setScopePanelView('root'); setScopeSearchQuery(''); }}
+                            style={styles.scopeBackBtn}
+                            className="create-spring-btn"
+                            disabled={isSubmitting}
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <span style={styles.popupCaption}>ЛЕНТА ВУЗА</span>
+                        </>
+                      ) : (
+                        <span style={styles.popupCaption}>ВИДИМОСТЬ</span>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => setShowScopePanel(false)} style={styles.pollX} className="create-spring-btn" disabled={isSubmitting}>
+                      <X size={16} />
                     </button>
-                  ))}
+                  </div>
+                  {scopePanelView === 'root' && (
+                    <div style={styles.popupOptionRow}>
+                      {[
+                        { value: 'university', label: '🎓 Вуз' },
+                        { value: 'city', label: '🏙 Город' },
+                        { value: 'all', label: '🌍 Все' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => selectScopeVisibility(opt.value)}
+                          style={activeScopeOption === opt.value ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive } : styles.smartOptionBtn}
+                          className="create-spring-btn"
+                          disabled={isSubmitting}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {scopePanelView === 'root' ? (
+                    <>
+                      {activeScopeOption === 'university' && (
+                        <button
+                          type="button"
+                          onClick={openUniversityScopePicker}
+                          style={styles.scopeDrillCard}
+                          className="create-spring-btn"
+                          disabled={isSubmitting}
+                        >
+                          <div style={styles.scopeDrillInfo}>
+                            <span style={styles.scopeDrillCaption}>ЛЕНТА</span>
+                            <span style={styles.scopeDrillTitle}>{selectedUniversityScopeLabel}</span>
+                            <span style={styles.scopeDrillMeta}>
+                              {isCrossUniversityScope ? 'Публикация уйдет в выбранный вуз' : 'По умолчанию пост попадет в твой вуз'}
+                            </span>
+                          </div>
+                          <div style={styles.scopeDrillAction}>
+                            <span style={styles.scopeDrillActionText}>{isCrossUniversityScope ? 'Изменить' : 'Другой вуз'}</span>
+                            <ChevronRight size={16} />
+                          </div>
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={resetToOwnUniversityScope}
+                        style={!isCrossUniversityScope ? { ...styles.scopeUniversityBtn, ...styles.scopeUniversityBtnActive } : styles.scopeUniversityBtn}
+                        className="create-spring-btn"
+                        disabled={isSubmitting}
+                      >
+                        <span style={styles.scopeUniversityBtnLabel}>{currentUniversityName ? `Мой вуз: ${currentUniversityName}` : 'Мой вуз'}</span>
+                        <span style={styles.scopeUniversityBtnMeta}>Оставить публикацию в своей ленте</span>
+                      </button>
+
+                      <input
+                        value={scopeSearchQuery}
+                        onChange={(e) => setScopeSearchQuery(e.target.value)}
+                        placeholder="Найти другой вуз"
+                        style={{ ...styles.popupInput, marginTop: 12, marginBottom: 12 }}
+                        disabled={isSubmitting}
+                      />
+
+                      {postTargetUniversity && (
+                        <div style={styles.scopeSelectedPill}>Выбрано: {postTargetUniversity}</div>
+                      )}
+
+                      <div className="hide-scroll" style={styles.scopeUniversityList}>
+                        {filteredScopeUniversities.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => selectTargetUniversity(option.value)}
+                            style={postTargetUniversity === option.value ? { ...styles.scopeUniversityBtn, ...styles.scopeUniversityBtnActive } : styles.scopeUniversityBtn}
+                            className="create-spring-btn"
+                            disabled={isSubmitting}
+                          >
+                            <span style={styles.scopeUniversityBtnLabel}>{option.label}</span>
+                            <span style={styles.scopeUniversityBtnMeta}>
+                              {postTargetUniversity === option.value ? 'Будет опубликовано сюда' : 'Открыть ленту этого вуза для поста'}
+                            </span>
+                          </button>
+                        ))}
+
+                        {filteredScopeUniversities.length === 0 && (
+                          <div style={styles.scopeUniversityEmpty}>
+                            {availableScopeUniversities.length === 0 ? 'Список вузов пока пуст' : 'Ничего не найдено'}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1541,7 +1805,8 @@ function CreateContentModal({ onClose }) {
                       <button type="button" onClick={() => { if (!categoryCapabilities.allowImages) { hapticFeedback('error'); return; } postFileInputRef.current?.click(); }} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.allowImages ? styles.toolBtn : { ...styles.toolBtn, ...styles.toolBtnDisabled }} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={TOOL_ICON_SIZE} /></button>
                       <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={TOOL_ICON_SIZE} /></button>
                       {canUsePollByCategory && <button type="button" onClick={() => { if (postCategory !== 'polls') setHasPoll((prev) => !prev); }} style={pollVisible ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><BarChart2 size={TOOL_ICON_SIZE} /></button>}
-                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) setIsAnonymous((prev) => !prev); }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><VenetianMask size={TOOL_ICON_SIZE} /></button>
+                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) { setIsAnonymous((prev) => { if (prev) setAnonComments(false); return !prev; }); } }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><VenetianMask size={TOOL_ICON_SIZE} /></button>
+                      <button type="button" onClick={toggleScopePanel} style={showScopePanel || postScope !== 'university' || isCrossUniversityScope ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Globe size={TOOL_ICON_SIZE} /></button>
                     </div>
                   </>
                 ) : (
@@ -1861,9 +2126,22 @@ const styles = {
   eventBtnActive: { background: 'var(--create-primary)', color: '#000' },
   eventPicker: { flex: 1, position: 'relative' },
   hiddenDateInput: { position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' },
-  confessionBlock: { display: 'flex', gap: 12, alignItems: 'center', padding: '12px 16px', borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16 },
-  confessionTitle: { fontSize: 14, fontWeight: 700, color: 'var(--create-primary)' },
-  confessionText: { fontSize: 12, color: 'var(--create-text-muted)', marginTop: 2, lineHeight: 1.3 },
+  anonBlock: { borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16, overflow: 'hidden' },
+  anonRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' },
+  anonInfo: { flex: 1 },
+  anonTitle: { fontSize: 14, fontWeight: 700, color: 'var(--create-primary)' },
+  anonSubtitle: { fontSize: 12, color: 'var(--create-text-muted)', marginTop: 1 },
+  anonCommentsRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: 'none', borderTop: '1px solid rgba(212,255,0,0.1)', cursor: 'pointer' },
+  anonCommentsLabel: { fontSize: 13, color: 'rgba(255,255,255,0.6)' },
+  anonToggleTrack: { width: 40, height: 22, borderRadius: 11, background: 'rgba(255,255,255,0.12)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 },
+  anonToggleTrackOn: { background: 'var(--create-primary)' },
+  anonToggleDot: { width: 18, height: 18, borderRadius: 9, background: '#fff', position: 'absolute', top: 2, left: 2, transition: 'transform 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' },
+  anonToggleDotOn: { transform: 'translateX(18px)' },
+  scopeSummaryBlock: { borderRadius: 16, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', marginBottom: 16 },
+  scopeSummaryRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' },
+  scopeSummaryInfo: { flex: 1 },
+  scopeSummaryTitle: { fontSize: 14, fontWeight: 700, color: '#fff' },
+  scopeSummaryText: { fontSize: 12, color: 'var(--create-text-muted)', marginTop: 2, lineHeight: 1.35 },
   reqSection: { marginBottom: 16 },
   reqLabel: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff', fontSize: 13, fontWeight: 600, marginBottom: 8 },
   reqInput: { width: '100%', borderRadius: 12, border: '1px solid var(--create-border)', background: 'var(--create-surface-elevated)', color: '#fff', padding: '12px 14px', fontSize: 14, outline: 'none', boxSizing: 'border-box' },
@@ -1920,6 +2198,21 @@ const styles = {
     boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
   },
   popupHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  scopePanelHead: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
+  scopeBackBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.05)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: 0,
+    flexShrink: 0,
+  },
   popupCaption: { fontSize: 13, fontWeight: 700, color: 'var(--create-text-muted)', letterSpacing: '0.5px' },
   popupOptionRow: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 },
   smartOptionBtn: {
@@ -1938,6 +2231,66 @@ const styles = {
     background: 'rgba(212,255,0,0.1)',
     border: '1px solid var(--create-primary)',
     color: 'var(--create-primary)',
+  },
+  scopeDrillCard: {
+    width: '100%',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    background: 'rgba(255,255,255,0.04)',
+    color: '#fff',
+    padding: '14px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  scopeDrillInfo: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, minWidth: 0 },
+  scopeDrillCaption: { fontSize: 11, fontWeight: 700, letterSpacing: '0.4px', color: 'var(--create-text-muted)' },
+  scopeDrillTitle: { fontSize: 15, fontWeight: 700, color: '#fff' },
+  scopeDrillMeta: { fontSize: 12, color: 'var(--create-text-muted)', lineHeight: 1.35 },
+  scopeDrillAction: { display: 'flex', alignItems: 'center', gap: 6, color: 'var(--create-primary)', flexShrink: 0 },
+  scopeDrillActionText: { fontSize: 13, fontWeight: 700 },
+  scopeSelectedPill: {
+    marginBottom: 12,
+    padding: '10px 12px',
+    borderRadius: 12,
+    background: 'rgba(212,255,0,0.08)',
+    border: '1px solid rgba(212,255,0,0.22)',
+    color: 'var(--create-primary)',
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  scopeUniversityList: { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 220, overflowY: 'auto' },
+  scopeUniversityBtn: {
+    width: '100%',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    background: 'rgba(255,255,255,0.04)',
+    color: '#fff',
+    padding: '12px 14px',
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
+    textAlign: 'left',
+  },
+  scopeUniversityBtnActive: {
+    background: 'rgba(212,255,0,0.1)',
+    border: '1px solid var(--create-primary)',
+  },
+  scopeUniversityBtnLabel: { fontSize: 14, fontWeight: 600, color: 'inherit' },
+  scopeUniversityBtnMeta: { fontSize: 12, color: 'var(--create-text-muted)', lineHeight: 1.35 },
+  scopeUniversityEmpty: {
+    padding: '14px 12px',
+    borderRadius: 14,
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px dashed rgba(255,255,255,0.12)',
+    color: 'var(--create-text-muted)',
+    fontSize: 13,
+    textAlign: 'center',
   },
   deadlineCustomBtn: { flex: 1.2 },
   popupInput: {
@@ -1959,9 +2312,6 @@ const styles = {
   tagInput: { flex: 1, marginLeft: 8, border: 'none', background: 'transparent', color: '#fff', fontSize: 15, outline: 'none' },
   tagAddBtn: { width: 38, height: 38, borderRadius: 19, border: 'none', background: 'rgba(255,255,255,0.1)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   tagAddBtnActive: { background: 'var(--create-primary)', color: '#000' },
-  scopeRow: { display: 'flex', gap: 6, padding: '8px 16px 4px', background: 'var(--create-surface)', borderTop: '1px solid var(--create-border)' },
-  scopeBtn: { flex: 1, padding: '6px 0', borderRadius: 10, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', fontSize: 12, fontWeight: 500, cursor: 'pointer' },
-  scopeBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)', fontWeight: 600 },
   toolbar: { padding: '10px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', background: 'var(--create-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 20 },
   toolGroup: { display: 'flex', gap: 8 },
   toolBtn: { width: 40, height: 40, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },

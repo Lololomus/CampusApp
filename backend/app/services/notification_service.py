@@ -5,7 +5,8 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import cast, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models
@@ -289,6 +290,72 @@ async def check_milestone(db: AsyncSession, post):
         await notify_milestone(db, post, post.likes_count)
 
 
+async def notify_poll_vote(db: AsyncSession, poll, voter_id: int):
+    post = await db.get(models.Post, poll.post_id)
+    if not post or post.author_id == voter_id:
+        return
+
+    vote_count = int((poll.total_votes or 0) + 1)
+    existing_result = await db.execute(
+        select(models.Notification)
+        .where(
+            models.Notification.recipient_id == post.author_id,
+            models.Notification.type == "poll_vote",
+            cast(models.Notification.payload, JSONB)["poll_id"].astext == str(poll.id),
+        )
+        .order_by(models.Notification.created_at.desc())
+        .limit(1)
+    )
+    existing = existing_result.scalar_one_or_none()
+    existing_payload = _load_payload(existing.payload) if existing else {}
+
+    payload = {
+        "poll_id": poll.id,
+        "post_id": post.id,
+        "poll_type": poll.type,
+        "poll_question": _truncate(poll.question, 120),
+        "is_anonymous": bool(poll.is_anonymous),
+        "vote_count": vote_count,
+    }
+
+    if not poll.is_anonymous:
+        voter = await db.get(models.User, voter_id)
+        voter_name = (voter.name or voter.username or "Кто-то") if voter else "Кто-то"
+        voters = [
+            item
+            for item in existing_payload.get("voters", [])
+            if item.get("user_id") != voter_id
+        ]
+        voters.insert(
+            0,
+            {
+                "user_id": voter_id,
+                "name": voter_name,
+                "voted_at": datetime.utcnow().isoformat(),
+            },
+        )
+        payload["voters"] = voters
+
+    if existing:
+        existing.payload = json.dumps(payload, ensure_ascii=False)
+        existing.created_at = datetime.utcnow()
+        existing.is_read = False
+        existing.read_at = None
+        existing.error = None
+        if existing.status != "sent":
+            existing.status = "pending"
+            existing.sent_at = None
+        return
+
+    db.add(
+        models.Notification(
+            recipient_id=post.author_id,
+            type="poll_vote",
+            payload=json.dumps(payload, ensure_ascii=False),
+        )
+    )
+
+
 async def notify_admin_report(db: AsyncSession, report):
     moderators_result = await db.execute(
         select(models.User).where(
@@ -327,3 +394,14 @@ def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 3] + "..."
+
+
+def _load_payload(payload) -> dict:
+    if isinstance(payload, str):
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError:
+            return {}
+    if isinstance(payload, dict):
+        return payload
+    return {}

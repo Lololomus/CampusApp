@@ -313,6 +313,7 @@ class PostCreate(BaseModel):
     
     # Аудитория
     scope: str = Field(default='university', pattern='^(university|city|all)$')
+    target_university: Optional[str] = None
 
     # News
     is_important: bool = False

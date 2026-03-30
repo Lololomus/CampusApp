@@ -78,8 +78,11 @@ function Navigation() {
       const el = outerRef.current;
       if (!el) return;
       const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const keyboardOffset = keyboardHeight > 50 ? Math.ceil(keyboardHeight) : 0;
       el.style.transition = 'transform 0.25s ease';
-      el.style.transform = keyboardHeight > 50 ? `translateY(${keyboardHeight}px)` : 'translateY(0)';
+      el.style.transform = keyboardOffset > 0
+        ? `translate3d(0, ${keyboardOffset}px, 0)`
+        : 'translate3d(0, 0, 0)';
     };
     vv.addEventListener('resize', handleResize);
     vv.addEventListener('scroll', handleResize);
@@ -215,13 +218,15 @@ function Navigation() {
 const styles = {
   outerWrapper: {
     position: 'fixed',
-    bottom: 16,
-    left: 16,
-    right: 16,
+    bottom: 'max(16px, calc(16px + var(--screen-bottom-offset)))',
+    left: 'max(16px, calc(16px + var(--tg-safe-area-left, 0px)))',
+    right: 'max(16px, calc(16px + var(--tg-safe-area-right, 0px)))',
     zIndex: Z_NAVIGATION,
     pointerEvents: 'none',
     display: 'flex',
     justifyContent: 'center',
+    transform: 'translate3d(0, 0, 0)',
+    willChange: 'transform',
   },
 
   nav: {
@@ -235,6 +240,11 @@ const styles = {
     pointerEvents: 'auto',
     boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
     position: 'relative',
+    isolation: 'isolate',
+    transform: 'translateZ(0)',
+    WebkitTransform: 'translateZ(0)',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
   },
 
   tabsContainer: {

@@ -521,7 +521,7 @@ function DatingFeed() {
             onMessage={(user) => {
               hapticFeedback('medium');
             }}
-            onEmptyAction={() => openEditProfile(false)}
+            onEmptyAction={() => setShowMyProfile(true)}
           />
         )}
 

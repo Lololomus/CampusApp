@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, Activity, Users, MessageSquare, BarChart3,
+  Activity, Users, MessageSquare, BarChart3,
   Shield, Plus, Trash2, Search, RefreshCw,
   CheckCircle, XCircle, Megaphone, Building2
 } from 'lucide-react';
@@ -17,6 +17,7 @@ import {
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 import ActionFeed from './ActionFeed';
 import CampaignManager from './CampaignManager';
 import CampusManager from './CampusManager';
@@ -42,7 +43,6 @@ function AdminPanel() {
     hapticFeedback('light');
     setNavigationTab('profile');
   };
-  const showBackBtn = import.meta.env.DEV;
 
   useTelegramScreen({
     id: 'admin-panel-screen',
@@ -69,18 +69,12 @@ function AdminPanel() {
 
   return (
     <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        {showBackBtn ? (
-          <button style={styles.backButton} onClick={handleBack}>
-            <ArrowLeft size={22} color="#fff" />
-          </button>
-        ) : (
-          <div style={styles.backButtonPlaceholder} />
-        )}
-        <div style={styles.headerTitle}>⚡ Админ-панель</div>
-        <div style={{ width: 40 }} />
-      </div>
+      <DrilldownHeader
+        title="Админ-панель"
+        onBack={handleBack}
+        background="#000000"
+        showDivider={false}
+      />
 
       {/* Tabs */}
       <div style={styles.tabsContainer}>
@@ -726,7 +720,7 @@ const styles = {
 
   tabsContainer: {
     padding: '12px 16px 0',
-    position: 'sticky', top: 64, zIndex: 19,
+    position: 'sticky', top: 'calc(var(--drilldown-header-height) + env(safe-area-inset-top, 0px))', zIndex: 19,
     background: P.bg,
   },
 

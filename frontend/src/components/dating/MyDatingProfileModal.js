@@ -369,10 +369,16 @@ function MyDatingProfileModal({ onClose }) {
         ...styles.modal,
         transform: isVisible ? 'translateX(0)' : 'translateX(100%)',
       }}>
-        <DrilldownHeader title="Мой профиль" onBack={handleClose} />
-
-        {/* Скроллируемый контент */}
         <div className="hide-scroll" style={styles.content}>
+          <DrilldownHeader
+            title="Мой профиль"
+            onBack={handleClose}
+            sticky={false}
+            showDivider={false}
+            background="#000000"
+            titleVariant="app"
+          />
+          <div style={styles.contentInner}>
 
           {/* ===== HERO PHOTO ===== */}
           <div style={styles.heroContainer} onClick={handleHeroTap}>
@@ -499,6 +505,7 @@ function MyDatingProfileModal({ onClose }) {
             </div>
           </div>
 
+          </div>
         </div>
       </div>
 
@@ -833,7 +840,10 @@ const styles = {
   content: {
     flex: 1,
     overflowY: 'auto',
-    padding: '0 16px 100px',
+    paddingBottom: 100,
+  },
+  contentInner: {
+    padding: '0 16px',
   },
 
   // Hero

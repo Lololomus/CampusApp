@@ -19,6 +19,7 @@ import OverflowMenuButton from '../shared/OverflowMenuButton';
 import Avatar from '../shared/Avatar';
 import ProfileMiniCard from '../shared/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate } from '../../utils/datetime';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
@@ -346,8 +347,6 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     ];
   };
 
-  const showBackBtn = import.meta.env.DEV;
-
   return (
     <>
       <EdgeSwipeBack
@@ -362,20 +361,15 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
             : 'slideInRight 0.38s cubic-bezier(0.32, 0.72, 0, 1) forwards',
           pointerEvents: isExiting ? 'none' : 'auto',
         }}>
-        {/* Floating back button — только в DEV (в проде используется TMA BackButton) */}
-        {showBackBtn && (
-          <div style={styles.floatingHeader}>
-            <button
-              className="market-detail-back-btn"
-              onClick={() => { hapticFeedback('light'); closeDetail(); }}
-              style={styles.floatingBackBtn}
-            >
-              <ChevronLeft size={24} style={{ marginLeft: -2 }} />
-            </button>
-          </div>
-        )}
-
         <div style={styles.content}>
+          <DrilldownHeader
+            title=""
+            onBack={closeDetail}
+            showTitle={false}
+            sticky={false}
+            showDivider={false}
+            background="#000000"
+          />
           {images.length > 0 && (
             <div
               data-no-edge-swipe="true"

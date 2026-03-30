@@ -145,7 +145,12 @@ function UserRequests() {
       zIndex={Z_MODAL_REQUEST_DETAIL}
     >
     <div style={styles.container} onScroll={handleScroll}>
-      <DrilldownHeader title={`Мои запросы (${counts.all})`} onBack={closeScreen} />
+      <DrilldownHeader
+        title={`Мои запросы (${counts.all})`}
+        onBack={closeScreen}
+        background="#000000"
+        showDivider={false}
+      />
 
       <div style={styles.filterBar}>
         <div style={styles.tabsWrapper}>

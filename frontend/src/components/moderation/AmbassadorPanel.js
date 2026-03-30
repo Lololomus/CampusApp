@@ -1,12 +1,13 @@
 // ===== FILE: AmbassadorPanel.js =====
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, BarChart3, Layers, Megaphone, Clock, Building2, TrendingUp } from 'lucide-react';
+import { BarChart3, Layers, Megaphone, Clock, Building2, TrendingUp } from 'lucide-react';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { getReports, getAdminStats } from '../../api';
 import theme from '../../theme';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import DrilldownHeader from '../shared/DrilldownHeader';
 
 import AmbassadorDashboard from './AmbassadorDashboard';
 import ReportQueue from './ReportQueue';
@@ -64,7 +65,6 @@ function AmbassadorPanel() {
     hapticFeedback('light');
     setNavigationTab('profile');
   };
-  const showBackBtn = import.meta.env.DEV;
 
   useTelegramScreen({
     id: 'ambassador-panel-screen',
@@ -96,23 +96,13 @@ function AmbassadorPanel() {
 
   return (
     <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        {showBackBtn ? (
-          <button style={styles.backButton} onClick={handleBack}>
-            <ArrowLeft size={22} color="#fff" />
-          </button>
-        ) : (
-          <div style={styles.backButtonPlaceholder} />
-        )}
-        <div style={styles.headerTitle}>
-          <span>🛡️ Модерация</span>
-          {pendingCount > 0 && (
-            <span style={styles.headerBadge}>{pendingCount}</span>
-          )}
-        </div>
-        <div style={{ width: 40 }} />
-      </div>
+      <DrilldownHeader
+        title="Модерация"
+        onBack={handleBack}
+        background="#000000"
+        showDivider={false}
+        rightSlot={pendingCount > 0 ? <span style={styles.headerBadge}>{pendingCount}</span> : null}
+      />
 
       {/* Tabs */}
       <div style={styles.tabsContainer}>
@@ -305,7 +295,7 @@ const styles = {
   tabsContainer: {
     padding: '12px 16px 0',
     position: 'sticky',
-    top: 64,
+    top: 'calc(var(--drilldown-header-height) + env(safe-area-inset-top, 0px))',
     zIndex: 19,
     background: P.bg,
   },

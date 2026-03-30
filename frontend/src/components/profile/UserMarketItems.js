@@ -165,7 +165,12 @@ function UserMarketItems() {
       zIndex={Z_USER_MARKET_ITEMS}
     >
     <div style={styles.container} onScroll={handleScroll}>
-      <DrilldownHeader title={`Мои товары (${counts.all})`} onBack={closeScreen} />
+      <DrilldownHeader
+        title={`Мои товары (${counts.all})`}
+        onBack={closeScreen}
+        background="#000000"
+        showDivider={false}
+      />
 
       <div style={styles.filterBar}>
         <div style={styles.tabsWrapper}>

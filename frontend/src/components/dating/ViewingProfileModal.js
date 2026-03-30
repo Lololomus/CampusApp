@@ -8,6 +8,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import PhotoViewer from '../shared/PhotoViewer';
+import DrilldownHeader from '../shared/DrilldownHeader';
 import theme from '../../theme';
 
 const d = theme.colors.dating;
@@ -32,7 +33,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
     id: `dating-view-profile-${profileType || 'profile'}-${profile?.id || 'unknown'}`,
     title: '',
     priority: 130,
-    back: { visible: false },
+    back: { visible: true, onClick: onClose },
     main: { visible: false },
   });
 
@@ -81,14 +82,13 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
   return (
     <EdgeSwipeBack onBack={onClose}>
       <div style={styles.overlay}>
-        {/* Header: back + title */}
-        <div style={styles.header}>
-          <button onClick={onClose} style={styles.backButton}>
-            <ChevronLeft size={24} style={{ marginLeft: -2 }} />
-          </button>
-          <span style={styles.headerTitle}>Анкета</span>
-          <div style={{ width: 40 }} />
-        </div>
+        <DrilldownHeader
+          title=""
+          onBack={onClose}
+          showTitle={false}
+          showDivider={false}
+          background="#000000"
+        />
 
         <div style={styles.scrollContent}>
           {/* Фото 4:5 с градиентом и overlaid инфо */}

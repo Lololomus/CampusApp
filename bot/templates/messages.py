@@ -28,6 +28,7 @@ def format_notification(notif_type: str, payload: dict) -> dict:
         "dating_like": _format_dating_like,
         "comment": _format_comment,
         "comment_reply": _format_comment_reply,
+        "poll_vote": _format_poll_vote,
         "market_contact": _format_market_contact,
         "market_deal_update": _format_market_deal_update,
         "request_response": _format_request_response,
@@ -145,6 +146,42 @@ def _format_comment_reply(payload: dict) -> dict:
         f"{replier}:\n"
         f"<i>«{comment_text}»</i>"
     )
+
+    kb = open_post_kb(post_id) if post_id else open_miniapp_kb()
+    return {"text": text, "reply_markup": kb}
+
+
+def _format_poll_vote(payload: dict) -> dict:
+    poll_type = payload.get("poll_type")
+    entity_label = "викторине" if poll_type == "quiz" else "опросе"
+    question = _escape(payload.get("poll_question", ""))
+    post_id = payload.get("post_id")
+    vote_count = int(payload.get("vote_count") or 0)
+
+    if payload.get("is_anonymous"):
+        text = (
+            "📊 <b>Новые голоса в твоем опросе</b>\n"
+            "\n"
+            f"В твоем {entity_label} уже {vote_count} {_vote_word(vote_count)}."
+        )
+    else:
+        voters = payload.get("voters") or []
+        names = [_escape(item.get("name", "")) for item in voters[:2] if item.get("name")]
+        extra_count = max(vote_count - len(names), 0)
+
+        if len(names) >= 2:
+            headline = f"<b>{names[0]}</b> и <b>{names[1]}</b> проголосовали в твоем {entity_label}"
+        elif len(names) == 1:
+            headline = f"<b>{names[0]}</b> проголосовал(а) в твоем {entity_label}"
+        else:
+            headline = f"В твоем {entity_label} уже {vote_count} {_vote_word(vote_count)}"
+
+        text = f"📊 <b>Новый отклик на твой опрос</b>\n\n{headline}"
+        if extra_count > 0:
+            text += f"\nИ ещё {extra_count}"
+
+    if question:
+        text += f"\n\n«{question}»"
 
     kb = open_post_kb(post_id) if post_id else open_miniapp_kb()
     return {"text": text, "reply_markup": kb}
@@ -305,3 +342,11 @@ def _escape(text: str) -> str:
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
+
+
+def _vote_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "голос"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return "голоса"
+    return "голосов"

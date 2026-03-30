@@ -12,22 +12,49 @@ function DrilldownHeader({
   showBack = true,
   showLocalBackInTelegram = false,
   transparent = false,
+  sticky = true,
+  showTitle = true,
+  showDivider = true,
+  background = null,
+  titleVariant = 'default',
 }) {
   const isDev = import.meta.env.DEV;
-  const shouldRenderBack = showBack && (isDev || showLocalBackInTelegram);
+  const isDesktop = typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: fine)').matches;
+  const shouldRenderBack = showBack && (isDev || isDesktop || showLocalBackInTelegram);
 
   const handleBackClick = () => {
     hapticFeedback('light');
     onBack?.();
   };
 
+  const resolvedBackground = background ?? theme.colors.bgSecondary;
   const headerStyle = transparent
-    ? { ...styles.header, background: 'transparent', borderBottom: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none' }
-    : styles.header;
+    ? {
+        ...styles.header,
+        ...(sticky ? null : styles.headerStatic),
+        background: 'transparent',
+        borderBottom: 'none',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
+      }
+    : {
+        ...styles.header,
+        ...(sticky ? null : styles.headerStatic),
+        background: resolvedBackground,
+        borderBottom: showDivider ? `1px solid ${theme.colors.border}` : 'none',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
+      };
 
   const backButtonStyle = transparent
     ? { ...styles.backButton, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.12)' }
-    : styles.backButton;
+    : { ...styles.backButton, background: '#000000', border: '1px solid rgba(255,255,255,0.1)' };
+
+  const titleStyle = titleVariant === 'app'
+    ? styles.titleApp
+    : styles.title;
 
   return (
     <header style={headerStyle}>
@@ -47,7 +74,7 @@ function DrilldownHeader({
           )}
         </div>
 
-        <h1 style={styles.title}>{title}</h1>
+        <h1 style={showTitle ? titleStyle : styles.titleHidden}>{showTitle ? title : ''}</h1>
 
         <div style={styles.side}>{rightSlot || <div style={styles.sidePlaceholder} />}</div>
       </div>
@@ -66,6 +93,10 @@ const styles = {
     borderBottom: `1px solid ${theme.colors.border}`,
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
+  },
+  headerStatic: {
+    position: 'relative',
+    top: 'auto',
   },
   inner: {
     height: 'var(--drilldown-header-height)',
@@ -108,6 +139,24 @@ const styles = {
     overflow: 'hidden',
     whiteSpace: 'nowrap',
     textOverflow: 'ellipsis',
+  },
+  titleApp: {
+    margin: 0,
+    fontSize: 24,
+    lineHeight: '28px',
+    fontWeight: 800,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: '-0.5px',
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
+  },
+  titleHidden: {
+    margin: 0,
+    width: '100%',
+    height: 0,
+    overflow: 'hidden',
   },
 };
 

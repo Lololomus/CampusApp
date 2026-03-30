@@ -384,12 +384,14 @@ async def get_user_posts_endpoint(
             "event_location": post.event_location,
             "event_contact": post.event_contact,
             "is_important": post.is_important,
+            "scope": post.scope,
+            "target_university": post.target_university,
             "likes_count": post.likes_count,
             "comments_count": post.comments_count,
             "views_count": post.views_count,
             "created_at": post.created_at,
             "updated_at": post.updated_at,
-            **ad_data #   
+            **ad_data #
         }
         result.append(post_dict)
     
@@ -536,6 +538,8 @@ async def get_posts_feed(
             "event_location": post.event_location,
             "event_contact": post.event_contact,
             "is_important": post.is_important,
+            "scope": post.scope,
+            "target_university": post.target_university,
             "likes_count": post.likes_count,
             "comments_count": post.comments_count,
             "views_count": post.views_count,
@@ -560,6 +564,7 @@ async def create_post_endpoint(
     title: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
     is_anonymous: Optional[bool] = Form(False),
+    enable_anonymous_comments: Optional[bool] = Form(False),
 
     lost_or_found: Optional[str] = Form(None),
     item_description: Optional[str] = Form(None),
@@ -574,6 +579,7 @@ async def create_post_endpoint(
 
     is_important: Optional[bool] = Form(False),
     scope: Optional[str] = Form('university'),
+    target_university: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
     video: Optional[UploadFile] = File(None),
 
@@ -630,6 +636,7 @@ async def create_post_endpoint(
     # CONFESSIONS VALIDATION (fixed: moved inside IF block)
     if category == "confessions":
         is_anonymous = True
+        enable_anonymous_comments = True
         # Validation is inside the block and uses valid_images
         if len(valid_images) > 0 or valid_video:
             raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
@@ -646,6 +653,12 @@ async def create_post_endpoint(
                 status_code=400,
                 detail="Для категории Мемы нужно добавить фото или текст от 3 букв",
             )
+
+    normalized_target_university = (target_university or "").strip() or None
+    if (scope or 'university') != 'university':
+        normalized_target_university = None
+    elif normalized_target_university == (user.university or "").strip():
+        normalized_target_university = None
     
     try:
         post_data = schemas.PostCreate(
@@ -654,6 +667,7 @@ async def create_post_endpoint(
             body=body,
             tags=tags_list,
             is_anonymous=is_anonymous,
+            enable_anonymous_comments=bool(enable_anonymous_comments),
             lost_or_found=lost_or_found,
             item_description=item_description,
             location=location,
@@ -663,13 +677,14 @@ async def create_post_endpoint(
             event_date=event_date,
             event_location=event_location,
             event_contact=event_contact,
-            is_important=is_important,
+            is_important=bool(is_important),
             scope=scope or 'university',
+            target_university=normalized_target_university,
             images=[]
         )
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
-    
+
     try:
         # valid_images instead of images
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
@@ -788,6 +803,8 @@ async def get_post_endpoint(post_id: int, user: models.User = Depends(require_us
         "event_location": post.event_location,
         "event_contact": post.event_contact,
         "is_important": post.is_important,
+        "scope": post.scope,
+        "target_university": post.target_university,
         "likes_count": post.likes_count,
         "comments_count": post.comments_count,
         "views_count": post.views_count,

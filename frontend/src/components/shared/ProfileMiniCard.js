@@ -1,31 +1,31 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/shared/ProfileMiniCard.js =====
+// ===== FILE: frontend/src/components/shared/ProfileMiniCard.js =====
 
 import React, { useState } from 'react';
+import { Camera, Flag, MessageCircle } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import PhotoViewer from './PhotoViewer';
-import DropdownMenu from '../DropdownMenu'; // ✅ Используем общий компонент
+import DropdownMenu from '../DropdownMenu';
 import { useStore } from '../../store';
 import { getAvatarColor } from '../../utils/avatarColors';
 
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { AVATAR_BORDER_RADIUS } from './Avatar';
 
-function ProfileMiniCard({ 
-  isOpen, 
-  onClose, 
+function ProfileMiniCard({
+  isOpen,
+  onClose,
   user,
   anchorRef,
   avatarColor,
   onReportUser,
-  onReport
+  onReport,
 }) {
   const { user: currentUser } = useStore();
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
 
   if (!user) return null;
 
-  // ===== ЛОГИКА ДАННЫХ =====
   const getAvatarUrl = () => {
     if (!user.avatar) return null;
     return resolveImageUrl(user.avatar, 'avatars');
@@ -46,17 +46,15 @@ function ProfileMiniCard({
   );
   const initial = (user.name || usernameValue || 'U').trim().charAt(0).toUpperCase();
   const fallbackAvatarColor = avatarColor || getAvatarColor(usernameValue || user.name || 'A');
-  
+
   const userInfo = [
     user.university,
-    user.course ? `${user.course} курс` : null
+    user.course ? `${user.course} курс` : null,
   ].filter(Boolean).join(' · ');
 
-  // ===== ХЕНДЛЕРЫ =====
   const handleViewPhoto = () => {
     hapticFeedback('light');
     setIsPhotoViewerOpen(true);
-    // Menu закроется само, т.к. DropdownMenu вызывает onClose после клика
   };
 
   const handleTelegramOpen = () => {
@@ -76,29 +74,27 @@ function ProfileMiniCard({
     if (onReport) onReport(user);
   };
 
-  // ===== СПИСОК КНОПОК (МЕНЮ) =====
   const menuItems = [
     avatarUrl && {
       label: 'Посмотреть фото',
-      icon: '📷',
-      actionType: 'share', // Синий цвет
-      onClick: handleViewPhoto
+      icon: <Camera size={18} strokeWidth={2.1} />,
+      actionType: 'share',
+      onClick: handleViewPhoto,
     },
     user.show_telegram_id && user.username && {
       label: 'Написать',
-      icon: '💬',
-      actionType: 'edit',  // Зеленый цвет
-      onClick: handleTelegramOpen
+      icon: <MessageCircle size={18} strokeWidth={2.1} />,
+      actionType: 'edit',
+      onClick: handleTelegramOpen,
     },
     !isSelf && {
       label: 'Пожаловаться',
-      icon: '🚩',
-      actionType: 'report', // Оранжевый цвет
-      onClick: handleReport
-    }
+      icon: <Flag size={18} strokeWidth={2.1} />,
+      actionType: 'report',
+      onClick: handleReport,
+    },
   ].filter(Boolean);
 
-  // ===== ШАПКА ПРОФИЛЯ (ПЕРЕДАЕМ В DROPDOWN) =====
   const headerContent = (
     <div style={styles.headerContainer}>
       <div style={styles.headerTop}>
@@ -117,19 +113,15 @@ function ProfileMiniCard({
 
   return (
     <>
-      {/* ✅ Используем DropdownMenu.
-          Он сам создаст Portal, Backdrop и обработает позиционирование.
-      */}
       <DropdownMenu
         isOpen={isOpen}
         onClose={onClose}
         anchorRef={anchorRef}
         items={menuItems}
-        header={headerContent} // <-- Используем новый проп header
-        closeOnScroll={true}
+        header={headerContent}
+        closeOnScroll
       />
 
-      {/* Просмотрщик фото (отдельно) */}
       {isPhotoViewerOpen && avatarUrl && (
         <PhotoViewer
           photos={[avatarUrl]}
@@ -141,7 +133,6 @@ function ProfileMiniCard({
   );
 }
 
-// Стили только для шапки (остальное берется из DropdownMenu)
 const styles = {
   headerContainer: {
     padding: '4px 12px 8px 12px',
@@ -197,7 +188,7 @@ const styles = {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-  }
+  },
 };
 
 export default ProfileMiniCard;

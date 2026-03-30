@@ -151,7 +151,12 @@ function UserPosts() {
       zIndex={Z_USER_POSTS}
     >
     <div style={styles.container} onScroll={handleScroll}>
-      <DrilldownHeader title={`Мои посты (${counts.all})`} onBack={closeScreen} />
+      <DrilldownHeader
+        title={`Мои посты (${counts.all})`}
+        onBack={closeScreen}
+        background="#000000"
+        showDivider={false}
+      />
 
       <div style={styles.filterBar}>
         <div style={styles.tabsWrapper}>

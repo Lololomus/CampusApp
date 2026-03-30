@@ -407,7 +407,7 @@ function Feed() {
       <EdgeBlur position="top" height="var(--header-padding)" zIndex={50} animateHeight />
 
       {/* Нижний блюр — от края экрана вверх, прозрачный конец совпадает с верхним краем навбара */}
-      <EdgeBlur position="bottom" height={100} zIndex={50} />
+      <EdgeBlur position="bottom" height={100} zIndex={50} compensateKeyboard />
 
       <AppHeader
         title="Лента"

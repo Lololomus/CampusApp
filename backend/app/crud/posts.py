@@ -74,9 +74,9 @@ async def get_posts(
         query = query.where(models.Post.category == category)
 
     # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ с учётом scope ===
-    # scope='all'        — виден всем, игнорирует фильтр по локации
+    # scope='all'        — виден всем
     # scope='city'       — виден если город автора совпадает с городом просматривающего
-    # scope='university' — только свой вуз (стандартное поведение)
+    # scope='university' — свой вуз ИЛИ target_university (кросс-пост в чужой вуз)
     if campus_id:
         city_cond = and_(
             models.Post.scope == 'city',
@@ -84,7 +84,14 @@ async def get_posts(
         ) if viewer_city else None
         scope_conditions = [
             models.Post.scope == 'all',
-            and_(models.Post.scope == 'university', models.User.campus_id == campus_id),
+            # Свой вуз (target_university не задан) или кросс-пост в этот кампус
+            and_(
+                models.Post.scope == 'university',
+                or_(
+                    and_(models.Post.target_university == None, models.User.campus_id == campus_id),
+                    and_(models.Post.target_university != None, models.Post.target_university == university),
+                ),
+            ),
         ]
         if city_cond is not None:
             scope_conditions.append(city_cond)
@@ -96,7 +103,13 @@ async def get_posts(
         ) if viewer_city else None
         scope_conditions = [
             models.Post.scope == 'all',
-            and_(models.Post.scope == 'university', models.User.university == university),
+            and_(
+                models.Post.scope == 'university',
+                or_(
+                    and_(models.Post.target_university == None, models.User.university == university),
+                    and_(models.Post.target_university != None, models.Post.target_university == university),
+                ),
+            ),
         ]
         if city_cond is not None:
             scope_conditions.append(city_cond)
@@ -240,6 +253,7 @@ async def create_post(
         event_contact=post.event_contact,
         is_important=post.is_important,
         scope=post.scope,
+        target_university=post.target_university if post.scope == 'university' else None,
         likes_count=0,
         comments_count=0,
         views_count=0
@@ -437,19 +451,23 @@ async def create_poll(db: AsyncSession, post_id: int, poll_data: schemas.PollCre
 
 async def vote_poll(db: AsyncSession, poll_id: int, user_id: int, option_indices: List[int]) -> Dict:
     """Проголосовать в опросе"""
-    poll = await db.get(models.Poll, poll_id)
+    poll_result = await db.execute(
+        select(models.Poll)
+        .where(models.Poll.id == poll_id)
+        .with_for_update()
+    )
+    poll = poll_result.scalar_one_or_none()
     if not poll:
         raise ValueError("Опрос не найден")
 
     if poll.closes_at and poll.closes_at < datetime.utcnow():
         raise ValueError("Опрос закрыт")
 
-    # with_for_update() блокирует строку, исключая race condition при параллельных запросах
     existing_vote_result = await db.execute(
         select(models.PollVote).where(
             models.PollVote.poll_id == poll_id,
             models.PollVote.user_id == user_id
-        ).with_for_update()
+        )
     )
     if existing_vote_result.scalar_one_or_none():
         raise ValueError("Вы уже проголосовали")
@@ -481,6 +499,7 @@ async def vote_poll(db: AsyncSession, poll_id: int, user_id: int, option_indices
     )
 
     db.add(db_vote)
+    await notif.notify_poll_vote(db, poll, user_id)
     await db.commit()
 
     return {

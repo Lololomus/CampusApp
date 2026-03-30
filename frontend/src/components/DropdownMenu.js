@@ -32,7 +32,12 @@ function DropdownMenu({
   });
   
   const [activeIndex, setActiveIndex] = useState(null);
+  const activeIndexRef = useRef(null);
   const isMouseDownRef = useRef(false);
+  const isTouchSelectingRef = useRef(false);
+  const touchMovedRef = useRef(false);
+  const touchIdentifierRef = useRef(null);
+  const suppressClickUntilRef = useRef(0);
 
 
   // ===== ПОЗИЦИОНИРОВАНИЕ =====
@@ -85,48 +90,70 @@ function DropdownMenu({
 
 
   // ===== ОБЩАЯ ЛОГИКА ПОИСКА ЭЛЕМЕНТА =====
-  const updateSelection = (clientX, clientY) => {
+  const updateSelection = useCallback((clientX, clientY) => {
     const target = document.elementFromPoint(clientX, clientY);
     
     if (target) {
       const btn = target.closest('button[role="menuitem"]');
       if (btn) {
         const idx = Number(btn.dataset.index);
-        if (!isNaN(idx) && idx !== activeIndex) {
+        if (!isNaN(idx) && idx !== activeIndexRef.current) {
           const item = items[idx];
           if (item && !item.divider && !item.disabled) {
             if (hapticFeedback) hapticFeedback('selection');
+            activeIndexRef.current = idx;
             setActiveIndex(idx);
             return;
           }
         }
-        if (!isNaN(idx) && idx === activeIndex) return;
+        if (!isNaN(idx) && idx === activeIndexRef.current) return;
       }
     }
+    activeIndexRef.current = null;
     setActiveIndex(null);
-  };
+  }, [items]);
 
 
-  const commitSelection = () => {
-    if (activeIndex !== null && items[activeIndex]) {
+  const commitSelection = useCallback(() => {
+    const selectedIndex = activeIndexRef.current;
+    if (selectedIndex !== null && items[selectedIndex]) {
       hapticFeedback('light');
-      items[activeIndex].onClick();
+      items[selectedIndex].onClick();
+      activeIndexRef.current = null;
       setActiveIndex(null);
       onClose();
     }
     isMouseDownRef.current = false;
-  };
+  }, [items, onClose]);
+
+
+  const resetTouchSelection = useCallback(() => {
+    isTouchSelectingRef.current = false;
+    touchMovedRef.current = false;
+    touchIdentifierRef.current = null;
+  }, []);
+
+
+  const getTrackedTouch = useCallback((touchList) => {
+    const touchIdentifier = touchIdentifierRef.current;
+    if (touchIdentifier == null) return touchList[0] || null;
+    for (const touch of touchList) {
+      if (touch.identifier === touchIdentifier) return touch;
+    }
+    return null;
+  }, []);
 
 
   // ===== TOUCH EVENTS (MOBILE) =====
-  const handleTouchMove = (e) => {
-    const touch = e.touches[0];
+  const handleTouchStart = (e) => {
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+    isTouchSelectingRef.current = true;
+    touchMovedRef.current = false;
+    touchIdentifierRef.current = touch.identifier;
     updateSelection(touch.clientX, touch.clientY);
-  };
-
-
-  const handleTouchEnd = (e) => {
-    commitSelection();
   };
 
 
@@ -161,10 +188,12 @@ function DropdownMenu({
       });
     } else {
       setState(prev => ({ ...prev, mounted: false }));
+      activeIndexRef.current = null;
       setActiveIndex(null);
       isMouseDownRef.current = false;
+      resetTouchSelection();
     }
-  }, [isOpen, anchorRef, calculatePosition]);
+  }, [isOpen, anchorRef, calculatePosition, resetTouchSelection]);
 
 
   useEffect(() => {
@@ -208,6 +237,61 @@ function DropdownMenu({
   }, [isOpen]);
 
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handleGlobalTouchMove = (e) => {
+      if (!isTouchSelectingRef.current) return;
+      const touch = getTrackedTouch(e.touches);
+      if (!touch) return;
+      touchMovedRef.current = true;
+      if (e.cancelable) e.preventDefault();
+      updateSelection(touch.clientX, touch.clientY);
+    };
+
+    const finishTouchSelection = (e, shouldCommit) => {
+      const touch = getTrackedTouch(e.changedTouches);
+      if (!touch) {
+        activeIndexRef.current = null;
+        setActiveIndex(null);
+        resetTouchSelection();
+        return;
+      }
+
+      if (shouldCommit) {
+        suppressClickUntilRef.current = Date.now() + 400;
+        if (e.cancelable) e.preventDefault();
+        commitSelection();
+      } else {
+        activeIndexRef.current = null;
+        setActiveIndex(null);
+      }
+
+      resetTouchSelection();
+    };
+
+    const handleGlobalTouchEnd = (e) => {
+      if (!isTouchSelectingRef.current) return;
+      finishTouchSelection(e, activeIndexRef.current !== null);
+    };
+
+    const handleGlobalTouchCancel = (e) => {
+      if (!isTouchSelectingRef.current) return;
+      finishTouchSelection(e, false);
+    };
+
+    document.addEventListener('touchmove', handleGlobalTouchMove, { passive: false, capture: true });
+    document.addEventListener('touchend', handleGlobalTouchEnd, { passive: false, capture: true });
+    document.addEventListener('touchcancel', handleGlobalTouchCancel, { passive: false, capture: true });
+
+    return () => {
+      document.removeEventListener('touchmove', handleGlobalTouchMove, true);
+      document.removeEventListener('touchend', handleGlobalTouchEnd, true);
+      document.removeEventListener('touchcancel', handleGlobalTouchCancel, true);
+    };
+  }, [isOpen, getTrackedTouch, updateSelection, commitSelection, resetTouchSelection]);
+
+
   if (!isOpen) return null;
 
 
@@ -238,8 +322,7 @@ function DropdownMenu({
         ref={menuRef}
         role="menu"
         aria-label="Dropdown menu"
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onTouchStart={handleTouchStart}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         style={{
@@ -284,6 +367,7 @@ function DropdownMenu({
               actionType={item.actionType}
               disabled={item.disabled}
               isActive={activeIndex === index}
+              suppressClickUntilRef={suppressClickUntilRef}
               variantStyles={variantStyles}
             />
           );
@@ -305,6 +389,7 @@ function MenuItem({
   disabled, 
   dataIndex,
   isActive,
+  suppressClickUntilRef,
   variantStyles
 }) {
   const [isPressed, setIsPressed] = useState(false);
@@ -314,6 +399,7 @@ function MenuItem({
 
   const handleClick = (e) => {
     if (disabled) return;
+    if (suppressClickUntilRef?.current > Date.now()) return;
     e.stopPropagation();
     onClick();
   };
@@ -335,8 +421,6 @@ function MenuItem({
       onClick={handleClick}
       onMouseEnter={() => !disabled && setIsPressed(true)}
       onMouseLeave={() => setIsPressed(false)}
-      onTouchStart={() => !disabled && setIsPressed(true)}
-      onTouchEnd={() => setIsPressed(false)}
     >
       <span style={{ ...styles.menuIcon, ...variantStyles.menuIcon, color: accentColor }}>
         {icon}

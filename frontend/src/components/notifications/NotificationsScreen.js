@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Heart, ShoppingBag, MessageCircle, LifeBuoy, Flame, Check, X, Star
+  Heart, ShoppingBag, MessageCircle, LifeBuoy, Flame, Check, X, Star, BarChart3, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 import DrilldownHeader from '../shared/DrilldownHeader';
@@ -32,6 +32,7 @@ const COLORS = {
   badgeMarket: '#32D74B',
   badgeComment: '#A78BFA',
   badgeRequest: '#4DA6FF',
+  badgePoll: '#00C2A8',
 };
 
 const FILTERS = [
@@ -47,6 +48,7 @@ const TYPE_TO_FILTER = {
   dating_like: 'match',
   comment: 'comment',
   comment_reply: 'comment',
+  poll_vote: 'comment',
   market_contact: 'market',
   review_request: 'market',
   request_response: 'request',
@@ -57,6 +59,7 @@ const BADGE_CONFIG = {
   dating_like: { icon: Heart, color: COLORS.badgeDating },
   comment: { icon: MessageCircle, color: COLORS.badgeComment },
   comment_reply: { icon: MessageCircle, color: COLORS.badgeComment },
+  poll_vote: { icon: BarChart3, color: COLORS.badgePoll },
   market_contact: { icon: ShoppingBag, color: COLORS.badgeMarket },
   review_request: { icon: Star, color: COLORS.badgeMarket },
   request_response: { icon: LifeBuoy, color: COLORS.badgeRequest },
@@ -108,6 +111,8 @@ function parseNotification(notif) {
         hasActions: false,
         isDatingLikeAnon: false,
       };
+    case 'poll_vote':
+      return buildPollVoteDisplay(p);
     case 'market_contact':
       return {
         userName: p.buyer_name,
@@ -174,6 +179,69 @@ function parseNotification(notif) {
         isDatingLikeAnon: false,
       };
   }
+}
+
+function buildPollVoteDisplay(payload) {
+  const voters = Array.isArray(payload.voters)
+    ? payload.voters
+      .map((item) => String(item?.name || '').trim())
+      .filter(Boolean)
+    : [];
+  const previewVoters = voters.slice(0, 2);
+  const hiddenVoters = voters.slice(2);
+  const voteCount = Math.max(Number(payload.vote_count) || voters.length || 0, 0);
+  const entityLabel = getPollEntityLabel(payload.poll_type);
+
+  if (payload.is_anonymous) {
+    return {
+      userName: null,
+      userLetter: null,
+      userColor: null,
+      text: `В твоем ${entityLabel} уже ${voteCount} ${pluralizeVotes(voteCount)}`,
+      thumbnailUrl: null,
+      hasActions: false,
+      isDatingLikeAnon: false,
+      isPollVote: true,
+      pollQuestion: payload.poll_question || '',
+      voteCount,
+      previewVoters: [],
+      hiddenVoters: [],
+      hiddenCount: 0,
+    };
+  }
+
+  let text = `В твоем ${entityLabel} уже ${voteCount} ${pluralizeVotes(voteCount)}`;
+  if (previewVoters.length >= 2) {
+    text = `${previewVoters[0]} и ${previewVoters[1]} проголосовали в твоем ${entityLabel}`;
+  } else if (previewVoters.length === 1) {
+    text = `${previewVoters[0]} проголосовал(а) в твоем ${entityLabel}`;
+  }
+
+  return {
+    userName: null,
+    userLetter: null,
+    userColor: null,
+    text,
+    thumbnailUrl: null,
+    hasActions: false,
+    isDatingLikeAnon: false,
+    isPollVote: true,
+    pollQuestion: payload.poll_question || '',
+    voteCount,
+    previewVoters,
+    hiddenVoters,
+    hiddenCount: hiddenVoters.length,
+  };
+}
+
+function getPollEntityLabel(pollType) {
+  return pollType === 'quiz' ? 'викторине' : 'опросе';
+}
+
+function pluralizeVotes(count) {
+  if (count % 10 === 1 && count % 100 !== 11) return 'голос';
+  if ([2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)) return 'голоса';
+  return 'голосов';
 }
 
 function getMilestoneTitle(milestone) {
@@ -246,10 +314,12 @@ const FilterChip = ({ label, active, onClick }) => (
 const NotificationItem = React.memo(({ notif }) => {
   const [resolved, setResolved] = useState(false);
   const [reviewModal, setReviewModal] = useState(null);
+  const [isPollExpanded, setIsPollExpanded] = useState(false);
   const display = parseNotification(notif);
   const badge = BADGE_CONFIG[notif.type];
   const isMilestone = display.isMilestone;
   const isDatingLikeAnon = display.isDatingLikeAnon;
+  const isPollVote = display.isPollVote;
 
   return (
     <div style={{
@@ -285,6 +355,15 @@ const NotificationItem = React.memo(({ notif }) => {
           }}>
             <Heart size={22} color="#FFF" />
           </div>
+        ) : isPollVote ? (
+          <div style={{
+            width: '100%', height: '100%', borderRadius: 16,
+            background: 'linear-gradient(135deg, #00C2A8, #4DA6FF)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0,194,168,0.24)',
+          }}>
+            <BarChart3 size={22} color="#FFF" />
+          </div>
         ) : (
           // Обычный пользователь
           <div style={{
@@ -298,7 +377,7 @@ const NotificationItem = React.memo(({ notif }) => {
         )}
 
         {/* Micro-badge */}
-        {badge && !isMilestone && !isDatingLikeAnon && (
+        {badge && !isMilestone && !isDatingLikeAnon && !isPollVote && (
           <div style={{
             position: 'absolute', bottom: -4, right: -4,
             width: 20, height: 20, borderRadius: 8,
@@ -324,6 +403,69 @@ const NotificationItem = React.memo(({ notif }) => {
           )}
           {display.text}
         </div>
+
+        {isPollVote && display.pollQuestion && (
+          <div style={{
+            marginTop: 8,
+            fontSize: 13,
+            color: COLORS.text,
+            fontWeight: 600,
+            lineHeight: 1.35,
+          }}>
+            «{display.pollQuestion}»
+          </div>
+        )}
+
+        {isPollVote && display.hiddenCount > 0 && (
+          <button
+            onClick={() => {
+              hapticFeedback('selection');
+              setIsPollExpanded(prev => !prev);
+            }}
+            style={{
+              marginTop: 10,
+              padding: 0,
+              border: 'none',
+              background: 'transparent',
+              color: COLORS.lime,
+              fontSize: 13,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: 'pointer',
+            }}
+          >
+            {isPollExpanded ? 'Скрыть список' : `и ещё ${display.hiddenCount}`}
+            {isPollExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        )}
+
+        {isPollVote && isPollExpanded && display.hiddenVoters.length > 0 && (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            marginTop: 10,
+          }}>
+            {display.hiddenVoters.map((name, index) => (
+              <span
+                key={`${notif.id}-${index}-${name}`}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  background: COLORS.surface,
+                  border: `1px solid ${COLORS.border}`,
+                  color: COLORS.text,
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.muted, marginTop: 6, opacity: 0.7 }}>
           {formatTime(notif.created_at)}
@@ -516,51 +658,9 @@ function NotificationsScreen() {
         ? 'nsSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards'
         : 'nsSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards',
     }}>
-      {/* Верхний блюр — до нижнего края хедера */}
-      <EdgeBlur position="top" height="calc(var(--screen-top-offset, 0px) + var(--drilldown-header-height, 56px))" zIndex={60} />
       {/* Нижний блюр — плавный фейд у нижнего края экрана */}
       <EdgeBlur position="bottom" height={60} zIndex={60} />
 
-      <DrilldownHeader
-        title="Уведомления"
-        onBack={handleClose}
-        showLocalBackInTelegram
-        transparent
-        rightSlot={hasUnread ? (
-          <button
-            onClick={handleMarkAllRead}
-            style={{
-              background: 'none', border: 'none',
-              color: COLORS.lime, fontSize: 14, fontWeight: 700,
-              cursor: 'pointer', padding: '4px 0',
-            }}
-          >
-            Прочитать всё
-          </button>
-        ) : null}
-      />
-
-      {/* Фильтры */}
-      <div style={{
-        background: COLORS.bg,
-        borderBottom: `1px solid ${COLORS.border}`,
-      }}>
-        <div style={{
-          display: 'flex', gap: 8, overflowX: 'auto', padding: '12px 16px',
-          msOverflowStyle: 'none', scrollbarWidth: 'none',
-        }}>
-          {FILTERS.map(f => (
-            <FilterChip
-              key={f.key}
-              label={f.label}
-              active={activeFilter === f.key}
-              onClick={() => { hapticFeedback('selection'); setActiveFilter(f.key); }}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Скролл-зона */}
       <div
         className="custom-scroll"
         style={{
@@ -568,6 +668,45 @@ function NotificationsScreen() {
           overflowY: 'auto',
         }}
       >
+        <DrilldownHeader
+          title="Уведомления"
+          onBack={handleClose}
+          sticky={false}
+          showDivider={false}
+          background="#000000"
+          rightSlot={hasUnread ? (
+            <button
+              onClick={handleMarkAllRead}
+              style={{
+                background: 'none', border: 'none',
+                color: COLORS.lime, fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', padding: '4px 0',
+              }}
+            >
+              Прочитать всё
+            </button>
+          ) : null}
+        />
+
+        <div style={{
+          background: COLORS.bg,
+          borderBottom: `1px solid ${COLORS.border}`,
+        }}>
+          <div style={{
+            display: 'flex', gap: 8, overflowX: 'auto', padding: '12px 16px',
+            msOverflowStyle: 'none', scrollbarWidth: 'none',
+          }}>
+            {FILTERS.map(f => (
+              <FilterChip
+                key={f.key}
+                label={f.label}
+                active={activeFilter === f.key}
+                onClick={() => { hapticFeedback('selection'); setActiveFilter(f.key); }}
+              />
+            ))}
+          </div>
+        </div>
+
         {loading ? (
           <div style={{ padding: '60px 16px', textAlign: 'center', color: COLORS.muted, fontSize: 15 }}>
             Загрузка...

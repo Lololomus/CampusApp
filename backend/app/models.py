@@ -201,6 +201,8 @@ class Post(Base):
     
     # Аудитория поста: 'university' (только свой вуз), 'city' (весь город), 'all' (все студенты)
     scope = Column(String(20), default='university', nullable=False)
+    # Если задан — пост виден в ленте указанного вуза вместо вуза автора
+    target_university = Column(String(255), nullable=True)
 
     # Закреплённость
     is_important = Column(Boolean, default=False)

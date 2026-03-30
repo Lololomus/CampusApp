@@ -269,7 +269,7 @@ const Market = () => {
     <div style={styles.container}>
 
       <EdgeBlur position="top" height="var(--header-padding)" zIndex={50} animateHeight />
-      <EdgeBlur position="bottom" height={100} zIndex={50} />
+      <EdgeBlur position="bottom" height={100} zIndex={50} compensateKeyboard />
 
       <AppHeader
         title="Маркет"

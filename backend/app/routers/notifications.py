@@ -198,6 +198,7 @@ NOTIF_TYPE_TO_SETTING = {
     'dating_like': 'dating_likes_enabled',
     'comment': 'comments_enabled',
     'comment_reply': 'comments_enabled',
+    'poll_vote': 'comments_enabled',
     'market_contact': 'market_enabled',
     'market_deal_update': 'market_enabled',
     'request_response': 'requests_enabled',
