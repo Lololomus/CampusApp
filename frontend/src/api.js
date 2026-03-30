@@ -323,6 +323,9 @@ export async function getPosts(filters = {}) {
     if (filters.sort && filters.sort !== 'newest') {
       params.sort = filters.sort;
     }
+    if (filters.viewer_city) {
+      params.viewer_city = filters.viewer_city;
+    }
 
     const response = await api.get('/posts/feed', { params });
     return response.data;

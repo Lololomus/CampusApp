@@ -37,18 +37,19 @@ function Feed() {
   const lastPostCardRef = useRef(null);
   const postsObserverRef = useRef(null);
   
-  const { 
-    feedSubTab, 
+  const {
+    feedSubTab,
     setFeedSubTab,
-    setViewPostId, 
+    setViewPostId,
     isRegistered,
-    viewPostId, 
-    updatedPostId, 
-    getUpdatedPost, 
+    viewPostId,
+    updatedPostId,
+    getUpdatedPost,
     clearUpdatedPost,
     posts: storePosts,
     postsFilters,
     requestsFilters,
+    user,
   } = useStore();
 
   const haptic = (type = 'light') => {
@@ -147,9 +148,11 @@ function Feed() {
 
       if (stabilizedFilters.location === 'my_university') {
         apiFilters.university = stabilizedFilters.university;
+        apiFilters.viewer_city = user?.city || undefined;
       } else if (stabilizedFilters.location === 'my_institute') {
         apiFilters.university = stabilizedFilters.university;
         apiFilters.institute = stabilizedFilters.institute;
+        apiFilters.viewer_city = user?.city || undefined;
       }
 
       if (stabilizedFilters.tags && stabilizedFilters.tags.length > 0) {

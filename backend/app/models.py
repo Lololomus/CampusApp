@@ -199,6 +199,9 @@ class Post(Base):
     event_location = Column(String(200), nullable=True)
     event_contact = Column(String(255), nullable=True)
     
+    # Аудитория поста: 'university' (только свой вуз), 'city' (весь город), 'all' (все студенты)
+    scope = Column(String(20), default='university', nullable=False)
+
     # Закреплённость
     is_important = Column(Boolean, default=False)
     pinned_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)

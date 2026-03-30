@@ -25,6 +25,7 @@ const AppHeader = ({
   children = null,
   accentColor, // ✅ НОВЫЙ ПРОП: для перекраски в зеленый
   premium = false, // #New Premium: включает новый визуальный режим
+  premiumTrailing = null,
   categoryOutline = false, // когда true, активная категория = border + text (без заливки)
 }) => {
   // ===== STATE =====
@@ -371,6 +372,18 @@ const AppHeader = ({
           }}>
             {children}
           </div>
+
+          {premiumTrailing && (
+            <div style={{
+              marginLeft: 12,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              {premiumTrailing}
+            </div>
+          )}
 
           {/* Search-иконка — появляется только при скролле */}
           <div style={{

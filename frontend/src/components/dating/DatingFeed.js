@@ -10,7 +10,6 @@ import MatchModal from './MatchModal';
 import { FeedCardSkeleton } from './DatingSkeletons';
 import DatingOnboarding from './DatingOnboarding';
 import MyDatingProfileModal from './MyDatingProfileModal';
-import EditDatingProfileModal from './EditDatingProfileModal';
 import LikesTab from './LikesTab';
 import ViewingProfileModal from './ViewingProfileModal';
 import ProfileSheet from './ProfileSheet';
@@ -53,8 +52,6 @@ function DatingFeed() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [viewingProfile, setViewingProfile] = useState(null);
   const [showMyProfile, setShowMyProfile] = useState(false);
-  const [showEditProfile, setShowEditProfile] = useState(false);
-  const [returnToMyProfileOnEditClose, setReturnToMyProfileOnEditClose] = useState(false);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const motionX = useMotionValue(0);
   const isDraggingRef = useRef(false);
@@ -64,18 +61,6 @@ function DatingFeed() {
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
 
-  const openEditProfile = useCallback((fromMyProfile = false) => {
-    setReturnToMyProfileOnEditClose(fromMyProfile);
-    if (fromMyProfile) setShowMyProfile(false);
-    setShowEditProfile(true);
-  }, []);
-
-  const closeEditProfile = useCallback(() => {
-    setShowEditProfile(false);
-    if (returnToMyProfileOnEditClose) setShowMyProfile(true);
-    setReturnToMyProfileOnEditClose(false);
-  }, [returnToMyProfileOnEditClose]);
-  
   useEffect(() => {
     document.body.classList.add('dating-active');
     document.getElementById('root')?.classList.add('dating-active');
@@ -362,68 +347,66 @@ function DatingFeed() {
     <div style={styles.container}>
       {!viewingProfile && (
         <>
-          <AppHeader title="Знакомства" premium>
-            {/* Premium pill-switcher + spacer для аватарки */}
-            <div style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center' }}>
-              <div style={{ position: 'relative', flex: 1, display: 'flex', height: '100%' }}>
-                <div
-                  style={{
-                    ...styles.activeIndicator,
-                    transform: `translateX(${activeTab === 'profiles' ? '0' : '100%'})`,
-                  }}
-                />
-                <button
-                  onClick={() => handleTabSwitch('profiles')}
-                  style={{
-                    ...styles.tabButton,
-                    color: activeTab === 'profiles' ? '#000' : '#FFF',
-                  }}
-                >
-                  Анкеты
-                </button>
-                <button
-                  onClick={() => handleTabSwitch('likes')}
-                  style={{
-                    ...styles.tabButton,
-                    color: activeTab === 'likes' ? '#000' : '#FFF',
-                  }}
-                >
-                  Симпатии
-                  {likesCount > 0 && (
-                    <span style={{
-                      ...styles.pillBadge,
-                      backgroundColor: activeTab === 'likes' ? '#000' : d.pink,
-                      color: activeTab === 'likes' ? d.accent : '#fff',
-                    }}>
-                      {likesCount}
-                    </span>
-                  )}
-                </button>
-              </div>
-              {/* Spacer под аватарку */}
-              <div style={{ width: 44, flexShrink: 0 }} />
+          <AppHeader
+            title="Знакомства"
+            premium
+            premiumTrailing={
+              <button
+                style={styles.avatarButton}
+                onClick={() => {
+                  hapticFeedback('medium');
+                  if (isGuestMode) setShowOnboarding(true);
+                  else setShowMyProfile(true);
+                }}
+              >
+                {datingProfile?.photos?.[0]?.url ? (
+                  <img src={datingProfile.photos[0].url} alt="" style={styles.avatarImg} />
+                ) : user?.avatar ? (
+                  <img src={user.avatar} alt="" style={styles.avatarImg} />
+                ) : (
+                  <div style={styles.avatarFallback}>
+                    {user?.name?.[0] || '?'}
+                  </div>
+                )}
+              </button>
+            }
+          >
+            <div style={styles.tabsRail}>
+              <div
+                style={{
+                  ...styles.activeIndicator,
+                  transform: `translateX(${activeTab === 'profiles' ? '0' : '100%'})`,
+                }}
+              />
+              <button
+                onClick={() => handleTabSwitch('profiles')}
+                style={{
+                  ...styles.tabButton,
+                  color: activeTab === 'profiles' ? '#000' : '#FFF',
+                }}
+              >
+                Анкеты
+              </button>
+              <button
+                onClick={() => handleTabSwitch('likes')}
+                style={{
+                  ...styles.tabButton,
+                  color: activeTab === 'likes' ? '#000' : '#FFF',
+                }}
+              >
+                Симпатии
+                {likesCount > 0 && (
+                  <span style={{
+                    ...styles.pillBadge,
+                    backgroundColor: activeTab === 'likes' ? '#000' : d.pink,
+                    color: activeTab === 'likes' ? d.accent : '#fff',
+                  }}>
+                    {likesCount}
+                  </span>
+                )}
+              </button>
             </div>
           </AppHeader>
-
-          {/* Avatar — fixed справа от табов */}
-          <button
-            style={styles.avatarFixed}
-            onClick={() => {
-              hapticFeedback('medium');
-              if (isGuestMode) setShowOnboarding(true);
-              else setShowMyProfile(true);
-            }}
-          >
-            {datingProfile?.photos?.[0]?.url ? (
-              <img src={datingProfile.photos[0].url} alt="" style={styles.avatarImg} />
-            ) : user?.avatar ? (
-              <img src={user.avatar} alt="" style={styles.avatarImg} />
-            ) : (
-              <div style={styles.avatarFallback}>
-                {user?.name?.[0] || '?'}
-              </div>
-            )}
-          </button>
         </>
       )}
 
@@ -565,16 +548,8 @@ function DatingFeed() {
       </div>
 
       {showMyProfile && (
-        <MyDatingProfileModal 
+        <MyDatingProfileModal
           onClose={() => setShowMyProfile(false)}
-          onEditClick={() => openEditProfile(true)}
-        />
-      )}
-
-      {showEditProfile && (
-        <EditDatingProfileModal 
-          onClose={closeEditProfile}
-          onSuccess={() => {}}
         />
       )}
 
@@ -600,6 +575,12 @@ const styles = {
     width: 40, height: 40, border: '3px solid rgba(255,255,255,0.1)',
     borderTopColor: theme.colors.dating.primary || '#ff3b5c',
     borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+  },
+  tabsRail: {
+    position: 'relative',
+    display: 'flex',
+    width: '100%',
+    height: '100%',
   },
   activeIndicator: {
     position: 'absolute',
@@ -634,20 +615,20 @@ const styles = {
     lineHeight: 1,
     transition: 'all 0.2s ease',
   },
-  avatarFixed: {
-    position: 'fixed',
-    top: 'calc(var(--screen-top-offset, 0px) + 36px)',
-    right: 18,
-    width: 44,
-    height: 44,
+  avatarButton: {
+    width: 50,
+    height: 50,
     borderRadius: '50%',
     backgroundColor: d.surface,
     border: '2px solid rgba(255, 255, 255, 0.1)',
     padding: 0,
     overflow: 'hidden',
     cursor: 'pointer',
-    zIndex: 101,
     outline: 'none',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarImg: {
     width: '100%',

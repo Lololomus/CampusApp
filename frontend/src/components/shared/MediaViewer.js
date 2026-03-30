@@ -10,14 +10,35 @@ import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
 import Avatar, { AVATAR_BORDER_RADIUS } from './Avatar';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 
+const DATA_OR_BLOB_PREFIX = /^(data:|blob:)/i;
+const HTTP_PREFIX = /^https?:\/\//i;
+
+const extractUploadsPathFromAbsolute = (value) => {
+  try {
+    const parsed = new URL(value);
+    const path = String(parsed.pathname || '').replace(/\\/g, '/');
+    const markerIndex = path.indexOf('/uploads/');
+    if (markerIndex >= 0) {
+      return path.slice(markerIndex);
+    }
+  } catch {
+    return '';
+  }
+  return '';
+};
+
 // ─── URL-резолвер для медиа (image / video / thumbs) ──────────────────────────
 // Принимает относительный путь вида "2026/03/uuid.mp4" или уже полный "/uploads/..."
 const toAbsoluteUrl = (path, kind = 'images') => {
   if (!path) return '';
   const s = String(path).replace(/\\/g, '/').trim();
   if (!s) return '';
-  if (s.startsWith('/') || s.startsWith('http')) return s;
+  if (DATA_OR_BLOB_PREFIX.test(s)) return s;
+  if (s.startsWith('/')) return s;
   if (s.startsWith('uploads/')) return `/${s}`;
+  if (HTTP_PREFIX.test(s)) {
+    return extractUploadsPathFromAbsolute(s) || s;
+  }
   return `/uploads/${kind}/${s}`;
 };
 
@@ -295,8 +316,9 @@ const VideoSlide = ({ media, isActive, showUI, footerHeight, footerOpen, hasFoot
 };
 
 // ─── Главный компонент ────────────────────────────────────────────────────────
-function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
+function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissMode = 'default' }) {
   const items = mediaList.map(normalizeItem).filter(Boolean);
+  const isSwipeOnlyDismiss = dismissMode === 'swipe';
 
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showUI, setShowUI] = useState(true);
@@ -308,6 +330,9 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   const [swipeClosing, setSwipeClosing] = useState(false);
   const dragYRef = useRef(0);
   const isDraggingDownRef = useRef(false);
+  const mouseDragStartYRef = useRef(null);
+  const dragCleanupRef = useRef(null);
+  const suppressTapRef = useRef(false);
 
   const closeWithAnimation = useCallback(() => {
     if (isClosing) return;
@@ -328,6 +353,53 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   const footerRef = useRef(null);
   const swipeTouchStartY = useRef(null);
 
+  const resetVerticalDrag = useCallback(() => {
+    dragYRef.current = 0;
+    setDragY(0);
+  }, []);
+
+  const updateVerticalDrag = useCallback((dy) => {
+    if (dy <= 0) {
+      isDraggingDownRef.current = false;
+      resetVerticalDrag();
+      return;
+    }
+
+    if (dy > 6) {
+      suppressTapRef.current = true;
+    }
+
+    isDraggingDownRef.current = true;
+    dragYRef.current = dy;
+    setDragY(dy);
+  }, [resetVerticalDrag]);
+
+  const finishVerticalDrag = useCallback(() => {
+    mouseDragStartYRef.current = null;
+    swipeTouchStartY.current = null;
+
+    if (!isDraggingDownRef.current) {
+      resetVerticalDrag();
+      return;
+    }
+
+    isDraggingDownRef.current = false;
+    if (dragYRef.current > 120) {
+      closeViaSwipe();
+      return;
+    }
+
+    resetVerticalDrag();
+  }, [closeViaSwipe, resetVerticalDrag]);
+
+  const cleanupDesktopDrag = useCallback(() => {
+    if (dragCleanupRef.current) {
+      dragCleanupRef.current();
+      dragCleanupRef.current = null;
+    }
+    mouseDragStartYRef.current = null;
+  }, []);
+
   const footerSwipe = useSwipe({
     elementRef: footerRef,
     isModal: true,
@@ -339,8 +411,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   // Блокировка скролла страницы пока MediaViewer открыт
   useEffect(() => {
     lockBodyScroll();
-    return () => unlockBodyScroll();
-  }, []);
+    return () => {
+      cleanupDesktopDrag();
+      unlockBodyScroll();
+    };
+  }, [cleanupDesktopDrag]);
 
   useEffect(() => {
     if (isZoomed) {
@@ -381,15 +456,47 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
   // Клавиатура
   useEffect(() => {
     const handleKey = (e) => {
-      if (e.key === 'Escape') closeWithAnimation();
+      if (e.key === 'Escape' && !isSwipeOnlyDismiss) closeWithAnimation();
       if (e.key === 'ArrowLeft' && scrollRef.current) scrollRef.current.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' });
       if (e.key === 'ArrowRight' && scrollRef.current) scrollRef.current.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' });
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [closeWithAnimation]);
+  }, [closeWithAnimation, isSwipeOnlyDismiss]);
 
-  const toggleUI = useCallback(() => setShowUI(prev => !prev), []);
+  const toggleUI = useCallback(() => {
+    if (suppressTapRef.current) {
+      suppressTapRef.current = false;
+      return;
+    }
+    setShowUI(prev => !prev);
+  }, []);
+
+  const handleDesktopDragStart = useCallback((e, isCurrentSlide) => {
+    if (!isCurrentSlide || isZoomed || e.button !== 0) return;
+
+    cleanupDesktopDrag();
+    suppressTapRef.current = false;
+    mouseDragStartYRef.current = e.clientY;
+
+    const handleMouseMove = (moveEvent) => {
+      if (mouseDragStartYRef.current === null) return;
+      updateVerticalDrag(moveEvent.clientY - mouseDragStartYRef.current);
+    };
+
+    const handleMouseUp = () => {
+      cleanupDesktopDrag();
+      finishVerticalDrag();
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    dragCleanupRef.current = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [cleanupDesktopDrag, finishVerticalDrag, isZoomed, updateVerticalDrag]);
 
   const currentItem = items[currentIndex];
   const hasFooter = Boolean(meta);
@@ -469,7 +576,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
         animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards' : styles.overlay.animation,
         opacity: swipeClosing ? 0 : (dragY > 0 ? Math.max(0.05, 1 - dragY / 250) : undefined),
         transition: swipeClosing ? 'opacity 0.3s ease' : (dragY > 0 ? 'none' : undefined),
-      }} onClick={closeWithAnimation} />
+      }} onClick={isSwipeOnlyDismiss ? undefined : closeWithAnimation} />
 
       {/* Контейнер */}
       <div
@@ -501,7 +608,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
           </div>
         )}
         {/* Кнопка закрытия в хедере — только если нет футера */}
-        {!hasFooter && (
+        {!hasFooter && !isSwipeOnlyDismiss && (
           <button style={{
             ...styles.closeButton,
             position: 'absolute',
@@ -536,30 +643,17 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
                 }}
                 onTouchStart={(e) => {
                   if (e.touches.length === 1) {
+                    suppressTapRef.current = false;
                     swipeTouchStartY.current = e.touches[0].clientY;
                   }
                 }}
                 onTouchMove={(e) => {
                   if (!isCurrentSlide || isZoomed || e.touches.length !== 1 || swipeTouchStartY.current === null) return;
-                  const dy = e.touches[0].clientY - swipeTouchStartY.current;
-                  if (dy > 0) {
-                    isDraggingDownRef.current = true;
-                    dragYRef.current = dy;
-                    setDragY(dy);
-                  }
+                  updateVerticalDrag(e.touches[0].clientY - swipeTouchStartY.current);
                 }}
-                onTouchEnd={() => {
-                  if (isDraggingDownRef.current) {
-                    isDraggingDownRef.current = false;
-                    if (dragYRef.current > 120) {
-                      closeViaSwipe();
-                    } else {
-                      dragYRef.current = 0;
-                      setDragY(0);
-                    }
-                  }
-                  swipeTouchStartY.current = null;
-                }}
+                onTouchEnd={finishVerticalDrag}
+                onTouchCancel={finishVerticalDrag}
+                onMouseDown={(e) => handleDesktopDragStart(e, isCurrentSlide)}
               >
                 {media.type === 'video' ? (
                   <VideoSlide
@@ -681,10 +775,12 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta }) {
                 <Download size={16} />
                 Скачать
               </button>
-              <button style={styles.closeButtonFooter} onClick={closeWithAnimation}>
-                <X size={16} strokeWidth={3} />
-                Закрыть
-              </button>
+              {!isSwipeOnlyDismiss && (
+                <button style={styles.closeButtonFooter} onClick={closeWithAnimation}>
+                  <X size={16} strokeWidth={3} />
+                  Закрыть
+                </button>
+              )}
             </div>
           </div>
         )}

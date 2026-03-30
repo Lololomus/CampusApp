@@ -37,6 +37,7 @@ const ProfileCard = memo(function ProfileCard({
   useEffect(() => {
     setImageLoaded(false);
     setPhotoIndex(0);
+    setShowPhotoViewer(false);
   }, [profile?.id]);
 
   if (!profile) return null;
@@ -50,6 +51,12 @@ const ProfileCard = memo(function ProfileCard({
   );
 
   // ===== ЛОГИКА КЛИКА (TAP) =====
+  const isControlTarget = (target) => Boolean(
+    target &&
+    typeof target.closest === 'function' &&
+    target.closest('[data-card-control="true"]')
+  );
+
   const handleTap = (clientX) => {
     const target = cardRef.current;
     if (!target) return;
@@ -69,7 +76,11 @@ const ProfileCard = memo(function ProfileCard({
       } else if (x > width - centerZone && photoIndex < photos.length - 1) {
         setPhotoIndex(prev => prev + 1);
       } else {
-        if (onExpandProfile) onExpandProfile();
+        if (photos.length > 0) {
+          setShowPhotoViewer(true);
+        } else if (onExpandProfile) {
+          onExpandProfile();
+        }
       }
     } catch (e) {
       console.error('Tap error:', e);
@@ -79,6 +90,7 @@ const ProfileCard = memo(function ProfileCard({
   // ===== TOUCH EVENTS =====
   const handleTouchStart = (e) => {
     if (!isInteractive) return;
+    if (isControlTarget(e.target)) return;
     startXRef.current = e.touches[0].clientX;
     startYRef.current = e.touches[0].clientY;
     currentXRef.current = e.touches[0].clientX;
@@ -103,7 +115,7 @@ const ProfileCard = memo(function ProfileCard({
   };
 
   const handleTouchEnd = (e) => {
-    if (!isInteractive) return;
+    if (!isInteractive || !isDraggingRef.current) return;
     isDraggingRef.current = false;
     const finalDelta = currentXRef.current - startXRef.current;
 
@@ -119,6 +131,7 @@ const ProfileCard = memo(function ProfileCard({
   // ===== MOUSE EVENTS =====
   const handleMouseDown = (e) => {
     if (!isInteractive) return;
+    if (isControlTarget(e.target)) return;
     e.preventDefault();
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
@@ -161,6 +174,7 @@ const ProfileCard = memo(function ProfileCard({
           photos={photos}
           initialIndex={photoIndex}
           onClose={() => setShowPhotoViewer(false)}
+          dismissMode="swipe"
         />
       )}
 
@@ -214,6 +228,7 @@ const ProfileCard = memo(function ProfileCard({
                 <span>Скрыто</span>
               </div>
               <button
+                data-card-control="true"
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -284,6 +299,7 @@ const ProfileCard = memo(function ProfileCard({
               {onExpandProfile && (
                 <button
                   style={styles.expandButton}
+                  data-card-control="true"
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -301,6 +317,7 @@ const ProfileCard = memo(function ProfileCard({
             <div style={styles.actionButtons}>
               <button
                 style={styles.heartButton}
+                data-card-control="true"
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -311,6 +328,7 @@ const ProfileCard = memo(function ProfileCard({
               </button>
               <button
                 style={styles.skipButton}
+                data-card-control="true"
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -534,8 +552,8 @@ const styles = {
   },
   expandButton: {
     ...solidCircle,
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
     pointerEvents: 'auto',
     flexShrink: 0,

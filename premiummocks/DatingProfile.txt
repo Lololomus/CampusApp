@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus - Dating Profile Pro (iPhone 14 Pro Mock)</title>
+
+    <style>
+      :root {
+        --primary: #D4FF00;
+        --dating: #FF2D55; /* Розовый акцент для дейтинга */
+        --bg: #000000;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        
+        /* Хардкодим Safe Area специально под мок iPhone 14 Pro */
+        --safe-area-top: 54px; 
+        --safe-area-bottom: 34px;
+        --curve: cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      
+      /* Стили для презентационного фона (вне телефона) */
+      body {
+        margin: 0;
+        background: #050505;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        font-family: system-ui, -apple-system, sans-serif;
+        overflow: hidden;
+      }
+
+      /* Фоновое свечение (теперь с розовым оттенком для атмосферы) */
+      .presentation-glow {
+        position: absolute;
+        width: 400px;
+        height: 600px;
+        background: var(--dating);
+        filter: blur(200px);
+        opacity: 0.15;
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      /* --- ФРЕЙМ IPHONE 14 PRO --- */
+      .device-wrapper {
+        position: relative;
+        width: 393px;
+        height: 852px;
+        border-radius: 55px;
+        background: #000;
+        box-shadow: 
+          0 0 0 12px #0f0f0f, 
+          0 0 0 14px #333, 
+          0 30px 80px rgba(0,0,0,0.6);
+        z-index: 1;
+        transform: scale(min(calc(100vh / 900), calc(100vw / 440)));
+        transform-origin: center center;
+        flex-shrink: 0;
+      }
+
+      .hw-button { position: absolute; background: #333; border-radius: 2px; }
+      .hw-mute { left: -15px; top: 115px; width: 3px; height: 26px; }
+      .hw-vol-up { left: -15px; top: 165px; width: 3px; height: 62px; }
+      .hw-vol-down { left: -15px; top: 240px; width: 3px; height: 62px; }
+      .hw-power { right: -15px; top: 195px; width: 3px; height: 95px; }
+
+      .dynamic-island {
+        position: absolute;
+        top: 11px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 120px;
+        height: 35px;
+        background: #000;
+        border-radius: 20px;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 12px;
+        box-shadow: inset 0 0 1px rgba(255,255,255,0.1), 0 0 1px rgba(255,255,255,0.1);
+        pointer-events: none;
+      }
+      .dynamic-island .camera {
+        width: 12px;
+        height: 12px;
+        background: #111;
+        border-radius: 50%;
+        box-shadow: inset -1px -1px 2px rgba(255,255,255,0.2), inset 1px 1px 2px rgba(0,0,0,0.8);
+      }
+
+      .home-indicator {
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 135px;
+        height: 5px;
+        background: #FFF;
+        border-radius: 10px;
+        z-index: 9999;
+        opacity: 0.8;
+        pointer-events: none;
+      }
+
+      #root { 
+        height: 100%; 
+        width: 100%;
+        position: relative; 
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+        border-radius: 43px; 
+      }
+      /* --------------------------- */
+
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { 
+        transition: transform 0.15s var(--curve), opacity 0.15s var(--curve), background 0.2s; 
+        cursor: pointer;
+      }
+      .spring-btn:active { transform: scale(0.96); opacity: 0.8; }
+      
+      /* Фото профиля */
+      .hero-photo-container {
+        width: 100%; aspect-ratio: 3/4; border-radius: 24px;
+        position: relative; overflow: hidden;
+        background: var(--surface-elevated);
+      }
+      .hero-photo { width: 100%; height: 100%; object-fit: cover; }
+      .hero-gradient {
+        position: absolute; bottom: 0; left: 0; right: 0; height: 50%;
+        background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+        pointer-events: none;
+      }
+      
+      /* Bottom Sheet */
+      .sheet-overlay {
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 100;
+        opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      }
+      .sheet-overlay.open { opacity: 1; pointer-events: auto; }
+      .bottom-sheet {
+        position: absolute; bottom: 0; left: 0; right: 0;
+        background: var(--surface); border-radius: 24px 24px 0 0;
+        transform: translateY(100%); transition: transform 0.4s var(--curve);
+        z-index: 101; display: flex; flex-direction: column;
+        max-height: 90%;
+      }
+      .bottom-sheet.open { transform: translateY(0); }
+      .drag-handle {
+        width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.2);
+        margin: 12px auto;
+      }
+
+      /* Инпуты */
+      .textarea-hero {
+        width: 100%; background: transparent; border: none;
+        font-size: 24px; font-weight: 700; line-height: 1.3; resize: none; font-family: inherit;
+        padding: 0;
+      }
+      .textarea-hero.dating-accent { color: var(--dating); }
+      .textarea-hero.dating-accent::placeholder { color: rgba(255, 45, 85, 0.3); font-weight: 600; }
+
+      .input-line {
+        width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border);
+        color: #FFF; font-size: 18px; padding: 12px 0; font-family: inherit; font-weight: 600;
+        transition: border-color 0.3s var(--curve);
+      }
+      .input-line.dating-accent:focus { border-bottom-color: var(--dating); }
+      .input-line::placeholder { color: var(--text-muted); font-weight: 500; }
+
+      .input-standard {
+        width: 100%; background: var(--surface-elevated); border: 1px solid var(--border);
+        color: #FFF; font-size: 16px; padding: 16px; border-radius: 16px; font-family: inherit;
+        resize: none; min-height: 100px;
+      }
+      .input-standard:focus { border-color: var(--primary); }
+
+      /* Chips */
+      .chip {
+        padding: 10px 16px; border-radius: 20px; font-size: 14px; font-weight: 600;
+        white-space: nowrap; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+      }
+      .chip.active { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+      .chip.inactive { background: var(--surface-elevated); border: 1px solid transparent; color: #FFF; }
+
+      /* Стили списка ледоколов */
+      .prompt-list-item {
+        width: 100%; background: var(--surface-elevated); border: 1px solid var(--border);
+        padding: 16px; border-radius: 16px; display: flex; align-items: center; gap: 12px;
+        color: #FFF; font-size: 15px; font-weight: 500; text-align: left;
+      }
+      .prompt-list-item.custom { border: 1px dashed rgba(255, 45, 85, 0.5); background: rgba(255, 45, 85, 0.05); color: var(--dating); font-weight: 600; }
+
+      /* Тумблер и активные чипы для дейтинга */
+      .chip.dating-active { background: rgba(255, 45, 85, 0.1); border: 1px solid var(--dating); color: var(--dating); }
+      
+      .toggle-switch {
+        position: relative; width: 50px; height: 30px;
+        background: var(--surface-elevated); border-radius: 15px;
+        transition: background 0.3s var(--curve); cursor: pointer; border: 1px solid var(--border);
+      }
+      .toggle-switch.active { background: var(--dating); border-color: var(--dating); }
+      .toggle-switch::after {
+        content: ''; position: absolute; top: 2px; left: 2px;
+        width: 24px; height: 24px; background: #FFF; border-radius: 50%;
+        transition: transform 0.3s var(--curve); box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      }
+      .toggle-switch.active::after { transform: translateX(20px); }
+
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <!-- Фоновое свечение для презентации -->
+    <div class="presentation-glow"></div>
+
+    <!-- Мок iPhone 14 Pro -->
+    <div class="device-wrapper">
+      <div class="hw-button hw-mute"></div>
+      <div class="hw-button hw-vol-up"></div>
+      <div class="hw-button hw-vol-down"></div>
+      <div class="hw-button hw-power"></div>
+      
+      <div class="dynamic-island">
+        <div class="camera"></div>
+      </div>
+      
+      <div class="home-indicator"></div>
+
+      <!-- Контейнер React приложения -->
+      <div id="root"></div>
+    </div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        ChevronLeft, ChevronRight, Edit3, Camera, Sparkles, X, Plus, 
+        MapPin, GraduationCap, Check, MessageCircle, Heart, Search,
+        SlidersHorizontal, EyeOff
+      } from 'lucide-react';
+
+      // --- UTILS ---
+      const triggerHaptic = (style = 'light') => {
+        if (window.Telegram?.WebApp?.HapticFeedback) {
+          window.Telegram.WebApp.HapticFeedback.impactOccurred(style);
+        } else if (navigator.vibrate) {
+          navigator.vibrate(style === 'heavy' ? 40 : 15);
+        }
+      };
+
+      // --- MOCK DATA ---
+      const ICEBREAKERS_CATEGORIZED = [
+        {
+          title: 'О личном',
+          items: [
+            "Непопулярное мнение:",
+            "Две правды и одна ложь:",
+            "Мой идеальный выходной — это..."
+          ]
+        },
+        {
+          title: 'Свидания',
+          items: [
+            "Идеальное свидание — это...",
+            "Самый странный подкат в моей жизни:",
+            "Лучший способ потратить 1000 рублей:"
+          ]
+        },
+        {
+          title: 'Философия и юмор',
+          items: [
+            "Что последнее заставило меня смеяться?",
+            "Если бы я мог(ла) есть только одно блюдо до конца жизни?",
+            "Самый бесполезный талант:"
+          ]
+        }
+      ];
+
+      const ALL_TAGS = ['📚 Учеба', '🎉 Тусовки', '☕ Кофе', '💻 IT', '🎨 Творчество', '🏃‍♂️ Спорт', '🎮 Игры'];
+      const ALL_GOALS = ['💘 Отношения', '🤝 Дружба', '✨ Просто общение'];
+
+      const UNIVERSITIES = [
+        'ВШЭ (Высшая школа экономики)',
+        'МГУ им. М.В. Ломоносова',
+        'МФТИ (Физтех)',
+        'МГТУ им. Н.Э. Баумана',
+        'СПбГУ',
+        'ИТМО',
+        'РАНХиГС',
+        'МГИМО',
+        'РУДН'
+      ];
+
+      // --- COMPONENTS ---
+      const BottomSheet = ({ isOpen, onClose, title, children }) => {
+        if (!isOpen) return null;
+        return (
+          <>
+            <div className={`sheet-overlay ${isOpen ? 'open' : ''}`} onClick={onClose} />
+            <div className={`bottom-sheet ${isOpen ? 'open' : ''}`}>
+              <div className="drag-handle" />
+              <div style={{ padding: '0 20px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 800 }}>{title}</h3>
+                <button onClick={onClose} className="spring-btn" style={{ background: 'var(--surface-elevated)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="hide-scroll" style={{ overflowY: 'auto', padding: '0 20px 20px', paddingBottom: 'calc(var(--safe-area-bottom) + 80px)' }}>
+                {children}
+              </div>
+            </div>
+          </>
+        );
+      };
+
+      const DatingProfile = () => {
+        // State: Profile Data
+        const [profile, setProfile] = useState({
+          name: 'Алексей',
+          uni: 'ВШЭ',
+          course: 'ФКН • 3 курс',
+          // Дейтинг-специфичные поля:
+          age: 21,
+          photos: [
+            'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=800',
+            'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=800'
+          ],
+          about: 'Люблю кодить по ночам и пить фильтр-кофе. Ищу компанию для походов на техно или хакатоны.',
+          icebreaker: { prompt: 'Идеальное свидание — это...', answer: 'Код-ревью на закате и пицца 🍕', isCustom: false },
+          goals: ['💘 Отношения'],
+          interests: ['💻 IT', '☕ Кофе', '🎉 Тусовки'],
+          lookingFor: 'Девушки', // Парни, Девушки, Все
+          isHidden: false // Скрыта ли анкета
+        });
+
+        // State: UI Sheets
+        const [activeSheet, setActiveSheet] = useState(null); // 'bio', 'icebreaker', 'tags', 'settings', 'photos'
+        
+        // Temp states for editing
+        const [tempBio, setTempBio] = useState('');
+        const [tempIcebreaker, setTempIcebreaker] = useState({ prompt: '', answer: '', isCustom: false });
+        const [ibStep, setIbStep] = useState('list');
+        const [tempTags, setTempTags] = useState({ goals: [], interests: [] });
+        const [tempSettings, setTempSettings] = useState({ age: '', lookingFor: '', isHidden: false });
+        const [tempPhotos, setTempPhotos] = useState([]);
+        const [currentPhotoIdx, setCurrentPhotoIdx] = useState(0);
+
+        // Handlers
+        const openSheet = (sheetName) => {
+          triggerHaptic('light');
+          if (sheetName === 'bio') setTempBio(profile.about);
+          if (sheetName === 'icebreaker') {
+             setTempIcebreaker({ ...profile.icebreaker });
+             setIbStep(profile.icebreaker.answer ? (profile.icebreaker.isCustom ? 'custom' : 'answer') : 'list');
+          }
+          if (sheetName === 'tags') setTempTags({ goals: [...profile.goals], interests: [...profile.interests] });
+          if (sheetName === 'settings') setTempSettings({ age: profile.age, lookingFor: profile.lookingFor, isHidden: profile.isHidden });
+          if (sheetName === 'photos') {
+             const currentPhotos = [...profile.photos];
+             // Максимум 3 фото
+             setTempPhotos([...currentPhotos, ...Array(3 - currentPhotos.length).fill(null)].slice(0, 3)); 
+          }
+          setActiveSheet(sheetName);
+        };
+
+        const closeSheet = () => {
+          setActiveSheet(null);
+        };
+
+        const saveSheet = () => {
+          triggerHaptic('success');
+          if (activeSheet === 'bio') setProfile({ ...profile, about: tempBio });
+          if (activeSheet === 'icebreaker') setProfile({ ...profile, icebreaker: tempIcebreaker });
+          if (activeSheet === 'tags') setProfile({ ...profile, goals: tempTags.goals, interests: tempTags.interests });
+          if (activeSheet === 'settings') setProfile({ ...profile, ...tempSettings });
+          if (activeSheet === 'photos') {
+            const validPhotos = tempPhotos.filter(p => p !== null);
+            if (validPhotos.length > 0) {
+               setProfile({ ...profile, photos: validPhotos });
+               setCurrentPhotoIdx(0);
+            }
+          }
+          closeSheet();
+        };
+
+        const toggleTag = (type, tag) => {
+          triggerHaptic('light');
+          setTempTags(prev => {
+            const list = prev[type];
+            if (list.includes(tag)) return { ...prev, [type]: list.filter(t => t !== tag) };
+            if (type === 'goals' && list.length >= 2) return prev; // limit goals
+            if (type === 'interests' && list.length >= 5) return prev; // limit interests
+            return { ...prev, [type]: [...list, tag] };
+          });
+        };
+
+        return (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {/* Header (Очищен от контролов для совместимости с TMA) */}
+            <header style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: '12px', paddingLeft: '16px', paddingRight: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button className="spring-btn" style={{ background: 'transparent', border: 'none', color: '#FFF', padding: 0 }}>
+                <ChevronLeft size={28} />
+              </button>
+              <span style={{ fontWeight: 700, fontSize: '17px' }}>Мой профиль</span>
+              <div style={{ width: 28 }} /> {/* Пустой блок: место справа забронировано системным меню Telegram */}
+            </header>
+
+            {/* Scrollable Content */}
+            <div className="hide-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 16px 120px' }}>
+              
+              {/* Photo & Basic Info */}
+              <div className="hero-photo-container" onClick={(e) => {
+                 const rect = e.currentTarget.getBoundingClientRect();
+                 const x = e.clientX - rect.left;
+                 if (x < rect.width / 2) {
+                    setCurrentPhotoIdx(prev => Math.max(0, prev - 1));
+                 } else {
+                    setCurrentPhotoIdx(prev => Math.min(profile.photos.length - 1, prev + 1));
+                 }
+              }}>
+                <img src={profile.photos[currentPhotoIdx]} className="hero-photo" alt="Profile" />
+                <div className="hero-gradient" />
+                
+                {/* Индикаторы нескольких фотографий */}
+                {profile.photos.length > 1 && (
+                  <div style={{ position: 'absolute', top: 12, left: 16, right: 16, display: 'flex', gap: '4px', zIndex: 10 }}>
+                    {profile.photos.map((_, i) => (
+                       <div key={i} style={{ flex: 1, height: '3px', borderRadius: '2px', background: i === currentPhotoIdx ? '#FFF' : 'rgba(255,255,255,0.3)', transition: 'background 0.3s' }} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Единый блок управления снизу (TMA-friendly) */}
+                <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16, zIndex: 11, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                  
+                  {/* Левая часть: Имя, ВУЗ и Бейдж */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start', flex: 1, paddingRight: '12px' }}>
+                    {profile.isHidden && (
+                      <div style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', padding: '6px 10px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700, border: '1px solid var(--border)' }}>
+                        <EyeOff size={14} /> Анкета скрыта
+                      </div>
+                    )}
+                    <div>
+                      <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 800, color: '#FFF', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>{profile.name}, {profile.age}</h1>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(255,255,255,0.9)', fontSize: '14px', fontWeight: 500, marginTop: '4px', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                        <GraduationCap size={16} /> {profile.uni} • {profile.course}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Правая часть: Кнопки действий */}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="spring-btn" onClick={(e) => { e.stopPropagation(); openSheet('settings'); }} style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                      <SlidersHorizontal size={20} />
+                    </button>
+                    <button className="spring-btn" onClick={(e) => { e.stopPropagation(); openSheet('photos'); }} style={{ width: 44, height: 44, borderRadius: 22, background: 'var(--dating)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', boxShadow: '0 4px 12px rgba(255, 45, 85, 0.4)' }}>
+                      <Camera size={20} />
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* About Me Section */}
+              <div className="spring-btn" onClick={() => openSheet('bio')} style={{ marginTop: '24px', background: 'var(--surface)', borderRadius: '20px', padding: '20px', position: 'relative' }}>
+                <div style={{ position: 'absolute', top: 20, right: 20, color: 'var(--text-muted)' }}><Edit3 size={18} /></div>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>Обо мне</h3>
+                <p style={{ margin: 0, fontSize: '16px', lineHeight: 1.5, color: profile.about ? '#FFF' : 'var(--text-muted)' }}>
+                  {profile.about || 'Напиши пару слов о себе...'}
+                </p>
+              </div>
+
+              {/* Icebreaker Section (Тематический РОЗОВЫЙ) */}
+              <div className="spring-btn" onClick={() => openSheet('icebreaker')} style={{ marginTop: '16px', background: 'var(--surface)', borderRadius: '20px', padding: '20px', position: 'relative', border: profile.icebreaker.answer ? '1px solid var(--dating)' : '1px solid var(--border)', boxShadow: profile.icebreaker.answer ? '0 4px 20px rgba(255, 45, 85, 0.05)' : 'none' }}>
+                <div style={{ position: 'absolute', top: 20, right: 20, color: 'var(--text-muted)' }}><Edit3 size={18} /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <Heart size={18} fill="var(--dating)" color="var(--dating)" />
+                  <h3 style={{ margin: 0, fontSize: '14px', textTransform: 'uppercase', color: 'var(--dating)', fontWeight: 700 }}>Ледокол</h3>
+                </div>
+                {profile.icebreaker.answer ? (
+                  <>
+                    <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px' }}>{profile.icebreaker.prompt}</div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, color: '#FFF', lineHeight: 1.4 }}>{profile.icebreaker.answer}</div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: '16px', color: 'var(--text-muted)' }}>Выбери вопрос, чтобы с тобой было проще начать диалог</div>
+                )}
+              </div>
+
+              {/* Tags Section */}
+              <div className="spring-btn" onClick={() => openSheet('tags')} style={{ marginTop: '16px', background: 'var(--surface)', borderRadius: '20px', padding: '20px', position: 'relative' }}>
+                <div style={{ position: 'absolute', top: 20, right: 20, color: 'var(--text-muted)' }}><Edit3 size={18} /></div>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '14px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>Цели и интересы</h3>
+                
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {profile.goals.map(g => <div key={g} className="chip active">{g}</div>)}
+                  {profile.interests.map(i => <div key={i} className="chip inactive">{i}</div>)}
+                  {profile.goals.length === 0 && profile.interests.length === 0 && (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Выбрать теги...</div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Sticky Preview Button */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', paddingBottom: 'calc(var(--safe-area-bottom) + 16px)', background: 'linear-gradient(to top, var(--bg) 60%, transparent)', pointerEvents: 'none' }}>
+               <button className="spring-btn" style={{ width: '100%', padding: '16px', background: 'var(--surface-elevated)', borderRadius: '20px', border: '1px solid var(--border)', color: '#FFF', fontWeight: 700, fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', pointerEvents: 'auto' }}>
+                  <MessageCircle size={20} />
+                  Как видят другие
+               </button>
+            </div>
+
+
+            {/* === BOTTOM SHEETS === */}
+
+            {/* BIO SHEET */}
+            <BottomSheet isOpen={activeSheet === 'bio'} onClose={closeSheet} title="Обо мне">
+              <textarea 
+                className="input-standard"
+                placeholder="Расскажи, кого ищешь и чем увлекаешься..."
+                value={tempBio}
+                onChange={e => setTempBio(e.target.value)}
+                autoFocus
+              />
+              <button className="spring-btn" onClick={saveSheet} style={{ width: '100%', padding: '16px', background: 'var(--primary)', borderRadius: '16px', border: 'none', color: '#000', fontWeight: 700, fontSize: '16px', marginTop: '24px' }}>
+                Сохранить
+              </button>
+            </BottomSheet>
+
+            {/* ICEBREAKER SHEET (Двухшаговый флоу с розовым акцентом) */}
+            <BottomSheet isOpen={activeSheet === 'icebreaker'} onClose={closeSheet} title={ibStep === 'list' ? 'Выбери ледокол' : 'Твой ледокол'}>
+              
+              {/* Шаг 1: Выбор вопроса из вертикального списка (Сгруппировано по темам) */}
+              {ibStep === 'list' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  
+                  {/* Кнопка кастомного вопроса теперь сверху для быстрого доступа */}
+                  <button 
+                    className="spring-btn prompt-list-item custom"
+                    onClick={() => { 
+                      triggerHaptic('light'); 
+                      setTempIcebreaker({ prompt: '', answer: '', isCustom: true }); 
+                      setIbStep('custom'); 
+                    }}
+                  >
+                    <Edit3 size={18} color="var(--dating)" style={{ flexShrink: 0 }} />
+                    <span>Написать свой вопрос...</span>
+                  </button>
+
+                  {ICEBREAKERS_CATEGORIZED.map((cat, catIdx) => (
+                    <div key={catIdx}>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', paddingLeft: '4px' }}>
+                        {cat.title}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {cat.items.map((prompt, idx) => (
+                          <button 
+                            key={idx} 
+                            className="spring-btn prompt-list-item"
+                            onClick={() => { 
+                              triggerHaptic('light'); 
+                              setTempIcebreaker({ prompt, answer: '', isCustom: false }); 
+                              setIbStep('answer'); 
+                            }}
+                          >
+                            <span style={{ flex: 1 }}>{prompt}</span>
+                            <ChevronRight size={18} color="rgba(255, 255, 255, 0.2)" style={{ flexShrink: 0 }} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Шаг 2: Ввод ответа для ГОТОВОГО вопроса */}
+              {ibStep === 'answer' && (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <button className="spring-btn" onClick={() => { triggerHaptic('light'); setIbStep('list'); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', padding: '0 0 16px 0', fontSize: '15px', fontWeight: 600 }}>
+                    <ChevronLeft size={18} /> Другой вопрос
+                  </button>
+                  
+                  <div style={{ fontSize: '15px', color: 'var(--text-muted)', marginBottom: '12px' }}>{tempIcebreaker.prompt}</div>
+                  
+                  <textarea 
+                    className="textarea-hero dating-accent"
+                    placeholder="Твой ответ..."
+                    value={tempIcebreaker.answer}
+                    onChange={e => setTempIcebreaker({ ...tempIcebreaker, answer: e.target.value })}
+                    rows={4}
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {/* Шаг 2 (Альтернативный): КАСТОМНЫЙ вопрос и ответ */}
+              {ibStep === 'custom' && (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <button className="spring-btn" onClick={() => { triggerHaptic('light'); setIbStep('list'); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', padding: '0 0 16px 0', fontSize: '15px', fontWeight: 600 }}>
+                    <ChevronLeft size={18} /> К списку
+                  </button>
+                  
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Твой вопрос:</div>
+                  <input 
+                    className="input-line dating-accent"
+                    placeholder="Например: Любимый трек для пробежки?"
+                    value={tempIcebreaker.prompt}
+                    onChange={e => setTempIcebreaker({ ...tempIcebreaker, prompt: e.target.value })}
+                    autoFocus
+                  />
+
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '24px', marginBottom: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Твой ответ:</div>
+                  <textarea 
+                    className="textarea-hero dating-accent"
+                    placeholder="Начни печатать..."
+                    value={tempIcebreaker.answer}
+                    onChange={e => setTempIcebreaker({ ...tempIcebreaker, answer: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+              )}
+
+              {/* Общая кнопка сохранения для ввода (не показывается в списке) */}
+              {ibStep !== 'list' && (
+                <button 
+                  className="spring-btn" 
+                  onClick={saveSheet} 
+                  disabled={!tempIcebreaker.answer.trim() || !tempIcebreaker.prompt.trim()} 
+                  style={{ 
+                    width: '100%', padding: '16px', borderRadius: '16px', border: 'none', fontWeight: 700, fontSize: '16px', marginTop: '24px', transition: 'all 0.3s',
+                    background: (tempIcebreaker.answer.trim() && tempIcebreaker.prompt.trim()) ? 'var(--dating)' : 'var(--surface-elevated)', 
+                    color: (tempIcebreaker.answer.trim() && tempIcebreaker.prompt.trim()) ? '#FFF' : 'var(--text-muted)'
+                  }}
+                >
+                  Установить ледокол
+                </button>
+              )}
+            </BottomSheet>
+
+            {/* TAGS SHEET */}
+            <BottomSheet isOpen={activeSheet === 'tags'} onClose={closeSheet} title="Кого ищешь?">
+              
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '12px', textTransform: 'uppercase' }}>Твои цели (до 2)</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '32px' }}>
+                {ALL_GOALS.map(tag => {
+                  const isActive = tempTags.goals.includes(tag);
+                  return (
+                    <div key={tag} className={`chip spring-btn ${isActive ? 'active' : 'inactive'}`} onClick={() => toggleTag('goals', tag)}>
+                      {tag}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '12px', textTransform: 'uppercase' }}>Интересы (до 5)</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '24px' }}>
+                {ALL_INTERESTS.map(tag => {
+                  const isActive = tempTags.interests.includes(tag);
+                  return (
+                    <div key={tag} className={`chip spring-btn ${isActive ? 'active' : 'inactive'}`} onClick={() => toggleTag('interests', tag)}>
+                      {tag}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button className="spring-btn" onClick={saveSheet} style={{ width: '100%', padding: '16px', background: 'var(--primary)', borderRadius: '16px', border: 'none', color: '#000', fontWeight: 700, fontSize: '16px' }}>
+                Сохранить теги
+              </button>
+            </BottomSheet>
+
+            {/* SETTINGS SHEET (Анкета поиска) */}
+            <BottomSheet isOpen={activeSheet === 'settings'} onClose={closeSheet} title="Настройки поиска">
+              
+              {/* Кого ищу */}
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '12px', fontWeight: 700, textTransform: 'uppercase' }}>Кого я ищу</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {['Парни', 'Девушки', 'Все'].map(opt => (
+                    <button 
+                      key={opt} 
+                      className={`chip spring-btn ${tempSettings.lookingFor === opt ? 'dating-active' : 'inactive'}`} 
+                      onClick={() => { triggerHaptic('light'); setTempSettings({...tempSettings, lookingFor: opt}); }}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Мой возраст (специфично для дейтинга) */}
+              <div style={{ marginBottom: '32px' }}>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 700, textTransform: 'uppercase' }}>Мой возраст</div>
+                <input 
+                  type="number" 
+                  className="input-line dating-accent" 
+                  value={tempSettings.age} 
+                  onChange={e => setTempSettings({...tempSettings, age: e.target.value})} 
+                  placeholder="Например: 20"
+                />
+              </div>
+
+              {/* Скрыть анкету (Тумблер) */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', padding: '16px', background: 'var(--surface-elevated)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '16px', color: '#FFF' }}>Скрыть анкету</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.4 }}>Тебя не будет видно в ленте,<br/>но ты сможешь общаться с мэтчами</div>
+                </div>
+                <div 
+                  className={`toggle-switch ${tempSettings.isHidden ? 'active' : ''}`} 
+                  onClick={() => { triggerHaptic('light'); setTempSettings({...tempSettings, isHidden: !tempSettings.isHidden}); }} 
+                />
+              </div>
+
+              <button className="spring-btn" onClick={saveSheet} style={{ width: '100%', padding: '16px', background: 'var(--dating)', borderRadius: '16px', border: 'none', color: '#FFF', fontWeight: 700, fontSize: '16px' }}>
+                Сохранить настройки
+              </button>
+            </BottomSheet>
+
+            {/* PHOTOS GRID SHEET (Максимум 3 фото) */}
+            <BottomSheet isOpen={activeSheet === 'photos'} onClose={closeSheet} title="Мои фотографии">
+               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  {tempPhotos.map((p, i) => (
+                     <div key={i} className="spring-btn" onClick={() => { if(!p) { triggerHaptic('light'); const newArr = [...tempPhotos]; newArr[i] = 'https://images.unsplash.com/photo-1522556189639-b150ed9c4330?auto=format&fit=crop&q=80&w=800'; setTempPhotos(newArr); } }} style={{ aspectRatio: '3/4', background: 'var(--surface-elevated)', borderRadius: '12px', position: 'relative', overflow: 'hidden', border: p ? 'none' : '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {p ? (
+                           <>
+                             <img src={p} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                             <button onClick={(e) => { e.stopPropagation(); triggerHaptic('light'); const newArr = [...tempPhotos]; newArr[i] = null; setTempPhotos(newArr); }} style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', color: '#FFF' }}><X size={14}/></button>
+                             {i === 0 && <div style={{ position: 'absolute', top: 6, left: 6, background: 'var(--dating)', color: '#FFF', fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '6px' }}>MAIN</div>}
+                           </>
+                        ) : (
+                           <Plus size={24} color="var(--text-muted)" />
+                        )}
+                     </div>
+                  ))}
+               </div>
+               <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center' }}>В дейтинге достаточно 3-х лучших фотографий.<br/>Нажми на пустой слот, чтобы добавить.</p>
+               <button className="spring-btn" onClick={saveSheet} style={{ width: '100%', padding: '16px', background: 'var(--dating)', borderRadius: '16px', border: 'none', color: '#FFF', fontWeight: 700, fontSize: '16px' }}>
+                 Сохранить фото
+               </button>
+            </BottomSheet>
+
+          </div>
+        );
+      };
+
+      const ALL_INTERESTS = ['📚 Учеба', '🎉 Тусовки', '☕ Кофе', '💻 IT', '🎨 Творчество', '🏃‍♂️ Спорт', '🎮 Игры', '🎵 Музыка', '🎬 Кино', '✈️ Путешествия'];
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<DatingProfile />);
+    </script>
+  </body>
+</html>

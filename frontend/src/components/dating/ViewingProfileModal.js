@@ -2,7 +2,7 @@
 // Полноэкранный просмотр профиля из вкладки "Симпатии" — slide-in from right
 
 import React, { useState, useEffect } from 'react';
-import { GraduationCap, ChevronLeft, Heart, MessageCircle } from 'lucide-react';
+import { GraduationCap, ChevronLeft, ChevronRight, Heart, MessageCircle } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
@@ -53,20 +53,23 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
   };
 
   // Навигация по фото через тап-зоны
-  const handlePhotoTap = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const third = rect.width / 3;
+  const openPhotoViewer = () => {
+    if (!hasPhotos) return;
+    setShowPhotoViewer(true);
+  };
 
-    if (x < third && currentPhotoIndex > 0) {
-      hapticFeedback('light');
-      setCurrentPhotoIndex(prev => prev - 1);
-    } else if (x > third * 2 && currentPhotoIndex < photos.length - 1) {
-      hapticFeedback('light');
-      setCurrentPhotoIndex(prev => prev + 1);
-    } else {
-      setShowPhotoViewer(true);
-    }
+  const handlePrevPhoto = (e) => {
+    e.stopPropagation();
+    if (currentPhotoIndex === 0) return;
+    hapticFeedback('light');
+    setCurrentPhotoIndex(prev => prev - 1);
+  };
+
+  const handleNextPhoto = (e) => {
+    e.stopPropagation();
+    if (currentPhotoIndex >= photos.length - 1) return;
+    hapticFeedback('light');
+    setCurrentPhotoIndex(prev => prev + 1);
   };
 
   const icebreaker = profile?.prompts?.question && profile?.prompts?.answer
@@ -89,7 +92,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
 
         <div style={styles.scrollContent}>
           {/* Фото 4:5 с градиентом и overlaid инфо */}
-          <div style={styles.photoSection} onClick={handlePhotoTap}>
+          <div style={styles.photoSection} onClick={openPhotoViewer}>
             {hasPhotos ? (
               <>
                 {photos.map((photo, idx) => (
@@ -116,6 +119,26 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
                       />
                     ))}
                   </div>
+                )}
+                {photos.length > 1 && currentPhotoIndex > 0 && (
+                  <button
+                    type="button"
+                    aria-label="Previous photo"
+                    onClick={handlePrevPhoto}
+                    style={{ ...styles.photoNavButton, left: 12 }}
+                  >
+                    <ChevronLeft size={22} />
+                  </button>
+                )}
+                {photos.length > 1 && currentPhotoIndex < photos.length - 1 && (
+                  <button
+                    type="button"
+                    aria-label="Next photo"
+                    onClick={handleNextPhoto}
+                    style={{ ...styles.photoNavButton, right: 12 }}
+                  >
+                    <ChevronRight size={22} />
+                  </button>
                 )}
               </>
             ) : (
@@ -219,6 +242,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
             photos={photos}
             initialIndex={currentPhotoIndex}
             onClose={() => setShowPhotoViewer(false)}
+            dismissMode="swipe"
           />
         )}
       </div>
@@ -303,6 +327,24 @@ const styles = {
     display: 'flex',
     gap: 6,
     zIndex: 3,
+  },
+  photoNavButton: {
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: 44,
+    height: 44,
+    borderRadius: '50%',
+    border: '1px solid rgba(255, 255, 255, 0.14)',
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    zIndex: 4,
   },
   indicator: {
     flex: 1,

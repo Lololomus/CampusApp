@@ -311,6 +311,9 @@ class PostCreate(BaseModel):
     event_location: Optional[str] = None
     event_contact: Optional[str] = None
     
+    # Аудитория
+    scope: str = Field(default='university', pattern='^(university|city|all)$')
+
     # News
     is_important: bool = False
     

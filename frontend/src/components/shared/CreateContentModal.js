@@ -187,6 +187,7 @@ function CreateContentModal({ onClose }) {
   const [videoThumb, setVideoThumb] = useState(null);
 
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [postScope, setPostScope] = useState('university');
   const [lfType, setLfType] = useState('lost');
   const [eventDateMode, setEventDateMode] = useState('today');
   const [customDate, setCustomDate] = useState('');
@@ -436,6 +437,7 @@ function CreateContentModal({ onClose }) {
     videoFile,
     videoThumb,
     isAnonymous,
+    postScope,
     lfType,
     eventDateMode,
     customDate,
@@ -476,6 +478,7 @@ function CreateContentModal({ onClose }) {
     setVideoFile(nextVideo);
     setVideoThumb(draft.videoThumb || null);
     setIsAnonymous(Boolean(draft.isAnonymous));
+    setPostScope(['university', 'city', 'all'].includes(draft.postScope) ? draft.postScope : 'university');
     setLfType(draft.lfType === 'found' ? 'found' : 'lost');
     setEventDateMode(draft.eventDateMode || 'today');
     setCustomDate(draft.customDate || '');
@@ -885,6 +888,7 @@ function CreateContentModal({ onClose }) {
         }
 
         formData.append('tags', JSON.stringify(postTags));
+        formData.append('scope', postScope);
         formData.append('is_anonymous', isAnonymous);
         formData.append('enable_anonymous_comments', postCategory === 'confessions' ? true : isAnonymous);
 
@@ -1508,7 +1512,28 @@ function CreateContentModal({ onClose }) {
                 </div>
               )}
 
-              <div style={styles.toolbar}>
+              {activeTab === 'post' && (
+                <div style={styles.scopeRow}>
+                  {[
+                    { value: 'university', label: '🎓 Вуз' },
+                    { value: 'city',       label: '🏙 Город' },
+                    { value: 'all',        label: '🌍 Все' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => { setPostScope(opt.value); hapticFeedback('light'); }}
+                      style={postScope === opt.value ? { ...styles.scopeBtn, ...styles.scopeBtnActive } : styles.scopeBtn}
+                      className="create-spring-btn"
+                      disabled={isSubmitting}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div style={activeTab === 'request' ? { ...styles.toolbar, borderTop: '1px solid var(--create-border)' } : styles.toolbar}>
                 <input ref={postFileInputRef} type="file" multiple accept={mediaInputAccept} onChange={handleSharedFileSelect} style={{ display: 'none' }} />
                 {activeTab === 'post' ? (
                   <>
@@ -1934,7 +1959,10 @@ const styles = {
   tagInput: { flex: 1, marginLeft: 8, border: 'none', background: 'transparent', color: '#fff', fontSize: 15, outline: 'none' },
   tagAddBtn: { width: 38, height: 38, borderRadius: 19, border: 'none', background: 'rgba(255,255,255,0.1)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   tagAddBtnActive: { background: 'var(--create-primary)', color: '#000' },
-  toolbar: { padding: '10px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', borderTop: '1px solid var(--create-border)', background: 'var(--create-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 20 },
+  scopeRow: { display: 'flex', gap: 6, padding: '8px 16px 4px', background: 'var(--create-surface)', borderTop: '1px solid var(--create-border)' },
+  scopeBtn: { flex: 1, padding: '6px 0', borderRadius: 10, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', fontSize: 12, fontWeight: 500, cursor: 'pointer' },
+  scopeBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)', fontWeight: 600 },
+  toolbar: { padding: '10px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', background: 'var(--create-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 20 },
   toolGroup: { display: 'flex', gap: 8 },
   toolBtn: { width: 40, height: 40, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },

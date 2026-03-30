@@ -9,7 +9,7 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import select, func, or_, update as sa_update
+from sqlalchemy import select, func, or_, and_, update as sa_update
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
@@ -38,6 +38,7 @@ async def get_posts(
     date_range: Optional[str] = None,
     sort: str = 'newest',
     current_user_id: Optional[int] = None,
+    viewer_city: Optional[str] = None,
 ) -> List[models.Post]:
     """Получение постов с фильтрацией + soft delete + shadow ban"""
     query = (
@@ -72,16 +73,42 @@ async def get_posts(
     if category and category != 'all':
         query = query.where(models.Post.category == category)
 
-    # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ (4 уровня) ===
+    # === ФИЛЬТРАЦИЯ ПО ЛОКАЦИИ с учётом scope ===
+    # scope='all'        — виден всем, игнорирует фильтр по локации
+    # scope='city'       — виден если город автора совпадает с городом просматривающего
+    # scope='university' — только свой вуз (стандартное поведение)
     if campus_id:
-        query = query.where(models.User.campus_id == campus_id)
+        city_cond = and_(
+            models.Post.scope == 'city',
+            models.User.city == viewer_city,
+        ) if viewer_city else None
+        scope_conditions = [
+            models.Post.scope == 'all',
+            and_(models.Post.scope == 'university', models.User.campus_id == campus_id),
+        ]
+        if city_cond is not None:
+            scope_conditions.append(city_cond)
+        query = query.where(or_(*scope_conditions))
     elif university and university != 'all':
-        query = query.where(models.User.university == university)
+        city_cond = and_(
+            models.Post.scope == 'city',
+            models.User.city == viewer_city,
+        ) if viewer_city else None
+        scope_conditions = [
+            models.Post.scope == 'all',
+            and_(models.Post.scope == 'university', models.User.university == university),
+        ]
+        if city_cond is not None:
+            scope_conditions.append(city_cond)
+        query = query.where(or_(*scope_conditions))
     elif city:
         query = query.where(
             or_(
-                models.User.city == city,
-                models.User.custom_city.ilike(f'%{city}%')
+                models.Post.scope == 'all',
+                or_(
+                    models.User.city == city,
+                    models.User.custom_city.ilike(f'%{city}%')
+                )
             )
         )
 
@@ -212,6 +239,7 @@ async def create_post(
         event_location=post.event_location,
         event_contact=post.event_contact,
         is_important=post.is_important,
+        scope=post.scope,
         likes_count=0,
         comments_count=0,
         views_count=0

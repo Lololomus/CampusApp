@@ -429,6 +429,7 @@ async def get_posts_feed(
     tags: Optional[str] = Query(None),            # Comma-separated: "help,urgent"
     date_range: Optional[str] = Query(None),      # 'today' | 'week' | 'month'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'popular' | 'discussed'
+    viewer_city: Optional[str] = Query(None),     # Город просматривающего (для scope='city')
 
     user: Optional[models.User] = Depends(optional_user),
     db: AsyncSession = Depends(get_db)
@@ -459,7 +460,8 @@ async def get_posts_feed(
         tags=tags,
         date_range=date_range,
         sort=sort,
-        current_user_id=current_user_id
+        current_user_id=current_user_id,
+        viewer_city=viewer_city,
     )
 
     result = []
@@ -571,6 +573,7 @@ async def create_post_endpoint(
     event_contact: Optional[str] = Form(None),
 
     is_important: Optional[bool] = Form(False),
+    scope: Optional[str] = Form('university'),
     images: List[UploadFile] = File(default=[]),
     video: Optional[UploadFile] = File(None),
 
@@ -661,6 +664,7 @@ async def create_post_endpoint(
             event_location=event_location,
             event_contact=event_contact,
             is_important=is_important,
+            scope=scope or 'university',
             images=[]
         )
     except ValidationError as e:
