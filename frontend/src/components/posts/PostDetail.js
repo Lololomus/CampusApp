@@ -112,6 +112,8 @@ function PostDetail() {
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const closeTimeoutRef = useRef(null);
+  const scrollContentRef = useRef(null);
+  const commentsSectionRef = useRef(null);
 
   const closeDetail = useCallback(() => {
     if (isExiting) return;
@@ -457,6 +459,17 @@ function PostDetail() {
     });
   };
 
+  const handleScrollToComments = useCallback(() => {
+    const scrollNode = scrollContentRef.current;
+    const commentsNode = commentsSectionRef.current;
+    if (!scrollNode || !commentsNode) return;
+    hapticFeedback('light');
+    scrollNode.scrollTo({
+      top: Math.max(0, commentsNode.offsetTop - 12),
+      behavior: 'smooth',
+    });
+  }, []);
+
   const commentTree = useMemo(() => {
     const commentMap = {};
     const roots = [];
@@ -540,7 +553,7 @@ function PostDetail() {
         {/* Нижний блюр — поверх поля комментария */}
         <EdgeBlur position="bottom" height={90} zIndex={105} />
 
-        <div style={styles.scrollContent}>
+        <div ref={scrollContentRef} style={styles.scrollContent}>
           <DrilldownHeader
             title=""
             onBack={handleBack}
@@ -714,12 +727,22 @@ function PostDetail() {
                       <Eye size={16} color={theme.colors.premium.textMuted} strokeWidth={2.5} />
                       <span style={styles.readonlyMetricText}>{post.views_count || 0}</span>
                     </div>
-                    <div style={styles.statItem}>
-                      <MessageCircle size={18} color={theme.colors.premium.textMuted} strokeWidth={2} />
-                      <span style={{...styles.statText, color: theme.colors.premium.textMuted}}>
+                    <button
+                      style={{
+                        ...styles.footerAction,
+                        background: '#161618',
+                        padding: '6px 12px',
+                        borderRadius: 20,
+                        color: theme.colors.text,
+                        borderColor: '#222',
+                      }}
+                      onClick={handleScrollToComments}
+                    >
+                      <MessageCircle size={18} color={theme.colors.text} strokeWidth={2} />
+                      <span style={{...styles.statText, color: theme.colors.text}}>
                         {comments.length}
                       </span>
-                    </div>
+                    </button>
                     <button
                       style={{
                         ...styles.footerAction,
@@ -750,7 +773,7 @@ function PostDetail() {
                 </div>
               </div>
 
-              <div style={styles.commentsSection}>
+              <div ref={commentsSectionRef} style={styles.commentsSection}>
                 <h3 style={styles.commentsTitle}>Комментарии ({comments.length})</h3>
                 {commentTree.length === 0 ? (
                   <div style={styles.noComments}>
@@ -792,6 +815,7 @@ function PostDetail() {
           replyTo={replyTo}
           replyToName={replyToName}
           onCancelReply={() => { setReplyTo(null); setReplyToName(''); }}
+          disableKeyboardLift={Boolean(editingComment)}
         />
 
         {isPhotoViewerOpen && (

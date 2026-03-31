@@ -10,6 +10,7 @@ import { hapticFeedback } from '../utils/telegram';
 import { triggerRegistrationPrompt } from '../api';
 import theme from '../theme';
 import { Z_NAVIGATION } from '../constants/zIndex';
+import { BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS } from '../constants/layoutConstants';
 
 function Navigation() {
   const {
@@ -77,7 +78,8 @@ function Navigation() {
     const handleResize = () => {
       const el = outerRef.current;
       if (!el) return;
-      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const shouldFreeze = document.body.classList.contains(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
+      const keyboardHeight = shouldFreeze ? 0 : Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       const keyboardOffset = keyboardHeight > 50 ? Math.ceil(keyboardHeight) : 0;
       el.style.transition = 'transform 0.25s ease';
       el.style.transform = keyboardOffset > 0

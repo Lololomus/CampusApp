@@ -13,6 +13,7 @@ function BottomActionBar({
   replyToName = '',
   onCancelReply = null,
   maxImages = 3,
+  disableKeyboardLift = false,
 }) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -36,7 +37,9 @@ function BottomActionBar({
   useEffect(() => {
     const onViewportResize = () => {
       if (!window.visualViewport) return;
-      const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
+      const keyboardHeight = disableKeyboardLift
+        ? 0
+        : Math.max(0, window.innerHeight - window.visualViewport.height);
       const node = document.querySelector('.post-detail-bottom-bar');
       if (node) {
         node.style.transform = `translateY(-${keyboardHeight}px)`;
@@ -48,13 +51,15 @@ function BottomActionBar({
       window.visualViewport.addEventListener('scroll', onViewportResize);
     }
 
+    onViewportResize();
+
     return () => {
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', onViewportResize);
         window.visualViewport.removeEventListener('scroll', onViewportResize);
       }
     };
-  }, []);
+  }, [disableKeyboardLift]);
 
   useEffect(() => {
     return () => {

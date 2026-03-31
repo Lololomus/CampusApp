@@ -1,6 +1,6 @@
 // ===== FILE: UserRequests.js =====
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Zap, CheckCircle } from 'lucide-react';
 import { getMyRequests, deleteRequest, getRequestById } from '../../api';
 import { useStore } from '../../store';
@@ -41,15 +41,36 @@ function UserRequests() {
   const [editingRequest, setEditingRequest] = useState(null);
   const [requestToDelete, setRequestToDelete] = useState(null);
   const [showRequestDetail, setShowRequestDetail] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
+  const closeTimeoutRef = useRef(null);
   const LIMIT = 20;
 
-  const closeScreen = () => setShowUserRequests(false);
+  const closeImmediately = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    setIsExiting(false);
+    setShowUserRequests(false);
+  }, [setShowUserRequests]);
+
+  const handleClose = useCallback(() => {
+    if (isExiting) return;
+    hapticFeedback('light');
+    setIsExiting(true);
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      setIsExiting(false);
+      setShowUserRequests(false);
+    }, 340);
+  }, [isExiting, setShowUserRequests]);
 
   useTelegramScreen({
     id: 'user-requests-screen',
     title: 'Мои запросы',
     priority: 40,
-    back: { visible: true, onClick: () => { hapticFeedback('light'); closeScreen(); } },
+    back: { visible: true, onClick: handleClose },
   });
 
   useEffect(() => {
@@ -57,6 +78,10 @@ function UserRequests() {
     loadRequests();
     return () => unlockBodyScroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => () => {
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
   }, []);
 
   const loadRequests = async () => {
@@ -138,16 +163,29 @@ function UserRequests() {
     { key: 'expired', label: 'Истёкшие', count: counts.expired },
   ];
 
+  const containerStyle = {
+    ...styles.container,
+    animation: isExiting
+      ? 'userRequestsSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards'
+      : 'userRequestsSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards',
+    pointerEvents: isExiting ? 'none' : 'auto',
+  };
+
   return (
+    <>
+    <style>{`
+      @keyframes userRequestsSlideIn { from { transform: translate3d(100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+      @keyframes userRequestsSlideOut { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
+    `}</style>
     <EdgeSwipeBack
-      onBack={() => { hapticFeedback('light'); closeScreen(); }}
-      disabled={showRequestDetail}
+      onBack={closeImmediately}
+      disabled={showRequestDetail || isExiting}
       zIndex={Z_MODAL_REQUEST_DETAIL}
     >
-    <div style={styles.container} onScroll={handleScroll}>
+    <div style={containerStyle} onScroll={handleScroll}>
       <DrilldownHeader
         title={`Мои запросы (${counts.all})`}
-        onBack={closeScreen}
+        onBack={handleClose}
         background="#000000"
         showDivider={false}
       />
@@ -245,6 +283,7 @@ function UserRequests() {
       />
     </div>
     </EdgeSwipeBack>
+    </>
   );
 }
 

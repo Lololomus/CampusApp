@@ -5,6 +5,7 @@ import { Lock, ChevronUp, GraduationCap, Heart, X } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import theme from '../../theme';
 import PhotoViewer from '../shared/PhotoViewer';
+import { getDatingPhotoList } from './photoUtils';
 
 const d = theme.colors.dating;
 
@@ -30,9 +31,7 @@ const ProfileCard = memo(function ProfileCard({
   const currentXRef = useRef(0);
   const dragDistanceRef = useRef(0);
 
-  const photos = profile?.photos && profile.photos.length > 0
-    ? profile.photos
-    : (profile?.avatar ? [profile.avatar] : []);
+  const photos = getDatingPhotoList(profile);
 
   useEffect(() => {
     setImageLoaded(false);

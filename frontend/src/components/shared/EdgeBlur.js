@@ -1,6 +1,7 @@
 // ===== FILE: shared/EdgeBlur.js =====
 
 import React, { useEffect, useState } from 'react';
+import { BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS } from '../../constants/layoutConstants';
 
 /**
  * EdgeBlur — «Liquid Glass» размытый градиент на верхнем или нижнем крае экрана.
@@ -20,6 +21,7 @@ function EdgeBlur({
   visible = true,
   animateHeight = false,
   compensateKeyboard = false,
+  suppressCompensationBodyClass = '',
 }) {
   const isTop = position === 'top';
   const heightValue = typeof height === 'number' ? `${height}px` : height;
@@ -32,6 +34,11 @@ function EdgeBlur({
     if (!vv) return undefined;
 
     const updateOffset = () => {
+      const suppressClass = suppressCompensationBodyClass || BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS;
+      if (suppressClass && document.body.classList.contains(suppressClass)) {
+        setKeyboardOffset(0);
+        return;
+      }
       const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       setKeyboardOffset(keyboardHeight > 50 ? Math.ceil(keyboardHeight) : 0);
     };
@@ -44,7 +51,7 @@ function EdgeBlur({
       vv.removeEventListener('resize', updateOffset);
       vv.removeEventListener('scroll', updateOffset);
     };
-  }, [compensateKeyboard, isTop]);
+  }, [compensateKeyboard, isTop, suppressCompensationBodyClass]);
 
   // Маска: плавное затухание от края к прозрачному концу
   // — сверху: плотный старт для стекла (60% solid)

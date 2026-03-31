@@ -1,6 +1,6 @@
 // ===== FILE: UserMarketItems.js =====
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ShoppingBag, CheckCircle } from 'lucide-react';
 import { getMyMarketItems, deleteMarketItem } from '../../api';
@@ -40,15 +40,36 @@ function UserMarketItems() {
   const [editingItem, setEditingItem] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [isExiting, setIsExiting] = useState(false);
+  const closeTimeoutRef = useRef(null);
   const LIMIT = 20;
 
-  const closeScreen = () => setShowUserMarketItems(false);
+  const closeImmediately = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    setIsExiting(false);
+    setShowUserMarketItems(false);
+  }, [setShowUserMarketItems]);
+
+  const handleClose = useCallback(() => {
+    if (isExiting) return;
+    hapticFeedback('light');
+    setIsExiting(true);
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      setIsExiting(false);
+      setShowUserMarketItems(false);
+    }, 340);
+  }, [isExiting, setShowUserMarketItems]);
 
   useTelegramScreen({
     id: 'user-market-items-screen',
     title: 'Мои товары',
     priority: 40,
-    back: { visible: true, onClick: () => { hapticFeedback('light'); closeScreen(); } },
+    back: { visible: true, onClick: handleClose },
   });
 
   useEffect(() => {
@@ -56,6 +77,10 @@ function UserMarketItems() {
     loadItems();
     return () => unlockBodyScroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => () => {
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
   }, []);
 
   const loadItems = async () => {
@@ -158,16 +183,29 @@ function UserMarketItems() {
     document.body
   );
 
+  const containerStyle = {
+    ...styles.container,
+    animation: isExiting
+      ? 'userMarketItemsSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards'
+      : 'userMarketItemsSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards',
+    pointerEvents: isExiting ? 'none' : 'auto',
+  };
+
   return (
+    <>
+    <style>{`
+      @keyframes userMarketItemsSlideIn { from { transform: translate3d(100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+      @keyframes userMarketItemsSlideOut { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
+    `}</style>
     <EdgeSwipeBack
-      onBack={() => { hapticFeedback('light'); closeScreen(); }}
-      disabled={Boolean(selectedItem)}
+      onBack={closeImmediately}
+      disabled={Boolean(selectedItem) || isExiting}
       zIndex={Z_USER_MARKET_ITEMS}
     >
-    <div style={styles.container} onScroll={handleScroll}>
+    <div style={containerStyle} onScroll={handleScroll}>
       <DrilldownHeader
         title={`Мои товары (${counts.all})`}
-        onBack={closeScreen}
+        onBack={handleClose}
         background="#000000"
         showDivider={false}
       />
@@ -234,6 +272,7 @@ function UserMarketItems() {
       {renderModals()}
     </div>
     </EdgeSwipeBack>
+    </>
   );
 }
 

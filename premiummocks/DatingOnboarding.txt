@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Campus - Dating Onboarding Pro (Stories Progress)</title>
+
+    <style>
+      :root {
+        --dating: #FF2D55; /* Строгий дейтинг-акцент */
+        --bg: #000000;
+        --surface: #1C1C1E;
+        --surface-elevated: #2C2C2E;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #FFFFFF;
+        --text-muted: #8E8E93;
+        
+        --safe-area-top: 54px; 
+        --safe-area-bottom: 34px;
+        --curve: cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      
+      body {
+        margin: 0; background: #050505; display: flex; align-items: center; justify-content: center;
+        min-height: 100vh; font-family: system-ui, -apple-system, sans-serif; overflow: hidden;
+      }
+
+      .presentation-glow {
+        position: absolute; width: 400px; height: 600px; background: var(--dating);
+        filter: blur(200px); opacity: 0.15; z-index: 0; pointer-events: none;
+      }
+
+      .device-wrapper {
+        position: relative; width: 393px; height: 852px; border-radius: 55px; background: #000;
+        box-shadow: 0 0 0 12px #0f0f0f, 0 0 0 14px #333, 0 30px 80px rgba(0,0,0,0.6);
+        z-index: 1; transform: scale(min(calc(100vh / 900), calc(100vw / 440))); transform-origin: center center; flex-shrink: 0;
+      }
+
+      /* iPhone Hardware specifics */
+      .hw-button { position: absolute; background: #333; border-radius: 2px; }
+      .hw-mute { left: -15px; top: 115px; width: 3px; height: 26px; }
+      .hw-vol-up { left: -15px; top: 165px; width: 3px; height: 62px; }
+      .hw-vol-down { left: -15px; top: 240px; width: 3px; height: 62px; }
+      .hw-power { right: -15px; top: 195px; width: 3px; height: 95px; }
+      .dynamic-island {
+        position: absolute; top: 11px; left: 50%; transform: translateX(-50%); width: 120px; height: 35px;
+        background: #000; border-radius: 20px; z-index: 9999; box-shadow: inset 0 0 1px rgba(255,255,255,0.1), 0 0 1px rgba(255,255,255,0.1); pointer-events: none;
+      }
+      .home-indicator {
+        position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 135px; height: 5px;
+        background: #FFF; border-radius: 10px; z-index: 9999; opacity: 0.8; pointer-events: none;
+      }
+
+      #root { 
+        height: 100%; width: 100%; position: relative; background: var(--bg);
+        color: var(--text); -webkit-font-smoothing: antialiased; overflow: hidden; border-radius: 43px; 
+      }
+
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+      .hide-scroll::-webkit-scrollbar { display: none; }
+      .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .spring-btn { transition: transform 0.15s var(--curve), opacity 0.15s var(--curve), background 0.2s; cursor: pointer; }
+      .spring-btn:active { transform: scale(0.96); opacity: 0.8; }
+      .spring-btn:disabled { transform: none; opacity: 0.5; cursor: not-allowed; }
+
+      /* UI Elements */
+      .input-line {
+        width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border);
+        color: #FFF; font-size: 24px; padding: 12px 0; font-family: inherit; font-weight: 700;
+        transition: border-color 0.3s var(--curve);
+      }
+      .input-line:focus { border-bottom-color: var(--dating); }
+      .input-line::placeholder { color: var(--text-muted); font-weight: 600; }
+
+      .textarea-standard {
+        width: 100%; background: var(--surface-elevated); border: 1px solid var(--border);
+        color: #FFF; font-size: 16px; padding: 16px; border-radius: 16px; font-family: inherit;
+        resize: none; min-height: 120px; transition: border-color 0.3s;
+      }
+      .textarea-standard:focus { border-color: var(--dating); }
+
+      .chip {
+        padding: 10px 16px; border-radius: 20px; font-size: 14px; font-weight: 600;
+        white-space: nowrap; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; flex: none;
+        background: var(--surface-elevated); border: 1px solid transparent; color: #FFF;
+      }
+      .chip.active { background: rgba(255, 45, 85, 0.1); border: 1px solid var(--dating); color: var(--dating); }
+      .chip-large { flex: 1; padding: 14px 20px; border-radius: 24px; font-size: 15px; }
+
+      /* Step Transitions */
+      .swipe-container {
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        display: flex; width: 400%; height: 100%;
+        transition: transform 0.4s var(--curve);
+      }
+
+      .step-container {
+        width: 100%; height: 100%;
+        display: flex; flex-direction: column; 
+        padding-top: calc(var(--safe-area-top) + 60px);
+        padding-bottom: calc(var(--safe-area-bottom) + 100px); padding-left: 20px; padding-right: 20px;
+        overflow-y: auto; overflow-x: hidden;
+        transition: opacity 0.4s var(--curve);
+      }
+      
+      /* Progress Bar (Stories Style) */
+      .progress-container {
+        position: absolute; top: var(--safe-area-top); left: 16px; right: 16px; height: 4px;
+        display: flex; gap: 4px; z-index: 10;
+      }
+      .progress-segment {
+        flex: 1; height: 100%; background: rgba(255, 255, 255, 0.15); border-radius: 2px; overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%; background: var(--dating); width: 0%; 
+        /* Пружинистая кривая для плавного заполнения */
+        transition: width 0.4s cubic-bezier(0.32, 0.72, 0, 1); 
+        border-radius: 2px;
+      }
+
+      /* Modal Animations */
+      @keyframes slideUp {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+      .modal-slide-up {
+        animation: slideUp 0.4s var(--curve) forwards;
+      }
+
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.323.0?deps=react@18.2.0"
+        }
+      }
+    </script>
+    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div class="presentation-glow"></div>
+
+    <div class="device-wrapper">
+      <div class="hw-button hw-mute"></div><div class="hw-button hw-vol-up"></div><div class="hw-button hw-vol-down"></div><div class="hw-button hw-power"></div>
+      <div class="dynamic-island"><div class="camera"></div></div>
+      <div class="home-indicator"></div>
+
+      <div id="root"></div>
+    </div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { ChevronLeft, Camera, Plus, X, Heart, Loader2, Edit3, MessageCircle } from 'lucide-react';
+
+      const triggerHaptic = (style = 'light') => {
+        if (window.Telegram?.WebApp?.HapticFeedback) {
+          window.Telegram.WebApp.HapticFeedback.impactOccurred(style);
+        } else if (navigator.vibrate) {
+          navigator.vibrate(style === 'heavy' ? 40 : 15);
+        }
+      };
+
+      const TOTAL_STEPS = 4;
+      
+      const GOAL_OPTIONS = ['💘 Отношения', '🤝 Дружба', '🎉 Тусовки', '✨ Просто общение'];
+      const INTEREST_OPTIONS = ['📚 Учеба', '☕ Кофе', '💻 IT', '🎨 Творчество', '🏃‍♂️ Спорт', '🎮 Игры', '🎵 Музыка', '🎬 Кино', '✈️ Путешествия'];
+      const DEFAULT_ICEBREAKERS = [
+        "Идеальное свидание — это...",
+        "Самый странный подкат в моей жизни:",
+        "Непопулярное мнение:",
+        "Лучший способ потратить 1000 рублей:",
+        "Что последнее заставило меня смеяться?"
+      ];
+
+      const AGES = Array.from({length: 25}, (_, i) => i + 16);
+
+      const DatingOnboarding = () => {
+        const [step, setStep] = useState(0); 
+        const [isSubmitting, setIsSubmitting] = useState(false);
+        
+        const [touchStart, setTouchStart] = useState(null);
+        const [touchEnd, setTouchEnd] = useState(null);
+        
+        const [showCustomModal, setShowCustomModal] = useState(false);
+        const [tempCustomPrompt, setTempCustomPrompt] = useState('');
+        const [tempCustomAnswer, setTempCustomAnswer] = useState('');
+
+        const [data, setData] = useState({
+          gender: '',
+          lookingFor: '',
+          age: 20, 
+          photos: [null, null, null],
+          bio: '',
+          goals: [],
+          interests: [],
+          prompt: '',
+          answer: '',
+        });
+
+        // Computed Validation
+        const canGoNext = () => {
+          if (step === 0) return data.gender && data.lookingFor && data.age;
+          if (step === 1) return data.photos.some(p => p !== null);
+          if (step === 2) return data.bio.trim().length >= 10 && data.goals.length > 0;
+          if (step === 3) {
+            if (!data.prompt) return true; // Опциональный ледокол
+            return data.prompt.trim().length > 0 && data.answer.trim().length > 0;
+          }
+          return false;
+        };
+
+        // ЛОГИКА ОТОБРАЖЕНИЯ PROGRESS BAR'а (Решение проблемы двойной анимации)
+        const getSegmentWidth = (i) => {
+          if (step > i) return '100%'; // Пройденные шаги всегда 100%
+          if (step === i) {
+             // Текущий шаг.
+             // Если это ледокол (опциональный шаг) и он пустой - показываем 40%, чтобы было видно развитие.
+             if (i === 3 && !data.prompt) return '40%';
+             
+             // Если данные текущего шага валидны (введены верно) - дотягиваем до 100%.
+             // Если еще не заполнены - показываем стартовые 40%.
+             return canGoNext() ? '100%' : '40%';
+          }
+          return '0%'; // Будущие шаги всегда 0%
+        };
+
+        const handleNext = () => {
+          if (!canGoNext()) {
+            triggerHaptic('error');
+            return;
+          }
+          triggerHaptic('medium');
+          if (step < TOTAL_STEPS - 1) {
+            setStep(prev => prev + 1);
+          } else {
+            submitProfile();
+          }
+        };
+
+        const handleBack = () => {
+          triggerHaptic('light');
+          if (step > 0) setStep(prev => prev - 1);
+        };
+
+        // Swipe Handlers
+        const onTouchStart = (e) => {
+          setTouchEnd(null);
+          setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+        };
+        const onTouchMove = (e) => {
+          setTouchEnd({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+        };
+        const onTouchEndEvent = () => {
+          if (!touchStart || !touchEnd) return;
+          const distanceX = touchStart.x - touchEnd.x;
+          const distanceY = touchStart.y - touchEnd.y;
+          
+          if (Math.abs(distanceX) > Math.abs(distanceY) * 1.5) {
+            if (distanceX > 50 && canGoNext()) handleNext();
+            if (distanceX < -50 && step > 0) handleBack();
+          }
+        };
+
+        // Wheel Picker Handler
+        const handleAgeScroll = (e) => {
+          const container = e.target;
+          const itemWidth = 60; 
+          const index = Math.round(container.scrollLeft / itemWidth);
+          const newAge = AGES[Math.min(Math.max(index, 0), AGES.length - 1)];
+          
+          if (data.age !== newAge) {
+            setData(prev => ({...prev, age: newAge}));
+            triggerHaptic('light');
+          }
+        };
+
+        const wheelRef = useRef(null);
+        useEffect(() => {
+          if (step === 0 && wheelRef.current) {
+             const index = AGES.indexOf(data.age);
+             if (index !== -1) {
+               wheelRef.current.scrollTo({ left: index * 60, behavior: 'smooth' });
+             }
+          }
+        }, [step]);
+
+        const submitProfile = () => {
+          setIsSubmitting(true);
+          setTimeout(() => {
+            triggerHaptic('success');
+            alert("Профиль успешно создан! Переход в ленту...");
+            setIsSubmitting(false);
+          }, 1500);
+        };
+
+        const toggleItem = (field, item, max) => {
+          triggerHaptic('light');
+          setData(prev => {
+            const list = prev[field];
+            if (list.includes(item)) return { ...prev, [field]: list.filter(i => i !== item) };
+            if (list.length >= max) return prev;
+            return { ...prev, [field]: [...list, item] };
+          });
+        };
+
+        const mockAddPhoto = (idx) => {
+          triggerHaptic('light');
+          const newPhotos = [...data.photos];
+          newPhotos[idx] = 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=600';
+          setData({ ...data, photos: newPhotos });
+        };
+
+        const removePhoto = (idx) => {
+          triggerHaptic('light');
+          const newPhotos = [...data.photos];
+          newPhotos[idx] = null;
+          setData({ ...data, photos: newPhotos });
+        };
+
+        const saveCustomPrompt = () => {
+          if (tempCustomPrompt.trim() && tempCustomAnswer.trim()) {
+            triggerHaptic('success');
+            setData({...data, prompt: tempCustomPrompt, answer: tempCustomAnswer});
+            setShowCustomModal(false);
+          }
+        };
+
+        const getFinalButtonText = () => {
+            if (isSubmitting) return <Loader2 className="animate-spin" size={24} />;
+            if (step < TOTAL_STEPS - 1) return 'Далее';
+            if (!data.prompt) return 'Пропустить и создать';
+            return 'Создать профиль';
+        };
+
+        const isCurrentPromptCustom = data.prompt && !DEFAULT_ICEBREAKERS.includes(data.prompt);
+
+        return (
+          <div style={{ height: '100%', position: 'relative' }}>
+            
+            {/* Header / Nav */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 }}>
+              {/* === ИСПРАВЛЕННЫЙ PROGRESS BAR === */}
+              <div className="progress-container">
+                {[...Array(TOTAL_STEPS)].map((_, i) => (
+                  <div key={i} className="progress-segment">
+                    <div className="progress-fill" style={{ width: getSegmentWidth(i) }} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: 'calc(var(--safe-area-top) + 12px) 16px 0', display: 'flex', alignItems: 'center' }}>
+                <button 
+                  className="spring-btn" 
+                  onClick={handleBack} 
+                  style={{ background: 'transparent', border: 'none', color: '#FFF', padding: 0, opacity: step > 0 ? 1 : 0, pointerEvents: step > 0 ? 'auto' : 'none' }}
+                >
+                  <ChevronLeft size={28} />
+                </button>
+              </div>
+            </div>
+
+            {/* СВАЙП-КОНТЕЙНЕР ДЛЯ ВСЕХ ШАГОВ */}
+            <div 
+              className="swipe-container" 
+              style={{ transform: `translateX(-${step * 25}%)` }}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEndEvent}
+            >
+              
+              {/* ШАГ 0: Кто ты и кого ищешь */}
+              <div className="step-container hide-scroll" style={{ opacity: step === 0 ? 1 : 0.5 }}>
+                 <h1 style={{ margin: '0 0 8px', fontSize: '28px', fontWeight: 800 }}>Основы</h1>
+                 <p style={{ margin: '0 0 32px', color: 'var(--text-muted)', fontSize: '15px' }}>Эти данные нельзя будет изменить позже.</p>
+
+                 <div style={{ marginBottom: '24px' }}>
+                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '12px' }}>Я...</div>
+                   <div style={{ display: 'flex', gap: '8px' }}>
+                     {['Парень', 'Девушка'].map(g => (
+                       <button key={g} className={`chip chip-large spring-btn ${data.gender === g ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setData({...data, gender: g}); }}>
+                         {g}
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+
+                 <div style={{ marginBottom: '32px' }}>
+                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '12px' }}>Хочу найти...</div>
+                   <div style={{ display: 'flex', gap: '8px' }}>
+                     {['Парней', 'Девушек', 'Всех'].map(g => (
+                       <button key={g} className={`chip chip-large spring-btn ${data.lookingFor === g ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setData({...data, lookingFor: g}); }}>
+                         {g}
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+
+                 <div style={{ marginBottom: '24px' }}>
+                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '12px', textAlign: 'center' }}>Мне лет</div>
+                   
+                   {/* ГОРИЗОНТАЛЬНЫЙ СВАЙП-ПИКЕР ВОЗРАСТА */}
+                   <div style={{ position: 'relative', width: '100%', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ position: 'absolute', width: '60px', height: '60px', border: '2px solid var(--dating)', borderRadius: '16px', zIndex: 0, pointerEvents: 'none' }}></div>
+                      <div 
+                        ref={wheelRef}
+                        className="hide-scroll"
+                        onScroll={handleAgeScroll}
+                        onTouchStart={e => e.stopPropagation()} 
+                        onTouchMove={e => e.stopPropagation()}
+                        style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', padding: '0 calc(50% - 30px)', zIndex: 1, alignItems: 'center' }}
+                      >
+                         {AGES.map(a => (
+                           <div 
+                             key={a} 
+                             onClick={() => { setData({...data, age: a}); wheelRef.current.scrollTo({ left: AGES.indexOf(a) * 60, behavior: 'smooth' }); }} 
+                             style={{ scrollSnapAlign: 'center', flexShrink: 0, width: '60px', textAlign: 'center', fontSize: data.age === a ? '32px' : '22px', fontWeight: data.age === a ? 800 : 600, color: data.age === a ? '#FFF' : 'var(--text-muted)', transition: 'all 0.2s', cursor: 'pointer' }}
+                           >
+                              {a}
+                           </div>
+                         ))}
+                      </div>
+                   </div>
+                 </div>
+              </div>
+
+              {/* ШАГ 1: Фотографии */}
+              <div className="step-container hide-scroll" style={{ opacity: step === 1 ? 1 : 0.5 }}>
+                 <h1 style={{ margin: '0 0 8px', fontSize: '28px', fontWeight: 800 }}>Твои фото</h1>
+                 <p style={{ margin: '0 0 32px', color: 'var(--text-muted)', fontSize: '15px' }}>Добавь хотя бы одно фото, где хорошо видно твое лицо. Максимум 3 фото.</p>
+
+                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                    {data.photos.map((p, i) => (
+                      <div 
+                        key={i} 
+                        className="spring-btn" 
+                        onClick={() => !p && mockAddPhoto(i)} 
+                        style={{ 
+                          aspectRatio: '3/4', background: 'var(--surface-elevated)', borderRadius: '12px', position: 'relative', overflow: 'hidden', 
+                          border: p ? 'none' : '2px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}
+                      >
+                        {p ? (
+                          <>
+                            <img src={p} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <button onClick={(e) => { e.stopPropagation(); removePhoto(i); }} style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', color: '#FFF' }}>
+                              <X size={14}/>
+                            </button>
+                            {i === 0 && <div style={{ position: 'absolute', top: 6, left: 6, background: 'var(--dating)', color: '#FFF', fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '6px' }}>MAIN</div>}
+                          </>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: 'var(--dating)' }}>
+                            <Plus size={24} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                 </div>
+              </div>
+
+              {/* ШАГ 2: Вайб (Обо мне + Цели + ИНТЕРЕСЫ) */}
+              <div className="step-container hide-scroll" style={{ opacity: step === 2 ? 1 : 0.5 }}>
+                 <h1 style={{ margin: '0 0 8px', fontSize: '28px', fontWeight: 800 }}>Твой вайб</h1>
+                 <p style={{ margin: '0 0 32px', color: 'var(--text-muted)', fontSize: '15px' }}>Расскажи немного о себе и выбери, что ты здесь ищешь.</p>
+
+                 <div style={{ marginBottom: '24px' }}>
+                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '12px' }}>Обо мне (минимум 10 символов)</div>
+                   <textarea 
+                     className="textarea-standard" 
+                     placeholder="Люблю кофе, техно и хакатоны..."
+                     value={data.bio}
+                     onChange={e => setData({...data, bio: e.target.value})}
+                     onTouchMove={e => e.stopPropagation()} 
+                   />
+                 </div>
+
+                 <div style={{ marginBottom: '24px' }}>
+                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '12px' }}>Мои цели (до 2)</div>
+                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                     {GOAL_OPTIONS.map(goal => (
+                       <button 
+                         key={goal} 
+                         className={`chip spring-btn ${data.goals.includes(goal) ? 'active' : ''}`} 
+                         onClick={() => toggleItem('goals', goal, 2)}
+                       >
+                         {goal}
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+
+                 <div style={{ marginBottom: '24px' }}>
+                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '12px' }}>Мои интересы (до 5)</div>
+                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                     {INTEREST_OPTIONS.map(interest => (
+                       <button 
+                         key={interest} 
+                         className={`chip spring-btn ${data.interests.includes(interest) ? 'active' : ''}`} 
+                         onClick={() => toggleItem('interests', interest, 5)}
+                       >
+                         {interest}
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+              </div>
+
+              {/* ШАГ 3: Ледокол (Опциональный) */}
+              <div className="step-container hide-scroll" style={{ opacity: step === 3 ? 1 : 0.5 }}>
+                 <h1 style={{ margin: '0 0 8px', fontSize: '28px', fontWeight: 800 }}>Начни диалог <span style={{fontSize: '16px', color: 'var(--text-muted)', fontWeight: 600}}>(необязательно)</span></h1>
+                 <p style={{ margin: '0 0 24px', color: 'var(--text-muted)', fontSize: '15px' }}>Выбери вопрос-ледокол или напиши свой. Он поможет другим начать с тобой общение.</p>
+
+                 <div style={{ marginBottom: '24px' }}>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                     
+                     <button 
+                       className="spring-btn"
+                       onClick={() => { triggerHaptic('light'); setShowCustomModal(true); setTempCustomPrompt(isCurrentPromptCustom ? data.prompt : ''); setTempCustomAnswer(isCurrentPromptCustom ? data.answer : ''); }}
+                       style={{ 
+                         padding: '16px', borderRadius: '16px', textAlign: 'left', fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '10px',
+                         background: 'var(--surface-elevated)', border: '1px dashed rgba(255, 45, 85, 0.5)', color: 'var(--dating)'
+                       }}
+                     >
+                       <Edit3 size={18} color="var(--dating)" /> Написать свой ледокол...
+                     </button>
+
+                     {isCurrentPromptCustom && (
+                       <button 
+                         className="spring-btn"
+                         onClick={() => { triggerHaptic('light'); setData({...data, prompt: data.prompt}); }}
+                         style={{ 
+                           padding: '16px', borderRadius: '16px', textAlign: 'left', fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '10px',
+                           background: 'rgba(255, 45, 85, 0.1)', border: '1px solid var(--dating)', color: 'var(--dating)'
+                         }}
+                       >
+                         <Heart size={18} fill="currentColor" color="var(--dating)" style={{ flexShrink: 0 }} /> 
+                         <span style={{flex: 1}}>{data.prompt}</span>
+                       </button>
+                     )}
+
+                     {DEFAULT_ICEBREAKERS.map((prompt, idx) => {
+                       const isActive = data.prompt === prompt;
+                       return (
+                         <button 
+                           key={idx} 
+                           className="spring-btn"
+                           onClick={() => { triggerHaptic('light'); setData({...data, prompt, answer: isActive ? data.answer : ''}); }}
+                           style={{ 
+                             padding: '16px', borderRadius: '16px', textAlign: 'left', fontSize: '15px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '10px',
+                             background: isActive ? 'rgba(255, 45, 85, 0.1)' : 'var(--surface-elevated)',
+                             border: isActive ? '1px solid var(--dating)' : '1px solid var(--border)',
+                             color: isActive ? 'var(--dating)' : '#FFF'
+                           }}
+                         >
+                           <Heart size={18} fill={isActive ? 'currentColor' : 'none'} color={isActive ? 'var(--dating)' : 'var(--text-muted)'} style={{ flexShrink: 0, transition: 'all 0.2s' }} />
+                           <span style={{flex: 1}}>{prompt}</span>
+                         </button>
+                       );
+                     })}
+                   </div>
+                 </div>
+
+                 {data.prompt && (
+                   <div style={{ background: 'var(--surface-elevated)', padding: '20px', borderRadius: '16px', border: '1px solid var(--dating)', animation: 'fadeIn 0.3s ease', marginBottom: '24px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>Твой ответ:</div>
+                      <textarea 
+                        style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--dating)', fontSize: '20px', fontWeight: 700, resize: 'none', outline: 'none' }}
+                        placeholder="Начни печатать..."
+                        value={data.answer}
+                        onChange={e => setData({...data, answer: e.target.value})}
+                        onTouchMove={e => e.stopPropagation()} 
+                        rows={3}
+                      />
+                   </div>
+                 )}
+              </div>
+
+            </div>
+
+            {/* Sticky Bottom Action */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', paddingBottom: 'calc(var(--safe-area-bottom) + 16px)', background: 'linear-gradient(to top, var(--bg) 80%, transparent)', zIndex: 30 }}>
+               <button 
+                  className="spring-btn" 
+                  disabled={!canGoNext() || isSubmitting}
+                  onClick={handleNext} 
+                  style={{ 
+                    width: '100%', padding: '16px', borderRadius: '20px', border: 'none', fontWeight: 800, fontSize: '17px', 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    background: (!data.prompt && step === 3) ? 'var(--surface-elevated)' : 'var(--dating)', 
+                    color: (!data.prompt && step === 3) ? '#FFF' : '#FFF',
+                    boxShadow: (!data.prompt && step === 3) ? 'none' : '0 4px 16px rgba(255, 45, 85, 0.3)',
+                    transition: 'all 0.3s'
+                  }}
+               >
+                  {getFinalButtonText()}
+               </button>
+            </div>
+
+            {/* === ФУЛЛСКРИН МОДАЛКА "СВОЙ ЛЕДОКОЛ" === */}
+            {showCustomModal && (
+              <div className="modal-slide-up" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--bg)', zIndex: 100, display: 'flex', flexDirection: 'column', padding: 'calc(var(--safe-area-top) + 20px) 20px 20px' }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+                    <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 800 }}>Свой ледокол</h2>
+                    <button className="spring-btn" onClick={() => setShowCustomModal(false)} style={{ background: 'var(--surface-elevated)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF' }}>
+                       <X size={20} />
+                    </button>
+                 </div>
+
+                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>Придумай вопрос:</div>
+                      <input 
+                        className="input-line" 
+                        style={{ fontSize: '18px', textAlign: 'left', borderBottomColor: 'var(--dating)' }}
+                        placeholder="О чем спросить?"
+                        value={tempCustomPrompt}
+                        onChange={e => setTempCustomPrompt(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '12px' }}>И сразу ответь на него:</div>
+                      <textarea 
+                        className="textarea-standard" 
+                        style={{ fontSize: '18px', borderColor: 'var(--dating)' }}
+                        placeholder="Твой креативный ответ..."
+                        value={tempCustomAnswer}
+                        onChange={e => setTempCustomAnswer(e.target.value)}
+                        rows={4}
+                      />
+                    </div>
+                 </div>
+
+                 <button 
+                    className="spring-btn" 
+                    disabled={!tempCustomPrompt.trim() || !tempCustomAnswer.trim()}
+                    onClick={saveCustomPrompt} 
+                    style={{ 
+                      width: '100%', padding: '16px', borderRadius: '20px', border: 'none', fontWeight: 800, fontSize: '17px', 
+                      background: (tempCustomPrompt.trim() && tempCustomAnswer.trim()) ? 'var(--dating)' : 'var(--surface-elevated)', 
+                      color: (tempCustomPrompt.trim() && tempCustomAnswer.trim()) ? '#FFF' : 'var(--text-muted)',
+                      marginBottom: 'var(--safe-area-bottom)',
+                      transition: 'all 0.3s'
+                    }}
+                 >
+                    Сохранить и выбрать
+                 </button>
+              </div>
+            )}
+
+            <style dangerouslySetInnerHTML={{__html: `
+              @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+              .animate-spin { animation: spin 1s linear infinite; }
+              @keyframes spin { 100% { transform: rotate(360deg); } }
+            `}} />
+
+          </div>
+        );
+      };
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<DatingOnboarding />);
+    </script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 // ===== FILE: UserPosts.js =====
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { FileText, CheckCircle } from 'lucide-react';
 import { getUserPosts } from '../../api';
 import { useStore } from '../../store';
@@ -36,16 +36,37 @@ function UserPosts() {
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState('all');
+  const [isExiting, setIsExiting] = useState(false);
   const loadLockRef = useRef(false);
+  const closeTimeoutRef = useRef(null);
   const LIMIT = 10;
 
-  const closeScreen = () => setShowUserPosts(false);
+  const closeImmediately = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    setIsExiting(false);
+    setShowUserPosts(false);
+  }, [setShowUserPosts]);
+
+  const handleClose = useCallback(() => {
+    if (isExiting) return;
+    hapticFeedback('light');
+    setIsExiting(true);
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      setIsExiting(false);
+      setShowUserPosts(false);
+    }, 340);
+  }, [isExiting, setShowUserPosts]);
 
   useTelegramScreen({
     id: 'user-posts-screen',
     title: 'Мои посты',
     priority: 40,
-    back: { visible: true, onClick: () => { hapticFeedback('light'); closeScreen(); } },
+    back: { visible: true, onClick: handleClose },
   });
 
   useEffect(() => {
@@ -53,6 +74,10 @@ function UserPosts() {
     loadPosts();
     return () => unlockBodyScroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => () => {
+    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
   }, []);
 
   useEffect(() => {
@@ -144,16 +169,29 @@ function UserPosts() {
     { key: 'archive', label: 'Архив', count: counts.archive },
   ];
 
+  const containerStyle = {
+    ...styles.container,
+    animation: isExiting
+      ? 'userPostsSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards'
+      : 'userPostsSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards',
+    pointerEvents: isExiting ? 'none' : 'auto',
+  };
+
   return (
+    <>
+    <style>{`
+      @keyframes userPostsSlideIn { from { transform: translate3d(100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+      @keyframes userPostsSlideOut { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
+    `}</style>
     <EdgeSwipeBack
-      onBack={() => { hapticFeedback('light'); closeScreen(); }}
-      disabled={Boolean(viewPostId)}
+      onBack={closeImmediately}
+      disabled={Boolean(viewPostId) || isExiting}
       zIndex={Z_USER_POSTS}
     >
-    <div style={styles.container} onScroll={handleScroll}>
+    <div style={containerStyle} onScroll={handleScroll}>
       <DrilldownHeader
         title={`Мои посты (${counts.all})`}
-        onBack={closeScreen}
+        onBack={handleClose}
         background="#000000"
         showDivider={false}
       />
@@ -218,6 +256,7 @@ function UserPosts() {
       </div>
     </div>
     </EdgeSwipeBack>
+    </>
   );
 }
 

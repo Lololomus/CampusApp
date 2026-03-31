@@ -14,6 +14,7 @@ import { buildFeedSections } from '../utils/feedDateSections';
 import { hapticFeedback } from '../utils/telegram';
 import EdgeBlur from './shared/EdgeBlur';
 import {
+  BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS,
   POSTS_PAGE_SIZE,
   PULL_TO_REFRESH_THRESHOLD,
   INFINITE_SCROLL_ROOT_MARGIN,
@@ -407,7 +408,13 @@ function Feed() {
       <EdgeBlur position="top" height="var(--header-padding)" zIndex={50} animateHeight />
 
       {/* Нижний блюр — от края экрана вверх, прозрачный конец совпадает с верхним краем навбара */}
-      <EdgeBlur position="bottom" height={100} zIndex={50} compensateKeyboard />
+      <EdgeBlur
+        position="bottom"
+        height={100}
+        zIndex={50}
+        compensateKeyboard
+        suppressCompensationBodyClass={BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS}
+      />
 
       <AppHeader
         title="Лента"
@@ -422,6 +429,7 @@ function Feed() {
         onFiltersClick={handleFiltersClick}
         activeFiltersCount={countActiveFilters}
         premium
+        freezeBottomChromeOnSearchFocus
       >
         {/* Premium pill-switcher: только кнопки, обёртка — в AppHeader */}
         <div style={{ position: 'relative', width: '100%', display: 'flex' }}>

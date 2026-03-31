@@ -6,6 +6,7 @@ import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 import { useStore } from '../../store';
 import { triggerRegistrationPrompt } from '../../api';
+import { BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS } from '../../constants/layoutConstants';
 
 const AppHeader = ({
   title = '',
@@ -26,6 +27,7 @@ const AppHeader = ({
   accentColor, // ✅ НОВЫЙ ПРОП: для перекраски в зеленый
   premium = false, // #New Premium: включает новый визуальный режим
   premiumTrailing = null,
+  freezeBottomChromeOnSearchFocus = false,
   categoryOutline = false, // когда true, активная категория = border + text (без заливки)
 }) => {
   // ===== STATE =====
@@ -150,6 +152,18 @@ const AppHeader = ({
       premiumSearchRef.current.blur();
     }
   }, [showDrawer]);
+
+  useEffect(() => {
+    if (!freezeBottomChromeOnSearchFocus) return undefined;
+
+    const body = document.body;
+    if (searchFocused) body.classList.add(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
+    else body.classList.remove(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
+
+    return () => {
+      body.classList.remove(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
+    };
+  }, [freezeBottomChromeOnSearchFocus, searchFocused]);
 
   // ===== DEBOUNCE SEARCH =====
   useEffect(() => {
@@ -442,6 +456,8 @@ const AppHeader = ({
                     ref={premiumSearchRef}
                     value={localSearchValue}
                     onChange={handleSearchInputChange}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
                     placeholder={searchPlaceholder}
                     style={{
                       flex: 1, height: '100%', background: 'transparent',

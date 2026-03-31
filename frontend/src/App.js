@@ -112,10 +112,6 @@ function App() {
   }, [activeTab]);
 
   const renderContent = () => {
-    if (showUserMarketItems) return <UserMarketItems />;
-    if (showUserPosts) return <UserPosts />;
-    if (showUserRequests) return <UserRequests />;
-
     switch (activeTab) {
       case 'feed':
         return <Feed />;
@@ -157,6 +153,9 @@ function App() {
 
         {!hideNavigation && <Navigation />}
         {viewPostId && <PostDetail />}
+        {showUserPosts && <UserPosts />}
+        {showUserRequests && <UserRequests />}
+        {showUserMarketItems && <UserMarketItems />}
 
         {showCreateModal && (
           <CreateContentModal onClose={() => setShowCreateModal(false)} />

@@ -19,6 +19,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { toast } from '../shared/Toast';
 import { USE_MOCK_DATA, MOCK_PROFILES, MOCK_LIKES, MOCK_MATCHES } from './mockData';
 import { SWIPE_THRESHOLD } from '../../constants/layoutConstants';
+import { getPrimaryDatingPhoto } from './photoUtils';
 
 
 function DatingFeed() {
@@ -60,6 +61,7 @@ function DatingFeed() {
   const nopeOverlayOpacity = useTransform(motionX, [-200, -50, 0], [0.8, 0, 0]);
   const [matches, setMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
+  const myDatingAvatar = getPrimaryDatingPhoto(datingProfile);
 
   useEffect(() => {
     document.body.classList.add('dating-active');
@@ -359,10 +361,8 @@ function DatingFeed() {
                   else setShowMyProfile(true);
                 }}
               >
-                {datingProfile?.photos?.[0]?.url ? (
-                  <img src={datingProfile.photos[0].url} alt="" style={styles.avatarImg} />
-                ) : user?.avatar ? (
-                  <img src={user.avatar} alt="" style={styles.avatarImg} />
+                {myDatingAvatar ? (
+                  <img src={myDatingAvatar} alt="" style={styles.avatarImg} />
                 ) : (
                   <div style={styles.avatarFallback}>
                     {user?.name?.[0] || '?'}

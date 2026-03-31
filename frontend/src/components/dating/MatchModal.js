@@ -4,6 +4,7 @@ import { MessageCircle, Flame } from 'lucide-react';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
+import { getPrimaryDatingPhoto } from './photoUtils';
 
 function Particle({ delay, type }) {
   const [remove, setRemove] = useState(false);
@@ -82,9 +83,9 @@ function MatchModal() {
 
   if (!showMatchModal || !matchedUser) return null;
 
-  const myPhoto = datingProfile?.photos?.[0]?.url;
+  const myPhoto = getPrimaryDatingPhoto(datingProfile);
   const myName = datingProfile?.name;
-  const theirPhoto = matchedUser?.photos?.[0]?.url || matchedUser?.avatar;
+  const theirPhoto = getPrimaryDatingPhoto(matchedUser);
   const theirName = matchedUser?.name;
 
   // Только общие интересы, БЕЗ университета
