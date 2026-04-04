@@ -1,7 +1,7 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketCard.js =====
 
 import React, { useRef, useState, useMemo } from 'react';
-import { Heart, Link, Edit2, Trash2, Flag } from 'lucide-react';
+import { Heart, Link, Share2, Edit2, Trash2, Flag } from 'lucide-react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem, triggerRegistrationPrompt } from '../../api';
 import theme from '../../theme';
@@ -15,6 +15,8 @@ import ReportModal from '../shared/ReportModal';
 import { useModerationActions } from '../shared/ModerationMenu';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
+import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
+import { shareMarketItemViaTelegram } from '../../utils/telegramShare';
 
 const MarketCard = ({ item, onClick, index = 0 }) => {
   const {
@@ -33,7 +35,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   
   const isOwner = useMemo(() => isEntityOwner('market_item', item, user), [item, user]);
   const actionSet = useMemo(
-    () => getEntityActionSet('market_item', isOwner, { shareEnabled: false }),
+    () => getEntityActionSet('market_item', isOwner, { shareEnabled: true }),
     [isOwner]
   );
 
@@ -168,7 +170,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   const handleCopyLink = () => {
     setIsMenuOpen(false);
     hapticFeedback('light');
-    const link = `${window.location.origin}/market/${item.id}`;
+    const link = buildMiniAppStartappUrl(`market_${item.id}`);
     
     if (navigator.clipboard) {
       navigator.clipboard.writeText(link)
@@ -179,7 +181,25 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
     }
   };
 
+  const handleShareLink = () => {
+    setIsMenuOpen(false);
+    hapticFeedback('light');
+    try {
+      shareMarketItemViaTelegram(item);
+    } catch (error) {
+      console.error('Share market item error:', error);
+      toast.error('Не удалось открыть Telegram для отправки');
+      hapticFeedback('error');
+    }
+  };
+
   const menuItems = [
+    ...(actionSet.canShare ? [{
+      icon: <Share2 size={18} />,
+      label: 'Поделиться',
+      actionType: MENU_ACTIONS.SHARE,
+      onClick: handleShareLink
+    }] : []),
     ...(actionSet.canCopyLink ? [{
       icon: <Link size={18} />,
       label: 'Копировать ссылку',

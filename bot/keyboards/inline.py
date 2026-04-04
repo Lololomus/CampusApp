@@ -1,8 +1,15 @@
 # ===== FILE: bot/keyboards/inline.py =====
 
+from urllib.parse import quote
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from config import MINIAPP_URL
+
+
+def _miniapp_startapp_url(start_param: str) -> str:
+    separator = "&" if "?" in MINIAPP_URL else "?"
+    return f"{MINIAPP_URL}{separator}startapp={quote(start_param)}"
 
 
 def open_miniapp_kb(text: str = "📱 Открыть CampusApp") -> InlineKeyboardMarkup:
@@ -21,7 +28,7 @@ def open_post_kb(post_id: int) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="🔗 Открыть пост",
-                    web_app=WebAppInfo(url=f"{MINIAPP_URL}?post={post_id}"),
+                    web_app=WebAppInfo(url=_miniapp_startapp_url(f"post_{post_id}")),
                 )
             ]
         ]
@@ -35,7 +42,7 @@ def open_dating_kb() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="💘 Открыть Dating",
-                    web_app=WebAppInfo(url=f"{MINIAPP_URL}?tab=dating"),
+                    web_app=WebAppInfo(url=_miniapp_startapp_url("tab_dating")),
                 )
             ]
         ]
@@ -43,13 +50,14 @@ def open_dating_kb() -> InlineKeyboardMarkup:
 
 
 def open_market_deal_kb(deal_id: int) -> InlineKeyboardMarkup:
-    """Кнопка открытия сделки в mini app."""
+    """Кнопка открытия mini app для маркета."""
+    _ = deal_id
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="📦 Открыть сделку",
-                    web_app=WebAppInfo(url=f"{MINIAPP_URL}?tab=market&deal={deal_id}"),
+                    text="📦 Открыть маркет",
+                    web_app=WebAppInfo(url=_miniapp_startapp_url("tab_market")),
                 )
             ]
         ]
@@ -68,7 +76,7 @@ def match_kb(username: str | None = None) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 text="❤️ Открыть профиль",
-                web_app=WebAppInfo(url=f"{MINIAPP_URL}?tab=dating"),
+                web_app=WebAppInfo(url=_miniapp_startapp_url("tab_dating")),
             )
         ]
     )
@@ -130,7 +138,7 @@ def admin_report_kb() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="🔧 Открыть админку",
-                    web_app=WebAppInfo(url=f"{MINIAPP_URL}?tab=admin"),
+                    web_app=WebAppInfo(url=_miniapp_startapp_url("admin_panel")),
                 )
             ]
         ]

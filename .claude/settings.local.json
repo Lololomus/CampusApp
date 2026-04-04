@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(ls backend/bot*)",
+      "Bash(ls backend/app/routers/*.py)"
     ]
   }
 }

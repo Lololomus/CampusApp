@@ -3,13 +3,14 @@
 # ✅ Фаза 3: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select, delete as sa_delete
+from sqlalchemy import select, delete as sa_delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models, schemas
 from app.auth_service import create_auth_session
 from app.config import get_settings
 from app.database import get_db
+from app.utils import delete_images
 
 router = APIRouter(prefix="/dev/auth", tags=["dev-auth"])
 
@@ -149,13 +150,57 @@ async def dev_reset_user(
         select(models.User).where(models.User.telegram_id == payload.telegram_id)
     )
     user = result.scalar_one_or_none()
-    if user:
+    photos_to_delete = []
+
+    if user and not payload.hard:
+        dating_profile_result = await db.execute(
+            select(models.DatingProfile).where(models.DatingProfile.user_id == user.id)
+        )
+        dating_profile = dating_profile_result.scalar_one_or_none()
+
+        if dating_profile and isinstance(dating_profile.photos, list):
+            photos_to_delete = dating_profile.photos
+
+        await db.execute(
+            sa_delete(models.Match).where(
+                or_(
+                    models.Match.user_a_id == user.id,
+                    models.Match.user_b_id == user.id,
+                )
+            )
+        )
+        await db.execute(
+            sa_delete(models.DatingLike).where(
+                or_(
+                    models.DatingLike.who_liked_id == user.id,
+                    models.DatingLike.whom_liked_id == user.id,
+                )
+            )
+        )
+        await db.execute(
+            sa_delete(models.Notification).where(
+                models.Notification.recipient_id == user.id,
+                models.Notification.type.in_(["match", "dating_like"]),
+            )
+        )
+
+        if dating_profile:
+            await db.delete(dating_profile)
+
+        user.show_in_dating = False
+    elif user:
         await db.delete(user)
 
-    await db.execute(
-        sa_delete(models.AuthSession).where(
-            models.AuthSession.telegram_id == payload.telegram_id
+    if payload.hard:
+        await db.execute(
+            sa_delete(models.AuthSession).where(
+                models.AuthSession.telegram_id == payload.telegram_id
+            )
         )
-    )
+
     await db.commit()
-    return {"success": True}
+
+    if photos_to_delete:
+        delete_images(photos_to_delete, default_kind="images")
+
+    return {"success": True, "hard": payload.hard}

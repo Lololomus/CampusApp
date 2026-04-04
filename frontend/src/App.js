@@ -1,8 +1,13 @@
 // ===== FILE: frontend/src/App.js =====
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from './store';
-import { initTelegramApp, setClosingConfirmation } from './utils/telegram';
+import { getTelegramWebApp, initTelegramApp, setClosingConfirmation } from './utils/telegram';
+import {
+  deepLinkNeedsModerationRole,
+  executeDeepLink,
+  parseDeepLink,
+} from './utils/deepLinks';
 
 import Navigation from './components/Navigation';
 import Feed from './components/Feed';
@@ -24,6 +29,7 @@ import UserRequests from './components/profile/UserRequests';
 import UserMarketItems from './components/profile/UserMarketItems';
 import PostDetail from './components/posts/PostDetail';
 import ToastContainer from './components/shared/Toast';
+import PublicProfileSheet from './components/shared/PublicProfileSheet';
 
 import AmbassadorPanel from './components/moderation/AmbassadorPanel';
 import AdminPanel from './components/moderation/AdminPanel';
@@ -39,9 +45,13 @@ function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashVariant, setSplashVariant] = useState('auto');
   const [splashInstanceKey, setSplashInstanceKey] = useState(0);
+  const deepLinkExecutionRef = useRef(false);
 
   const {
     activeTab,
+    pendingDeepLink,
+    setPendingDeepLink,
+    clearPendingDeepLink,
     showCreateModal,
     setShowCreateModal,
     showCreateMarketItem,
@@ -60,7 +70,11 @@ function App() {
     setUpdatedPost,
     authStatus,
     bootstrapAuth,
+    isRegistered,
+    moderationRole,
     showNotificationsScreen,
+    publicProfilePreview,
+    clearPublicProfilePreview,
   } = useStore();
 
   useEffect(() => {
@@ -69,10 +83,50 @@ function App() {
   }, [bootstrapAuth]);
 
   useEffect(() => {
+    const startParam = getTelegramWebApp()?.initDataUnsafe?.start_param;
+    const parsedLink = parseDeepLink(startParam);
+    if (parsedLink) {
+      setPendingDeepLink(parsedLink);
+    }
+  }, [setPendingDeepLink]);
+
+  useEffect(() => {
     if (authStatus !== 'loading') {
       setAuthReady(true);
     }
   }, [authStatus]);
+
+  useEffect(() => {
+    if (!pendingDeepLink || deepLinkExecutionRef.current) return;
+    if (authStatus === 'loading' || onboardingStep > 0 || showSplash) return;
+    if (deepLinkNeedsModerationRole(pendingDeepLink) && isRegistered && moderationRole == null) return;
+
+    let isCancelled = false;
+    deepLinkExecutionRef.current = true;
+
+    (async () => {
+      try {
+        const result = await executeDeepLink(pendingDeepLink, useStore);
+        if (!isCancelled && (result?.status === 'completed' || result?.status === 'ignored')) {
+          clearPendingDeepLink();
+        }
+      } finally {
+        deepLinkExecutionRef.current = false;
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    pendingDeepLink,
+    authStatus,
+    onboardingStep,
+    showSplash,
+    isRegistered,
+    moderationRole,
+    clearPendingDeepLink,
+  ]);
 
   const handleRunSplashVariant = (variant) => {
     setSplashVariant(variant);
@@ -156,6 +210,13 @@ function App() {
         {showUserPosts && <UserPosts />}
         {showUserRequests && <UserRequests />}
         {showUserMarketItems && <UserMarketItems />}
+        {publicProfilePreview && (
+          <PublicProfileSheet
+            user={publicProfilePreview}
+            isOpen={Boolean(publicProfilePreview)}
+            onClose={clearPublicProfilePreview}
+          />
+        )}
 
         {showCreateModal && (
           <CreateContentModal onClose={() => setShowCreateModal(false)} />

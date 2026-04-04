@@ -6,6 +6,7 @@ import {
   Gift,
   Image as ImageIcon,
   Link,
+  Share2,
   Lock,
   Pencil,
   Trash2,
@@ -27,6 +28,8 @@ import { toast } from '../shared/Toast';
 import { getEntityActionSet, isEntityOwner } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate } from '../../utils/datetime';
+import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
+import { shareRequestViaTelegram } from '../../utils/telegramShare';
 
 const CATEGORY_CONFIG = {
   study: {
@@ -69,7 +72,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
     [request, currentUserId]
   );
   const actionSet = useMemo(
-    () => getEntityActionSet('request', isAuthor, { shareEnabled: false }),
+    () => getEntityActionSet('request', isAuthor, { shareEnabled: true }),
     [isAuthor]
   );
 
@@ -286,7 +289,27 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
     setIsImagePressing(false);
   };
 
+  const handleShareLink = () => {
+    setMenuOpen(false);
+    hapticFeedback('light');
+    try {
+      shareRequestViaTelegram(request);
+    } catch (error) {
+      console.error('Share request error:', error);
+      toast.error('Не удалось открыть Telegram для отправки');
+      hapticFeedback('error');
+    }
+  };
+
   const menuItems = [
+    ...(actionSet.canShare
+      ? [{
+          label: 'Поделиться',
+          icon: <Share2 size={18} />,
+          actionType: MENU_ACTIONS.SHARE,
+          onClick: handleShareLink,
+        }]
+      : []),
     ...(actionSet.canCopyLink
       ? [{
           label: 'Скопировать ссылку',
@@ -294,7 +317,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
           actionType: MENU_ACTIONS.COPY,
           onClick: async () => {
             setMenuOpen(false);
-            const link = `campusapp://request/${request.id}`;
+            const link = buildMiniAppStartappUrl(`request_${request.id}`);
             try {
               await navigator.clipboard.writeText(link);
               toast.success('Ссылка скопирована');

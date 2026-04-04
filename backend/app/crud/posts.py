@@ -194,6 +194,10 @@ async def get_post(db: AsyncSession, post_id: int) -> Optional[models.Post]:
 async def get_user_posts(db: AsyncSession, user_id: int, limit: int = 5, offset: int = 0) -> List[models.Post]:
     result = await db.execute(
         select(models.Post)
+        .options(
+            selectinload(models.Post.author),
+            selectinload(models.Post.poll).selectinload(models.Poll.votes),
+        )
         .where(
             models.Post.author_id == user_id,
             models.Post.is_deleted == False

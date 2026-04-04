@@ -110,9 +110,12 @@ export const useStore = create(
       activeTab: 'feed',
       feedMode: 'global',
       feedSubTab: 'posts',
+      pendingDeepLink: null,
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
       setFeedSubTab: (tab) => set({ feedSubTab: tab }),
+      setPendingDeepLink: (pendingDeepLink) => set({ pendingDeepLink }),
+      clearPendingDeepLink: () => set({ pendingDeepLink: null }),
 
       // MODAL STATES
       showAuthModal: false,
@@ -123,6 +126,7 @@ export const useStore = create(
       createMarketDraft: null,
       viewPostId: null,
       showEditModal: false,
+      publicProfilePreview: null,
       setShowAuthModal: (show) => set({ showAuthModal: show }),
       setShowCreateModal: (show) => set({ showCreateModal: show }),
       setShowCreateRequestModal: (show) => set({ showCreateRequestModal: show }),
@@ -134,6 +138,8 @@ export const useStore = create(
       setViewPostId: (id) => set({ viewPostId: id }),
       setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
+      setPublicProfilePreview: (publicProfilePreview) => set({ publicProfilePreview }),
+      clearPublicProfilePreview: () => set({ publicProfilePreview: null }),
 
       editingContent: null,
       editingType: null,
@@ -265,6 +271,7 @@ export const useStore = create(
       myRequests: [],
       currentRequest: null,
       requestDraft: {},
+      pendingRequestId: null,
       
       setRequests: (requests) => set({ requests }),
       
@@ -291,16 +298,32 @@ export const useStore = create(
       setCurrentRequest: (request) => set({ currentRequest: request }),
       setRequestDraft: (draft) => set({ requestDraft: draft }),
       clearRequestDraft: () => set({ requestDraft: {} }),
+      setPendingRequestId: (pendingRequestId) => set({ pendingRequestId }),
+      clearPendingRequestId: () => set({ pendingRequestId: null }),
 
       // DATING STATE
       datingProfile: null,
       setDatingProfile: (profile) => set({ datingProfile: profile }),
+      pendingDatingOnboardingOpen: false,
+      pendingDatingTab: null,
+      setPendingDatingOnboardingOpen: (pendingDatingOnboardingOpen) => set({ pendingDatingOnboardingOpen }),
+      setPendingDatingTab: (pendingDatingTab) => set({ pendingDatingTab }),
+      clearPendingDatingTab: () => set({ pendingDatingTab: null }),
       
       clearDatingProfile: () => set({ 
         datingProfile: null,
         currentProfile: null,
         profilesQueue: [],
         hasMoreProfiles: true,
+        pendingDatingOnboardingOpen: false,
+        pendingDatingTab: null,
+        whoLikedMe: [],
+        matches: [],
+        likesCount: 0,
+        matchesCount: 0,
+        showLikesModal: false,
+        showMatchModal: false,
+        matchedUser: null,
       }),
       
       // Профили для свайпа
@@ -400,6 +423,7 @@ export const useStore = create(
       marketFavorites: [],
       currentMarketItem: null,
       editingMarketItem: null,
+      pendingMarketItemId: null,
       
       marketFilters: {
         category: 'all',
@@ -455,6 +479,8 @@ export const useStore = create(
       setMyMarketItems: (items) => set({ myMarketItems: items }),
       setMarketFavorites: (items) => set({ marketFavorites: items }),
       setCurrentMarketItem: (item) => set({ currentMarketItem: item }),
+      setPendingMarketItemId: (pendingMarketItemId) => set({ pendingMarketItemId }),
+      clearPendingMarketItemId: () => set({ pendingMarketItemId: null }),
       
       setMarketFilters: (filters) => set((state) => ({
         marketFilters: { ...state.marketFilters, ...filters }

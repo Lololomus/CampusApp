@@ -29,6 +29,8 @@ import ConfirmationDialog from '../shared/ConfirmationDialog';
 import RequestDetailModal from '../requests/RequestDetailModal';
 import MarketDetail from '../market/MarketDetail';
 import EdgeBlur from '../shared/EdgeBlur';
+import AppHeader from '../shared/AppHeader';
+import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
@@ -59,14 +61,6 @@ function Profile() {
     comments_count: 0,
     likes_count: 0
   });
-
-  // Верхний блюр появляется только после прокрутки карточки профиля
-  const [profileScrolledDown, setProfileScrolledDown] = useState(false);
-  useEffect(() => {
-    const handleScroll = () => setProfileScrolledDown(window.scrollY > 80);
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   useEffect(() => {
     const loadData = async () => {
@@ -175,7 +169,7 @@ function Profile() {
 
   const handleShareProfile = () => {
     hapticFeedback('light');
-    const link = `https://t.me/MyCampusBot?start=profile_${user.telegram_id}`;
+    const link = buildMiniAppStartappUrl(`user_${user.id}`);
     navigator.clipboard.writeText(link).then(() => {
       toast.success('Ссылка скопирована');
       hapticFeedback('success');
@@ -207,15 +201,9 @@ function Profile() {
     <div style={styles.container}>
       {/* Нижний блюр — от края экрана вверх, прозрачный конец совпадает с верхним краем навбара */}
       <EdgeBlur position="bottom" height={100} zIndex={50} />
-      {/* Верхний блюр — появляется при прокрутке ниже карточки профиля */}
-      <EdgeBlur position="top" height={76} zIndex={50} visible={profileScrolledDown} />
+      <AppHeader title="Профиль" />
 
       <div style={styles.contentWrapper}>
-
-        {/* ХЕДЕР */}
-        <div style={styles.header}>
-          <div style={styles.headerTitle}>Профиль</div>
-        </div>
 
         {/* CAMPUS ID КАРТА */}
         <div style={styles.cardWrapper}>
@@ -522,7 +510,7 @@ const CampusIDCard = ({ user, onAvatarClick }) => {
   const [copiedUsername, setCopiedUsername] = useState(false);
 
   const campusLabel = getCampusDisplayName(user);
-  const profileQrUrl = `https://t.me/MyCampusBot?start=profile_${user.telegram_id}`;
+  const profileQrUrl = buildMiniAppStartappUrl(`user_${user.id}`);
 
   const courseInstituteParts = [];
   if (user.course) courseInstituteParts.push(`${user.course} курс`);
@@ -700,6 +688,8 @@ const EmptyState = ({ text, icon }) => (
 const cardStyles = {
   flipContainer: {
     perspective: '1200px',
+    overflow: 'hidden',
+    borderRadius: 24,
   },
   flipInner: {
     position: 'relative',
@@ -890,18 +880,7 @@ const styles = {
   contentWrapper: {
     position: 'relative',
     zIndex: 2,
-    paddingTop: 'calc(var(--safe-area-top, 20px) + 28px)',
-  },
-
-  header: {
-    padding: '0 16px 16px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 28, fontWeight: 800,
-    letterSpacing: '-0.5px', color: '#FFF',
+    paddingTop: 'calc(var(--header-padding, calc(var(--screen-top-offset, 0px) + 44px)) + 16px)',
   },
 
   cardWrapper: {

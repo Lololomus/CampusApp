@@ -4,14 +4,26 @@ import { devLoginAs, devResetUser } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from './Toast';
 import { theme } from '../../theme';
+import { parseDeepLink } from '../../utils/deepLinks';
 
 const DEV_ADMIN_TELEGRAM_ID = 999999;
 const DEV_AMBASSADOR_TELEGRAM_ID = 999998;
 
 function DevAuthPanel({ onRunSplashVariant }) {
-  const { setUser, setOnboardingStep, setOnboardingData, logout } = useStore();
+  const {
+    user,
+    setUser,
+    setOnboardingStep,
+    setOnboardingData,
+    logout,
+    setActiveTab,
+    clearDatingProfile,
+    setPendingDatingOnboardingOpen,
+    setPendingDeepLink,
+  } = useStore();
   const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
+  const [testStartParam, setTestStartParam] = useState('');
 
   const isDevVisible = useMemo(() => {
     const mode = import.meta.env.MODE;
@@ -21,6 +33,12 @@ function DevAuthPanel({ onRunSplashVariant }) {
   }, []);
 
   if (!isDevVisible) return null;
+
+  const currentDevTelegramId = Number(user?.telegram_id || 0);
+  const canResetCurrentDating = (
+    currentDevTelegramId === DEV_ADMIN_TELEGRAM_ID ||
+    currentDevTelegramId === DEV_AMBASSADOR_TELEGRAM_ID
+  );
 
   const toggleCollapsed = () => {
     hapticFeedback('light');
@@ -44,9 +62,9 @@ function DevAuthPanel({ onRunSplashVariant }) {
         setOnboardingData({});
         setOnboardingStep(1);
       }
-      toast.success(`Dev login: #${telegramId}`);
+      toast.success(`Вход под тестовым аккаунтом: #${telegramId}`);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Dev login failed');
+      toast.error(error.response?.data?.detail || 'Не удалось выполнить тестовый вход');
       hapticFeedback('error');
     } finally {
       setBusy(false);
@@ -59,9 +77,9 @@ function DevAuthPanel({ onRunSplashVariant }) {
     hapticFeedback('light');
     try {
       await logout();
-      toast.info('Logged out');
+      toast.info('Вы вышли из аккаунта');
     } catch {
-      toast.error('Logout failed');
+      toast.error('Не удалось выйти из аккаунта');
       hapticFeedback('error');
     } finally {
       setBusy(false);
@@ -78,16 +96,53 @@ function DevAuthPanel({ onRunSplashVariant }) {
       setUser(null);
       setOnboardingData({});
       setOnboardingStep(1);
-      toast.success(`Profile #${telegramId} reset`);
+      toast.success(`Профиль #${telegramId} сброшен`);
       if (data.user) {
-        toast.warning('Profile already exists, verify the reset flow');
+        toast.warning('Профиль уже существует, проверьте сценарий сброса');
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Reset failed');
+      toast.error(error.response?.data?.detail || 'Не удалось выполнить сброс');
       hapticFeedback('error');
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleResetDatingProfile = async () => {
+    if (busy) return;
+    if (!canResetCurrentDating) {
+      toast.info('Сначала войдите как тестовый админ или амбассадор');
+      return;
+    }
+
+    setBusy(true);
+    hapticFeedback('heavy');
+    try {
+      await devResetUser(currentDevTelegramId);
+      clearDatingProfile();
+      setUser({ ...user, show_in_dating: false });
+      setPendingDatingOnboardingOpen(true);
+      setActiveTab('people');
+      toast.success('Дейтинг-профиль сброшен');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Не удалось сбросить дейтинг-профиль');
+      hapticFeedback('error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRunDeepLink = () => {
+    const parsedLink = parseDeepLink(testStartParam);
+    if (!parsedLink) {
+      toast.error('Некорректный start_param');
+      hapticFeedback('error');
+      return;
+    }
+
+    hapticFeedback('medium');
+    setPendingDeepLink(parsedLink);
+    toast.success(`Переход поставлен в очередь: ${parsedLink.raw}`);
   };
 
   if (collapsed) {
@@ -131,6 +186,20 @@ function DevAuthPanel({ onRunSplashVariant }) {
         </div>
       )}
 
+      <div style={styles.previewSection}>
+        <span style={styles.previewLabel}>Deep Link Test</span>
+        <input
+          type="text"
+          value={testStartParam}
+          onChange={(event) => setTestStartParam(event.target.value)}
+          placeholder="post_1 / create_post"
+          style={styles.input}
+        />
+        <button type="button" style={styles.previewButton} onClick={handleRunDeepLink}>
+          Run Deep Link
+        </button>
+      </div>
+
       <button type="button" style={styles.button} onClick={() => handleLoginAs(DEV_ADMIN_TELEGRAM_ID)} disabled={busy}>
         Login Superadmin
       </button>
@@ -140,8 +209,16 @@ function DevAuthPanel({ onRunSplashVariant }) {
       <button type="button" style={styles.buttonSecondary} onClick={handleLogout} disabled={busy}>
         Logout
       </button>
+      <button
+        type="button"
+        style={styles.buttonSecondary}
+        onClick={handleResetDatingProfile}
+        disabled={busy || !canResetCurrentDating}
+      >
+        Reset Current Dating
+      </button>
       <button type="button" style={styles.buttonDanger} onClick={() => handleResetAndReregister(DEV_ADMIN_TELEGRAM_ID)} disabled={busy}>
-        Reset Admin Profile
+        Reset Admin Account
       </button>
     </div>
   );
@@ -260,6 +337,16 @@ const styles = {
     color: theme.colors.text,
     cursor: 'pointer',
     textAlign: 'center',
+  },
+  input: {
+    width: '100%',
+    borderRadius: theme.radius.md,
+    border: `1px solid ${theme.colors.border}`,
+    background: theme.colors.bgSecondary,
+    color: theme.colors.text,
+    padding: `${theme.spacing.sm}px ${theme.spacing.md}px`,
+    outline: 'none',
+    boxSizing: 'border-box',
   },
   buttonDanger: {
     border: 'none',

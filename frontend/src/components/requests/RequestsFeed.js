@@ -10,6 +10,7 @@ import theme from '../../theme';
 import RequestDetailModal from './RequestDetailModal';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
+import { toast } from '../shared/Toast';
 
 
 function RequestsFeed({ category = 'all', searchQuery = '' }) {
@@ -22,6 +23,8 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
     deleteRequest: deleteStoreRequest,
     setEditingContent,
     requestsFilters,
+    pendingRequestId,
+    clearPendingRequestId,
   } = useStore();
   
   // ===== STATE =====
@@ -115,6 +118,36 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
     loadRequests(true);
   }, [loadRequests]); // ✅ ДОБАВИЛИ requestsFilters
 
+
+  useEffect(() => {
+    if (!pendingRequestId) return;
+
+    let isCancelled = false;
+
+    const openPendingRequest = async () => {
+      try {
+        const fullRequest = await getRequestById(pendingRequestId);
+        if (isCancelled) return;
+        setCurrentRequest(fullRequest);
+        setShowDetailModal(true);
+      } catch (error) {
+        if (!isCancelled) {
+          const status = error?.response?.status;
+          toast.error(status === 404 ? 'Запрос не найден' : 'Не удалось загрузить запрос');
+        }
+      } finally {
+        if (!isCancelled) {
+          clearPendingRequestId();
+        }
+      }
+    };
+
+    openPendingRequest();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [pendingRequestId, setCurrentRequest, clearPendingRequestId]);
 
   // ===== INFINITE SCROLL =====
   useEffect(() => {

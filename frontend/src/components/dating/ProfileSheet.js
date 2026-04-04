@@ -180,7 +180,7 @@ const styles = {
     maxHeight: '85vh',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+    borderTop: 'none',
     display: 'flex',
     flexDirection: 'column',
     transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',

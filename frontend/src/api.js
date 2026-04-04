@@ -292,6 +292,16 @@ export async function getUserStats(userId) {
   }
 }
 
+export async function getUserPublic(userId) {
+  try {
+    const response = await api.get(`/users/${userId}/public`);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка загрузки публичного профиля:', error);
+    throw error;
+  }
+}
+
 export async function getPosts(filters = {}) {
   try {
     const params = {

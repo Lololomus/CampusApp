@@ -5,6 +5,7 @@ import {
   Flag,
   Gift,
   Link,
+  Share2,
   Lock,
   MessageSquare,
   Pencil,
@@ -33,6 +34,8 @@ import { getEntityActionSet, isEntityOwner } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
+import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
+import { shareRequestViaTelegram } from '../../utils/telegramShare';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import LinkText from '../shared/LinkText';
@@ -116,7 +119,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   }), [safeRequest?.author, safeRequest?.title, safeRequest?.body]);
   const isOwner = useMemo(() => isEntityOwner('request', safeRequest, user), [safeRequest, user]);
   const actionSet = useMemo(
-    () => getEntityActionSet('request', isOwner, { shareEnabled: false }),
+    () => getEntityActionSet('request', isOwner, { shareEnabled: true }),
     [isOwner]
   );
 
@@ -357,7 +360,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
     if (!safeRequest) return;
     hapticFeedback('light');
     try {
-      await navigator.clipboard.writeText(`campusapp://request/${safeRequest.id}`);
+      await navigator.clipboard.writeText(buildMiniAppStartappUrl(`request_${safeRequest.id}`));
       toast.success('Ссылка скопирована');
       setMenuOpen(false);
       setIsDropdownJustClosed(true);
@@ -368,7 +371,30 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
     }
   };
 
+  const handleShareLink = () => {
+    if (!safeRequest) return;
+    setMenuOpen(false);
+    setIsDropdownJustClosed(true);
+    setTimeout(() => setIsDropdownJustClosed(false), 250);
+    hapticFeedback('light');
+    try {
+      shareRequestViaTelegram(safeRequest);
+    } catch (error) {
+      console.error('Share request error:', error);
+      toast.error('Не удалось открыть Telegram для отправки');
+      hapticFeedback('error');
+    }
+  };
+
   const menuItems = [
+    ...(actionSet.canShare
+      ? [{
+          label: 'Поделиться',
+          icon: <Share2 size={18} />,
+          actionType: MENU_ACTIONS.SHARE,
+          onClick: handleShareLink,
+        }]
+      : []),
     ...(actionSet.canCopyLink
       ? [{
           label: 'Скопировать ссылку',

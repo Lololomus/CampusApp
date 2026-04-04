@@ -20,6 +20,7 @@ const PromptSelectorModal = ({ isOpen, onClose, onSelect }) => {
       isOpen={isOpen}
       onClose={onClose}
       title="Выбери вопрос"
+      showHeaderDivider={false}
     >
       <div style={styles.container}>
         

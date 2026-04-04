@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, Calendar, ArrowUpRight, Megaphone, Link, Edit2, Trash2, Flag, EyeOff } from 'lucide-react';
+import { Heart, MessageCircle, Eye, MapPin, Calendar, ArrowUpRight, Megaphone, Link, Share2, Edit2, Trash2, Flag, EyeOff } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd, triggerRegistrationPrompt } from '../../api';
@@ -21,6 +21,8 @@ import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
+import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
+import { sharePostViaTelegram } from '../../utils/telegramShare';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const { likedPosts, setPostLiked, user, setEditingContent, isRegistered } = useStore();
@@ -108,7 +110,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
     return isEntityOwner('post', post, user);
   }, [user, post, isAd]);
   const actionSet = useMemo(
-    () => getEntityActionSet('post', isOwner, { shareEnabled: false }),
+    () => getEntityActionSet('post', isOwner, { shareEnabled: true }),
     [isOwner]
   );
 
@@ -397,7 +399,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
 
   const handleCopyLink = async () => {
     setMenuOpen(false);
-    const link = `campusapp://post/${post.id}`;
+    const link = buildMiniAppStartappUrl(`post_${post.id}`);
     try {
       await navigator.clipboard.writeText(link);
       toast.success('Ссылка скопирована');
@@ -405,6 +407,18 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
     } catch (error) {
       console.error('Copy link error:', error);
       toast.error('Не удалось скопировать ссылку');
+      hapticFeedback('error');
+    }
+  };
+
+  const handleShareLink = () => {
+    setMenuOpen(false);
+    hapticFeedback('light');
+    try {
+      sharePostViaTelegram(post);
+    } catch (error) {
+      console.error('Share post error:', error);
+      toast.error('Не удалось открыть Telegram для отправки');
       hapticFeedback('error');
     }
   };
@@ -417,6 +431,12 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   }, []);
 
   const menuItems = isAd ? [
+    {
+      label: 'Поделиться',
+      icon: <Share2 size={18} />,
+      onClick: handleShareLink,
+      actionType: MENU_ACTIONS.SHARE,
+    },
     {
       label: 'Скопировать ссылку',
       icon: <Link size={18} />,
@@ -436,6 +456,12 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
       actionType: MENU_ACTIONS.REPORT,
     },
   ] : [
+    ...(actionSet.canShare ? [{
+      label: 'Поделиться',
+      icon: <Share2 size={18} />,
+      onClick: handleShareLink,
+      actionType: MENU_ACTIONS.SHARE
+    }] : []),
     ...(actionSet.canCopyLink ? [{
       label: 'Скопировать ссылку',
       icon: <Link size={18} />,

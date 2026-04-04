@@ -56,8 +56,10 @@ const AppHeader = ({
   ));
   const isRegistered = useStore((state) => Boolean(state.isRegistered));
 
+  const hasPremiumDrawerContent = Boolean(showSearch || showFilters || categories);
+  const hasPremiumSecondaryRow = Boolean(children || premiumTrailing || hasPremiumDrawerContent);
   // #New Premium: drawer виден если не скроллили ИЛИ если юзер нажал лупу
-  const showDrawer = !isScrolled || isManualExpanded;
+  const showDrawer = hasPremiumDrawerContent && (!isScrolled || isManualExpanded);
 
   // ===== REFS =====
   const searchTimeoutRef = useRef(null);
@@ -153,17 +155,26 @@ const AppHeader = ({
     }
   }, [showDrawer]);
 
+  // Класс снимаем при unmount (синхронная установка — в handleSearchFocus/Blur)
   useEffect(() => {
     if (!freezeBottomChromeOnSearchFocus) return undefined;
-
-    const body = document.body;
-    if (searchFocused) body.classList.add(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
-    else body.classList.remove(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
-
     return () => {
-      body.classList.remove(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
+      document.body.classList.remove(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
     };
-  }, [freezeBottomChromeOnSearchFocus, searchFocused]);
+  }, [freezeBottomChromeOnSearchFocus]);
+
+  const handleSearchFocus = () => {
+    setSearchFocused(true);
+    if (freezeBottomChromeOnSearchFocus) {
+      document.body.classList.add(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
+    }
+  };
+  const handleSearchBlur = () => {
+    setSearchFocused(false);
+    if (freezeBottomChromeOnSearchFocus) {
+      document.body.classList.remove(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
+    }
+  };
 
   // ===== DEBOUNCE SEARCH =====
   useEffect(() => {
@@ -361,7 +372,7 @@ const AppHeader = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 12,
+          marginBottom: hasPremiumSecondaryRow ? 12 : 0,
         }}>
           <h1 style={{
             margin: 0,
@@ -373,170 +384,174 @@ const AppHeader = ({
         </div>
 
         {/* 2. Строка: Табы + Search-иконка при скролле */}
-        <div style={{ display: 'flex', alignItems: 'center', height: 36, width: '100%' }}>
-          {/* Pill-switcher с children (передаётся из Feed.js) */}
-          <div style={{
-            flex: 1,
-            height: '100%',
-            background: p.surfaceElevated,
-            borderRadius: 18,
-            display: 'flex',
-            padding: 3,
-            transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-          }}>
-            {children}
-          </div>
-
-          {premiumTrailing && (
+        {hasPremiumSecondaryRow && (
+          <div style={{ display: 'flex', alignItems: 'center', height: 36, width: '100%' }}>
+            {/* Pill-switcher с children (передаётся из Feed.js) */}
             <div style={{
-              marginLeft: 12,
-              flexShrink: 0,
+              flex: 1,
+              height: '100%',
+              background: p.surfaceElevated,
+              borderRadius: 18,
+              display: 'flex',
+              padding: 3,
+              transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+            }}>
+              {children}
+            </div>
+
+            {premiumTrailing && (
+              <div style={{
+                marginLeft: 12,
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                {premiumTrailing}
+              </div>
+            )}
+
+            {/* Search-иконка — появляется только при скролле */}
+            <div style={{
+              width: hasPremiumDrawerContent && isScrolled ? 36 : 0,
+              marginLeft: hasPremiumDrawerContent && isScrolled ? 8 : 0,
+              opacity: hasPremiumDrawerContent && isScrolled ? 1 : 0,
+              overflow: 'hidden',
+              transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              {premiumTrailing}
+              <button
+                onClick={() => { hapticFeedback('light'); setIsManualExpanded(v => !v); }}
+                style={{
+                  width: 36, height: 36, borderRadius: 18,
+                  background: isManualExpanded ? p.primary : p.surfaceElevated,
+                  border: 'none',
+                  color: isManualExpanded ? '#000' : '#FFF',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', flexShrink: 0,
+                  transition: 'background 0.3s, color 0.3s',
+                }}
+              >
+                {isManualExpanded ? <X size={18} strokeWidth={2.5} /> : <Search size={18} strokeWidth={2.5} />}
+              </button>
             </div>
-          )}
-
-          {/* Search-иконка — появляется только при скролле */}
-          <div style={{
-            width: isScrolled ? 36 : 0,
-            marginLeft: isScrolled ? 8 : 0,
-            opacity: isScrolled ? 1 : 0,
-            overflow: 'hidden',
-            transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <button
-              onClick={() => { hapticFeedback('light'); setIsManualExpanded(v => !v); }}
-              style={{
-                width: 36, height: 36, borderRadius: 18,
-                background: isManualExpanded ? p.primary : p.surfaceElevated,
-                border: 'none',
-                color: isManualExpanded ? '#000' : '#FFF',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', flexShrink: 0,
-                transition: 'background 0.3s, color 0.3s',
-              }}
-            >
-              {isManualExpanded ? <X size={18} strokeWidth={2.5} /> : <Search size={18} strokeWidth={2.5} />}
-            </button>
           </div>
-        </div>
+        )}
 
         {/* 3. Drawer: Поиск + Теги — анимация через grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateRows: showDrawer ? '1fr' : '0fr',
-          transition: 'grid-template-rows 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-        }}>
-          <div style={{ minHeight: 0, overflow: 'hidden' }}>
-            <div style={{
-              paddingTop: 12,
-              paddingBottom: 4,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-              opacity: showDrawer ? 1 : 0,
-              transform: showDrawer ? 'translateY(0)' : 'translateY(-10px)',
-              transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-            }}>
-              {/* Строка поиска */}
-              {showSearch && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', height: 44,
-                  padding: '0 16px', background: '#161618',
-                  borderRadius: 22, border: `1px solid ${p.border}`,
-                }}>
-                  <Search size={18} style={{ color: p.textMuted, marginRight: 10, flexShrink: 0 }} />
-                  <input
-                    ref={premiumSearchRef}
-                    value={localSearchValue}
-                    onChange={handleSearchInputChange}
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => setSearchFocused(false)}
-                    placeholder={searchPlaceholder}
-                    style={{
-                      flex: 1, height: '100%', background: 'transparent',
-                      border: 'none', color: '#FFF', fontSize: 16, outline: 'none',
-                    }}
-                  />
-                  {localSearchValue && (
-                    <X size={16} onClick={handleClearSearch} style={{ color: p.textMuted, cursor: 'pointer' }} />
-                  )}
-                </div>
-              )}
-
-              {/* Строка тегов/категорий */}
-              {(showFilters || categories) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {/* Кнопка фильтров — вне скроллируемого контейнера, чтобы бейдж не обрезался */}
-                  {showFilters && (
-                    <button
-                      onClick={handleFiltersClick}
+        {hasPremiumDrawerContent && (
+          <div style={{
+            display: 'grid',
+            gridTemplateRows: showDrawer ? '1fr' : '0fr',
+            transition: 'grid-template-rows 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+          }}>
+            <div style={{ minHeight: 0, overflow: 'hidden' }}>
+              <div style={{
+                paddingTop: 12,
+                paddingBottom: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                opacity: showDrawer ? 1 : 0,
+                transform: showDrawer ? 'translateY(0)' : 'translateY(-10px)',
+                transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+              }}>
+                {/* Строка поиска */}
+                {showSearch && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', height: 44,
+                    padding: '0 16px', background: '#161618',
+                    borderRadius: 22, border: `1px solid ${p.border}`,
+                  }}>
+                    <Search size={18} style={{ color: p.textMuted, marginRight: 10, flexShrink: 0 }} />
+                    <input
+                      ref={premiumSearchRef}
+                      value={localSearchValue}
+                      onChange={handleSearchInputChange}
+                      onFocus={handleSearchFocus}
+                      onBlur={handleSearchBlur}
+                      placeholder={searchPlaceholder}
                       style={{
-                        width: 36, height: 36, borderRadius: 18,
-                        background: activeFiltersCount > 0 ? p.primary : p.surfaceElevated,
-                        color: activeFiltersCount > 0 ? '#000' : '#FFF',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0, cursor: 'pointer', border: 'none',
-                        position: 'relative',
+                        flex: 1, height: '100%', background: 'transparent',
+                        border: 'none', color: '#FFF', fontSize: 16, outline: 'none',
                       }}
-                    >
-                      <SlidersHorizontal size={16} />
-                      {activeFiltersCount > 0 && (
-                        <span style={{
-                          position: 'absolute', top: -4, right: -4,
-                          minWidth: 16, height: 16,
-                          background: theme.colors.error, borderRadius: 999,
+                    />
+                    {localSearchValue && (
+                      <X size={16} onClick={handleClearSearch} style={{ color: p.textMuted, cursor: 'pointer' }} />
+                    )}
+                  </div>
+                )}
+
+                {/* Строка тегов/категорий */}
+                {(showFilters || categories) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {/* Кнопка фильтров — вне скроллируемого контейнера, чтобы бейдж не обрезался */}
+                    {showFilters && (
+                      <button
+                        onClick={handleFiltersClick}
+                        style={{
+                          width: 36, height: 36, borderRadius: 18,
+                          background: activeFiltersCount > 0 ? p.primary : p.surfaceElevated,
+                          color: activeFiltersCount > 0 ? '#000' : '#FFF',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 10, fontWeight: 700, color: '#fff', padding: '0 3px',
-                        }}>{activeFiltersCount}</span>
-                      )}
-                    </button>
-                  )}
-                  {/* Категории — в отдельном скроллируемом контейнере */}
-                  {categories && (
-                    <div style={{
-                      display: 'flex', gap: 8, overflowX: 'auto', flex: 1,
-                      scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y',
-                    }}>
-                      {categories.map((cat) => {
-                        const isActive = selectedCategory === cat.id;
-                        return (
-                          <button
-                            key={cat.id}
-                            onClick={() => handleCategoryClick(cat.id)}
-                            style={{
-                              padding: '0 14px', height: 36, borderRadius: 18,
-                              background: isActive
-                                ? (categoryOutline ? 'transparent' : p.primary)
-                                : p.surfaceElevated,
-                              color: isActive
-                                ? (categoryOutline ? p.primary : '#000')
-                                : '#FFF',
-                              border: categoryOutline
-                                ? `1px solid ${isActive ? p.primary : 'transparent'}`
-                                : 'none',
-                              fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-                              cursor: 'pointer', flexShrink: 0,
-                              transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
-                            }}
-                          >
-                            {cat.emoji && `${cat.emoji} `}{cat.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+                          flexShrink: 0, cursor: 'pointer', border: 'none',
+                          position: 'relative',
+                        }}
+                      >
+                        <SlidersHorizontal size={16} />
+                        {activeFiltersCount > 0 && (
+                          <span style={{
+                            position: 'absolute', top: -4, right: -4,
+                            minWidth: 16, height: 16,
+                            background: theme.colors.error, borderRadius: 999,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 10, fontWeight: 700, color: '#fff', padding: '0 3px',
+                          }}>{activeFiltersCount}</span>
+                        )}
+                      </button>
+                    )}
+                    {/* Категории — в отдельном скроллируемом контейнере */}
+                    {categories && (
+                      <div style={{
+                        display: 'flex', gap: 8, overflowX: 'auto', flex: 1,
+                        scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y',
+                      }}>
+                        {categories.map((cat) => {
+                          const isActive = selectedCategory === cat.id;
+                          return (
+                            <button
+                              key={cat.id}
+                              onClick={() => handleCategoryClick(cat.id)}
+                              style={{
+                                padding: '0 14px', height: 36, borderRadius: 18,
+                                background: isActive
+                                  ? (categoryOutline ? 'transparent' : p.primary)
+                                  : p.surfaceElevated,
+                                color: isActive
+                                  ? (categoryOutline ? p.primary : '#000')
+                                  : '#FFF',
+                                border: categoryOutline
+                                  ? `1px solid ${isActive ? p.primary : 'transparent'}`
+                                  : 'none',
+                                fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                                cursor: 'pointer', flexShrink: 0,
+                                transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
+                              }}
+                            >
+                              {cat.emoji && `${cat.emoji} `}{cat.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -582,8 +597,8 @@ const AppHeader = ({
                   type="text"
                   value={localSearchValue}
                   onChange={handleSearchInputChange}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
+                  onFocus={handleSearchFocus}
+                  onBlur={handleSearchBlur}
                   placeholder={searchPlaceholder}
                   style={styles.searchInput}
                 />

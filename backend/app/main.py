@@ -110,6 +110,56 @@ def _count_letters(value: Optional[str]) -> int:
     return len(MEMES_LETTERS_RE.findall(str(value or "")))
 
 
+async def _build_poll_response(
+    db: AsyncSession,
+    poll: Optional[models.Poll],
+    user_id: Optional[int] = None,
+) -> Optional[dict]:
+    if not poll:
+        return None
+
+    user_vote = None
+    if user_id:
+        user_vote_result = await db.execute(
+            select(models.PollVote).where(
+                models.PollVote.poll_id == poll.id,
+                models.PollVote.user_id == user_id,
+            )
+        )
+        user_vote = user_vote_result.scalar_one_or_none()
+
+    user_votes_indices = user_vote.option_indices if user_vote else []
+    options_data = poll.options or []
+    options_response = []
+    for opt in options_data:
+        votes = int(opt.get("votes", 0))
+        percentage = (votes / poll.total_votes * 100) if poll.total_votes > 0 else 0
+        options_response.append({
+            "text": opt.get("text", ""),
+            "votes": votes,
+            "percentage": round(percentage, 1),
+        })
+
+    now_utc = ensure_utc(datetime.utcnow())
+    closes_at_utc = ensure_utc(poll.closes_at)
+
+    return {
+        "id": poll.id,
+        "post_id": poll.post_id,
+        "question": poll.question,
+        "options": options_response,
+        "type": poll.type,
+        "correct_option": poll.correct_option,
+        "explanation": poll.explanation,
+        "allow_multiple": poll.allow_multiple,
+        "is_anonymous": poll.is_anonymous,
+        "closes_at": poll.closes_at,
+        "total_votes": poll.total_votes,
+        "is_closed": bool(closes_at_utc and now_utc and closes_at_utc <= now_utc),
+        "user_votes": user_votes_indices,
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application startup...")
@@ -193,6 +243,20 @@ public_prefixes = [
 if settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
     public_prefixes.append("/dev/auth")
 PUBLIC_PREFIXES = tuple(public_prefixes)
+PUBLIC_READ_GET_PATTERNS = (
+    re.compile(r"^/posts/\d+$"),
+    re.compile(r"^/posts/\d+/comments$"),
+    re.compile(r"^/api/requests/\d+$"),
+    re.compile(r"^/market/\d+$"),
+    re.compile(r"^/users/\d+/rating$"),
+    re.compile(r"^/users/\d+/public$"),
+)
+
+
+def _is_public_read_get_path(method: str, path: str) -> bool:
+    if method.upper() != "GET":
+        return False
+    return any(pattern.fullmatch(path) for pattern in PUBLIC_READ_GET_PATTERNS)
 
 
 @app.middleware("http")
@@ -214,7 +278,7 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     is_public_path = path in PUBLIC_PATHS or any(
         path == prefix or path.startswith(prefix + "/") for prefix in PUBLIC_PREFIXES
-    )
+    ) or _is_public_read_get_path(request.method, path)
 
     auth_header = request.headers.get("authorization")
     payload = None
@@ -335,12 +399,15 @@ async def get_user_posts_endpoint(
     result = []
     for post in posts:
         tags = post.tags or []
+        is_liked = await crud.is_post_liked_by_user(db, post.id, user.id) if user else False
         images = get_image_urls(post.images) if post.images else []
         
         if post.is_anonymous:
             author_data = {"name": "Аноним"}
         else:
             author_data = schemas.UserShort.from_orm(target_user)
+
+        poll_response = await _build_poll_response(db, post.poll, user.id if user else None)
         
         # === LOGIC FOR AD FIELDS ===
         ad_data = {}
@@ -389,6 +456,8 @@ async def get_user_posts_endpoint(
             "likes_count": post.likes_count,
             "comments_count": post.comments_count,
             "views_count": post.views_count,
+            "is_liked": is_liked,
+            "poll": poll_response,
             "created_at": post.created_at,
             "updated_at": post.updated_at,
             **ad_data #
@@ -414,6 +483,13 @@ async def get_user_stats(user_id: int, db: AsyncSession = Depends(get_db)):
 async def get_user_rating(user_id: int, db: AsyncSession = Depends(get_db)):
     """Рейтинг продавца (публичный эндпоинт)."""
     return await crud.get_seller_rating(db, user_id)
+
+@app.get("/users/{user_id}/public", response_model=schemas.UserShort)
+async def get_user_public_profile(user_id: int, db: AsyncSession = Depends(get_db)):
+    user = await crud.get_user_by_id(db, user_id)
+    if not user or user.show_profile is not True:
+        raise HTTPException(status_code=404, detail="User not found")
+    return schemas.UserShort.from_orm(user)
 
 # ===== POST ENDPOINTS + POLLS =====
 @app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
@@ -479,43 +555,7 @@ async def get_posts_feed(
         else:
             author_data = schemas.UserShort.from_orm(post.author) if post.author else None
 
-        poll_response = None
-        if post.poll:
-            user_vote = None
-            if user:
-                user_vote_result = await db.execute(
-                    select(models.PollVote).where(
-                    models.PollVote.poll_id == post.poll.id,
-                    models.PollVote.user_id == user.id
-                    )
-                )
-                user_vote = user_vote_result.scalar_one_or_none()
-            user_votes_indices = user_vote.option_indices if user_vote else []
-
-            options_data = post.poll.options or []
-            options_response = []
-            for opt in options_data:
-                percentage = (opt['votes'] / post.poll.total_votes * 100) if post.poll.total_votes > 0 else 0
-                options_response.append({
-                    "text": opt['text'],
-                    "votes": opt['votes'],
-                    "percentage": round(percentage, 1)
-                })
-
-            poll_response = {
-                "id": post.poll.id,
-                "post_id": post.poll.post_id,
-                "question": post.poll.question,
-                "options": options_response,
-                "type": post.poll.type,
-                "correct_option": post.poll.correct_option,
-                "allow_multiple": post.poll.allow_multiple,
-                "is_anonymous": post.poll.is_anonymous,
-                "closes_at": post.poll.closes_at,
-                "total_votes": post.poll.total_votes,
-                "is_closed": False,
-                "user_votes": user_votes_indices
-            }
+        poll_response = await _build_poll_response(db, post.poll, user.id if user else None)
 
         post_dict = {
             "id": post.id,
@@ -716,7 +756,11 @@ async def create_post_endpoint(
     return await get_post_endpoint(post.id, user=user, db=db)
 
 @app.get("/posts/{post_id}", response_model=schemas.PostResponse)
-async def get_post_endpoint(post_id: int, user: models.User = Depends(require_user), db: AsyncSession = Depends(get_db)):
+async def get_post_endpoint(
+    post_id: int,
+    user: Optional[models.User] = Depends(optional_user),
+    db: AsyncSession = Depends(get_db),
+):
     post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -743,44 +787,7 @@ async def get_post_endpoint(post_id: int, user: models.User = Depends(require_us
     else:
         author_data = schemas.UserShort.from_orm(post.author) if post.author else None
     
-    poll_response = None
-    if post.poll:
-        user_vote = None
-        if user:
-            user_vote_result = await db.execute(
-                select(models.PollVote).where(
-                models.PollVote.poll_id == post.poll.id,
-                models.PollVote.user_id == user.id
-                )
-            )
-            user_vote = user_vote_result.scalar_one_or_none()
-        
-        user_votes_indices = user_vote.option_indices if user_vote else []
-        
-        options_data = post.poll.options or []
-        options_response = []
-        for opt in options_data:
-            percentage = (opt['votes'] / post.poll.total_votes * 100) if post.poll.total_votes > 0 else 0
-            options_response.append({
-                "text": opt['text'],
-                "votes": opt['votes'],
-                "percentage": round(percentage, 1)
-            })
-        
-        poll_response = {
-            "id": post.poll.id,
-            "post_id": post.poll.post_id,
-            "question": post.poll.question,
-            "options": options_response,
-            "type": post.poll.type,
-            "correct_option": post.poll.correct_option,
-            "allow_multiple": post.poll.allow_multiple,
-            "is_anonymous": post.poll.is_anonymous,
-            "closes_at": post.poll.closes_at,
-            "total_votes": post.poll.total_votes,
-            "is_closed": False,
-            "user_votes": user_votes_indices
-        }
+    poll_response = await _build_poll_response(db, post.poll, user.id if user else None)
     
     return normalize_datetime_payload({
         "id": post.id,
@@ -951,10 +958,10 @@ async def vote_poll_endpoint(
 @app.get("/posts/{post_id}/comments", response_model=schemas.CommentsFeedResponse)
 async def get_post_comments_endpoint(
     post_id: int,
-    user: models.User = Depends(require_user),
+    user: Optional[models.User] = Depends(optional_user),
     db: AsyncSession = Depends(get_db)
 ):
-    comments = await crud.get_post_comments(db, post_id, user.id)
+    comments = await crud.get_post_comments(db, post_id, user.id if user else None)
     
     result = []
     for comment in comments:
@@ -1371,10 +1378,10 @@ async def get_my_requests_endpoint(
 @app.get("/api/requests/{request_id}", response_model=schemas.RequestResponse)
 async def get_request_endpoint(
     request_id: int,
-    user: models.User = Depends(require_user),
+    user: Optional[models.User] = Depends(optional_user),
     db: AsyncSession = Depends(get_db)
 ):
-    current_user_id = user.id
+    current_user_id = user.id if user else None
 
     request_dict = await crud.get_request_by_id(db, request_id, current_user_id)
     if not request_dict:
@@ -1396,7 +1403,9 @@ async def get_request_endpoint(
         university=request_dict['author'].university,
         institute=request_dict['author'].institute,
         username=request_dict['author'].username,
-        avatar=request_dict['author'].avatar
+        avatar=request_dict['author'].avatar,
+        show_profile=request_dict['author'].show_profile,
+        show_telegram_id=request_dict['author'].show_telegram_id,
     )
     
     return schemas.RequestResponse(
@@ -1840,10 +1849,10 @@ async def get_my_market_items_endpoint(
 @app.get("/market/{item_id}", response_model=schemas.MarketItemResponse)
 async def get_market_item_endpoint(
     item_id: int,
-    user: models.User = Depends(require_user),
+    user: Optional[models.User] = Depends(optional_user),
     db: AsyncSession = Depends(get_db)
 ):
-    item = await crud.get_market_item(db, item_id)
+    item = await crud.get_market_item(db, item_id, user.id if user else None)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     if item.status == 'archived':

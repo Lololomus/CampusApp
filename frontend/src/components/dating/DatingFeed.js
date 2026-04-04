@@ -42,6 +42,10 @@ function DatingFeed() {
     hasMoreProfiles,
     setHasMoreProfiles,
     setOnPrefetchNeeded,
+    pendingDatingOnboardingOpen,
+    setPendingDatingOnboardingOpen,
+    pendingDatingTab,
+    clearPendingDatingTab,
   } = useStore();
 
   const [checkingProfile, setCheckingProfile] = useState(!datingProfile);
@@ -188,6 +192,29 @@ function DatingFeed() {
       else getDatingStats().then(updateDatingStats).catch(console.error);
     }
   }, [checkingProfile]);
+
+  useEffect(() => {
+    if (!checkingProfile && !datingProfile && pendingDatingOnboardingOpen) {
+      setShowOnboarding(true);
+      setPendingDatingOnboardingOpen(false);
+    }
+  }, [checkingProfile, datingProfile, pendingDatingOnboardingOpen, setPendingDatingOnboardingOpen]);
+
+  useEffect(() => {
+    if (!pendingDatingTab || checkingProfile) return;
+
+    if (!datingProfile) {
+      if (!showOnboarding) {
+        setShowOnboarding(true);
+      }
+      return;
+    }
+
+    setActiveTab(pendingDatingTab);
+    setViewingProfile(null);
+    setShowProfileSheet(false);
+    clearPendingDatingTab();
+  }, [pendingDatingTab, checkingProfile, datingProfile, showOnboarding, clearPendingDatingTab]);
 
   useEffect(() => {
     setOnPrefetchNeeded(() => {

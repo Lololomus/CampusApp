@@ -31,7 +31,6 @@ const Z_MODAL = 2500;
 const d = theme.colors.dating;
 
 // Цвета из CSS-переменных мока
-const LIME = d.accent;        // #D4FF00 — var(--primary)
 const PINK = d.pink;          // #FF2D55 — var(--dating)
 const SURFACE = d.surface;    // #1C1C1E — var(--surface)
 const SURFACE_EL = d.surfaceHover; // #2C2C2E — var(--surface-elevated)
@@ -520,7 +519,12 @@ function MyDatingProfileModal({ onClose }) {
       )}
 
       {/* ===== BIO SHEET ===== */}
-      <SwipeableModal isOpen={activeSheet === 'bio'} onClose={closeSheet} title="Обо мне">
+      <SwipeableModal
+        isOpen={activeSheet === 'bio'}
+        onClose={closeSheet}
+        title="Обо мне"
+        showHeaderDivider={false}
+      >
         <textarea
           value={tempBio}
           onChange={e => setTempBio(e.target.value)}
@@ -544,6 +548,7 @@ function MyDatingProfileModal({ onClose }) {
         isOpen={activeSheet === 'icebreaker'}
         onClose={closeSheet}
         title={ibStep === 'list' ? 'Выбери ледокол' : 'Твой ледокол'}
+        showHeaderDivider={false}
       >
         {/* Шаг 1: список вопросов */}
         {ibStep === 'list' && (
@@ -655,7 +660,12 @@ function MyDatingProfileModal({ onClose }) {
       </SwipeableModal>
 
       {/* ===== TAGS SHEET ===== */}
-      <SwipeableModal isOpen={activeSheet === 'tags'} onClose={closeSheet} title="Кого ищешь?">
+      <SwipeableModal
+        isOpen={activeSheet === 'tags'}
+        onClose={closeSheet}
+        title="Кого ищешь?"
+        showHeaderDivider={false}
+      >
         <div style={styles.sheetSectionLabel}>Твои цели (до {MAX_GOALS})</div>
         <div style={{ ...styles.chipsRow, marginBottom: 32 }}>
           {GOAL_OPTIONS.map(opt => (
@@ -688,7 +698,12 @@ function MyDatingProfileModal({ onClose }) {
       </SwipeableModal>
 
       {/* ===== SETTINGS SHEET ===== */}
-      <SwipeableModal isOpen={activeSheet === 'settings'} onClose={closeSheet} title="Настройки поиска">
+      <SwipeableModal
+        isOpen={activeSheet === 'settings'}
+        onClose={closeSheet}
+        title="Настройки поиска"
+        showHeaderDivider={false}
+      >
         {/* Кого ищу */}
         <div style={{ marginBottom: 24 }}>
           <div style={styles.sheetSectionLabel}>Кого я ищу</div>
@@ -752,7 +767,12 @@ function MyDatingProfileModal({ onClose }) {
       </SwipeableModal>
 
       {/* ===== PHOTOS SHEET ===== */}
-      <SwipeableModal isOpen={activeSheet === 'photos'} onClose={closeSheet} title="Мои фотографии">
+      <SwipeableModal
+        isOpen={activeSheet === 'photos'}
+        onClose={closeSheet}
+        title="Мои фотографии"
+        showHeaderDivider={false}
+      >
         <div style={styles.photoGrid}>
           {/* Существующие фото */}
           {tempPhotos.map((photo, idx) => (
@@ -981,7 +1001,7 @@ const styles = {
   cardLabel: {
     fontSize: 14,
     textTransform: 'uppercase',
-    color: MUTED,
+    color: PINK,
     fontWeight: 700,
     letterSpacing: '0.5px',
     marginBottom: 12,
@@ -1002,9 +1022,9 @@ const styles = {
     borderRadius: 20,
     fontSize: 14,
     fontWeight: 600,
-    background: 'transparent',
-    border: `1px solid ${LIME}`,
-    color: LIME,
+    background: 'rgba(255, 45, 85, 0.1)',
+    border: '1px solid rgba(255, 45, 85, 0.32)',
+    color: PINK,
     whiteSpace: 'nowrap',
   },
   // .chip.inactive из мока: surfaceElevated + белый
@@ -1044,14 +1064,15 @@ const styles = {
   sheetSaveBtn: {
     width: '100%',
     padding: 16,
-    background: LIME,
+    background: PINK,
     borderRadius: 16,
     border: 'none',
-    color: '#000',
+    color: '#FFF',
     fontWeight: 700,
     fontSize: 16,
     cursor: 'pointer',
     transition: 'opacity 0.2s',
+    boxShadow: `0 8px 24px ${d.pinkGlow}`,
   },
   sheetSectionLabel: {
     fontSize: 13,
@@ -1067,9 +1088,9 @@ const styles = {
     borderRadius: 20,
     fontSize: 14,
     fontWeight: 600,
-    background: 'transparent',
-    border: `1px solid ${LIME}`,
-    color: LIME,
+    background: 'rgba(255, 45, 85, 0.1)',
+    border: '1px solid rgba(255, 45, 85, 0.32)',
+    color: PINK,
     cursor: 'pointer',
     whiteSpace: 'nowrap',
     display: 'flex',

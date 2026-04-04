@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../../store';
-import { getMarketItems, triggerRegistrationPrompt } from '../../api';
+import { getMarketItem, getMarketItems, triggerRegistrationPrompt } from '../../api';
 import AppHeader from '../shared/AppHeader';
 import MarketCard from './MarketCard';
 import MarketDetail from './MarketDetail';
@@ -10,6 +10,7 @@ import MarketFilters from './MarketFilters';
 import CreateMarketItem from './CreateMarketItem';
 import EditMarketItemModal from './EditMarketItemModal';
 import EdgeBlur from '../shared/EdgeBlur';
+import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
@@ -18,6 +19,7 @@ import {
   MARKET_PAGE_SIZE,
   PULL_TO_REFRESH_THRESHOLD,
   INFINITE_SCROLL_ROOT_MARGIN,
+  BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS,
 } from '../../constants/layoutConstants';
 
 const Market = () => {
@@ -29,7 +31,9 @@ const Market = () => {
     user,
     editingMarketItem,
     setEditingMarketItem,
-    updateMarketItem
+    updateMarketItem,
+    pendingMarketItemId,
+    clearPendingMarketItemId,
   } = useStore();
 
   // ===== STATE =====
@@ -166,6 +170,36 @@ const Market = () => {
     loadItems(true);
   }, [selectedCategory, searchQuery, activeTab, stabilizedFilters]);
 
+  useEffect(() => {
+    if (!pendingMarketItemId) return;
+
+    let isCancelled = false;
+
+    const openPendingItem = async () => {
+      try {
+        const item = await getMarketItem(pendingMarketItemId);
+        if (!isCancelled && item) {
+          setShowDetail(item);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          const status = error?.response?.status;
+          toast.error(status === 404 ? 'Товар не найден' : 'Не удалось загрузить товар');
+        }
+      } finally {
+        if (!isCancelled) {
+          clearPendingMarketItemId();
+        }
+      }
+    };
+
+    openPendingItem();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [pendingMarketItemId, clearPendingMarketItemId]);
+
   // Infinite Scroll
   useEffect(() => {
     const options = { root: null, rootMargin: INFINITE_SCROLL_ROOT_MARGIN, threshold: 0 };
@@ -269,7 +303,7 @@ const Market = () => {
     <div style={styles.container}>
 
       <EdgeBlur position="top" height="var(--header-padding)" zIndex={50} animateHeight />
-      <EdgeBlur position="bottom" height={100} zIndex={50} compensateKeyboard />
+      <EdgeBlur position="bottom" height={100} zIndex={50} compensateKeyboard suppressCompensationBodyClass={BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS} />
 
       <AppHeader
         title="Маркет"
@@ -284,6 +318,7 @@ const Market = () => {
         onFiltersClick={handleOpenFilters}
         activeFiltersCount={activeFiltersCount}
         premium
+        freezeBottomChromeOnSearchFocus
       >
         <div style={{ position: 'relative', width: '100%', display: 'flex' }}>
           <div

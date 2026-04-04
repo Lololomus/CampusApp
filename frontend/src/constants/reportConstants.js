@@ -1,28 +1,24 @@
 export const CONTENT_REPORT_REASONS = [
   { value: 'spam', label: 'Спам', icon: '📨' },
-  { value: 'abuse', label: 'Оскорбления', icon: '🤬' },
-  { value: 'inappropriate', label: 'Неприемл. контент', icon: '⚠️' },
-  { value: 'scam', label: 'Мошенничество', icon: '🎣' },
-  { value: 'nsfw', label: 'NSFW', icon: '🔞' },
-  { value: 'harassment', label: 'Травля/хейт', icon: '😡' },
-  { value: 'misinformation', label: 'Ложная инф-а', icon: '🤥' },
+  { value: 'scam', label: 'Скам', icon: '🎣' },
+  { value: 'inappropriate', label: 'Неприемлемо', icon: '⚠️' },
+  { value: 'fake', label: 'Фейк', icon: '🎭' },
   { value: 'other', label: 'Другое', icon: '📝' },
 ];
 
-export const USER_REPORT_REASONS = [
-  { value: 'spam_scam', label: 'Спам/скам', icon: '📨' },
-  { value: 'impersonation', label: 'Фейк/выдача себя', icon: '🎭' },
-  { value: 'harassment_hate', label: 'Травля/хейт', icon: '😡' },
-  { value: 'sexual_content', label: 'Сексуальный контент', icon: '🔞' },
-  { value: 'underage_risk', label: 'Риск с несоверш.', icon: '🛑' },
+export const PEOPLE_REPORT_REASONS = [
+  { value: 'spam', label: 'Спам', icon: '📨' },
+  { value: 'scam', label: 'Скам', icon: '🎣' },
+  { value: 'fake_account', label: 'Фейк-аккаунт', icon: '🎭' },
+  { value: 'inappropriate', label: 'Неприемлемо', icon: '⚠️' },
+  { value: 'threat', label: 'Угроза', icon: '🛑' },
   { value: 'other', label: 'Другое', icon: '📝' },
 ];
 
 export const AD_REPORT_REASONS = [
-  { value: 'misleading', label: 'Вводит в заблуждение', icon: '🤥' },
-  { value: 'inappropriate', label: 'Неприемл. контент', icon: '⚠️' },
+  { value: 'misleading', label: 'Обман', icon: '🤥' },
   { value: 'spam', label: 'Спам', icon: '📨' },
-  { value: 'scam', label: 'Мошенничество', icon: '🎣' },
+  { value: 'scam', label: 'Скам', icon: '🎣' },
   { value: 'other', label: 'Другое', icon: '📝' },
 ];
 
@@ -31,8 +27,8 @@ export const REPORT_REASONS_BY_TARGET = {
   comment: CONTENT_REPORT_REASONS,
   request: CONTENT_REPORT_REASONS,
   market_item: CONTENT_REPORT_REASONS,
-  dating_profile: CONTENT_REPORT_REASONS,
-  user: USER_REPORT_REASONS,
+  dating_profile: PEOPLE_REPORT_REASONS,
+  user: PEOPLE_REPORT_REASONS,
   ad: AD_REPORT_REASONS,
 };
 

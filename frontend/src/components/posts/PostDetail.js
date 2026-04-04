@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   Heart, MessageCircle, Eye, MapPin, Calendar,
   ChevronLeft, ChevronRight,
-  Gift, Phone, Link2, Pencil, Trash2, Flag
+  Gift, Phone, Link2, Share2, Pencil, Trash2, Flag
 } from 'lucide-react';
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost, triggerRegistrationPrompt } from '../../api';
 import { useStore } from '../../store';
@@ -29,6 +29,8 @@ import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 import { IMAGE_ASPECT_RATIO_MIN, IMAGE_ASPECT_RATIO_MAX } from '../../constants/layoutConstants';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
+import { sharePostViaTelegram } from '../../utils/telegramShare';
 
 const parseImages = (value) => {
   if (!value) return [];
@@ -268,7 +270,7 @@ function PostDetail() {
 
   const isOwner = useMemo(() => isEntityOwner('post', post, user), [post, user]);
   const postActionSet = useMemo(
-    () => getEntityActionSet('post', isOwner, { shareEnabled: false }),
+    () => getEntityActionSet('post', isOwner, { shareEnabled: true }),
     [isOwner]
   );
 
@@ -357,13 +359,25 @@ function PostDetail() {
   const handleCopyLink = async () => {
     setPostMenuOpen(false);
     hapticFeedback('success');
-    const link = `campusapp://post/${post.id}`;
+    const link = buildMiniAppStartappUrl(`post_${post.id}`);
     
     try {
       await navigator.clipboard.writeText(link);
       toast.success('Ссылка скопирована');
     } catch (error) {
       toast.error('Не удалось скопировать ссылку');
+    }
+  };
+
+  const handleShareLink = () => {
+    setPostMenuOpen(false);
+    hapticFeedback('light');
+    try {
+      sharePostViaTelegram(post);
+    } catch (error) {
+      console.error('Share post error:', error);
+      toast.error('Не удалось открыть Telegram для отправки');
+      hapticFeedback('error');
     }
   };
 
@@ -483,6 +497,12 @@ function PostDetail() {
   }, [comments]);
 
   const postMenuItems = [
+    ...(postActionSet.canShare ? [{
+      label: 'Поделиться',
+      icon: <Share2 size={16} />,
+      actionType: 'share',
+      onClick: handleShareLink
+    }] : []),
     ...(postActionSet.canCopyLink ? [{
       label: 'Скопировать ссылку', 
       icon: <Link2 size={16} />,
@@ -733,13 +753,13 @@ function PostDetail() {
                         background: '#161618',
                         padding: '6px 12px',
                         borderRadius: 20,
-                        color: theme.colors.text,
+                        color: '#888888',
                         borderColor: '#222',
                       }}
                       onClick={handleScrollToComments}
                     >
-                      <MessageCircle size={18} color={theme.colors.text} strokeWidth={2} />
-                      <span style={{...styles.statText, color: theme.colors.text}}>
+                      <MessageCircle size={16} color="#888888" strokeWidth={2.5} />
+                      <span style={{...styles.statText, color: '#888888'}}>
                         {comments.length}
                       </span>
                     </button>

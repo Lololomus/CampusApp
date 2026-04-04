@@ -43,6 +43,7 @@ const PromptAnswerModal = ({ isOpen, onClose, prompt, onSave }) => {
       isOpen={isOpen}
       onClose={onClose}
       title="Твой ответ"
+      showHeaderDivider={false}
     >
       <div style={styles.container}>
         

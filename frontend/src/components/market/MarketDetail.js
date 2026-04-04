@@ -1,7 +1,7 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketDetail.js =====
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info, MapPin, Link, Edit2, Flag } from 'lucide-react';
+import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info, MapPin, Link, Share2, Edit2, Flag } from 'lucide-react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem, getSellerRating, contactMarketSeller } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
@@ -23,6 +23,8 @@ import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate } from '../../utils/datetime';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
+import { shareMarketItemViaTelegram } from '../../utils/telegramShare';
 
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 
@@ -70,7 +72,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
   const isOwner = useMemo(() => isEntityOwner('market_item', currentItem, user), [currentItem, user]);
   const actionSet = useMemo(
-    () => getEntityActionSet('market_item', isOwner, { shareEnabled: false }),
+    () => getEntityActionSet('market_item', isOwner, { shareEnabled: true }),
     [isOwner]
   );
   const images = currentItem.images || [];
@@ -203,7 +205,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     hapticFeedback('light');
     setShowMenu(false);
     
-    const url = `${window.location.origin}/market/${currentItem.id}`;
+    const url = buildMiniAppStartappUrl(`market_${currentItem.id}`);
     
     try {
       if (navigator.clipboard) {
@@ -310,8 +312,26 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const university = currentItem.seller?.university || 'Университет';
   const institute = currentItem.seller?.institute || '';
 
+  const handleShareLink = () => {
+    hapticFeedback('light');
+    setShowMenu(false);
+    try {
+      shareMarketItemViaTelegram(currentItem);
+    } catch (error) {
+      console.error('Share market item error:', error);
+      toast.error('Не удалось открыть Telegram для отправки');
+      hapticFeedback('error');
+    }
+  };
+
   const getMenuItems = () => {
     return [
+      ...(actionSet.canShare ? [{
+        actionType: 'share',
+        label: 'Поделиться',
+        icon: <Share2 size={18} />,
+        onClick: handleShareLink
+      }] : []),
       ...(actionSet.canCopyLink ? [{
         actionType: 'copy',
         label: 'Копировать ссылку',
