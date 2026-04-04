@@ -1,6 +1,7 @@
 // ===== 📄 ФАЙЛ: src/components/dating/DatingFeed.js =====
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Heart } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate as animateValue } from 'framer-motion';
 import { useStore } from '../../store';
 import { getDatingFeed, likeUser, dislikeUser, getDatingStats, getWhoLikedMe, getMyDatingProfile, getMyMatches } from '../../api';
@@ -20,10 +21,14 @@ import { toast } from '../shared/Toast';
 import { USE_MOCK_DATA, MOCK_PROFILES, MOCK_LIKES, MOCK_MATCHES } from './mockData';
 import { SWIPE_THRESHOLD } from '../../constants/layoutConstants';
 import { getPrimaryDatingPhoto } from './photoUtils';
+import SwipeableModal from '../shared/SwipeableModal';
+import { Z_ONBOARDING_DATING } from '../../constants/zIndex';
 
 
 function DatingFeed() {
   const {
+    isRegistered,
+    setShowAuthModal,
     datingProfile,
     setDatingProfile,
     user,
@@ -45,10 +50,11 @@ function DatingFeed() {
     pendingDatingOnboardingOpen,
     setPendingDatingOnboardingOpen,
     pendingDatingTab,
+    setPendingDatingTab,
     clearPendingDatingTab,
   } = useStore();
 
-  const [checkingProfile, setCheckingProfile] = useState(!datingProfile);
+  const [checkingProfile, setCheckingProfile] = useState(isRegistered && !datingProfile);
   const isGuestMode = !datingProfile; 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState('profiles');
@@ -58,6 +64,8 @@ function DatingFeed() {
   const [viewingProfile, setViewingProfile] = useState(null);
   const [showMyProfile, setShowMyProfile] = useState(false);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
+  const [guestActionGate, setGuestActionGate] = useState(null);
+  const [onboardingReturnAction, setOnboardingReturnAction] = useState(null);
   const motionX = useMotionValue(0);
   const isDraggingRef = useRef(false);
   const cardRotation = useTransform(motionX, [-500, 0, 500], [-25, 0, 25]);
@@ -87,6 +95,12 @@ function DatingFeed() {
   // === Check registration ===
   useEffect(() => {
     const checkRegistration = async () => {
+      if (!isRegistered) {
+        setDatingProfile(null);
+        setCheckingProfile(false);
+        return;
+      }
+
       setCheckingProfile(true);
       try {
         if (USE_MOCK_DATA) { setCheckingProfile(false); return; }
@@ -99,7 +113,7 @@ function DatingFeed() {
       }
     };
     checkRegistration();
-  }, []);
+  }, [isRegistered, setDatingProfile]);
 
   // === Initial load ===
   useEffect(() => {
@@ -113,7 +127,7 @@ function DatingFeed() {
       if (USE_MOCK_DATA) updateDatingStats({ likes_count: MOCK_LIKES.length });
       else getDatingStats().then(updateDatingStats).catch(console.error);
     }
-  }, [checkingProfile]);
+  }, [checkingProfile, isRegistered]);
 
   // === Load profiles ===
   const loadProfiles = useCallback(async (reset = false) => {
@@ -191,22 +205,34 @@ function DatingFeed() {
       if (USE_MOCK_DATA) updateDatingStats({ likes_count: MOCK_LIKES.length });
       else getDatingStats().then(updateDatingStats).catch(console.error);
     }
-  }, [checkingProfile]);
+  }, [checkingProfile, isRegistered]);
 
   useEffect(() => {
-    if (!checkingProfile && !datingProfile && pendingDatingOnboardingOpen) {
-      setShowOnboarding(true);
-      setPendingDatingOnboardingOpen(false);
+    if (checkingProfile || !pendingDatingOnboardingOpen) return;
+
+    if (!isRegistered) {
+      setShowAuthModal(true);
+      return;
     }
-  }, [checkingProfile, datingProfile, pendingDatingOnboardingOpen, setPendingDatingOnboardingOpen]);
+
+    if (!datingProfile) {
+      setGuestActionGate(prev => prev || 'profile');
+      return;
+    }
+
+    setPendingDatingOnboardingOpen(false);
+  }, [isRegistered, checkingProfile, datingProfile, pendingDatingOnboardingOpen, setPendingDatingOnboardingOpen]);
 
   useEffect(() => {
     if (!pendingDatingTab || checkingProfile) return;
 
+    if (!isRegistered) {
+      setShowAuthModal(true);
+      return;
+    }
+
     if (!datingProfile) {
-      if (!showOnboarding) {
-        setShowOnboarding(true);
-      }
+      setGuestActionGate(prev => prev || pendingDatingTab);
       return;
     }
 
@@ -214,7 +240,7 @@ function DatingFeed() {
     setViewingProfile(null);
     setShowProfileSheet(false);
     clearPendingDatingTab();
-  }, [pendingDatingTab, checkingProfile, datingProfile, showOnboarding, clearPendingDatingTab]);
+  }, [pendingDatingTab, checkingProfile, isRegistered, datingProfile, showOnboarding, clearPendingDatingTab]);
 
   useEffect(() => {
     setOnPrefetchNeeded(() => {
@@ -230,13 +256,50 @@ function DatingFeed() {
   }, [activeTab, isGuestMode]);
 
   // === Handlers ===
-  const triggerOnboarding = () => {
+  const triggerOnboarding = (action = 'profile') => {
     hapticFeedback('medium');
+    if (!isRegistered) {
+      setShowAuthModal(true);
+      return;
+    }
+    setGuestActionGate(action);
+  };
+
+  const handleGuestActionGateClose = () => {
+    hapticFeedback('light');
+    if (pendingDatingTab) {
+      clearPendingDatingTab();
+    }
+    if (pendingDatingOnboardingOpen) {
+      setPendingDatingOnboardingOpen(false);
+    }
+    setGuestActionGate(null);
+  };
+
+  const handleGuestRegistrationStart = () => {
+    hapticFeedback('medium');
+    setOnboardingReturnAction(guestActionGate || pendingDatingTab || 'profile');
+    if (guestActionGate === 'likes') {
+      setPendingDatingTab('likes');
+    } else if (pendingDatingTab) {
+      clearPendingDatingTab();
+    }
+    setPendingDatingOnboardingOpen(false);
+    setGuestActionGate(null);
     setShowOnboarding(true);
   };
 
+  useTelegramScreen({
+    id: 'dating-guest-gate',
+    priority: 3100,
+    back: {
+      visible: Boolean(guestActionGate),
+      onClick: handleGuestActionGateClose,
+    },
+  });
+
   const handleTabSwitch = (tab) => {
-    if (isGuestMode && tab === 'likes') { triggerOnboarding(); return; }
+    if (isGuestMode && tab === 'likes') { triggerOnboarding('likes'); return; }
     if (activeTab !== tab) {
       hapticFeedback('medium');
       setActiveTab(tab);
@@ -277,8 +340,7 @@ function DatingFeed() {
     const targetId = profileId || currentProfile?.id;
 
     if (isGuestMode) {
-      hapticFeedback('medium');
-      triggerOnboarding();
+      triggerOnboarding('photo');
       return { is_match: false };
     }
 
@@ -361,11 +423,15 @@ function DatingFeed() {
     return (
       <DatingOnboarding 
         onClose={() => {
+          const latestDatingProfile = useStore.getState().datingProfile;
           setShowOnboarding(false);
-          if (datingProfile) {
+          if (latestDatingProfile) {
             loadProfiles(true);
             getDatingStats().then(updateDatingStats).catch(console.error);
+            setOnboardingReturnAction(null);
+            return;
           }
+          setGuestActionGate(onboardingReturnAction || 'profile');
         }}
       />
     );
@@ -384,7 +450,7 @@ function DatingFeed() {
                 style={styles.avatarButton}
                 onClick={() => {
                   hapticFeedback('medium');
-                  if (isGuestMode) setShowOnboarding(true);
+                  if (isGuestMode) triggerOnboarding('profile');
                   else setShowMyProfile(true);
                 }}
               >
@@ -510,7 +576,7 @@ function DatingFeed() {
                             onSwipeMove={isActive ? handleSwipeMove : undefined}
                             onSwipeEnd={isActive ? handleSwipeEnd : undefined}
                             isBlurred={isGuestMode}
-                            onRegisterTrigger={triggerOnboarding}
+                            onRegisterTrigger={() => triggerOnboarding('photo')}
                             isInteractive={isActive}
                             onExpandProfile={() => setShowProfileSheet(true)}
                             onLike={handleLike}
@@ -579,6 +645,33 @@ function DatingFeed() {
           onClose={() => setShowMyProfile(false)}
         />
       )}
+
+      <SwipeableModal
+        isOpen={Boolean(guestActionGate)}
+        onClose={handleGuestActionGateClose}
+        zIndex={Z_ONBOARDING_DATING}
+      >
+        <div style={styles.guestGateContent}>
+          <div style={styles.guestGateIcon}>
+            <Heart size={48} color="#fff" fill="#fff" />
+          </div>
+          <h2 style={styles.guestGateTitle}>Campus Dating</h2>
+          <p style={styles.guestGateSubtitle}>
+            Создай dating-анкету, чтобы открыть фото, вкладку симпатий и свой dating-профиль.
+          </p>
+          <div style={styles.guestGateFeatures}>
+            <div style={styles.guestGateFeature}>🎓 Только студенты твоего вуза</div>
+            <div style={styles.guestGateFeature}>🔒 Приватно и безопасно</div>
+            <div style={styles.guestGateFeature}>✨ Бесплатно навсегда</div>
+          </div>
+          <button type="button" style={styles.guestGateButton} onClick={handleGuestRegistrationStart}>
+            Создать dating-анкету
+          </button>
+          <button type="button" style={styles.guestGateDismiss} onClick={handleGuestActionGateClose}>
+            Пока просто посмотрю
+          </button>
+        </div>
+      </SwipeableModal>
 
       {showMatchModal && <MatchModal />}
     </div>
@@ -701,6 +794,88 @@ const styles = {
   emptySubtitle: {
     fontSize: 14, color: theme.colors.textSecondary, marginTop: 8,
     maxWidth: 260, lineHeight: 1.4,
+  },
+  guestGateContent: {
+    width: '100%',
+    maxWidth: 420,
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  guestGateIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    boxShadow: '0 10px 30px rgba(255, 59, 92, 0.4)',
+  },
+  guestGateTitle: {
+    margin: '0 0 8px',
+    fontSize: 30,
+    fontWeight: 800,
+    color: '#FFFFFF',
+  },
+  guestGateSubtitle: {
+    margin: '0 0 32px',
+    maxWidth: 320,
+    fontSize: 16,
+    lineHeight: 1.5,
+    color: '#999999',
+  },
+  guestGateFeatures: {
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    marginBottom: 28,
+  },
+  guestGateFeature: {
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    padding: '16px 18px',
+    borderRadius: 18,
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 600,
+    textAlign: 'left',
+  },
+  guestGateButton: {
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    border: 'none',
+    borderRadius: 20,
+    padding: '18px 24px',
+    background: 'linear-gradient(135deg, #ff3b5c 0%, #ff6b9d 100%)',
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: 800,
+    boxShadow: '0 14px 30px rgba(255, 59, 92, 0.28)',
+    cursor: 'pointer',
+  },
+  guestGateDismiss: {
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    marginTop: 18,
+    background: 'none',
+    border: 'none',
+    color: '#8E8E93',
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
   },
 };
 

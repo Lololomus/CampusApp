@@ -32,6 +32,8 @@ export const useStore = create(
             isRegistered: false,
             moderationRole: null,
             authStatus: 'ready',
+            activeTab: 'feed',
+            pendingAuthTab: null,
             createContentDraft: null,
             createMarketDraft: null,
           });
@@ -84,6 +86,8 @@ export const useStore = create(
           isRegistered: false,
           moderationRole: null,
           authStatus: 'ready',
+          activeTab: 'feed',
+          pendingAuthTab: null,
           createContentDraft: null,
           createMarketDraft: null,
         });
@@ -111,11 +115,14 @@ export const useStore = create(
       feedMode: 'global',
       feedSubTab: 'posts',
       pendingDeepLink: null,
+      pendingAuthTab: null,
       setActiveTab: (tab) => set({ activeTab: tab }),
       setFeedMode: (mode) => set({ feedMode: mode }),
       setFeedSubTab: (tab) => set({ feedSubTab: tab }),
       setPendingDeepLink: (pendingDeepLink) => set({ pendingDeepLink }),
       clearPendingDeepLink: () => set({ pendingDeepLink: null }),
+      setPendingAuthTab: (pendingAuthTab) => set({ pendingAuthTab }),
+      clearPendingAuthTab: () => set({ pendingAuthTab: null }),
 
       // MODAL STATES
       showAuthModal: false,
@@ -630,6 +637,8 @@ export const useStore = create(
             isRegistered: false,
             authStatus: 'ready',
             showAuthModal: false,
+            activeTab: 'feed',
+            pendingAuthTab: null,
             moderationRole: null,
           });
         };
@@ -686,6 +695,7 @@ export const useStore = create(
               authStatus: 'error',
               showAuthModal: false,
               activeTab: 'feed',
+              pendingAuthTab: null,
               createContentDraft: null,
               createMarketDraft: null,
             });
@@ -707,6 +717,7 @@ export const useStore = create(
             ...useStore.getState().onboardingData,
             ...data
           };
+          const pendingAuthTab = get().pendingAuthTab;
           
           const user = await registerUser(fullData);
 
@@ -716,7 +727,9 @@ export const useStore = create(
             authStatus: 'ready',
             showAuthModal: false,
             onboardingStep: 0,
-            onboardingData: {}
+            onboardingData: {},
+            activeTab: pendingAuthTab || get().activeTab,
+            pendingAuthTab: null,
           });
           
           get().addToast({

@@ -5,7 +5,7 @@ import { Z_AUTH_MODAL } from '../constants/zIndex';
 import SwipeableModal from './shared/SwipeableModal';
 
 function AuthModal() {
-  const { showAuthModal, setShowAuthModal, startRegistration } = useStore();
+  const { showAuthModal, setShowAuthModal, startRegistration, clearPendingAuthTab } = useStore();
 
   const handleRegister = () => {
     hapticFeedback('medium');
@@ -14,6 +14,7 @@ function AuthModal() {
 
   const handleClose = () => {
     hapticFeedback('light');
+    clearPendingAuthTab();
     setShowAuthModal(false);
   };
 

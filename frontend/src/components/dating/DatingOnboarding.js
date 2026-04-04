@@ -7,6 +7,7 @@ import { processImageFiles, revokeObjectURLs } from '../../utils/media';
 import { hapticFeedback, isTelegramSDKAvailable } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import SwipeableModal from '../shared/SwipeableModal';
 import {
   PROMPT_OPTIONS,
   PROMPT_MAX_LENGTH,
@@ -26,6 +27,7 @@ const SURFACE_ELEVATED = '#2C2C2E';
 const BORDER = 'rgba(255, 255, 255, 0.08)';
 const TEXT_MUTED = '#8E8E93';
 const CURVE = 'cubic-bezier(0.32, 0.72, 0, 1)';
+const CUSTOM_PROMPT_MODAL_Z = 10020;
 
 const TOTAL_STEPS = 4;
 const AGES = Array.from({ length: 25 }, (_, i) => i + 16); // 16-40
@@ -78,7 +80,11 @@ function DatingOnboarding({ onClose }) {
   const isDesktop = typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
     && window.matchMedia('(pointer: fine)').matches;
-  const shouldRenderLocalBack = import.meta.env.DEV && isDesktop && !isTelegram && step > 0;
+  const canCloseOnboarding = typeof onClose === 'function';
+  const shouldRenderLocalBack = import.meta.env.DEV
+    && isDesktop
+    && !isTelegram
+    && (showCustomModal || step > 0 || canCloseOnboarding);
 
   // Очистка превью при unmount
   useEffect(() => {
@@ -134,12 +140,30 @@ function DatingOnboarding({ onClose }) {
     if (step > 0) setStep(prev => prev - 1);
   };
 
+  const handleBackAction = useCallback(() => {
+    if (showCustomModal) {
+      hapticFeedback('light');
+      setShowCustomModal(false);
+      return;
+    }
+
+    if (step > 0) {
+      handleBack();
+      return;
+    }
+
+    if (canCloseOnboarding) {
+      hapticFeedback('light');
+      onClose();
+    }
+  }, [showCustomModal, step, handleBack, canCloseOnboarding, onClose]);
+
   useTelegramScreen({
     id: 'dating-onboarding',
     priority: 3200,
     back: {
-      visible: step > 0 && isTelegram,
-      onClick: handleBack,
+      visible: isTelegram && (showCustomModal || step > 0 || canCloseOnboarding),
+      onClick: handleBackAction,
     },
   });
 
@@ -310,6 +334,13 @@ function DatingOnboarding({ onClose }) {
   // ===== Кастомный ледокол =====
   const isCurrentPromptCustom = data.prompt && !PROMPT_OPTIONS.some(p => p.question === data.prompt);
 
+  const openCustomPromptModal = useCallback(() => {
+    hapticFeedback('selection');
+    setShowCustomModal(true);
+    setTempCustomPrompt(isCurrentPromptCustom ? data.prompt : '');
+    setTempCustomAnswer(isCurrentPromptCustom ? data.answer : '');
+  }, [isCurrentPromptCustom, data.prompt, data.answer]);
+
   const saveCustomPrompt = () => {
     if (!tempCustomPrompt.trim() || !tempCustomAnswer.trim()) {
       hapticFeedback('error');
@@ -390,10 +421,6 @@ function DatingOnboarding({ onClose }) {
   return (
     <>
       <style>{`
-        @keyframes do-slideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
         @keyframes do-fadeIn {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
@@ -406,7 +433,6 @@ function DatingOnboarding({ onClose }) {
         .do-spring-btn:active { transform: scale(0.96); opacity: 0.8; }
         .do-spring-btn:disabled { transform: none; opacity: 0.5; cursor: not-allowed; }
 
-        .do-modal-slide-up { animation: do-slideUp 0.4s ${CURVE} forwards; }
         .do-animate-spin { animation: do-spin 1s linear infinite; }
         .do-fade-in { animation: do-fadeIn 0.3s ease; }
 
@@ -431,7 +457,7 @@ function DatingOnboarding({ onClose }) {
           <div style={styles.backRow}>
             <button
               className="do-spring-btn"
-              onClick={handleBack}
+              onClick={handleBackAction}
               style={{
                 ...styles.backBtn,
                 opacity: shouldRenderLocalBack ? 1 : 0,
@@ -452,8 +478,9 @@ function DatingOnboarding({ onClose }) {
         >
           {/* --- ШАГ 0: Основы --- */}
           <div className="do-hide-scroll" style={{ ...styles.stepContainer, opacity: step === 0 ? 1 : 0.5 }}>
-            <h1 style={styles.stepTitle}>Основы</h1>
-            <p style={styles.stepSubtitle}>Эти данные нельзя будет изменить позже.</p>
+            <div style={styles.stepCenterContent}>
+              <h1 style={styles.stepTitle}>Основы</h1>
+              <p style={styles.stepSubtitle}>Эти данные нельзя будет изменить позже.</p>
 
             {/* Пол */}
             <div style={styles.fieldGroup}>
@@ -498,9 +525,9 @@ function DatingOnboarding({ onClose }) {
             </div>
 
             {/* Возраст */}
-            <div style={styles.fieldGroup}>
-              <div style={{ ...styles.fieldLabel, textAlign: 'center' }}>Мне лет</div>
-              <div style={styles.agePickerOuter}>
+              <div style={styles.fieldGroup}>
+                <div style={{ ...styles.fieldLabel, textAlign: 'center' }}>Мне лет</div>
+                <div style={styles.agePickerOuter}>
                 {/* Рамка по центру */}
                 <div style={styles.ageCenterBox} />
                 <div
@@ -529,43 +556,46 @@ function DatingOnboarding({ onClose }) {
               </div>
             </div>
           </div>
+          </div>
 
           {/* --- ШАГ 1: Фото --- */}
           <div className="do-hide-scroll" style={{ ...styles.stepContainer, opacity: step === 1 ? 1 : 0.5 }}>
-            <h1 style={styles.stepTitle}>Твои фото</h1>
-            <p style={styles.stepSubtitle}>
-              Добавь хотя бы одно фото, где хорошо видно твое лицо. Максимум {MAX_PHOTOS} фото.
-            </p>
+            <div style={styles.stepCenterContent}>
+              <h1 style={styles.stepTitle}>Твои фото</h1>
+              <p style={styles.stepSubtitle}>
+                Добавь хотя бы одно фото, где хорошо видно твое лицо. Максимум {MAX_PHOTOS} фото.
+              </p>
 
-            <div style={styles.photosGrid}>
-              {data.photos.map((p, i) => (
-                <div
-                  key={i}
-                  className="do-spring-btn"
-                  onClick={() => !p && handlePhotoSlotClick(i)}
-                  style={{
-                    ...styles.photoSlot,
-                    border: p ? 'none' : `2px dashed ${BORDER}`,
-                  }}
-                >
-                  {p ? (
-                    <>
-                      <img src={data.previews[i]} alt="" style={styles.photoImg} />
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removePhoto(i); }}
-                        style={styles.photoRemoveBtn}
-                      >
-                        <X size={14} />
-                      </button>
-                      {i === 0 && <div style={styles.photoMainBadge}>MAIN</div>}
-                    </>
-                  ) : (
-                    <div style={styles.photoPlaceholder}>
-                      <Plus size={24} />
-                    </div>
-                  )}
-                </div>
-              ))}
+              <div style={styles.photosGrid}>
+                {data.photos.map((p, i) => (
+                  <div
+                    key={i}
+                    className="do-spring-btn"
+                    onClick={() => !p && handlePhotoSlotClick(i)}
+                    style={{
+                      ...styles.photoSlot,
+                      border: p ? 'none' : `2px dashed ${BORDER}`,
+                    }}
+                  >
+                    {p ? (
+                      <>
+                        <img src={data.previews[i]} alt="" style={styles.photoImg} />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removePhoto(i); }}
+                          style={styles.photoRemoveBtn}
+                        >
+                          <X size={14} />
+                        </button>
+                        {i === 0 && <div style={styles.photoMainBadge}>MAIN</div>}
+                      </>
+                    ) : (
+                      <div style={styles.photoPlaceholder}>
+                        <Plus size={24} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             <input
@@ -648,79 +678,81 @@ function DatingOnboarding({ onClose }) {
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-              {/* Кнопка "Свой ледокол" */}
-              <button
-                className="do-spring-btn"
-                onClick={() => {
-                  hapticFeedback('selection');
-                  setShowCustomModal(true);
-                  setTempCustomPrompt(isCurrentPromptCustom ? data.prompt : '');
-                  setTempCustomAnswer(isCurrentPromptCustom ? data.answer : '');
-                }}
-                style={styles.customPromptBtn}
-              >
-                <Edit3 size={18} color={DATING} /> Написать свой ледокол...
-              </button>
-
-              {/* Кастомный промпт (если есть) */}
-              {isCurrentPromptCustom && (
+              <div style={styles.promptItem}>
                 <button
                   className="do-spring-btn"
-                  style={styles.selectedPromptBtn}
+                  onClick={openCustomPromptModal}
+                  style={isCurrentPromptCustom ? styles.selectedPromptBtn : styles.customPromptBtn}
                 >
-                  <Heart size={18} fill="currentColor" color={DATING} style={{ flexShrink: 0 }} />
-                  <span style={{ flex: 1 }}>{data.prompt}</span>
+                  <Edit3 size={18} color={DATING} style={{ flexShrink: 0 }} />
+                  <span style={{ flex: 1 }}>
+                    {isCurrentPromptCustom ? data.prompt : 'Написать свой ледокол...'}
+                  </span>
                 </button>
-              )}
+
+                {isCurrentPromptCustom && (
+                  <div className="do-fade-in" style={{ ...styles.answerBox, marginBottom: 0 }}>
+                    <div style={styles.answerLabel}>Твой ответ:</div>
+                    <textarea
+                      style={styles.answerTextarea}
+                      placeholder="Начни печатать..."
+                      value={data.answer}
+                      onChange={e => setData(prev => ({ ...prev, answer: e.target.value }))}
+                      onTouchMove={e => e.stopPropagation()}
+                      rows={3}
+                    />
+                  </div>
+                )}
+              </div>
 
               {/* Дефолтные ледоколы */}
               {PROMPT_OPTIONS.map((p) => {
                 const isActive = data.prompt === p.question;
                 return (
-                  <button
-                    key={p.id}
-                    className="do-spring-btn"
-                    onClick={() => {
-                      hapticFeedback('selection');
-                      setData(prev => ({
-                        ...prev,
-                        prompt: p.question,
-                        answer: isActive ? prev.answer : '',
-                      }));
-                    }}
-                    style={{
-                      ...styles.promptBtn,
-                      background: isActive ? 'rgba(255, 45, 85, 0.1)' : SURFACE_ELEVATED,
-                      border: isActive ? `1px solid ${DATING}` : `1px solid ${BORDER}`,
-                      color: isActive ? DATING : '#FFF',
-                    }}
-                  >
-                    <Heart
-                      size={18}
-                      fill={isActive ? 'currentColor' : 'none'}
-                      color={isActive ? DATING : TEXT_MUTED}
-                      style={{ flexShrink: 0, transition: 'all 0.2s' }}
-                    />
-                    <span style={{ flex: 1 }}>{p.question}</span>
-                  </button>
+                  <div key={p.id} style={styles.promptItem}>
+                    <button
+                      className="do-spring-btn"
+                      onClick={() => {
+                        hapticFeedback('selection');
+                        setData(prev => ({
+                          ...prev,
+                          prompt: p.question,
+                          answer: isActive ? prev.answer : '',
+                        }));
+                      }}
+                      style={{
+                        ...styles.promptBtn,
+                        background: isActive ? 'rgba(255, 45, 85, 0.1)' : SURFACE_ELEVATED,
+                        border: isActive ? `1px solid ${DATING}` : `1px solid ${BORDER}`,
+                        color: isActive ? DATING : '#FFF',
+                      }}
+                    >
+                      <Heart
+                        size={18}
+                        fill={isActive ? 'currentColor' : 'none'}
+                        color={isActive ? DATING : TEXT_MUTED}
+                        style={{ flexShrink: 0, transition: 'all 0.2s' }}
+                      />
+                      <span style={{ flex: 1 }}>{p.question}</span>
+                    </button>
+
+                    {isActive && (
+                      <div className="do-fade-in" style={{ ...styles.answerBox, marginBottom: 0 }}>
+                        <div style={styles.answerLabel}>Твой ответ:</div>
+                        <textarea
+                          style={styles.answerTextarea}
+                          placeholder={p.placeholder || 'Начни печатать...'}
+                          value={data.answer}
+                          onChange={e => setData(prev => ({ ...prev, answer: e.target.value }))}
+                          onTouchMove={e => e.stopPropagation()}
+                          rows={3}
+                        />
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
-
-            {/* Ответ на ледокол */}
-            {data.prompt && (
-              <div className="do-fade-in" style={styles.answerBox}>
-                <div style={styles.answerLabel}>Твой ответ:</div>
-                <textarea
-                  style={styles.answerTextarea}
-                  placeholder="Начни печатать..."
-                  value={data.answer}
-                  onChange={e => setData(prev => ({ ...prev, answer: e.target.value }))}
-                  onTouchMove={e => e.stopPropagation()}
-                  rows={3}
-                />
-              </div>
-            )}
           </div>
         </div>
 
@@ -740,64 +772,56 @@ function DatingOnboarding({ onClose }) {
           </button>
         </div>
 
-        {/* ===== МОДАЛКА КАСТОМНОГО ЛЕДОКОЛА ===== */}
-        {showCustomModal && (
-          <div className="do-modal-slide-up" style={styles.modal}>
-            <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>Свой ледокол</h2>
-              <button
-                className="do-spring-btn"
-                onClick={() => {
-                  hapticFeedback('light');
-                  setShowCustomModal(false);
-                }}
-                style={styles.modalCloseBtn}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={styles.modalBody}>
-              <div>
-                <div style={styles.fieldLabel}>Придумай вопрос:</div>
-                <input
-                  className="do-input-line"
-                  style={styles.inputLine}
-                  placeholder="О чем спросить?"
-                  value={tempCustomPrompt}
-                  onChange={e => setTempCustomPrompt(e.target.value)}
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <div style={{ ...styles.fieldLabel, marginTop: 24 }}>И сразу ответь на него:</div>
-                <textarea
-                  className="do-textarea"
-                  style={{ ...styles.textarea, fontSize: 18, borderColor: DATING }}
-                  placeholder="Твой креативный ответ..."
-                  value={tempCustomAnswer}
-                  onChange={e => setTempCustomAnswer(e.target.value)}
-                  rows={4}
-                />
-              </div>
-            </div>
-
+        <SwipeableModal
+          isOpen={showCustomModal}
+          onClose={() => {
+            hapticFeedback('light');
+            setShowCustomModal(false);
+          }}
+          title="Свой ледокол"
+          zIndex={CUSTOM_PROMPT_MODAL_Z}
+          showHeaderDivider={false}
+          footer={(
             <button
               className="do-spring-btn"
               disabled={!tempCustomPrompt.trim() || !tempCustomAnswer.trim()}
               onClick={saveCustomPrompt}
               style={{
-                ...styles.stickyButton,
+                ...styles.customPromptSaveButton,
                 background: (tempCustomPrompt.trim() && tempCustomAnswer.trim()) ? DATING : SURFACE_ELEVATED,
                 color: (tempCustomPrompt.trim() && tempCustomAnswer.trim()) ? '#FFF' : TEXT_MUTED,
-                marginBottom: 'var(--screen-bottom-offset, 0px)',
               }}
             >
               Сохранить и выбрать
             </button>
+          )}
+        >
+          <div style={styles.customPromptContent}>
+            <div>
+              <div style={styles.fieldLabel}>Придумай вопрос:</div>
+              <input
+                className="do-input-line"
+                style={styles.inputLine}
+                placeholder="О чем спросить?"
+                value={tempCustomPrompt}
+                onChange={e => setTempCustomPrompt(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <div style={{ ...styles.fieldLabel, marginTop: 24 }}>И сразу ответь на него:</div>
+              <textarea
+                className="do-textarea"
+                style={{ ...styles.textarea, fontSize: 18, borderColor: DATING }}
+                placeholder="Твой креативный ответ..."
+                value={tempCustomAnswer}
+                onChange={e => setTempCustomAnswer(e.target.value)}
+                rows={4}
+              />
+            </div>
           </div>
-        )}
+        </SwipeableModal>
       </div>
     </>
   );
@@ -887,6 +911,14 @@ const styles = {
     overflowY: 'auto',
     overflowX: 'hidden',
     transition: `opacity 0.4s ${CURVE}`,
+    boxSizing: 'border-box',
+  },
+  stepCenterContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    minHeight: '100%',
+    paddingBottom: '5vh',
     boxSizing: 'border-box',
   },
 
@@ -1093,6 +1125,11 @@ const styles = {
     border: `1px solid ${DATING}`,
     color: DATING,
   },
+  promptItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
   promptBtn: {
     padding: 16,
     borderRadius: 16,
@@ -1158,49 +1195,26 @@ const styles = {
     transition: 'all 0.3s',
   },
 
-  // Модалка
-  modal: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: BG,
-    zIndex: 100,
-    display: 'flex',
-    flexDirection: 'column',
-    paddingTop: 'calc(var(--screen-top-offset, 0px) + 24px)',
-    paddingLeft: `calc(20px + ${SAFE_LEFT})`,
-    paddingRight: `calc(20px + ${SAFE_RIGHT})`,
-    paddingBottom: 20,
-  },
-  modalHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  modalTitle: {
-    margin: 0,
-    fontSize: 24,
-    fontWeight: 800,
-  },
-  modalCloseBtn: {
-    background: SURFACE_ELEVATED,
-    border: 'none',
-    borderRadius: '50%',
-    width: 36,
-    height: 36,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#FFF',
-  },
-  modalBody: {
-    flex: 1,
+  // Модалка кастомного ледокола
+  customPromptContent: {
     display: 'flex',
     flexDirection: 'column',
     gap: 24,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  customPromptSaveButton: {
+    width: '100%',
+    border: 'none',
+    borderRadius: 20,
+    padding: 16,
+    fontWeight: 800,
+    fontSize: 17,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    transition: 'all 0.3s',
   },
 
   // Input line (для модалки)

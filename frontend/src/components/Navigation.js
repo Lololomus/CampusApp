@@ -22,6 +22,7 @@ function Navigation() {
     feedSubTab,
     isRegistered,
     setShowAuthModal,
+    setPendingAuthTab,
     unreadNotificationsCount,
   } = useStore();
 
@@ -71,36 +72,33 @@ function Navigation() {
     };
   }, [activeTab, shouldShowCreateButton, isFirstRender]);
 
-  // Скрываем навигацию при открытии клавиатуры (iOS двигает fixed-элементы вверх)
+  // Скрываем навигацию когда открыта клавиатура (поиск в фокусе)
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const handleResize = () => {
-      const el = outerRef.current;
+    const el = outerRef.current;
+    const apply = () => {
       if (!el) return;
-      const shouldFreeze = document.body.classList.contains(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
-      const keyboardHeight = shouldFreeze ? 0 : Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      const keyboardOffset = keyboardHeight > 50 ? Math.ceil(keyboardHeight) : 0;
-      el.style.transition = 'transform 0.25s ease';
-      el.style.transform = keyboardOffset > 0
-        ? `translate3d(0, ${keyboardOffset}px, 0)`
-        : 'translate3d(0, 0, 0)';
+      const hidden = document.body.classList.contains(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
+      el.style.transition = 'transform 0.25s ease, opacity 0.2s ease';
+      el.style.transform = hidden ? 'translate3d(0, 120px, 0)' : 'translate3d(0, 0, 0)';
+      el.style.opacity = hidden ? '0' : '1';
+      el.style.pointerEvents = hidden ? 'none' : '';
     };
-    vv.addEventListener('resize', handleResize);
-    vv.addEventListener('scroll', handleResize);
-    return () => {
-      vv.removeEventListener('resize', handleResize);
-      vv.removeEventListener('scroll', handleResize);
-    };
+    const observer = new MutationObserver(apply);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
   }, []);
 
   const handleTabClick = (tabId) => {
     hapticFeedback('light');
 
-    if (!isRegistered && (tabId === 'create' || tabId === 'profile' || tabId === 'people')) {
-      if (tabId === 'people') {
-        triggerRegistrationPrompt('open_dating_tab');
-      } else if (tabId === 'profile') {
+    if (!isRegistered && tabId === 'people') {
+      setPendingAuthTab('people');
+      triggerRegistrationPrompt('open_dating_tab');
+      return;
+    }
+
+    if (!isRegistered && (tabId === 'create' || tabId === 'profile')) {
+      if (tabId === 'profile') {
         triggerRegistrationPrompt('open_profile_tab');
       } else {
         setShowAuthModal(true);

@@ -29,7 +29,6 @@ import ConfirmationDialog from '../shared/ConfirmationDialog';
 import RequestDetailModal from '../requests/RequestDetailModal';
 import MarketDetail from '../market/MarketDetail';
 import EdgeBlur from '../shared/EdgeBlur';
-import AppHeader from '../shared/AppHeader';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
@@ -201,9 +200,10 @@ function Profile() {
     <div style={styles.container}>
       {/* Нижний блюр — от края экрана вверх, прозрачный конец совпадает с верхним краем навбара */}
       <EdgeBlur position="bottom" height={100} zIndex={50} />
-      <AppHeader title="Профиль" />
 
       <div style={styles.contentWrapper}>
+
+        <h1 style={styles.pageTitle}>Профиль</h1>
 
         {/* CAMPUS ID КАРТА */}
         <div style={styles.cardWrapper}>
@@ -880,7 +880,17 @@ const styles = {
   contentWrapper: {
     position: 'relative',
     zIndex: 2,
-    paddingTop: 'calc(var(--header-padding, calc(var(--screen-top-offset, 0px) + 44px)) + 16px)',
+    paddingTop: 'calc(var(--screen-top-offset, 0px) + 4px)',
+  },
+
+  pageTitle: {
+    margin: 0,
+    padding: '4px 16px 12px',
+    fontSize: 24,
+    fontWeight: 800,
+    color: '#FFF',
+    letterSpacing: '-0.5px',
+    textAlign: 'center',
   },
 
   cardWrapper: {
