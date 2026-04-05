@@ -804,7 +804,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
 const styles = {
   overlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     backgroundColor: 'rgba(0,0,0,0.95)',
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
@@ -813,7 +816,10 @@ const styles = {
   },
   container: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     zIndex: Z_PHOTO_VIEWER,
     display: 'flex',
     flexDirection: 'column',
@@ -835,8 +841,8 @@ const styles = {
     border: '1px solid rgba(255,255,255,0.1)',
   },
   closeButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: '50%',
     background: 'rgba(28,28,30,0.6)',
     backdropFilter: 'blur(12px)',

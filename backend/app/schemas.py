@@ -310,14 +310,17 @@ class PostCreate(BaseModel):
     event_date: Optional[datetime] = None
     event_location: Optional[str] = None
     event_contact: Optional[str] = None
-    
+
+    # Help
+    help_expires_at: Optional[datetime] = None
+
     # Аудитория
     scope: str = Field(default='university', pattern='^(university|city|all)$')
     target_university: Optional[str] = None
 
     # News
     is_important: bool = False
-    
+
     # Polls
     poll_data: Optional[dict] = None
     
@@ -419,9 +422,14 @@ class PostResponse(BaseModel):
     event_date: Optional[datetime] = None
     event_location: Optional[str] = None
     event_contact: Optional[str] = None
-    
+
+    # Help
+    help_expires_at: Optional[datetime] = None
+    is_resolved: bool = False
+    resolved_at: Optional[datetime] = None
+
     # News
-    is_important: Optional[bool] = False 
+    is_important: Optional[bool] = False
     
     @field_validator('is_important', mode='before')
     @classmethod

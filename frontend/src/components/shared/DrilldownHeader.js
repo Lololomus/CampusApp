@@ -118,8 +118,8 @@ const styles = {
     height: 40,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     border: `1px solid ${theme.colors.border}`,
     background: theme.colors.bg,

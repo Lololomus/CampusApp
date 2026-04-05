@@ -12,8 +12,8 @@ import { compressImage } from '../../utils/media';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
-import { useSwipe } from '../../hooks/useSwipe';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import SwipeableModal from '../shared/SwipeableModal';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import theme from '../../theme';
 import { Z_EDIT_PROFILE } from '../../constants/zIndex';
@@ -50,84 +50,41 @@ function getCampusGradient(id) {
 // ============================================================
 
 function EduLockedSheet({ daysLeft, onClose }) {
-  const sheetRef = useRef(null);
-  const swipeHandlers = useSwipe({
-    elementRef: sheetRef,
-    onSwipeDown: onClose,
-    isModal: true,
-    threshold: 80,
-  });
+  const [isOpen, setIsOpen] = useState(true);
+
+  const handleClose = () => {
+    setIsOpen(false);
+    setTimeout(onClose, 300);
+  };
 
   return (
-    <>
-      <style>{eduLockedSheetCSS}</style>
-      <div style={sheetStyles.overlay} onClick={onClose}>
-        <div
-          ref={sheetRef}
-          className="edu-locked-sheet-slide"
-          style={sheetStyles.sheet}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={sheetStyles.handleZone} {...swipeHandlers}>
-            <div style={sheetStyles.handle} />
-          </div>
-
-          <div style={sheetStyles.iconBox}>
-            <Lock size={32} color="#FF9F0A" />
-          </div>
-
-          <h2 style={sheetStyles.title}>Учёба заморожена</h2>
-          <p style={sheetStyles.subtitle}>
-            Изменить ВУЗ и курс можно раз в 30 дней — чтобы не обходить фильтры сообщества.
-          </p>
-
-          <div style={sheetStyles.cooldownBox}>
-            <span style={sheetStyles.cooldownNum}>{daysLeft}</span>
-            <span style={sheetStyles.cooldownLabel}>
-              {daysLeft === 1 ? 'день' : daysLeft < 5 ? 'дня' : 'дней'} до разморозки
-            </span>
-          </div>
-
-          <button type="button" style={sheetStyles.closeBtn} onClick={onClose}>
-            Понятно
-          </button>
+    <SwipeableModal isOpen={isOpen} onClose={handleClose} zIndex={10001}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', paddingTop: 8 }}>
+        <div style={sheetStyles.iconBox}>
+          <Lock size={32} color="#FF9F0A" />
         </div>
+
+        <h2 style={sheetStyles.title}>Учёба заморожена</h2>
+        <p style={sheetStyles.subtitle}>
+          Изменить ВУЗ и курс можно раз в 30 дней — чтобы не обходить фильтры сообщества.
+        </p>
+
+        <div style={sheetStyles.cooldownBox}>
+          <span style={sheetStyles.cooldownNum}>{daysLeft}</span>
+          <span style={sheetStyles.cooldownLabel}>
+            {daysLeft === 1 ? 'день' : daysLeft < 5 ? 'дня' : 'дней'} до разморозки
+          </span>
+        </div>
+
+        <button type="button" style={sheetStyles.closeBtn} onClick={handleClose}>
+          Понятно
+        </button>
       </div>
-    </>
+    </SwipeableModal>
   );
 }
 
 const sheetStyles = {
-  overlay: {
-    position: 'fixed', inset: 0,
-    background: 'rgba(0,0,0,0.6)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    zIndex: 10001,
-    display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-    animation: 'eduLockedOverlayIn 0.25s ease both',
-  },
-  sheet: {
-    background: '#1C1C1E',
-    borderTopLeftRadius: 32, borderTopRightRadius: 32,
-    borderTop: '1px solid rgba(255,255,255,0.08)',
-    padding: '0 24px 24px',
-    paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    textAlign: 'center',
-    boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
-    willChange: 'transform',
-  },
-  handleZone: {
-    width: '100%', height: 48,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none',
-    cursor: 'grab', flexShrink: 0, marginBottom: 8,
-  },
-  handle: {
-    width: 64, height: 6, borderRadius: 999,
-    background: 'rgba(255,255,255,0.2)',
-  },
   iconBox: {
     width: 72, height: 72, borderRadius: 24,
     background: 'rgba(255,159,10,0.12)',
@@ -163,11 +120,6 @@ const sheetStyles = {
   },
 };
 
-const eduLockedSheetCSS = `
-  @keyframes eduLockedOverlayIn { from { opacity: 0; } to { opacity: 1; } }
-  .edu-locked-sheet-slide { animation: eduLockedSlideUp 0.38s cubic-bezier(0.32, 0.72, 0, 1) both; }
-  @keyframes eduLockedSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-`;
 
 
 // ============================================================

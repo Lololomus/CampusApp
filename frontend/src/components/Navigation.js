@@ -134,6 +134,7 @@ function Navigation() {
             return (
               <React.Fragment key={tab.id}>
                 <button
+                  className="pressable-nav"
                   onClick={() => handleTabClick(tab.id)}
                   style={{
                     ...styles.button,
@@ -219,13 +220,12 @@ const styles = {
   outerWrapper: {
     position: 'fixed',
     bottom: 'max(16px, calc(16px + var(--screen-bottom-offset)))',
-    left: 'max(16px, calc(16px + var(--tg-safe-area-left, 0px)))',
-    right: 'max(16px, calc(16px + var(--tg-safe-area-right, 0px)))',
+    left: 'calc(var(--app-fixed-left) + 16px)',
+    width: 'calc(var(--app-fixed-width) - 32px)',
     zIndex: Z_NAVIGATION,
     pointerEvents: 'none',
     display: 'flex',
     justifyContent: 'center',
-    transform: 'translate3d(0, 0, 0)',
     willChange: 'transform',
   },
 

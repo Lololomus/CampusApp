@@ -1,3 +1,4 @@
+// ===== [LEGACY] EdgeBlur — компонент отключён в Feed. Используется в Market/Profile/PostDetail. Не удалять. =====
 // ===== FILE: shared/EdgeBlur.js =====
 
 import React, { useEffect, useState } from 'react';
@@ -20,38 +21,20 @@ function EdgeBlur({
   zIndex = 50,
   visible = true,
   animateHeight = false,
-  compensateKeyboard = false,
-  suppressCompensationBodyClass = '',
 }) {
   const isTop = position === 'top';
   const heightValue = typeof height === 'number' ? `${height}px` : height;
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
-    if (isTop || !compensateKeyboard) return undefined;
-
-    const vv = window.visualViewport;
-    if (!vv) return undefined;
-
-    const updateOffset = () => {
-      const suppressClass = suppressCompensationBodyClass || BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS;
-      if (suppressClass && document.body.classList.contains(suppressClass)) {
-        setKeyboardOffset(0);
-        return;
-      }
-      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setKeyboardOffset(keyboardHeight > 50 ? Math.ceil(keyboardHeight) : 0);
+    if (isTop) return undefined;
+    const apply = () => {
+      setHidden(document.body.classList.contains(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS));
     };
-
-    updateOffset();
-    vv.addEventListener('resize', updateOffset);
-    vv.addEventListener('scroll', updateOffset);
-
-    return () => {
-      vv.removeEventListener('resize', updateOffset);
-      vv.removeEventListener('scroll', updateOffset);
-    };
-  }, [compensateKeyboard, isTop, suppressCompensationBodyClass]);
+    const observer = new MutationObserver(apply);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, [isTop]);
 
   // Маска: плавное затухание от края к прозрачному концу
   // — сверху: плотный старт для стекла (60% solid)
@@ -80,17 +63,17 @@ function EdgeBlur({
 
   // height-анимация только там, где height реально меняется (иначе браузер может анимировать при ремаунте)
   const transition = animateHeight
-    ? 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease, transform 0.25s ease'
-    : 'opacity 0.3s ease, transform 0.25s ease';
-  const opacity = visible ? 1 : 0;
-  const transform = !isTop && compensateKeyboard
-    ? `translate3d(0, ${keyboardOffset}px, 0)`
+    ? 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease, transform 0.25s ease'
+    : 'opacity 0.2s ease, transform 0.25s ease';
+  const opacity = (visible && !hidden) ? 1 : 0;
+  const transform = (!isTop && hidden)
+    ? 'translate3d(0, 120px, 0)'
     : 'translate3d(0, 0, 0)';
 
   const baseStyle = {
     position: 'fixed',
-    left: 0,
-    right: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     height: `calc(${heightValue} + ${safeAreaCompensation})`,
     pointerEvents: 'none',
     transition,

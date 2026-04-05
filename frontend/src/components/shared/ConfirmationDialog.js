@@ -79,10 +79,10 @@ function ConfirmationDialog({
 const styles = {
   overlay: {
     position: 'fixed',
-    top: 0, 
-    left: 0,
-    right: 0,
+    top: 0,
     bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     background: 'rgba(0, 0, 0, 0.7)', // Чуть темнее для контраста
     backdropFilter: 'blur(4px)',
     WebkitBackdropFilter: 'blur(4px)',

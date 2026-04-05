@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import PostCard from './posts/PostCard';
-import RequestsFeed from './requests/RequestsFeed';
+// [LEGACY] import RequestsFeed from './requests/RequestsFeed';
 import FiltersModal from './shared/FiltersModal';
 import { getPosts, getAdsForFeed, triggerRegistrationPrompt } from '../api';
 import { useStore } from '../store';
@@ -12,9 +12,8 @@ import AppHeader from './shared/AppHeader';
 import FeedDateDivider from './shared/FeedDateDivider';
 import { buildFeedSections } from '../utils/feedDateSections';
 import { hapticFeedback } from '../utils/telegram';
-import EdgeBlur from './shared/EdgeBlur';
+// [LEGACY] import EdgeBlur from './shared/EdgeBlur';
 import {
-  BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS,
   POSTS_PAGE_SIZE,
   PULL_TO_REFRESH_THRESHOLD,
   INFINITE_SCROLL_ROOT_MARGIN,
@@ -29,7 +28,6 @@ function Feed() {
   const [feedAds, setFeedAds] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [requestsCategory, setRequestsCategory] = useState('all');
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const postsOffsetRef = useRef(0);
   const postsLoadingRef = useRef(false);
@@ -40,7 +38,6 @@ function Feed() {
   
   const {
     feedSubTab,
-    setFeedSubTab,
     setViewPostId,
     isRegistered,
     viewPostId,
@@ -49,7 +46,6 @@ function Feed() {
     clearUpdatedPost,
     posts: storePosts,
     postsFilters,
-    requestsFilters,
     user,
   } = useStore();
 
@@ -59,6 +55,7 @@ function Feed() {
 
   const postCategories = [
     { id: 'all', label: 'Все', emoji: '' },
+    { id: 'help', label: 'Помощь', emoji: '🤝' },
     { id: 'news', label: 'Новости', emoji: '📰' },
     { id: 'memes', label: 'Мемы', emoji: '🤡' },
     { id: 'events', label: 'События', emoji: '🎉' },
@@ -66,32 +63,16 @@ function Feed() {
     { id: 'lost_found', label: 'Находки', emoji: '🔍' },
   ];
 
-  const requestCategories = [
-    { id: 'all', label: 'Все', emoji: '' },
-    { id: 'study', label: 'Учёба', emoji: '📚' },
-    { id: 'help', label: 'Помощь', emoji: '🤝' },
-    { id: 'hangout', label: 'Движ', emoji: '🎉' }
-  ];
 
   // МЕМОИЗАЦИЯ СЧЁТЧИКА ФИЛЬТРОВ
   const countActiveFilters = useMemo(() => {
-    if (feedSubTab === 'posts') {
-      let count = 0;
-      if (postsFilters.location !== 'all') count++;
-      if (postsFilters.tags && postsFilters.tags.length > 0) count++;
-      if (postsFilters.dateRange !== 'all') count++;
-      if (postsFilters.sort !== 'newest') count++;
-      return count;
-    } else {
-      let count = 0;
-      if (requestsFilters.location !== 'all') count++;
-      if (requestsFilters.status !== 'active') count++;
-      if (requestsFilters.hasReward !== 'all') count++;
-      if (requestsFilters.urgency !== 'all') count++;
-      if (requestsFilters.sort !== 'newest') count++;
-      return count;
-    }
-  }, [feedSubTab, postsFilters, requestsFilters]);
+    let count = 0;
+    if (postsFilters.location !== 'all') count++;
+    if (postsFilters.tags && postsFilters.tags.length > 0) count++;
+    if (postsFilters.dateRange !== 'all') count++;
+    if (postsFilters.sort !== 'newest') count++;
+    return count;
+  }, [postsFilters]);
 
   const handleLikeUpdate = useCallback((postId, updates) => {
     setPosts(prevPosts => 
@@ -287,33 +268,20 @@ function Feed() {
   };
 
   const handleCategoryChange = (category) => {
-    if (feedSubTab === 'posts') setActiveCategory(category);
-    else setRequestsCategory(category);
+    setActiveCategory(category);
     haptic('light');
   };
 
   const handleSearchChange = (query) => setSearchQuery(query);
-  
+
   const handleFiltersClick = () => {
     haptic('medium');
     setShowFiltersModal(true);
   };
 
   const handleFiltersApply = () => {
-    if (feedSubTab === 'posts') {
-      loadPosts(true);
-    }
+    loadPosts(true);
   };
-
-  const handleTabSwitch = (tab) => {
-    if (feedSubTab !== tab) {
-      haptic('medium');
-      setFeedSubTab(tab);
-    }
-  };
-
-  const currentCategories = feedSubTab === 'posts' ? postCategories : requestCategories;
-  const selectedCategory = feedSubTab === 'posts' ? activeCategory : requestsCategory;
 
   // Подмешивание рекламы: После 1-го поста, а потом каждые 5
   const postsWithAds = useMemo(() => {
@@ -404,117 +372,95 @@ function Feed() {
   return (
     <div style={styles.container}>
       
-      {/* Верхний блюр шапки — высота меняется при сворачивании, анимируем */}
-      <EdgeBlur position="top" height="var(--header-padding)" zIndex={50} animateHeight />
+      {/* Верхний градиент — затемнение без блюра, следует за высотой шапки */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 'var(--app-fixed-left)',
+        width: 'var(--app-fixed-width)',
+        height: 'var(--header-padding, 160px)',
+        background: 'linear-gradient(to bottom, rgba(8,8,8,0.88) 0%, rgba(8,8,8,0.45) 55%, transparent 100%)',
+        pointerEvents: 'none',
+        zIndex: 99,
+        transition: 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+      }} />
 
-      {/* Нижний блюр — от края экрана вверх, прозрачный конец совпадает с верхним краем навбара */}
-      <EdgeBlur
-        position="bottom"
-        height={100}
-        zIndex={50}
-        compensateKeyboard
-        suppressCompensationBodyClass={BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS}
-      />
+      {/* Нижний градиент — затемнение без блюра */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 'var(--app-fixed-left)',
+        width: 'var(--app-fixed-width)',
+        height: 120,
+        background: 'linear-gradient(to top, rgba(8,8,8,0.80) 0%, transparent 100%)',
+        pointerEvents: 'none',
+        zIndex: 50,
+      }} />
 
       <AppHeader
         title="Лента"
         showSearch={true}
         searchValue={searchQuery}
-        searchPlaceholder={feedSubTab === 'posts' ? 'Поиск постов...' : 'Поиск запросов...'}
+        searchPlaceholder="Поиск постов..."
         onSearchChange={handleSearchChange}
-        categories={currentCategories}
-        selectedCategory={selectedCategory}
+        categories={postCategories}
+        selectedCategory={activeCategory}
         onCategoryChange={handleCategoryChange}
         showFilters={true}
         onFiltersClick={handleFiltersClick}
         activeFiltersCount={countActiveFilters}
         premium
         freezeBottomChromeOnSearchFocus
-      >
-        {/* Premium pill-switcher: только кнопки, обёртка — в AppHeader */}
-        <div style={{ position: 'relative', width: '100%', display: 'flex' }}>
-          <div
-            style={{
-              ...styles.activeIndicator,
-              transform: `translateX(${feedSubTab === 'posts' ? '0' : '100%'})`,
-            }}
-          />
-          <button
-            onClick={() => handleTabSwitch('posts')}
-            style={{
-              ...styles.tabButton,
-              color: feedSubTab === 'posts' ? '#000' : '#FFF',
-            }}
-          >
-            Посты
-          </button>
-          <button
-            onClick={() => handleTabSwitch('requests')}
-            style={{
-              ...styles.tabButton,
-              color: feedSubTab === 'requests' ? '#000' : '#FFF',
-            }}
-          >
-            Помощь
-          </button>
-        </div>
-      </AppHeader>
+      />
 
       <div style={styles.content}>
-        {feedSubTab === 'posts' ? (
-          <>
-            {loading && posts.length === 0 && (
-              <>
-                <PostCardSkeleton />
-                <PostCardSkeleton />
-              </>
-            )}
-
-            {!loading && posts.length === 0 && (
-              <div style={styles.empty}>
-                <div style={styles.emptyIcon}>📝</div>
-                <p style={styles.emptyTitle}>Пока нет постов</p>
-                <p style={styles.emptyHint}>Будь первым!</p>
-              </div>
-            )}
-
-            {posts.length > 0 && postsWithDividers.map((row) => (
-              row.type === 'divider' ? (
-                <FeedDateDivider key={row.key} label={row.label} />
-              ) : (
-                <div
-                  key={row.key}
-                  style={postCardWrapperStyle}
-                  ref={row.item.id === lastVisiblePostId ? lastPostCardRef : null}
-                >
-                  <PostCard
-                    post={row.item}
-                    onClick={row.item._isAd ? undefined : handlePostClick}
-                    onLikeUpdate={row.item._isAd ? undefined : handleLikeUpdate}
-                    onPostDeleted={row.item._isAd ? undefined : handlePostDeleted}
-                    onAdHidden={
-                      row.item._isAd
-                        ? (adId) => {
-                            if (IS_DEV) return;
-                            setFeedAds(prev => prev.filter(a => a.id !== adId && a.ad_id !== adId));
-                          }
-                        : undefined
-                    }
-                  />
-                </div>
-              )
-            ))}
-
-            {loading && posts.length > 0 && (
+        <>
+          {loading && posts.length === 0 && (
+            <>
               <PostCardSkeleton />
-            )}
-          </>
-        ) : (
-          <RequestsFeed 
-            category={requestsCategory}
-            searchQuery={searchQuery}
-          />
-        )}
+              <PostCardSkeleton />
+            </>
+          )}
+
+          {!loading && posts.length === 0 && (
+            <div style={styles.empty}>
+              <div style={styles.emptyIcon}>📝</div>
+              <p style={styles.emptyTitle}>Пока нет постов</p>
+              <p style={styles.emptyHint}>Будь первым!</p>
+            </div>
+          )}
+
+          {posts.length > 0 && postsWithDividers.map((row) => (
+            row.type === 'divider' ? (
+              <FeedDateDivider key={row.key} label={row.label} />
+            ) : (
+              <div
+                key={row.key}
+                style={postCardWrapperStyle}
+                ref={row.item.id === lastVisiblePostId ? lastPostCardRef : null}
+              >
+                <PostCard
+                  post={row.item}
+                  onClick={row.item._isAd ? undefined : handlePostClick}
+                  onLikeUpdate={row.item._isAd ? undefined : handleLikeUpdate}
+                  onPostDeleted={row.item._isAd ? undefined : handlePostDeleted}
+                  onAdHidden={
+                    row.item._isAd
+                      ? (adId) => {
+                          if (IS_DEV) return;
+                          setFeedAds(prev => prev.filter(a => a.id !== adId && a.ad_id !== adId));
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            )
+          ))}
+
+          {loading && posts.length > 0 && (
+            <PostCardSkeleton />
+          )}
+        </>
       </div>
 
       {showFiltersModal && (
@@ -565,7 +511,8 @@ const styles = {
   content: {
     display: 'block',
     // Фиксированный paddingTop — не зависит от --header-padding, устраняет дёрганье при анимации шапки
-    paddingTop: 'calc(var(--screen-top-offset, 0px) + 192px)',
+    // Header: 4px container + 28px title + 8px margin + 8px drawer-top + 44px search + 10px gap + 36px chips + 6px drawer-bottom = 144px
+    paddingTop: 'calc(var(--screen-top-offset, 0px) + 148px)',
     paddingLeft: '0px',
     paddingRight: '0px',
     paddingBottom: 120,

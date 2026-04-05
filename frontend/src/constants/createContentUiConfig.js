@@ -1,6 +1,7 @@
 import theme from '../theme';
 
 export const CREATE_CONTENT_POST_CATEGORIES = [
+  { value: 'help', label: 'Помощь', icon: '🤝', color: theme.colors.help },
   { value: 'news', label: 'Новости', icon: '📰', color: theme.colors.premium.primary },
   { value: 'memes', label: 'Мемы', icon: '🤡', color: theme.colors.premium.primary },
   { value: 'confessions', label: 'Признания', icon: '💭', color: theme.colors.premium.primary },
@@ -26,6 +27,14 @@ export const CREATE_CONTENT_SUGGESTED_TAGS = [
 ];
 
 export const CREATE_CONTENT_CATEGORY_CAPABILITIES = {
+  help: {
+    allowImages: true,
+    allowPoll: false,
+    forceAnonymous: false,
+    allowAnonymousToggle: true,
+    allowReward: true,
+    allowDeadline: true,
+  },
   news: {
     allowImages: true,
     allowPoll: true,
@@ -65,6 +74,7 @@ export const CREATE_CONTENT_CATEGORY_CAPABILITIES = {
 };
 
 export const CREATE_CONTENT_POST_PLACEHOLDERS = {
+  help: 'Что нужна помощь\nОпиши подробнее...',
   news: 'Заголовок поста\nРаскрой детали...',
   memes: 'Поделись мемом\nДобавь фото или подпись...',
   events: 'Название события\nДата, место, детали...',

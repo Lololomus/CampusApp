@@ -1,25 +1,16 @@
 // ===== FILE: src/components/dating/ProfileSheet.js =====
 // Bottom sheet для просмотра полной анкеты из фида (мок-дизайн datingfeed.txt)
 
-import React, { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React from 'react';
 import { ChevronDown, GraduationCap, Sparkles, Heart, X } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import { hapticFeedback } from '../../utils/telegram';
+import SwipeableModal from '../shared/SwipeableModal';
 import theme from '../../theme';
 
 const d = theme.colors.dating;
 
 function ProfileSheet({ profile, isOpen, onClose, onLike, onSkip }) {
-  const contentRef = useRef(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [isOpen]);
-
   if (!profile) return null;
 
   const commonInterests = profile.common_interests || [];
@@ -47,171 +38,92 @@ function ProfileSheet({ profile, isOpen, onClose, onLike, onSkip }) {
       ? { question: 'Ледокол', answer: profile.icebreaker }
       : null;
 
-  return createPortal(
-    <div style={{
-      ...styles.overlay,
-      opacity: isOpen ? 1 : 0,
-      pointerEvents: isOpen ? 'auto' : 'none',
-    }}>
-      {/* Backdrop */}
-      <div
-        style={{
-          ...styles.backdrop,
-          opacity: isOpen ? 1 : 0,
-        }}
-        onClick={onClose}
-      />
+  const footer = (
+    <div style={{ display: 'flex', gap: 12 }}>
+      <button style={styles.skipButton} onClick={handleSkip}>
+        <X size={24} color={d.textMuted} /> Пропустить
+      </button>
+      <button style={styles.likeButton} onClick={handleLike}>
+        <Heart size={20} fill="currentColor" /> Лайк
+      </button>
+    </div>
+  );
 
-      {/* Sheet */}
-      <div style={{
-        ...styles.sheet,
-        transform: isOpen ? 'translateY(0)' : 'translateY(100%)',
-      }}>
-        {/* Drag handle */}
-        <div style={styles.handleContainer} onClick={onClose}>
-          <div style={styles.handleBar} />
-        </div>
-
-        {/* Scrollable content */}
-        <div ref={contentRef} style={styles.scrollContent}>
-          {/* Header: Имя + возраст + кнопка закрытия */}
-          <div style={styles.header}>
-            <div>
-              <h1 style={styles.name}>{profile.name}, {profile.age}</h1>
-              <div style={styles.uniRow}>
-                <GraduationCap size={18} color={d.textMuted} />
-                <span>{profile.university}{profile.institute ? ` • ${profile.institute}` : ''}</span>
-              </div>
-            </div>
-            <button style={styles.closeButton} onClick={onClose}>
-              <ChevronDown size={24} color={d.textMuted} />
-            </button>
+  return (
+    <SwipeableModal isOpen={isOpen} onClose={onClose} footer={footer} zIndex={2000}>
+      {/* Header: Имя + возраст + кнопка закрытия */}
+      <div style={styles.header}>
+        <div>
+          <h1 style={styles.name}>{profile.name}, {profile.age}</h1>
+          <div style={styles.uniRow}>
+            <GraduationCap size={18} color={d.textMuted} />
+            <span>{profile.university}{profile.institute ? ` • ${profile.institute}` : ''}</span>
           </div>
-
-          {/* Бейджи: вуз + цели */}
-          <div style={styles.badgesRow}>
-            {isFromUni && (
-              <div style={styles.uniBadge}>
-                <Sparkles size={14} /> Из твоего вуза
-              </div>
-            )}
-            {profile.goals?.map(goal => (
-              <div key={goal} style={styles.goalBadge}>
-                {GOAL_LABELS[goal] || goal}
-              </div>
-            ))}
-          </div>
-
-          {/* Icebreaker */}
-          {icebreaker && (
-            <div style={styles.icebreaker}>
-              <div style={styles.icebreakerAccent} />
-              <span style={styles.icebreakerLabel}>Ледокол</span>
-              <span style={styles.icebreakerQuestion}>{icebreaker.question}</span>
-              <p style={styles.icebreakerAnswer}>{icebreaker.answer}</p>
-            </div>
-          )}
-
-          {/* О себе */}
-          {profile.bio && (
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>О себе</h3>
-              <p style={styles.bioText}>{profile.bio}</p>
-            </div>
-          )}
-
-          {/* Интересы */}
-          {profile.interests?.length > 0 && (
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>Интересы</h3>
-              <div style={styles.interestsGrid}>
-                {profile.interests.map(interest => {
-                  const isCommon = commonInterests.includes(interest);
-                  return (
-                    <div key={interest} style={isCommon ? styles.interestCommon : styles.interestChip}>
-                      {INTEREST_LABELS[interest] || interest}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
-
-        {/* Fixed bottom actions */}
-        <div style={styles.actionsBar}>
-          <button style={styles.skipButton} onClick={handleSkip}>
-            <X size={24} color={d.textMuted} /> Пропустить
-          </button>
-          <button style={styles.likeButton} onClick={handleLike}>
-            <Heart size={20} fill="currentColor" /> Лайк
-          </button>
-        </div>
+        <button style={styles.closeButton} onClick={onClose}>
+          <ChevronDown size={24} color={d.textMuted} />
+        </button>
       </div>
-    </div>,
-    document.body
+
+      {/* Бейджи: вуз + цели */}
+      <div style={styles.badgesRow}>
+        {isFromUni && (
+          <div style={styles.uniBadge}>
+            <Sparkles size={14} /> Из твоего вуза
+          </div>
+        )}
+        {profile.goals?.map(goal => (
+          <div key={goal} style={styles.goalBadge}>
+            {GOAL_LABELS[goal] || goal}
+          </div>
+        ))}
+      </div>
+
+      {/* Icebreaker */}
+      {icebreaker && (
+        <div style={styles.icebreaker}>
+          <div style={styles.icebreakerAccent} />
+          <span style={styles.icebreakerLabel}>Ледокол</span>
+          <span style={styles.icebreakerQuestion}>{icebreaker.question}</span>
+          <p style={styles.icebreakerAnswer}>{icebreaker.answer}</p>
+        </div>
+      )}
+
+      {/* О себе */}
+      {profile.bio && (
+        <div style={styles.section}>
+          <h3 style={styles.sectionTitle}>О себе</h3>
+          <p style={styles.bioText}>{profile.bio}</p>
+        </div>
+      )}
+
+      {/* Интересы */}
+      {profile.interests?.length > 0 && (
+        <div style={styles.section}>
+          <h3 style={styles.sectionTitle}>Интересы</h3>
+          <div style={styles.interestsGrid}>
+            {profile.interests.map(interest => {
+              const isCommon = commonInterests.includes(interest);
+              return (
+                <div key={interest} style={isCommon ? styles.interestCommon : styles.interestChip}>
+                  {INTEREST_LABELS[interest] || interest}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </SwipeableModal>
   );
 }
 
 const styles = {
-  overlay: {
-    position: 'fixed',
-    top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 2000,
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-end',
-    transition: 'opacity 0.3s ease',
-  },
-  backdrop: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    backdropFilter: 'blur(4px)',
-    WebkitBackdropFilter: 'blur(4px)',
-    transition: 'opacity 0.3s ease',
-  },
-  sheet: {
-    position: 'relative',
-    backgroundColor: d.surface,
-    width: '100%',
-    maxWidth: 600,
-    margin: '0 auto',
-    maxHeight: '85vh',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTop: 'none',
-    display: 'flex',
-    flexDirection: 'column',
-    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-    zIndex: 1,
-  },
-  handleContainer: {
-    display: 'flex',
-    justifyContent: 'center',
-    padding: 12,
-    flexShrink: 0,
-    cursor: 'pointer',
-  },
-  handleBar: {
-    width: 40,
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 3,
-  },
-  scrollContent: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '0 20px 100px',
-    WebkitOverflowScrolling: 'touch',
-    msOverflowStyle: 'none',
-    scrollbarWidth: 'none',
-  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 24,
+    paddingTop: 4,
   },
   name: {
     fontSize: 30,
@@ -230,8 +142,8 @@ const styles = {
     fontSize: 15,
   },
   closeButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: '50%',
     background: d.surfaceHover,
     border: 'none',
@@ -348,17 +260,6 @@ const styles = {
     borderRadius: 12,
     fontSize: 14,
     fontWeight: 500,
-  },
-  actionsBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: '16px 20px 20px',
-    background: `linear-gradient(to top, ${d.surface}, ${d.surface} 80%, transparent)`,
-    display: 'flex',
-    gap: 12,
-    paddingBottom: 'max(env(safe-area-inset-bottom, 20px), 20px)',
   },
   skipButton: {
     flex: 1,

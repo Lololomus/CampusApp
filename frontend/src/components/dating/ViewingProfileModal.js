@@ -1,7 +1,7 @@
 // ===== FILE: src/components/dating/ViewingProfileModal.js =====
 // Полноэкранный просмотр профиля из вкладки "Симпатии" — slide-in from right
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { GraduationCap, ChevronLeft, ChevronRight, Heart, MessageCircle } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import { hapticFeedback } from '../../utils/telegram';
@@ -9,6 +9,8 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import PhotoViewer from '../shared/PhotoViewer';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useModalAnimation, SCREEN_EXIT_MS } from '../../hooks/useModalAnimation';
 import theme from '../../theme';
 
 const d = theme.colors.dating;
@@ -23,9 +25,11 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
   const isMatchProfile = profileType === 'match';
   const commonInterests = profile?.common_interests || [];
 
+  const { isMounted, isVisible, handleClose } = useModalAnimation(onClose, SCREEN_EXIT_MS);
+
   useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
+    lockBodyScroll();
+    return () => unlockBodyScroll();
   }, []);
 
   // Скрываем Telegram MainButton — кнопка теперь in-app
@@ -33,7 +37,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
     id: `dating-view-profile-${profileType || 'profile'}-${profile?.id || 'unknown'}`,
     title: '',
     priority: 130,
-    back: { visible: true, onClick: onClose },
+    back: { visible: true, onClick: handleClose },
     main: { visible: false },
   });
 
@@ -79,12 +83,18 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
       ? { question: 'Ледокол', answer: profile.icebreaker }
       : null;
 
+  if (!isMounted) return null;
+
   return (
-    <EdgeSwipeBack onBack={onClose}>
-      <div style={styles.overlay}>
+    <EdgeSwipeBack onBack={handleClose}>
+      <div style={{
+        ...styles.overlay,
+        transform: isVisible ? 'translateX(0)' : 'translateX(100%)',
+        transition: 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
+      }}>
         <DrilldownHeader
           title=""
-          onBack={onClose}
+          onBack={handleClose}
           showTitle={false}
           showDivider={false}
           background="#000000"
@@ -253,12 +263,11 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
 const styles = {
   overlay: {
     position: 'fixed',
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
     backgroundColor: '#050505',
     zIndex: 1000,
     display: 'flex',
     flexDirection: 'column',
-    animation: 'slideInRight 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
   },
   header: {
     position: 'absolute',

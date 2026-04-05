@@ -152,21 +152,24 @@ async def get_posts(
             start_date = now - timedelta(days=30)
             query = query.where(models.Post.created_at >= start_date)
 
-    # Сортировка
+    # Сортировка: resolved-посты всегда в конце, потом обычная сортировка
     if sort == 'popular':
         query = query.order_by(
+            models.Post.is_resolved.asc(),
             models.Post.is_important.desc(),
             models.Post.likes_count.desc(),
             models.Post.created_at.desc()
         )
     elif sort == 'discussed':
         query = query.order_by(
+            models.Post.is_resolved.asc(),
             models.Post.is_important.desc(),
             models.Post.comments_count.desc(),
             models.Post.created_at.desc()
         )
     else:
         query = query.order_by(
+            models.Post.is_resolved.asc(),
             models.Post.is_important.desc(),
             models.Post.created_at.desc()
         )
@@ -510,3 +513,35 @@ async def vote_poll(db: AsyncSession, poll_id: int, user_id: int, option_indices
         "success": True,
         "is_correct": option_indices[0] == poll.correct_option if poll.type == 'quiz' else None
     }
+
+
+# ===== HELP-ПОСТЫ =====
+
+async def resolve_post(
+    db: AsyncSession,
+    post_id: int,
+    user_id: int,
+) -> Optional[models.Post]:
+    """Отметить help-пост как решённый. Только автор. Идемпотентно."""
+    result = await db.execute(
+        select(models.Post)
+        .options(selectinload(models.Post.author))
+        .where(
+            models.Post.id == post_id,
+            models.Post.is_deleted == False,
+        )
+    )
+    post = result.scalar_one_or_none()
+
+    if post is None or post.author_id != user_id:
+        return None
+
+    if post.is_resolved:
+        return post
+
+    post.is_resolved = True
+    post.resolved_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(post)
+    return post
+

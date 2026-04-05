@@ -171,7 +171,7 @@ class Post(Base):
     author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
     category = Column(
-        Enum('general', 'confessions', 'lost_found', 'news', 'events', 'polls', 'memes', 'ad', name='post_category_enum'),
+        Enum('general', 'confessions', 'lost_found', 'news', 'events', 'polls', 'memes', 'ad', 'help', name='post_category_enum'),
         nullable=False,
         index=True
     )
@@ -199,6 +199,11 @@ class Post(Base):
     event_location = Column(String(200), nullable=True)
     event_contact = Column(String(255), nullable=True)
     
+    # Для help-постов
+    help_expires_at = Column(DateTime, nullable=True)
+    is_resolved = Column(Boolean, default=False, nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+
     # Аудитория поста: 'university' (только свой вуз), 'city' (весь город), 'all' (все студенты)
     scope = Column(String(20), default='university', nullable=False)
     # Если задан — пост виден в ленте указанного вуза вместо вуза автора

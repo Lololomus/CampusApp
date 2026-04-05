@@ -831,7 +831,10 @@ function DatingOnboarding({ onClose }) {
 const styles = {
   overlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     backgroundColor: BG,
     zIndex: 10000,
     color: '#FFF',
@@ -883,7 +886,12 @@ const styles = {
     background: 'transparent',
     border: 'none',
     color: '#FFF',
-    padding: 0,
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     transition: `opacity 0.2s`,
   },
 

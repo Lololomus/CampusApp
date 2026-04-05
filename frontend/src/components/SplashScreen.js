@@ -93,7 +93,10 @@ export default function SplashScreen({ onFinished, variant = 'auto', authReady =
       <div
         style={{
           position: 'fixed',
-          inset: 0,
+          top: 0,
+          bottom: 0,
+          left: 'var(--app-fixed-left)',
+          width: 'var(--app-fixed-width)',
           zIndex: 9000,
           backgroundColor: BG,
           display: 'flex',

@@ -1,4 +1,5 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/requests/RequestsFeed.js (ОБНОВЛЕНО) =====
+// ===== [LEGACY] RequestsFeed — таб запросов убран. Компонент отключён, не удалять. =====
+// ===== 📄 ФАЙЛ: frontend/src/components/requests/RequestsFeed.js =====
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../../store';

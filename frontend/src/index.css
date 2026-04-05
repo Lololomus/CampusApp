@@ -5,6 +5,9 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #080808;
+  background-image: radial-gradient(circle, rgba(212, 255, 0, 0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
 code {
@@ -226,6 +229,9 @@ button[style*="translateY(-50%)"]:hover {
 }
 
 :root {
+  --app-max-width: 680px;
+  --app-fixed-left: max(0px, calc((100vw - var(--app-max-width)) / 2));
+  --app-fixed-width: min(100vw, var(--app-max-width));
   --info-bar-min-height: 260px;
   --header-height: 350px;
   --drilldown-header-height: 56px;
@@ -331,6 +337,19 @@ body.dating-active {
 
 .avatar-component:active {
   transform: scale(0.95);
+}
+
+/* Универсальный press state для кнопок */
+.pressable:active {
+  transform: scale(0.96) !important;
+  opacity: 0.82 !important;
+  transition: transform 0.08s ease, opacity 0.08s ease !important;
+}
+
+/* Press state для навигации (только opacity — у кнопок свой transform) */
+.pressable-nav:active {
+  opacity: 0.55 !important;
+  transition: opacity 0.08s ease !important;
 }
 
 /* Toast.js — slide animations */

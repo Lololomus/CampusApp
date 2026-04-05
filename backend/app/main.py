@@ -453,6 +453,9 @@ async def get_user_posts_endpoint(
             "is_important": post.is_important,
             "scope": post.scope,
             "target_university": post.target_university,
+            "help_expires_at": post.help_expires_at,
+            "is_resolved": post.is_resolved,
+            "resolved_at": post.resolved_at,
             "likes_count": post.likes_count,
             "comments_count": post.comments_count,
             "views_count": post.views_count,
@@ -580,6 +583,9 @@ async def get_posts_feed(
             "is_important": post.is_important,
             "scope": post.scope,
             "target_university": post.target_university,
+            "help_expires_at": post.help_expires_at,
+            "is_resolved": post.is_resolved,
+            "resolved_at": post.resolved_at,
             "likes_count": post.likes_count,
             "comments_count": post.comments_count,
             "views_count": post.views_count,
@@ -812,6 +818,9 @@ async def get_post_endpoint(
         "is_important": post.is_important,
         "scope": post.scope,
         "target_university": post.target_university,
+        "help_expires_at": post.help_expires_at,
+        "is_resolved": post.is_resolved,
+        "resolved_at": post.resolved_at,
         "likes_count": post.likes_count,
         "comments_count": post.comments_count,
         "views_count": post.views_count,
@@ -821,19 +830,68 @@ async def get_post_endpoint(
         "updated_at": post.updated_at
     })
 
+@app.patch("/posts/{post_id}/resolve", response_model=schemas.PostResponse)
+async def resolve_post_endpoint(
+    post_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отметить help-пост как решённый. Только автор."""
+    post = await crud.resolve_post(db, post_id, user.id)
+    if post is None:
+        raise HTTPException(status_code=404, detail="Post not found or not your post")
+    images = get_image_urls(post.images) if post.images else []
+    is_liked = await crud.is_post_liked_by_user(db, post.id, user.id)
+    poll_response = await _build_poll_response(db, post.poll, user.id)
+    return normalize_datetime_payload({
+        "id": post.id,
+        "author_id": post.author_id,
+        "author": schemas.UserShort.from_orm(post.author) if post.author else None,
+        "category": post.category,
+        "title": post.title,
+        "body": post.body,
+        "tags": post.tags or [],
+        "images": images,
+        "is_anonymous": post.is_anonymous,
+        "enable_anonymous_comments": post.enable_anonymous_comments,
+        "lost_or_found": post.lost_or_found,
+        "item_description": post.item_description,
+        "location": post.location,
+        "reward_type": post.reward_type,
+        "reward_value": post.reward_value,
+        "event_name": post.event_name,
+        "event_date": post.event_date,
+        "event_location": post.event_location,
+        "event_contact": post.event_contact,
+        "is_important": post.is_important,
+        "scope": post.scope,
+        "target_university": post.target_university,
+        "help_expires_at": post.help_expires_at,
+        "is_resolved": post.is_resolved,
+        "resolved_at": post.resolved_at,
+        "likes_count": post.likes_count,
+        "comments_count": post.comments_count,
+        "views_count": post.views_count,
+        "is_liked": is_liked,
+        "poll": poll_response,
+        "created_at": post.created_at,
+        "updated_at": post.updated_at,
+    })
+
+
 @app.delete("/posts/{post_id}")
 async def delete_post_endpoint(post_id: int, user: models.User = Depends(require_user), db: AsyncSession = Depends(get_db)):
     post = await crud.get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+
     if post.author_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
-    
+
     success = await crud.delete_post(db, post_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete")
-    
+
     return {"success": True}
 
 @app.patch("/posts/{post_id}", response_model=schemas.PostResponse)

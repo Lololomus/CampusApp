@@ -658,7 +658,10 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
 const s = {
   overlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     background: 'rgba(0,0,0,0.75)',
     backdropFilter: 'blur(4px)',
     zIndex: Z_MODAL_MARKET_DETAIL + 10,

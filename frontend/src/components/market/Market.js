@@ -9,7 +9,7 @@ import MarketDetail from './MarketDetail';
 import MarketFilters from './MarketFilters';
 import CreateMarketItem from './CreateMarketItem';
 import EditMarketItemModal from './EditMarketItemModal';
-import EdgeBlur from '../shared/EdgeBlur';
+// [LEGACY] import EdgeBlur from '../shared/EdgeBlur';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import FeedDateDivider from '../shared/FeedDateDivider';
@@ -19,7 +19,6 @@ import {
   MARKET_PAGE_SIZE,
   PULL_TO_REFRESH_THRESHOLD,
   INFINITE_SCROLL_ROOT_MARGIN,
-  BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS,
 } from '../../constants/layoutConstants';
 
 const Market = () => {
@@ -37,7 +36,6 @@ const Market = () => {
   } = useStore();
 
   // ===== STATE =====
-  const [activeTab, setActiveTab] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,25 +57,19 @@ const Market = () => {
   const pullToRefreshLockRef = useRef(false);
 
   // ===== CATEGORIES =====
-  const goodsCategories = [
+  const marketCategories = [
     { id: 'all', label: 'Все', emoji: '' },
     { id: 'books', label: 'Учебники', emoji: '📚' },
     { id: 'electronics', label: 'Техника', emoji: '💻' },
     { id: 'clothes', label: 'Одежда', emoji: '👕' },
     { id: 'home', label: 'Общага', emoji: '🛋️' },
     { id: 'hobby', label: 'Хобби', emoji: '🎸' },
-  ];
-
-  const servicesCategories = [
-    { id: 'all', label: 'Все', emoji: '' },
     { id: 'tutor', label: 'Репетитор', emoji: '👨‍🏫' },
     { id: 'homework', label: 'Курсачи', emoji: '📝' },
     { id: 'repair', label: 'Ремонт', emoji: '🛠️' },
     { id: 'design', label: 'Дизайн', emoji: '🎨' },
     { id: 'delivery', label: 'Курьер', emoji: '🏃' },
   ];
-
-  const currentCategories = activeTab === 'services' ? servicesCategories : goodsCategories;
 
   // ✅ СТАБИЛИЗАЦИЯ marketFilters
   const stabilizedFilters = useMemo(() => ({
@@ -133,7 +125,6 @@ const Market = () => {
         limit,
         search: searchQuery || undefined,
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
-        item_type: activeTab === 'services' ? 'service' : 'product',
       };
 
       const result = await getMarketItems(filters);
@@ -161,14 +152,14 @@ const Market = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loading, page, selectedCategory, searchQuery, stabilizedFilters, activeTab, user, marketItems, setMarketItems]);
+  }, [loading, page, selectedCategory, searchQuery, stabilizedFilters, user, marketItems, setMarketItems]);
 
   // ===== EFFECTS =====
   
   // ✅ БЕЗ JSON.stringify
   useEffect(() => {
     loadItems(true);
-  }, [selectedCategory, searchQuery, activeTab, stabilizedFilters]);
+  }, [selectedCategory, searchQuery, stabilizedFilters]);
 
   useEffect(() => {
     if (!pendingMarketItemId) return;
@@ -289,29 +280,41 @@ const Market = () => {
     setShowDetail(item); 
   }, [isRegistered]); // ✅ useCallback
 
-  const handleTabSwitch = useCallback((tab) => {
-    if (activeTab !== tab) {
-      haptic('medium');
-      setActiveTab(tab);
-      setSelectedCategory('all');
-      setPage(0);
-      setAnimationKey(prev => prev + 1);
-    }
-  }, [activeTab]);
-
   return (
     <div style={styles.container}>
 
-      <EdgeBlur position="top" height="var(--header-padding)" zIndex={50} animateHeight />
-      <EdgeBlur position="bottom" height={100} zIndex={50} compensateKeyboard suppressCompensationBodyClass={BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS} />
+      {/* Верхний градиент — затемнение без блюра */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 'var(--app-fixed-left)',
+        width: 'var(--app-fixed-width)',
+        height: 'var(--header-padding, 160px)',
+        background: 'linear-gradient(to bottom, rgba(8,8,8,0.88) 0%, rgba(8,8,8,0.45) 55%, transparent 100%)',
+        pointerEvents: 'none',
+        zIndex: 99,
+        transition: 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+      }} />
+
+      {/* Нижний градиент — затемнение без блюра */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 'var(--app-fixed-left)',
+        width: 'var(--app-fixed-width)',
+        height: 120,
+        background: 'linear-gradient(to top, rgba(8,8,8,0.80) 0%, transparent 100%)',
+        pointerEvents: 'none',
+        zIndex: 50,
+      }} />
 
       <AppHeader
         title="Маркет"
         showSearch={true}
         searchValue={searchQuery}
-        searchPlaceholder="Поиск товаров..."
+        searchPlaceholder="Поиск в маркете..."
         onSearchChange={handleSearchChange}
-        categories={currentCategories}
+        categories={marketCategories}
         selectedCategory={selectedCategory}
         onCategoryChange={handleCategoryChange}
         showFilters={true}
@@ -319,28 +322,7 @@ const Market = () => {
         activeFiltersCount={activeFiltersCount}
         premium
         freezeBottomChromeOnSearchFocus
-      >
-        <div style={{ position: 'relative', width: '100%', display: 'flex' }}>
-          <div
-            style={{
-              ...styles.activeIndicator,
-              transform: `translateX(${activeTab === 'all' ? '0' : '100%'})`,
-            }}
-          />
-          <button
-            onClick={() => handleTabSwitch('all')}
-            style={{ ...styles.tabButton, color: activeTab === 'all' ? '#000' : '#FFF' }}
-          >
-            Товары
-          </button>
-          <button
-            onClick={() => handleTabSwitch('services')}
-            style={{ ...styles.tabButton, color: activeTab === 'services' ? '#000' : '#FFF' }}
-          >
-            Услуги
-          </button>
-        </div>
-      </AppHeader>
+      />
 
       {/* CONTENT */}
       <div style={styles.content} ref={contentRef}>
@@ -447,37 +429,9 @@ const styles = {
     minHeight: '100vh',
   },
 
-  activeIndicator: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: '50%',
-    backgroundColor: theme.colors.premium.primary,
-    borderRadius: 15,
-    boxShadow: `0 2px 10px ${theme.colors.premium.primary}30`,
-    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-    zIndex: 1,
-  },
-
-  tabButton: {
-    flex: 1,
-    position: 'relative',
-    zIndex: 2,
-    background: 'transparent',
-    border: 'none',
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: 'pointer',
-    transition: 'color 0.2s ease',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   content: {
-    // Фиксированный отступ как в Feed — без дёрганья при анимации AppHeader
-    paddingTop: 'calc(var(--screen-top-offset, 0px) + 192px)',
+    // Header: 4px container + 28px title + 8px margin + 8px drawer-top + 44px search + 10px gap + 36px chips + 6px drawer-bottom = 144px
+    paddingTop: 'calc(var(--screen-top-offset, 0px) + 148px)',
   },
 
   grid: {

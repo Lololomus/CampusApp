@@ -310,9 +310,9 @@ const styles = {
   overlay: {
     position: 'fixed',
     top: 0,
-    left: 0,
-    right: 0,
     bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     background: 'radial-gradient(circle at center, rgba(255, 59, 92, 0.18) 0%, rgba(10, 10, 10, 0.97) 60%)',
     zIndex: 9999,
     display: 'flex',

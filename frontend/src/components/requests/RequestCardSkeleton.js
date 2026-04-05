@@ -1,3 +1,4 @@
+// ===== [LEGACY] RequestCardSkeleton — таб запросов убран. Компонент отключён, не удалять. =====
 import React from 'react';
 import theme from '../../theme';
 import { AVATAR_BORDER_RADIUS } from '../shared/Avatar';

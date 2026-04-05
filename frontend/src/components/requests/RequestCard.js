@@ -1,3 +1,4 @@
+// ===== [LEGACY] RequestCard — таб запросов убран. Компонент отключён, не удалять. =====
 import React, { useMemo, useRef, useState } from 'react';
 import {
   ChevronRight,

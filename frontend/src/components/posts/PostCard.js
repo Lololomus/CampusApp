@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, Calendar, ArrowUpRight, Megaphone, Link, Share2, Edit2, Trash2, Flag, EyeOff } from 'lucide-react';
+import { Heart, MessageCircle, Eye, MapPin, Calendar, ArrowUpRight, Megaphone, Link, Share2, Edit2, Trash2, Flag, EyeOff, CheckCircle } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
-import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd, triggerRegistrationPrompt } from '../../api';
+import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd, triggerRegistrationPrompt, resolvePost } from '../../api';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import DropdownMenu from '../DropdownMenu';
@@ -24,7 +24,7 @@ import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { sharePostViaTelegram } from '../../utils/telegramShare';
 
-function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
+function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPostResolved }) {
   const { likedPosts, setPostLiked, user, setEditingContent, isRegistered } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -37,6 +37,8 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [isResolved, setIsResolved] = useState(Boolean(post.is_resolved));
+  const [resolving, setResolving] = useState(false);
   const avatarRef = useRef(null);
   const cardRef = useRef(null);
   const bodyRef = useRef(null);
@@ -230,6 +232,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
       case 'events':      return { label: 'Событие',     ...tc.events };
       case 'confessions': return { label: 'Подслушано',  ...tc.confessions };
       case 'lost_found':  return { label: 'Бюро',        ...tc.lostFound };
+      case 'help':        return { label: 'Помощь',      ...tc.help };
       case 'polls':       return post.poll?.type === 'quiz'
         ? { label: 'Викторина', color: '#BF5AF2', bg: 'rgba(191,90,242,0.15)' }
         : { label: 'Опрос',     color: theme.colors.premium.primary, bg: 'rgba(212,255,0,0.15)' };
@@ -331,6 +334,22 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
   const handleCardClick = () => {
     if (isAd) return; // На рекламу клик не открывает детальный вид
     if (onClick) onClick(post.id);
+  };
+
+  const handleResolve = async (e) => {
+    e.stopPropagation();
+    if (resolving || isResolved) return;
+    setResolving(true);
+    try {
+      await resolvePost(post.id);
+      setIsResolved(true);
+      hapticFeedback('success');
+      if (onPostResolved) onPostResolved(post.id);
+    } catch {
+      hapticFeedback('error');
+    } finally {
+      setResolving(false);
+    }
   };
 
   const handleLike = async (e) => {
@@ -518,7 +537,14 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
         }
       `}</style>
 
-      <div ref={cardRef} style={styles.card} onClick={handleCardClick}>
+      <div
+        ref={cardRef}
+        style={{
+          ...styles.card,
+          ...(post.category === 'help' ? { borderLeft: `3px solid ${isResolved ? 'rgba(255,107,107,0.35)' : theme.colors.help}`, paddingLeft: 13 } : {}),
+        }}
+        onClick={handleCardClick}
+      >
 
         {/* === HEADER: аватар + имя + меню (одна строка) === */}
         <div style={styles.header}>
@@ -575,6 +601,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
             {!isAd && (
               <span style={{ ...styles.categoryBadge, color: catInfo.color, background: catInfo.bg }}>
                 {catInfo.label}
+              </span>
+            )}
+            {!isAd && isResolved && (
+              <span style={{ ...styles.categoryBadge, color: '#32D74B', background: 'rgba(50,215,75,0.15)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <CheckCircle size={10} strokeWidth={2.5} /> Решено
               </span>
             )}
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -643,6 +674,19 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden }) {
             )}
           </div>
         )}
+        {/* Кнопка «Вопрос решён» — только автору, только для help-постов */}
+        {!isAd && post.category === 'help' && isOwner && !isResolved && (
+          <button
+            onClick={handleResolve}
+            disabled={resolving}
+            style={styles.resolveBtn}
+            className="pressable"
+          >
+            <CheckCircle size={14} strokeWidth={2} />
+            {resolving ? 'Отмечаем...' : 'Вопрос решён'}
+          </button>
+        )}
+
         {images.length > 0 && (
           isAd ? (
             // Для рекламы: простая картинка с отступами и скруглением по моку
@@ -856,7 +900,7 @@ const styles = {
   headerRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     flexShrink: 0,
     paddingLeft: 8,
   },
@@ -866,7 +910,22 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
     padding: '4px 10px',
-    borderRadius: 10,
+    borderRadius: theme.radius.md,
+  },
+  resolveBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    margin: '8px 0 4px',
+    padding: '7px 14px',
+    borderRadius: theme.radius.md,
+    border: '1px solid rgba(50,215,75,0.3)',
+    background: 'rgba(50,215,75,0.08)',
+    color: '#32D74B',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    alignSelf: 'flex-start',
   },
   content: {
     padding: '0 16px',
@@ -875,7 +934,7 @@ const styles = {
   title: {
     fontSize: 17,
     fontWeight: theme.fontWeight.bold,
-    margin: '4px 0 2px',
+    margin: '4px 0 4px',
     lineHeight: 1.3,
     color: theme.colors.text,
   },
@@ -908,7 +967,7 @@ const styles = {
     color: theme.colors.premium.primary,
     fontSize: 14,
     fontWeight: 600,
-    padding: '6px 0',
+    padding: '8px 0',
     cursor: 'pointer',
   },
   pollWrapper: { margin: `0 16px 12px` },
@@ -922,7 +981,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    padding: '6px 10px',
+    padding: '8px 12px',
     background: theme.colors.elevated,
     borderRadius: theme.radius.sm,
     fontSize: 12,

@@ -409,6 +409,16 @@ export async function deletePost(postId) {
   }
 }
 
+export async function resolvePost(postId) {
+  try {
+    const response = await api.patch(`/posts/${postId}/resolve`);
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка при отметке поста как решённого:', error);
+    throw error;
+  }
+}
+
 export async function likePost(postId) {
   try {
     const response = await api.post(`/posts/${postId}/like`);

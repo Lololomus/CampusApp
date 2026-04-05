@@ -10,7 +10,8 @@ import EdgeBlur from '../shared/EdgeBlur';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { getNotifications, markAllNotificationsRead } from '../../api';
 import { useStore } from '../../store';
-import { hapticFeedback, showBackButton, hideBackButton } from '../../utils/telegram';
+import { hapticFeedback } from '../../utils/telegram';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { toast } from '../shared/Toast';
 import { Z_MODAL_NOTIFICATIONS_SCREEN } from '../../constants/zIndex';
 import ReviewModal from '../market/ReviewModal';
@@ -596,11 +597,12 @@ function NotificationsScreen() {
     return () => unlockBodyScroll();
   }, []);
 
-  // Telegram BackButton (прод) + cleanup
-  useEffect(() => {
-    showBackButton(handleClose);
-    return () => hideBackButton();
-  }, [handleClose]);
+  useTelegramScreen({
+    id: 'notifications-screen',
+    title: 'Уведомления',
+    priority: 105,
+    back: { visible: true, onClick: handleClose },
+  });
 
   useEffect(() => {
     const load = async () => {
@@ -650,7 +652,7 @@ function NotificationsScreen() {
       zIndex={Z_MODAL_NOTIFICATIONS_SCREEN}
     >
     <div style={{
-      position: 'fixed', inset: 0,
+      position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
       zIndex: Z_MODAL_NOTIFICATIONS_SCREEN,
       background: COLORS.bg,
       display: 'flex', flexDirection: 'column',

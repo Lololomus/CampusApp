@@ -1080,7 +1080,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
 }
 
 const styles = {
-  overlay: { position: 'fixed', inset: 0, zIndex: getOverlayZIndex(Z_MODAL_EDIT_POST), transition: 'opacity 0.3s ease' },
+  overlay: { position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', zIndex: getOverlayZIndex(Z_MODAL_EDIT_POST), transition: 'opacity 0.3s ease' },
   backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(2px)' },
   sheet: {
     position: 'absolute',

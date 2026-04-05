@@ -625,7 +625,10 @@ const BG = '#000';
 const styles = {
   overlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     backgroundColor: BG,
     zIndex: Z_ONBOARDING_MAIN,
     overflow: 'hidden',

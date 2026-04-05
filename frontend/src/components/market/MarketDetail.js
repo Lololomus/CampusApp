@@ -651,9 +651,9 @@ const styles = {
   container: {
     position: 'fixed',
     top: 0,
-    left: 0,
-    right: 0,
     bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     background: theme.colors.premium.bg,
     zIndex: Z_MARKET_DETAIL,
     willChange: 'transform',

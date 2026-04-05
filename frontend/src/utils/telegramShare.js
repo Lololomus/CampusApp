@@ -1,6 +1,6 @@
 import { POST_CATEGORY_LABELS, REQUEST_CATEGORY_LABELS } from '../constants/contentConstants';
 import { MARKET_CATEGORIES_MAP } from '../constants/marketConstants';
-import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS, REWARD_TYPES } from '../types';
+import { REWARD_TYPE_ICONS, REWARD_TYPES } from '../types';
 import { buildMiniAppStartappUrl } from './deepLinks';
 import { stripLeadingTitleFromBody } from './contentTextParser';
 import { getTelegramWebApp } from './telegram';
@@ -40,21 +40,36 @@ function formatMoney(value) {
   return `${new Intl.NumberFormat('ru-RU').format(numeric)} ₽`;
 }
 
-function getLocationLine(entity) {
+function getPostLocationLine(post) {
   const location = compactText(
-    entity?.author?.university
-      || entity?.seller?.university
-      || entity?.university
-      || entity?.location
+    post?.event_location
+      || post?.location
+      || post?.author?.university
+      || post?.university
+  );
+  return location ? `📍 ${location}` : null;
+}
+
+function getRequestLocationLine(request) {
+  const location = compactText(
+    request?.author?.university
+      || request?.university
+      || request?.location
+  );
+  return location ? `📍 ${location}` : null;
+}
+
+function getMarketLocationLine(item) {
+  const location = compactText(
+    item?.location
+      || item?.seller?.university
+      || item?.university
   );
   return location ? `📍 ${location}` : null;
 }
 
 function buildTelegramShareUrl(message, link) {
-  const params = new URLSearchParams();
-  params.set('url', link);
-  params.set('text', message);
-  return `https://t.me/share/url?${params.toString()}`;
+  return `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(message)}`;
 }
 
 function openTelegramShareUrl(shareUrl) {
@@ -90,8 +105,8 @@ function buildPostSharePayload(post) {
       '🎓 CampusApp',
       `${categoryIcon} ${categoryLabel}`,
       preview,
-      getLocationLine(post),
-      'Открыть пост 👇',
+      getPostLocationLine(post),
+      'Открыть в CampusApp 👇',
     ]),
   };
 }
@@ -100,12 +115,11 @@ function buildRequestRewardLine(request) {
   if (!request?.reward_type || request.reward_type === REWARD_TYPES.NONE) return null;
 
   const rewardIcon = REWARD_TYPE_ICONS[request.reward_type] || '🎁';
-  const rewardLabel = REWARD_TYPE_LABELS[request.reward_type] || 'Вознаграждение';
   const rewardValue = compactText(request.reward_value);
 
   return rewardValue
-    ? `${rewardIcon} ${rewardLabel}: ${rewardValue}`
-    : `${rewardIcon} ${rewardLabel}`;
+    ? `${rewardIcon} Вознаграждение: ${rewardValue}`
+    : `${rewardIcon} Вознаграждение`;
 }
 
 function buildRequestSharePayload(request) {
@@ -120,12 +134,11 @@ function buildRequestSharePayload(request) {
     link: buildMiniAppStartappUrl(`request_${request.id}`),
     message: joinMessageLines([
       '🎓 CampusApp',
-      `🤝 Запрос`,
       `${categoryIcon} ${categoryLabel}`,
       preview,
       buildRequestRewardLine(request),
-      getLocationLine(request),
-      'Открыть запрос 👇',
+      getRequestLocationLine(request),
+      'Открыть в CampusApp 👇',
     ]),
   };
 }
@@ -133,10 +146,11 @@ function buildRequestSharePayload(request) {
 function buildMarketItemSharePayload(item) {
   const categoryMeta = MARKET_CATEGORIES_MAP[item?.category] || {};
   const isService = item?.item_type === 'service';
-  const typeLabel = isService ? '🛠 Услуга' : '🛍 Товар';
-  const categoryLine = categoryMeta.label
+  const headline = categoryMeta.label
     ? `${categoryMeta.icon || (isService ? '✨' : '📦')} ${categoryMeta.label}`
-    : null;
+    : isService
+      ? '🛠 Услуга'
+      : '🛍 Товар';
   const priceLine = formatMoney(item?.price);
   const preview = truncateText(item?.title || 'Открыть объявление в CampusApp', 110);
 
@@ -144,12 +158,11 @@ function buildMarketItemSharePayload(item) {
     link: buildMiniAppStartappUrl(`market_${item.id}`),
     message: joinMessageLines([
       '🎓 CampusApp',
-      typeLabel,
-      categoryLine,
+      headline,
       preview,
       priceLine ? `💸 ${priceLine}` : isService ? '💬 Цена обсуждается' : '💬 Цена по договорённости',
-      getLocationLine(item),
-      'Открыть объявление 👇',
+      getMarketLocationLine(item),
+      'Открыть в CampusApp 👇',
     ]),
   };
 }

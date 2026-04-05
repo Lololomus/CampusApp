@@ -57,7 +57,6 @@ const AppHeader = ({
   const isRegistered = useStore((state) => Boolean(state.isRegistered));
 
   const hasPremiumDrawerContent = Boolean(showSearch || showFilters || categories);
-  const hasPremiumSecondaryRow = Boolean(children || premiumTrailing || hasPremiumDrawerContent);
   // #New Premium: drawer виден если не скроллили ИЛИ если юзер нажал лупу
   const showDrawer = hasPremiumDrawerContent && (!isScrolled || isManualExpanded);
 
@@ -223,8 +222,8 @@ const AppHeader = ({
     stickyHeader: {
       position: 'fixed',
       top: 0,
-      left: 0,
-      right: 0,
+      left: 'var(--app-fixed-left)',
+      width: 'var(--app-fixed-width)',
       zIndex: 1000,
       backgroundColor: transparent 
         ? 'rgba(26, 26, 26, 0.8)' 
@@ -255,8 +254,8 @@ const AppHeader = ({
     collapsibleWrapper: {
       position: 'fixed',
       top: 'var(--sticky-height, 56px)',
-      left: 0,
-      right: 0,
+      left: 'var(--app-fixed-left)',
+      width: 'var(--app-fixed-width)',
       zIndex: 999,
       backgroundColor: theme.colors.bgSecondary,
       transform: collapsibleVisible ? 'translateY(0)' : 'translateY(-100%)',
@@ -351,12 +350,18 @@ const AppHeader = ({
   // ===== PREMIUM RENDER =====
   if (premium) {
     const p = theme.colors.premium;
+    // Вторичная строка (табы/trailing) только когда есть явный контент — НЕ включает drawer
+    const hasSecondaryContent = Boolean(children || premiumTrailing);
+    // Кнопка-лупа появляется только когда нет вторичной строки (Feed), drawer есть, и мы проскроллили
+    const showCollapsedBtn = hasPremiumDrawerContent && isScrolled && !isManualExpanded && !hasSecondaryContent;
+
     return (
       <div ref={stickyRef} style={{
         position: 'fixed',
         top: 0,
-        left: 0,
-        right: 0,
+        left: 'var(--app-fixed-left)',
+        width: 'var(--app-fixed-width)',
+        boxSizing: 'border-box',
         zIndex: 100,
         background: 'transparent',
         display: 'flex',
@@ -366,34 +371,37 @@ const AppHeader = ({
         paddingRight: 16,
         paddingBottom: 0,
       }}>
-        {/* 1. Заголовок — всегда виден */}
-        <div style={{
-          height: 28,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: hasPremiumSecondaryRow ? 12 : 0,
-        }}>
-          <h1 style={{
-            margin: 0,
-            fontSize: 24,
-            fontWeight: 800,
-            color: '#FFF',
-            letterSpacing: '-0.5px',
-          }}>{title || 'Campus.'}</h1>
-        </div>
+        {/* 1. Заголовок — только если передан */}
+        {Boolean(title) && (
+          <div style={{
+            height: 28,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: hasSecondaryContent || hasPremiumDrawerContent ? 8 : 0,
+          }}>
+            <h1 style={{
+              margin: 0,
+              fontSize: 24,
+              fontWeight: 800,
+              color: '#FFF',
+              letterSpacing: '-0.5px',
+            }}>{title}</h1>
+          </div>
+        )}
 
-        {/* 2. Строка: Табы + Search-иконка при скролле */}
-        {hasPremiumSecondaryRow && (
+        {/* 2. Вторичная строка: табы + trailing + search-иконка при скролле
+               Рендерится только когда есть children или premiumTrailing */}
+        {hasSecondaryContent && (
           <div style={{ display: 'flex', alignItems: 'center', height: 36, width: '100%' }}>
-            {/* Pill-switcher с children (передаётся из Feed.js) */}
+            {/* Pill-switcher — фон только когда есть children */}
             <div style={{
               flex: 1,
               height: '100%',
-              background: p.surfaceElevated,
+              background: children ? p.surfaceElevated : 'transparent',
               borderRadius: 18,
               display: 'flex',
-              padding: 3,
+              padding: children ? 3 : 0,
               transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
             }}>
               {children}
@@ -401,7 +409,7 @@ const AppHeader = ({
 
             {premiumTrailing && (
               <div style={{
-                marginLeft: 12,
+                marginLeft: children ? 12 : 0,
                 flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
@@ -411,36 +419,82 @@ const AppHeader = ({
               </div>
             )}
 
-            {/* Search-иконка — появляется только при скролле */}
-            <div style={{
-              width: hasPremiumDrawerContent && isScrolled ? 36 : 0,
-              marginLeft: hasPremiumDrawerContent && isScrolled ? 8 : 0,
-              opacity: hasPremiumDrawerContent && isScrolled ? 1 : 0,
-              overflow: 'hidden',
-              transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <button
-                onClick={() => { hapticFeedback('light'); setIsManualExpanded(v => !v); }}
-                style={{
-                  width: 36, height: 36, borderRadius: 18,
-                  background: isManualExpanded ? p.primary : p.surfaceElevated,
-                  border: 'none',
-                  color: isManualExpanded ? '#000' : '#FFF',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', flexShrink: 0,
-                  transition: 'background 0.3s, color 0.3s',
-                }}
-              >
-                {isManualExpanded ? <X size={18} strokeWidth={2.5} /> : <Search size={18} strokeWidth={2.5} />}
-              </button>
+            {/* Search-иконка — появляется при скролле когда есть вторичная строка */}
+            {hasPremiumDrawerContent && (
+              <div style={{
+                width: isScrolled ? 36 : 0,
+                marginLeft: isScrolled ? 8 : 0,
+                opacity: isScrolled ? 1 : 0,
+                overflow: 'hidden',
+                transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <button
+                  onClick={() => { hapticFeedback('light'); setIsManualExpanded(v => !v); }}
+                  style={{
+                    width: 36, height: 36, borderRadius: 18,
+                    background: isManualExpanded ? p.primary : p.surfaceElevated,
+                    border: 'none',
+                    color: isManualExpanded ? '#000' : '#FFF',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', flexShrink: 0,
+                    transition: 'background 0.3s, color 0.3s',
+                  }}
+                >
+                  {isManualExpanded ? <X size={18} strokeWidth={2.5} /> : <Search size={18} strokeWidth={2.5} />}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 3. Пилюля-поиск — коллапсированное состояние (Feed: нет вторичной строки) */}
+        {!hasSecondaryContent && hasPremiumDrawerContent && (
+          <div style={{
+            display: 'grid',
+            gridTemplateRows: showCollapsedBtn ? '1fr' : '0fr',
+            transition: 'grid-template-rows 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+          }}>
+            <div style={{ minHeight: 0, overflow: 'hidden' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                paddingTop: 6,
+                paddingBottom: 8,
+                opacity: showCollapsedBtn ? 1 : 0,
+                transform: showCollapsedBtn ? 'translateY(0)' : 'translateY(-4px)',
+                transition: 'opacity 0.35s ease, transform 0.35s ease',
+              }}>
+                <button
+                  onClick={() => { hapticFeedback('light'); setIsManualExpanded(v => !v); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    height: 34,
+                    padding: '0 20px',
+                    borderRadius: 17,
+                    background: p.surfaceElevated,
+                    border: 'none',
+                    color: p.textMuted,
+                    fontSize: 14,
+                    fontWeight: 400,
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Search size={14} strokeWidth={2.5} style={{ flexShrink: 0 }} />
+                  <span>Поиск...</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* 3. Drawer: Поиск + Теги — анимация через grid */}
+        {/* 4. Drawer: Поиск + Теги — анимация через grid */}
         {hasPremiumDrawerContent && (
           <div style={{
             display: 'grid',
@@ -449,20 +503,20 @@ const AppHeader = ({
           }}>
             <div style={{ minHeight: 0, overflow: 'hidden' }}>
               <div style={{
-                paddingTop: 12,
-                paddingBottom: 4,
+                paddingTop: 8,
+                paddingBottom: 6,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 12,
+                gap: 10,
                 opacity: showDrawer ? 1 : 0,
-                transform: showDrawer ? 'translateY(0)' : 'translateY(-10px)',
+                transform: showDrawer ? 'translateY(0)' : 'translateY(-8px)',
                 transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
               }}>
                 {/* Строка поиска */}
                 {showSearch && (
                   <div style={{
                     display: 'flex', alignItems: 'center', height: 44,
-                    padding: '0 16px', background: '#161618',
+                    padding: '0 14px', background: p.surfaceElevated,
                     borderRadius: 22, border: `1px solid ${p.border}`,
                   }}>
                     <Search size={18} style={{ color: p.textMuted, marginRight: 10, flexShrink: 0 }} />

@@ -40,12 +40,31 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 
 import './App.css';
 
+// Вычисляем точный left-offset для fixed-элементов (без учёта скроллбара)
+function updateFixedLayout() {
+  const clientWidth = document.documentElement.clientWidth;
+  const maxWidth = 680;
+  const left = Math.max(0, (clientWidth - maxWidth) / 2);
+  const width = Math.min(clientWidth, maxWidth);
+  document.documentElement.style.setProperty('--app-fixed-left', `${left}px`);
+  document.documentElement.style.setProperty('--app-fixed-width', `${width}px`);
+}
+
+// Запускаем до первого рендера — переменные уже правильные при монтировании
+updateFixedLayout();
+
 function App() {
   const [authReady, setAuthReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [splashVariant, setSplashVariant] = useState('auto');
   const [splashInstanceKey, setSplashInstanceKey] = useState(0);
   const deepLinkExecutionRef = useRef(false);
+
+  useEffect(() => {
+    updateFixedLayout();
+    window.addEventListener('resize', updateFixedLayout);
+    return () => window.removeEventListener('resize', updateFixedLayout);
+  }, []);
 
   const {
     activeTab,
@@ -292,6 +311,10 @@ const styles = {
     backgroundColor: '#000000',
     color: '#fff',
     paddingBottom: 'calc(80px + var(--screen-bottom-offset))',
+    maxWidth: 'var(--app-max-width)',
+    marginLeft: 'auto',
+    marginRight: 'auto',
+    width: '100%',
   },
   loading: {
     minHeight: 'var(--tg-app-viewport-stable-height, 100vh)',

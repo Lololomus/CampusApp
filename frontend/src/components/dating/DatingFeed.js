@@ -472,6 +472,7 @@ function DatingFeed() {
                 }}
               />
               <button
+                className="pressable"
                 onClick={() => handleTabSwitch('profiles')}
                 style={{
                   ...styles.tabButton,
@@ -481,6 +482,7 @@ function DatingFeed() {
                 Анкеты
               </button>
               <button
+                className="pressable"
                 onClick={() => handleTabSwitch('likes')}
                 style={{
                   ...styles.tabButton,

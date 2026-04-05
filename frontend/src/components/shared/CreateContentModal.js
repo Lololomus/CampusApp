@@ -161,7 +161,6 @@ function CreateContentModal({ onClose }) {
     addNewPost,
     addNewRequest,
     feedSubTab,
-    setFeedSubTab,
     createContentDraft,
     setCreateContentDraft,
     clearCreateContentDraft,
@@ -221,8 +220,16 @@ function CreateContentModal({ onClose }) {
   const [showReqDeadline, setShowReqDeadline] = useState(false);
   const [reqDeadlineType, setReqDeadlineType] = useState('24h');
   const [reqCustomDate, setReqCustomDate] = useState('');
+  // help-пост: опциональная награда и дедлайн
+  const [showHelpReward, setShowHelpReward] = useState(false);
+  const [helpRewardType, setHelpRewardType] = useState('none');
+  const [helpRewardValue, setHelpRewardValue] = useState('');
+  const [showHelpDeadline, setShowHelpDeadline] = useState(false);
+  const [helpDeadlineType, setHelpDeadlineType] = useState('none');
+  const [helpCustomDate, setHelpCustomDate] = useState('');
   const [showEventPicker, setShowEventPicker] = useState(false);
   const [showReqPicker, setShowReqPicker] = useState(false);
+  const [showHelpPicker, setShowHelpPicker] = useState(false);
 
   const sheetRef = useRef(null);
   const postBodyRef = useRef(null);
@@ -291,7 +298,12 @@ function CreateContentModal({ onClose }) {
     [reqDeadlineType, reqCustomDate]
   );
 
-  const isAnyPickerOpen = showEventPicker || showReqPicker;
+  const resolvedHelpExpiresAt = useMemo(
+    () => helpDeadlineType !== 'none' ? buildRequestExpiresAtIso(helpDeadlineType, helpCustomDate) : null,
+    [helpDeadlineType, helpCustomDate]
+  );
+
+  const isAnyPickerOpen = showEventPicker || showReqPicker || showHelpPicker;
 
   const registerMediaTask = (taskPromise) => {
     mediaProcessingTasksRef.current.add(taskPromise);
@@ -514,6 +526,10 @@ function CreateContentModal({ onClose }) {
     reqRewardValue,
     reqDeadlineType,
     reqCustomDate,
+    helpRewardType,
+    helpRewardValue,
+    helpDeadlineType,
+    helpCustomDate,
     savedAt: Date.now(),
   });
 
@@ -561,6 +577,10 @@ function CreateContentModal({ onClose }) {
     setReqRewardValue(draft.reqRewardValue || '');
     setReqDeadlineType(draft.reqDeadlineType || '24h');
     setReqCustomDate(draft.reqCustomDate || '');
+    setHelpRewardType(draft.helpRewardType || 'none');
+    setHelpRewardValue(draft.helpRewardValue || '');
+    setHelpDeadlineType(draft.helpDeadlineType || 'none');
+    setHelpCustomDate(draft.helpCustomDate || '');
 
     setProcessingImages([]);
     setScopeSearchQuery('');
@@ -1043,6 +1063,21 @@ function CreateContentModal({ onClose }) {
           formData.append('event_location', location.trim());
         }
 
+        if (postCategory === 'help') {
+          if (helpRewardType !== 'none') {
+            const mappedType = helpRewardType === 'barter' ? REWARD_TYPES.FAVOR : REWARD_TYPES.MONEY;
+            formData.append('reward_type', mappedType);
+            if (helpRewardValue.trim()) {
+              formData.append('reward_value', helpRewardValue.trim());
+            } else if (helpRewardType === 'barter') {
+              formData.append('reward_value', 'Бартер');
+            }
+          }
+          if (resolvedHelpExpiresAt) {
+            formData.append('help_expires_at', resolvedHelpExpiresAt);
+          }
+        }
+
         if (hasPoll || postCategory === 'polls') {
           formData.append('poll_data', JSON.stringify(buildPollPayload()));
         }
@@ -1120,7 +1155,6 @@ function CreateContentModal({ onClose }) {
       });
 
       addNewRequest(newRequest);
-      if (feedSubTab !== 'requests') setFeedSubTab('requests');
       setUploadProgress(100);
       hapticFeedback('success');
       toast.success('Запрос успешно создан!');
@@ -1210,10 +1244,11 @@ function CreateContentModal({ onClose }) {
               >
                 Пост
               </button>
+              {/* [LEGACY] Таб запросов — отключён в пользу post_type=help. Оставлен для обратной совместимости. */}
               <button
                 type="button"
                 onClick={() => switchContentTab('request')}
-                style={activeTab === 'request' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn}
+                style={{ ...styles.switchBtn, display: 'none' }}
                 className="create-spring-btn"
                 disabled={isSubmitting}
               >
@@ -1397,6 +1432,27 @@ function CreateContentModal({ onClose }) {
                           <MapPin size={18} color="var(--create-text-muted)" />
                           <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Место проведения" style={styles.smartInput} disabled={isSubmitting} />
                         </div>
+                      </div>
+                    )}
+
+                    {postCategory === 'help' && (helpRewardType !== 'none' || helpDeadlineType !== 'none') && (
+                      <div className="smart-block" style={styles.tagsWrap}>
+                        {helpRewardType !== 'none' && (
+                          <span style={styles.requestMetaChip}>
+                            {helpRewardType === 'money' ? '💰' : '☕'} {helpRewardValue || 'Награда'}
+                            <button type="button" onClick={() => { setHelpRewardType('none'); setHelpRewardValue(''); }} style={styles.requestMetaRemove} className="create-spring-btn" disabled={isSubmitting}>
+                              <X size={12} />
+                            </button>
+                          </span>
+                        )}
+                        {helpDeadlineType !== 'none' && (
+                          <span style={styles.requestMetaChip}>
+                            ⏳ {formatRequestDeadlineLabel(helpDeadlineType, helpCustomDate)}
+                            <button type="button" onClick={() => { setHelpDeadlineType('none'); setHelpCustomDate(''); }} style={styles.requestMetaRemove} className="create-spring-btn" disabled={isSubmitting}>
+                              <X size={12} />
+                            </button>
+                          </span>
+                        )}
                       </div>
                     )}
 
@@ -1590,6 +1646,71 @@ function CreateContentModal({ onClose }) {
                       />
                     </div>
                     <button type="button" onClick={() => addPostTag()} style={postTagInput.trim() ? { ...styles.tagAddBtn, ...styles.tagAddBtnActive } : styles.tagAddBtn} className="create-spring-btn" disabled={isSubmitting}><Plus size={20} /></button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'post' && postCategory === 'help' && showHelpReward && (
+                <div className="smart-block" style={styles.popupPanel}>
+                  <div style={styles.popupHead}>
+                    <span style={styles.popupCaption}>НАГРАДА</span>
+                    <button type="button" onClick={() => setShowHelpReward(false)} style={styles.pollX} className="create-spring-btn" disabled={isSubmitting}>
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div style={styles.popupOptionRow}>
+                    {CREATE_CONTENT_REQUEST_REWARD_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setHelpRewardType(opt.value)}
+                        style={helpRewardType === opt.value ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive } : styles.smartOptionBtn}
+                        className="create-spring-btn"
+                        disabled={isSubmitting}
+                      >
+                        {opt.icon} {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {helpRewardType === 'money' && (
+                    <input value={helpRewardValue} onChange={(e) => setHelpRewardValue(e.target.value)} placeholder="Сумма (например, 500 ₽)" style={styles.popupInput} disabled={isSubmitting} />
+                  )}
+                  {helpRewardType === 'barter' && (
+                    <input value={helpRewardValue} onChange={(e) => setHelpRewardValue(e.target.value)} placeholder="Что взамен? (кофе, шоколадка...)" style={styles.popupInput} disabled={isSubmitting} />
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'post' && postCategory === 'help' && showHelpDeadline && (
+                <div className="smart-block" style={styles.popupPanel}>
+                  <div style={styles.popupHead}>
+                    <span style={styles.popupCaption}>АКТУАЛЬНО ДО</span>
+                    <button type="button" onClick={() => setShowHelpDeadline(false)} style={styles.pollX} className="create-spring-btn" disabled={isSubmitting}>
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div style={styles.popupOptionRow}>
+                    {[{ value: 'none', label: 'Без срока' }, ...CREATE_CONTENT_REQUEST_DEADLINE_OPTIONS].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => { setHelpDeadlineType(opt.value); if (opt.value !== 'custom') setHelpCustomDate(''); }}
+                        style={helpDeadlineType === opt.value ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive } : styles.smartOptionBtn}
+                        className="create-spring-btn"
+                        disabled={isSubmitting}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { setHelpDeadlineType('custom'); setShowHelpPicker(true); }}
+                      style={helpDeadlineType === 'custom' ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive, ...styles.deadlineCustomBtn } : { ...styles.smartOptionBtn, ...styles.deadlineCustomBtn }}
+                      className="create-spring-btn"
+                      disabled={isSubmitting}
+                    >
+                      {helpDeadlineType === 'custom' && helpCustomDate ? '📅 Выбрано' : 'Своя дата'}
+                    </button>
                   </div>
                 </div>
               )}
@@ -1805,6 +1926,8 @@ function CreateContentModal({ onClose }) {
                       <button type="button" onClick={() => { if (!categoryCapabilities.allowImages) { hapticFeedback('error'); return; } postFileInputRef.current?.click(); }} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.allowImages ? styles.toolBtn : { ...styles.toolBtn, ...styles.toolBtnDisabled }} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={TOOL_ICON_SIZE} /></button>
                       <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={TOOL_ICON_SIZE} /></button>
                       {canUsePollByCategory && <button type="button" onClick={() => { if (postCategory !== 'polls') setHasPoll((prev) => !prev); }} style={pollVisible ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><BarChart2 size={TOOL_ICON_SIZE} /></button>}
+                      {postCategory === 'help' && <button type="button" onClick={() => { setShowHelpReward((p) => !p); setShowHelpDeadline(false); setShowTagTool(false); }} style={showHelpReward || helpRewardType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Gift size={TOOL_ICON_SIZE} /></button>}
+                      {postCategory === 'help' && <button type="button" onClick={() => { setShowHelpDeadline((p) => !p); setShowHelpReward(false); setShowTagTool(false); }} style={showHelpDeadline || helpDeadlineType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Clock size={TOOL_ICON_SIZE} /></button>}
                       <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) { setIsAnonymous((prev) => { if (prev) setAnonComments(false); return !prev; }); } }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><VenetianMask size={TOOL_ICON_SIZE} /></button>
                       <button type="button" onClick={toggleScopePanel} style={showScopePanel || postScope !== 'university' || isCrossUniversityScope ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Globe size={TOOL_ICON_SIZE} /></button>
                     </div>
@@ -1840,6 +1963,7 @@ function CreateContentModal({ onClose }) {
           onClick={() => {
             setShowEventPicker(false);
             setShowReqPicker(false);
+            setShowHelpPicker(false);
           }}
         />
         <div style={{ ...styles.pickerSheet, transform: isAnyPickerOpen ? 'translateY(0)' : 'translateY(100%)' }}>
@@ -1868,6 +1992,20 @@ function CreateContentModal({ onClose }) {
               onCancel={() => {
                 setShowReqPicker(false);
                 if (!reqCustomDate) setReqDeadlineType('24h');
+              }}
+            />
+          )}
+          {showHelpPicker && (
+            <SmartDatePicker
+              initialDate={helpCustomDate}
+              onSave={(iso) => {
+                setHelpCustomDate(iso);
+                setHelpDeadlineType('custom');
+                setShowHelpPicker(false);
+              }}
+              onCancel={() => {
+                setShowHelpPicker(false);
+                if (!helpCustomDate) setHelpDeadlineType('none');
               }}
             />
           )}
@@ -1902,7 +2040,10 @@ function CreateContentModal({ onClose }) {
 const styles = {
   overlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     zIndex: getOverlayZIndex(Z_MODAL_CREATE_POST),
     transition: 'opacity 0.3s ease',
   },

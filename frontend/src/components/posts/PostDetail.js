@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   Heart, MessageCircle, Eye, MapPin, Calendar,
   ChevronLeft, ChevronRight,
-  Gift, Phone, Link2, Share2, Pencil, Trash2, Flag
+  Gift, Phone, Link2, Share2, Pencil, Trash2, Flag, CheckCircle
 } from 'lucide-react';
-import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost, triggerRegistrationPrompt } from '../../api';
+import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost, resolvePost, triggerRegistrationPrompt } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import BottomActionBar from '../BottomActionBar';
@@ -110,6 +110,8 @@ function PostDetail() {
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
+  const [isResolved, setIsResolved] = useState(Boolean(post?.is_resolved));
+  const [resolving, setResolving] = useState(false);
   const [commentViewer, setCommentViewer] = useState({ isOpen: false, photos: [], index: 0 });
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
@@ -130,6 +132,20 @@ function PostDetail() {
     hapticFeedback('light');
     closeDetail();
   }, [closeDetail, isExiting]);
+
+  const handleResolve = async () => {
+    if (resolving || isResolved || !post) return;
+    setResolving(true);
+    try {
+      await resolvePost(post.id);
+      setIsResolved(true);
+      hapticFeedback('success');
+    } catch {
+      hapticFeedback('error');
+    } finally {
+      setResolving(false);
+    }
+  };
 
   useTelegramScreen({
     id: 'post-detail-screen',
@@ -261,6 +277,7 @@ function PostDetail() {
       case 'events':      return { label: 'Событие',     color: tc.events.color };
       case 'confessions': return { label: 'Подслушано',  color: tc.confessions.color };
       case 'lost_found':  return { label: 'Бюро',        color: tc.lostFound.color };
+      case 'help':        return { label: 'Помощь',      color: tc.help.color };
       case 'polls': return post?.poll?.type === 'quiz'
         ? { label: 'Викторина', color: '#BF5AF2' }
         : { label: 'Опрос',     color: theme.colors.premium.primary };
@@ -627,6 +644,11 @@ function PostDetail() {
                     <span style={{...styles.categoryText, color: catInfo.color}}>
                       {catInfo.label}
                     </span>
+                    {isResolved && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#32D74B', background: 'rgba(50,215,75,0.15)', padding: '4px 8px', borderRadius: 8 }}>
+                        <CheckCircle size={10} strokeWidth={2.5} /> Решено
+                      </span>
+                    )}
                     <OverflowMenuButton
                       ref={postMenuRef}
                       isOpen={postMenuOpen}
@@ -700,6 +722,13 @@ function PostDetail() {
                       </div>
                     )}
                   </div>
+                )}
+
+                {post.category === 'help' && isOwner && !isResolved && (
+                  <button onClick={handleResolve} disabled={resolving} className="pressable" style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0 4px', padding: '8px 16px', borderRadius: 10, border: '1px solid rgba(50,215,75,0.3)', background: 'rgba(50,215,75,0.08)', color: '#32D74B', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    <CheckCircle size={14} strokeWidth={2} />
+                    {resolving ? 'Отмечаем...' : 'Вопрос решён'}
+                  </button>
                 )}
 
                 {images.length > 0 && (
@@ -1126,7 +1155,7 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
 const styles = {
   container: {
     position: 'fixed',
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
     zIndex: Z_MODAL_POST_DETAIL,
     backgroundColor: theme.colors.premium.bg,
     display: 'flex',
@@ -1383,7 +1412,7 @@ const styles = {
     display: 'block',
   },
   modalOverlay: {
-    position: 'fixed', inset: 0, backgroundColor: theme.colors.overlay,
+    position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', backgroundColor: theme.colors.overlay,
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
   },
   modalContent: {

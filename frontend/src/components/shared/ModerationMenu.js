@@ -279,7 +279,7 @@ function DeleteReasonDialog({
 
 const deleteStyles = {
   overlay: {
-    position: 'fixed', inset: 0,
+    position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
     background: 'rgba(0, 0, 0, 0.85)',
     backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
     zIndex: 5099, animation: 'fadeIn 0.2s ease',

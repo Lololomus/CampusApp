@@ -152,7 +152,10 @@ const styles = {
   },
   backdrop: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     zIndex: 12000,
     display: 'flex',
     alignItems: 'center',

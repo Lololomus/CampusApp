@@ -1,3 +1,4 @@
+// ===== [LEGACY] RequestDetailModal — таб запросов убран. Компонент отключён, не удалять. =====
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,

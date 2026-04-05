@@ -19,6 +19,7 @@ export const theme = {
         events:      { color: '#00C7BE', bg: 'rgba(0, 199, 190, 0.15)' },
         confessions: { color: '#FF4D4D', bg: 'rgba(255, 77, 77, 0.15)' },
         lostFound:   { color: '#A78BFA', bg: 'rgba(167, 139, 250, 0.15)' },
+        help:        { color: '#FF6B6B', bg: 'rgba(255, 107, 107, 0.15)' },
       },
     },
 
@@ -85,6 +86,7 @@ export const theme = {
     events: '#00C7BE',
     confessions: '#ec4899',
     lostFound: '#10b981',
+    help: '#FF6B6B',
     
     // Market
     market: '#10b981',
@@ -209,6 +211,9 @@ export const theme = {
     fast: '0.1s ease',
     normal: '0.2s ease',
     slow: '0.3s ease',
+    ui: '0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    enter: '0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    exit: '0.15s ease-out',
   },
 
   // ========== ANIMATIONS ==========
@@ -251,7 +256,7 @@ export const theme = {
     headerHeight: 56,
     tabBarHeight: 60,
     safeAreaBottom: 20,
-    maxContentWidth: 600,
+    maxContentWidth: 680,
   },
 
   // ========== MODALS ==========
