@@ -76,6 +76,17 @@ function App() {
     return () => window.removeEventListener('resize', updateFixedLayout);
   }, []);
 
+  useEffect(() => {
+    if (!('scrollRestoration' in window.history)) return undefined;
+
+    const previousScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+
+    return () => {
+      window.history.scrollRestoration = previousScrollRestoration;
+    };
+  }, []);
+
   const {
     activeTab,
     pendingDeepLink,
@@ -195,16 +206,35 @@ function App() {
   }, [activeTab]);
 
   useLayoutEffect(() => {
+    if (restoreFrameRef.current) {
+      window.cancelAnimationFrame(restoreFrameRef.current);
+      restoreFrameRef.current = null;
+    }
+
     const previousTab = prevActiveTabRef.current;
     const currentScrollY = window.scrollY || window.pageYOffset || 0;
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlScrollBehavior = html.style.scrollBehavior;
+    const previousBodyScrollBehavior = body.style.scrollBehavior;
 
     if (previousTab && previousTab !== activeTab) {
       tabScrollMemoryRef.current[previousTab] = currentScrollY;
     }
 
     const targetY = tabScrollMemoryRef.current[activeTab] ?? 0;
+    const maxRestoreAttempts = targetY <= 1 ? 1 : 24;
     let attempts = 0;
     let cancelled = false;
+
+    html.style.scrollBehavior = 'auto';
+    body.style.scrollBehavior = 'auto';
+
+    const finishRestore = () => {
+      html.style.scrollBehavior = previousHtmlScrollBehavior;
+      body.style.scrollBehavior = previousBodyScrollBehavior;
+      restoreFrameRef.current = null;
+    };
 
     const restoreScroll = () => {
       if (cancelled) return;
@@ -214,7 +244,7 @@ function App() {
       const nextScrollY = window.scrollY || window.pageYOffset || 0;
 
       if (Math.abs(nextScrollY - clampedTargetY) > 1) {
-        window.scrollTo({ top: clampedTargetY, left: 0, behavior: 'auto' });
+        window.scrollTo(0, clampedTargetY);
       }
 
       attempts += 1;
@@ -222,7 +252,11 @@ function App() {
       const updatedMaxScrollable = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       const finalTargetY = Math.min(targetY, updatedMaxScrollable);
 
-      if (Math.abs(updatedScrollY - finalTargetY) <= 1 || attempts >= 90) {
+      if (Math.abs(updatedScrollY - finalTargetY) <= 1 || attempts >= maxRestoreAttempts) {
+        if (Math.abs(updatedScrollY - finalTargetY) > 1) {
+          window.scrollTo(0, finalTargetY);
+        }
+        finishRestore();
         return;
       }
 
@@ -238,6 +272,8 @@ function App() {
         window.cancelAnimationFrame(restoreFrameRef.current);
         restoreFrameRef.current = null;
       }
+      html.style.scrollBehavior = previousHtmlScrollBehavior;
+      body.style.scrollBehavior = previousBodyScrollBehavior;
     };
   }, [activeTab]);
 

@@ -37,6 +37,7 @@ const AppHeader = ({
   const [compactFilterPressed, setCompactFilterPressed] = useState(false);
   const [compactTitleWidth, setCompactTitleWidth] = useState(0);
   const [dimensions, setDimensions] = useState({ sticky: 56, collapsible: 0 });
+  const [premiumMorphReady, setPremiumMorphReady] = useState(false);
 
   const lastScrollYRef = useRef(0);
   const collapsibleVisibleRef = useRef(true);
@@ -109,6 +110,26 @@ const AppHeader = ({
   }, [isManualExpanded]);
 
   useLayoutEffect(() => {
+    if (isModalOpen || document.body.style.position === 'fixed') return;
+
+    const currentScrollY = window.scrollY || window.pageYOffset || 0;
+    const nextCollapsibleVisible = currentScrollY < 10;
+    const nextIsScrolled = premium && currentScrollY > 40;
+
+    lastScrollYRef.current = currentScrollY;
+    collapsibleVisibleRef.current = nextCollapsibleVisible;
+    isScrolledRef.current = nextIsScrolled;
+
+    setCollapsibleVisible(nextCollapsibleVisible);
+    setIsScrolled(nextIsScrolled);
+
+    if (!nextIsScrolled) {
+      isManualExpandedRef.current = false;
+      setIsManualExpanded(false);
+    }
+  }, [premium, isModalOpen]);
+
+  useLayoutEffect(() => {
     if (!useCollapsedToolbarPremium) return undefined;
 
     let rafId = null;
@@ -129,6 +150,29 @@ const AppHeader = ({
       if (rafId) window.cancelAnimationFrame(rafId);
     };
   }, [title, useCollapsedToolbarPremium]);
+
+  useLayoutEffect(() => {
+    if (!useCollapsedToolbarPremium) {
+      setPremiumMorphReady(false);
+      return undefined;
+    }
+
+    setPremiumMorphReady(false);
+
+    let enableRafId = null;
+    let finalizeRafId = null;
+
+    enableRafId = window.requestAnimationFrame(() => {
+      finalizeRafId = window.requestAnimationFrame(() => {
+        setPremiumMorphReady(true);
+      });
+    });
+
+    return () => {
+      if (enableRafId) window.cancelAnimationFrame(enableRafId);
+      if (finalizeRafId) window.cancelAnimationFrame(finalizeRafId);
+    };
+  }, [useCollapsedToolbarPremium, title]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -266,7 +310,7 @@ const AppHeader = ({
     collapsibleWrapper: { position: 'fixed', top: 'var(--sticky-height, 56px)', left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', zIndex: 999, backgroundColor: theme.colors.bgSecondary, transform: collapsibleVisible ? 'translateY(0)' : 'translateY(-100%)', opacity: collapsibleVisible ? 1 : 0, pointerEvents: collapsibleVisible ? 'auto' : 'none', transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)', borderBottom: `1px solid ${theme.colors.border}` },
     searchRow: { display: showSearch ? 'flex' : 'none', alignItems: 'center', padding: '8px 12px', gap: 8 },
     searchContainer: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
-    searchInput: { width: '100%', height: 40, backgroundColor: theme.colors.bg, border: `1px solid ${searchFocused ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.md, padding: '0 36px', fontSize: 15, color: theme.colors.text, outline: 'none', transition: 'border-color 0.2s ease' },
+    searchInput: { width: '100%', height: 40, boxSizing: 'border-box', backgroundColor: theme.colors.bg, border: `1px solid ${searchFocused ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.md, padding: '0 36px', paddingTop: 0, paddingBottom: 0, fontSize: 15, lineHeight: '40px', color: theme.colors.text, outline: 'none', appearance: 'none', WebkitAppearance: 'none', transition: 'border-color 0.2s ease' },
     searchIcon: { position: 'absolute', left: 10, color: theme.colors.textSecondary, pointerEvents: 'none' },
     clearButton: { position: 'absolute', right: 6, width: 24, height: 24, display: showClearButton ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.border, borderRadius: theme.radius.full, border: 'none', cursor: 'pointer', color: theme.colors.text, opacity: 0.6, transition: 'opacity 0.2s ease' },
     filterButton: { position: 'relative', width: 40, height: 40, display: showFilters ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', backgroundColor: activeFiltersCount > 0 ? effectiveAccentColor : theme.colors.bg, border: `1px solid ${activeFiltersCount > 0 ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.md, cursor: 'pointer', color: activeFiltersCount > 0 ? '#fff' : theme.colors.textSecondary, transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease' },
@@ -347,6 +391,15 @@ const AppHeader = ({
       const overlayActive = isScrolled && isManualExpanded && !isModalOpen;
       const overlayTop = `calc(var(--screen-top-offset, 0px) + 4px + ${containerHeight}px)`;
       const swipeThreshold = 16;
+      const morphHeightTransition = premiumMorphReady ? `height 0.45s ${springSmooth}` : 'none';
+      const morphOpacityTransition = premiumMorphReady ? `opacity 0.5s ${springMorph}, transform 0.5s ${springMorph}` : 'none';
+      const morphButtonTransition = premiumMorphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.45s ${springMorph}, height 0.45s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}, color 0.3s ${springSmooth}, opacity 0.3s ease, transform 0.2s ${springSmooth}, filter 0.2s ${springSmooth}` : 'none';
+      const morphSearchTransition = premiumMorphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.5s ${springMorph}, height 0.5s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}` : 'none';
+      const morphIconTransition = premiumMorphReady ? `left 0.5s ${springMorph}, top 0.5s ${springMorph}, color 0.3s ${springSmooth}` : 'none';
+      const morphInputTransition = premiumMorphReady ? 'opacity 0.28s ease' : 'none';
+      const morphClearTransition = premiumMorphReady ? `opacity 0.28s ${springSmooth}, transform 0.28s ${springMorph}` : 'none';
+      const morphTitleTransition = premiumMorphReady ? `top 0.5s ${springMorph}, font-size 0.5s ${springMorph}, letter-spacing 0.5s ${springSmooth}, color 0.3s ${springSmooth}` : 'none';
+      const morphTagsTransition = premiumMorphReady ? `opacity 0.4s ${springSmooth}, transform 0.45s ${springMorph}` : 'none';
       const resetCompactGesture = () => {
         compactGestureRef.current = { startY: 0, lastY: 0, collapsed: false };
       };
@@ -446,7 +499,7 @@ const AppHeader = ({
               style={{
                 position: 'relative',
                 height: containerHeight,
-                transition: `height 0.45s ${springSmooth}`,
+                transition: morphHeightTransition,
               }}
             >
               <div
@@ -465,7 +518,7 @@ const AppHeader = ({
                   border: '1px solid rgba(255,255,255,0.06)',
                   backdropFilter: isCompact ? 'blur(10px) saturate(120%)' : 'none',
                   WebkitBackdropFilter: isCompact ? 'blur(10px) saturate(120%)' : 'none',
-                  transition: `opacity 0.5s ${springMorph}, transform 0.5s ${springMorph}`,
+                  transition: morphOpacityTransition,
                 }}
               />
 
@@ -484,7 +537,7 @@ const AppHeader = ({
                     opacity: filterOpacity,
                     transform: isCompact && compactFilterPressed ? 'scale(0.94)' : 'scale(1)',
                     filter: isCompact && compactFilterPressed ? 'brightness(0.92)' : 'none',
-                    transition: `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.45s ${springMorph}, height 0.45s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}, color 0.3s ${springSmooth}, opacity 0.3s ease, transform 0.2s ${springSmooth}, filter 0.2s ${springSmooth}`,
+                    transition: morphButtonTransition,
                     border: 'none',
                     display: 'flex',
                     alignItems: 'center',
@@ -535,7 +588,7 @@ const AppHeader = ({
                     height: searchHeight,
                     borderRadius: searchRadius,
                     background: searchBg,
-                    transition: `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.5s ${springMorph}, height 0.5s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}`,
+                    transition: morphSearchTransition,
                     overflow: 'hidden',
                     zIndex: 3,
                     boxShadow: isCompact ? 'none' : 'inset 0 1px 1px rgba(255,255,255,0.05), 0 0 0 1px rgba(255,255,255,0.02)',
@@ -562,7 +615,7 @@ const AppHeader = ({
                       position: 'absolute',
                       left: searchIconLeft,
                       top: searchIconTop,
-                      transition: `left 0.5s ${springMorph}, top 0.5s ${springMorph}, color 0.3s ${springSmooth}`,
+                      transition: morphIconTransition,
                       pointerEvents: 'none',
                     }}
                   />
@@ -581,15 +634,21 @@ const AppHeader = ({
                       top: 0,
                       width: 'calc(100% - 76px)',
                       height: '100%',
+                      boxSizing: 'border-box',
                       background: 'transparent',
                       border: 'none',
                       color: '#FFF',
                       outline: 'none',
                       fontSize: 16,
+                      lineHeight: `${searchHeight}px`,
                       fontWeight: 500,
+                      paddingTop: 0,
+                      paddingBottom: 0,
+                      appearance: 'none',
+                      WebkitAppearance: 'none',
                       opacity: isCompact ? 0 : 1,
                       pointerEvents: isCompact ? 'none' : 'auto',
-                      transition: 'opacity 0.28s ease',
+                      transition: morphInputTransition,
                     }}
                   />
 
@@ -617,7 +676,7 @@ const AppHeader = ({
                       opacity: !isCompact && localSearchValue ? 1 : 0,
                       pointerEvents: !isCompact && localSearchValue ? 'auto' : 'none',
                       transform: !isCompact && localSearchValue ? 'scale(1)' : 'scale(0.5)',
-                      transition: `opacity 0.28s ${springSmooth}, transform 0.28s ${springMorph}`,
+                      transition: morphClearTransition,
                     }}
                   >
                     <X size={12} strokeWidth={3} />
@@ -640,7 +699,7 @@ const AppHeader = ({
                     color: '#FFF',
                     pointerEvents: 'none',
                     zIndex: 4,
-                    transition: `top 0.5s ${springMorph}, font-size 0.5s ${springMorph}, letter-spacing 0.5s ${springSmooth}, color 0.3s ${springSmooth}`,
+                    transition: morphTitleTransition,
                   }}
                 >
                   {title}
@@ -657,7 +716,7 @@ const AppHeader = ({
                     width: tagsWidth,
                     opacity: tagsOpacity,
                     pointerEvents: tagsPointer,
-                    transition: `opacity 0.4s ${springSmooth}, transform 0.45s ${springMorph}`,
+                    transition: morphTagsTransition,
                     transform: isCompact ? 'translateY(-10px)' : 'translateY(0)',
                   }}
                 >

@@ -223,7 +223,7 @@ function Feed() {
     loadPosts(true);
   }, [loadPosts]);
 
-  const { pullProgress, isRefreshing, snapping, DISPLAY_MAX } = usePullToRefresh({
+  const { pullY, pullProgress, isRefreshing, snapping } = usePullToRefresh({
     onRefresh: handleRefresh,
     loading,
   });
@@ -367,10 +367,10 @@ function Feed() {
       }} />
 
       <PullToRefreshIndicator
+        pullY={pullY}
         pullProgress={pullProgress}
         isRefreshing={isRefreshing}
         snapping={snapping}
-        DISPLAY_MAX={DISPLAY_MAX}
         text="Обновляем ленту"
       />
 
@@ -391,7 +391,11 @@ function Feed() {
         freezeBottomChromeOnSearchFocus
       />
 
-      <div style={styles.content}>
+      <div style={{
+        ...styles.content,
+        transform: `translateY(${pullY}px)`,
+        transition: snapping ? 'transform 0.42s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+      }}>
         <>
           {loading && posts.length === 0 && (
             <>

@@ -4,16 +4,17 @@ import { useState, useEffect, useRef } from 'react';
 import { PULL_TO_REFRESH_THRESHOLD } from '../constants/layoutConstants';
 import { hapticFeedback } from '../utils/telegram';
 
-// Максимальное визуальное смещение индикатора (px)
-const DISPLAY_MAX = 44;
+// Максимальное визуальное смещение контента / высота пространства (px)
+export const PTR_DISPLAY_MAX = 60;
 
 /**
- * Хук pull-to-refresh с визуальным прогрессом.
+ * Хук pull-to-refresh с визуальным пространством между шапкой и контентом.
  * @param {Object} opts
- * @param {Function} opts.onRefresh  — коллбек обновления (вызывается один раз при достижении порога)
- * @param {boolean}  opts.loading    — текущее состояние загрузки (отслеживаем завершение refresh)
- * @param {boolean}  [opts.disabled] — отключить логику
- * @returns {{ pullProgress: number, isRefreshing: boolean, snapping: boolean }}
+ * @param {Function} opts.onRefresh  — коллбек обновления
+ * @param {boolean}  opts.loading    — текущее состояние загрузки
+ * @param {boolean}  [opts.disabled]
+ * @returns {{ pullY: number, isRefreshing: boolean, snapping: boolean }}
+ *   pullY — текущее смещение в px (0..PTR_DISPLAY_MAX), используется для сдвига контента и высоты индикатора
  */
 export function usePullToRefresh({ onRefresh, loading, disabled = false }) {
   const [pullProgress, setPullProgress] = useState(0); // 0..1
@@ -25,7 +26,7 @@ export function usePullToRefresh({ onRefresh, loading, disabled = false }) {
   const rafRef = useRef(null);
   const prevLoadingRef = useRef(loading);
 
-  // Следим за переходом loading true→false — скрываем индикатор после завершения
+  // Когда loading переходит true→false — плавно прячем индикатор
   useEffect(() => {
     if (prevLoadingRef.current && !loading && isRefreshing) {
       const t = setTimeout(() => {
@@ -33,7 +34,7 @@ export function usePullToRefresh({ onRefresh, loading, disabled = false }) {
         setSnapping(true);
         setPullProgress(0);
         lockRef.current = false;
-        const t2 = setTimeout(() => setSnapping(false), 420);
+        const t2 = setTimeout(() => setSnapping(false), 440);
         return () => clearTimeout(t2);
       }, 300);
       return () => clearTimeout(t);
@@ -60,9 +61,9 @@ export function usePullToRefresh({ onRefresh, loading, disabled = false }) {
         return;
       }
 
-      // Rubber-band: сопротивление нарастает — смещение логарифмическое
-      const damped = Math.min(delta * 0.42, DISPLAY_MAX);
-      const progress = damped / DISPLAY_MAX;
+      // Rubber-band: сопротивление нарастает
+      const damped = Math.min(delta * 0.44, PTR_DISPLAY_MAX);
+      const progress = damped / PTR_DISPLAY_MAX;
 
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => setPullProgress(progress));
@@ -80,7 +81,7 @@ export function usePullToRefresh({ onRefresh, loading, disabled = false }) {
       if (lockRef.current) return;
       setSnapping(true);
       setPullProgress(0);
-      setTimeout(() => setSnapping(false), 420);
+      setTimeout(() => setSnapping(false), 440);
     };
 
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
@@ -95,5 +96,6 @@ export function usePullToRefresh({ onRefresh, loading, disabled = false }) {
     };
   }, [disabled, onRefresh]);
 
-  return { pullProgress, isRefreshing, snapping, DISPLAY_MAX };
+  const pullY = pullProgress * PTR_DISPLAY_MAX;
+  return { pullY, pullProgress, isRefreshing, snapping };
 }

@@ -212,7 +212,7 @@ const Market = () => {
     loadItems(true);
   }, [loadItems]);
 
-  const { pullProgress, isRefreshing, snapping, DISPLAY_MAX } = usePullToRefresh({
+  const { pullY, pullProgress, isRefreshing, snapping } = usePullToRefresh({
     onRefresh: handleRefresh,
     loading,
   });
@@ -274,10 +274,10 @@ const Market = () => {
       }} />
 
       <PullToRefreshIndicator
+        pullY={pullY}
         pullProgress={pullProgress}
         isRefreshing={isRefreshing}
         snapping={snapping}
-        DISPLAY_MAX={DISPLAY_MAX}
         text="Обновляем маркет"
       />
 
@@ -299,7 +299,11 @@ const Market = () => {
       />
 
       {/* CONTENT */}
-      <div style={styles.content} ref={contentRef}>
+      <div style={{
+        ...styles.content,
+        transform: `translateY(${pullY}px)`,
+        transition: snapping ? 'transform 0.42s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+      }} ref={contentRef}>
 
         {error && !loading && (
           <div style={styles.emptyState}>
