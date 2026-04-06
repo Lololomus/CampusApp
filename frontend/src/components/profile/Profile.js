@@ -891,6 +891,7 @@ const styles = {
     color: '#FFF',
     letterSpacing: '-0.5px',
     textAlign: 'center',
+    transform: 'translateY(2px)',
   },
 
   cardWrapper: {

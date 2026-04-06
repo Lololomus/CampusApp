@@ -333,6 +333,9 @@ export async function getPosts(filters = {}) {
     if (filters.sort && filters.sort !== 'newest') {
       params.sort = filters.sort;
     }
+    if (typeof filters.search === 'string' && filters.search.trim()) {
+      params.search = filters.search.trim();
+    }
     if (filters.viewer_city) {
       params.viewer_city = filters.viewer_city;
     }

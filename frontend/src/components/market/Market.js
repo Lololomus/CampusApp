@@ -15,9 +15,10 @@ import theme from '../../theme';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
 import { hapticFeedback } from '../../utils/telegram';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import PullToRefreshIndicator from '../shared/PullToRefreshIndicator';
 import {
   MARKET_PAGE_SIZE,
-  PULL_TO_REFRESH_THRESHOLD,
   INFINITE_SCROLL_ROOT_MARGIN,
 } from '../../constants/layoutConstants';
 
@@ -45,16 +46,12 @@ const Market = () => {
   const [showDetail, setShowDetail] = useState(null);
   const [showCreateItem, setShowCreateItem] = useState(false);
   const [error, setError] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [animationKey, setAnimationKey] = useState(0); // ✅ СОХРАНИЛИ
-
 
   // Refs
   const contentRef = useRef(null);
   const observerRef = useRef(null);
   const loadMoreTriggerRef = useRef(null);
-  const startYRef = useRef(0); // ✅ ДЛЯ PULL TO REFRESH
-  const pullToRefreshLockRef = useRef(false);
 
   // ===== CATEGORIES =====
   const marketCategories = [
@@ -150,7 +147,6 @@ const Market = () => {
       setError('Не удалось загрузить товары');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [loading, page, selectedCategory, searchQuery, stabilizedFilters, user, marketItems, setMarketItems]);
 
@@ -208,49 +204,18 @@ const Market = () => {
     return () => { if (observerRef.current) observerRef.current.disconnect(); };
   }, [hasMore, loading, loadItems]);
 
-  // ✅ ОПТИМИЗИРОВАННЫЙ Pull to Refresh
-  useEffect(() => {
-    const handleTouchStart = (e) => { 
-      pullToRefreshLockRef.current = false;
-      if (window.scrollY === 0) startYRef.current = e.touches[0].clientY; 
-    };
-    
-    const handleTouchMove = (e) => {
-      if (
-        window.scrollY === 0 &&
-        e.touches[0].clientY - startYRef.current > PULL_TO_REFRESH_THRESHOLD &&
-        !refreshing &&
-        !pullToRefreshLockRef.current
-      ) {
-        pullToRefreshLockRef.current = true;
-        setRefreshing(true);
-        handleRefresh();
-      }
-    };
-
-    const handleTouchEnd = () => {
-      pullToRefreshLockRef.current = false;
-    };
-    
-    window.addEventListener('touchstart', handleTouchStart);
-    window.addEventListener('touchmove', handleTouchMove);
-    window.addEventListener('touchend', handleTouchEnd);
-    
-    return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [refreshing, loading]); // ✅ ТОЛЬКО НУЖНЫЕ ЗАВИСИМОСТИ
-
   // ===== HANDLERS =====
   const haptic = (type = 'light') => hapticFeedback(type);
 
-  const handleRefresh = useCallback(() => { 
-    haptic('light'); 
-    setPage(0); 
-    loadItems(true); 
-  }, [loadItems]); // ✅ useCallback
+  const handleRefresh = useCallback(() => {
+    setPage(0);
+    loadItems(true);
+  }, [loadItems]);
+
+  const { pullProgress, isRefreshing, snapping, DISPLAY_MAX } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    loading,
+  });
 
   const handleSearchChange = (val) => setSearchQuery(val);
 
@@ -308,6 +273,14 @@ const Market = () => {
         zIndex: 50,
       }} />
 
+      <PullToRefreshIndicator
+        pullProgress={pullProgress}
+        isRefreshing={isRefreshing}
+        snapping={snapping}
+        DISPLAY_MAX={DISPLAY_MAX}
+        text="Обновляем маркет"
+      />
+
       <AppHeader
         title="Маркет"
         showSearch={true}
@@ -321,17 +294,12 @@ const Market = () => {
         onFiltersClick={handleOpenFilters}
         activeFiltersCount={activeFiltersCount}
         premium
+        premiumCollapsedToolbar
         freezeBottomChromeOnSearchFocus
       />
 
       {/* CONTENT */}
       <div style={styles.content} ref={contentRef}>
-        {refreshing && (
-          <div style={styles.refreshIndicator}>
-            <span style={styles.refreshIcon}>↻</span>
-            <span>Обновление...</span>
-          </div>
-        )}
 
         {error && !loading && (
           <div style={styles.emptyState}>
@@ -431,7 +399,7 @@ const styles = {
 
   content: {
     // Header: 4px container + 28px title + 8px margin + 8px drawer-top + 44px search + 10px gap + 36px chips + 6px drawer-bottom = 144px
-    paddingTop: 'calc(var(--screen-top-offset, 0px) + 148px)',
+    paddingTop: 'calc(var(--screen-top-offset, 0px) + 160px)',
   },
 
   grid: {
@@ -444,8 +412,7 @@ const styles = {
     gridColumn: '1 / -1',
   },
 
-  refreshIndicator: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, color: theme.colors.textSecondary },
-  refreshIcon: { fontSize: 20, animation: 'spin 1s linear infinite' },
+
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center', minHeight: 300 },
   emptyIcon: { fontSize: 64, marginBottom: 16, opacity: 0.5 },
   emptyTitle: { fontSize: 18, fontWeight: 600, color: theme.colors.text, marginBottom: 8 },

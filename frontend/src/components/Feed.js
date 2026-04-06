@@ -12,10 +12,11 @@ import AppHeader from './shared/AppHeader';
 import FeedDateDivider from './shared/FeedDateDivider';
 import { buildFeedSections } from '../utils/feedDateSections';
 import { hapticFeedback } from '../utils/telegram';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import PullToRefreshIndicator from './shared/PullToRefreshIndicator';
 // [LEGACY] import EdgeBlur from './shared/EdgeBlur';
 import {
   POSTS_PAGE_SIZE,
-  PULL_TO_REFRESH_THRESHOLD,
   INFINITE_SCROLL_ROOT_MARGIN,
 } from '../constants/layoutConstants';
 
@@ -32,7 +33,6 @@ function Feed() {
   const postsOffsetRef = useRef(0);
   const postsLoadingRef = useRef(false);
   const hasMorePostsRef = useRef(true);
-  const pullToRefreshLockRef = useRef(false);
   const lastPostCardRef = useRef(null);
   const postsObserverRef = useRef(null);
   
@@ -126,6 +126,7 @@ function Feed() {
         category: activeCategory === 'all' ? null : activeCategory,
         skip: nextOffset,
         limit: POSTS_PAGE_SIZE,
+        search: searchQuery || undefined,
       };
 
       if (stabilizedFilters.location === 'my_university') {
@@ -187,7 +188,7 @@ function Feed() {
       postsLoadingRef.current = false;
       setLoading(false);
     }
-  }, [activeCategory, stabilizedFilters]);
+  }, [activeCategory, searchQuery, stabilizedFilters, user?.city]);
 
   // ✅ БЕЗ JSON.stringify
   useEffect(() => {
@@ -218,46 +219,14 @@ function Feed() {
     }
   }, [viewPostId, updatedPostId, getUpdatedPost, clearUpdatedPost]);
 
-  // Pull to Refresh БЕЗ ЛИШНИХ ПЕРЕСОЗДАНИЙ
   const handleRefresh = useCallback(() => {
-    haptic('light');
     loadPosts(true);
   }, [loadPosts]);
 
-  const startYRef = useRef(0);
-  
-  useEffect(() => {
-    const handleTouchStart = (e) => { 
-      pullToRefreshLockRef.current = false;
-      if (window.scrollY === 0) startYRef.current = e.touches[0].clientY; 
-    };
-    
-    const handleTouchMove = (e) => {
-      if (
-        window.scrollY === 0 &&
-        e.touches[0].clientY - startYRef.current > PULL_TO_REFRESH_THRESHOLD &&
-        !loading &&
-        !pullToRefreshLockRef.current
-      ) {
-        pullToRefreshLockRef.current = true;
-        handleRefresh();
-      }
-    };
-    
-    const handleTouchEnd = () => {
-      pullToRefreshLockRef.current = false;
-    };
-
-    window.addEventListener('touchstart', handleTouchStart);
-    window.addEventListener('touchmove', handleTouchMove);
-    window.addEventListener('touchend', handleTouchEnd);
-    
-    return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [loading, handleRefresh]);
+  const { pullProgress, isRefreshing, snapping, DISPLAY_MAX } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    loading,
+  });
 
   const handlePostClick = (postId) => {
     if (!isRegistered) {
@@ -397,6 +366,14 @@ function Feed() {
         zIndex: 50,
       }} />
 
+      <PullToRefreshIndicator
+        pullProgress={pullProgress}
+        isRefreshing={isRefreshing}
+        snapping={snapping}
+        DISPLAY_MAX={DISPLAY_MAX}
+        text="Обновляем ленту"
+      />
+
       <AppHeader
         title="Лента"
         showSearch={true}
@@ -410,6 +387,7 @@ function Feed() {
         onFiltersClick={handleFiltersClick}
         activeFiltersCount={countActiveFilters}
         premium
+        premiumCollapsedToolbar
         freezeBottomChromeOnSearchFocus
       />
 
@@ -512,7 +490,7 @@ const styles = {
     display: 'block',
     // Фиксированный paddingTop — не зависит от --header-padding, устраняет дёрганье при анимации шапки
     // Header: 4px container + 28px title + 8px margin + 8px drawer-top + 44px search + 10px gap + 36px chips + 6px drawer-bottom = 144px
-    paddingTop: 'calc(var(--screen-top-offset, 0px) + 148px)',
+    paddingTop: 'calc(var(--screen-top-offset, 0px) + 160px)',
     paddingLeft: '0px',
     paddingRight: '0px',
     paddingBottom: 120,

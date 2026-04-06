@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/App.js =====
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from './store';
 import { getTelegramWebApp, initTelegramApp, setClosingConfirmation } from './utils/telegram';
 import {
@@ -59,6 +59,16 @@ function App() {
   const [splashVariant, setSplashVariant] = useState('auto');
   const [splashInstanceKey, setSplashInstanceKey] = useState(0);
   const deepLinkExecutionRef = useRef(false);
+  const prevActiveTabRef = useRef(null);
+  const tabScrollMemoryRef = useRef({
+    feed: 0,
+    market: 0,
+    people: 0,
+    profile: 0,
+    ambassador: 0,
+    admin: 0,
+  });
+  const restoreFrameRef = useRef(null);
 
   useEffect(() => {
     updateFixedLayout();
@@ -181,6 +191,53 @@ function App() {
     return () => {
       html.classList.remove('custom-scroll');
       body.classList.remove('custom-scroll');
+    };
+  }, [activeTab]);
+
+  useLayoutEffect(() => {
+    const previousTab = prevActiveTabRef.current;
+    const currentScrollY = window.scrollY || window.pageYOffset || 0;
+
+    if (previousTab && previousTab !== activeTab) {
+      tabScrollMemoryRef.current[previousTab] = currentScrollY;
+    }
+
+    const targetY = tabScrollMemoryRef.current[activeTab] ?? 0;
+    let attempts = 0;
+    let cancelled = false;
+
+    const restoreScroll = () => {
+      if (cancelled) return;
+
+      const maxScrollable = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const clampedTargetY = Math.min(targetY, maxScrollable);
+      const nextScrollY = window.scrollY || window.pageYOffset || 0;
+
+      if (Math.abs(nextScrollY - clampedTargetY) > 1) {
+        window.scrollTo({ top: clampedTargetY, left: 0, behavior: 'auto' });
+      }
+
+      attempts += 1;
+      const updatedScrollY = window.scrollY || window.pageYOffset || 0;
+      const updatedMaxScrollable = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const finalTargetY = Math.min(targetY, updatedMaxScrollable);
+
+      if (Math.abs(updatedScrollY - finalTargetY) <= 1 || attempts >= 90) {
+        return;
+      }
+
+      restoreFrameRef.current = window.requestAnimationFrame(restoreScroll);
+    };
+
+    restoreScroll();
+    prevActiveTabRef.current = activeTab;
+
+    return () => {
+      cancelled = true;
+      if (restoreFrameRef.current) {
+        window.cancelAnimationFrame(restoreFrameRef.current);
+        restoreFrameRef.current = null;
+      }
     };
   }, [activeTab]);
 

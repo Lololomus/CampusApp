@@ -9,7 +9,7 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import select, func, or_, and_, update as sa_update
+from sqlalchemy import String, and_, cast, func, or_, select, update as sa_update
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
@@ -35,6 +35,7 @@ async def get_posts(
     campus_id: Optional[str] = None,
     city: Optional[str] = None,
     tags: Optional[str] = None,
+    search: Optional[str] = None,
     date_range: Optional[str] = None,
     sort: str = 'newest',
     current_user_id: Optional[int] = None,
@@ -134,10 +135,19 @@ async def get_posts(
         tags_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
         if tags_list:
             # ✅ JSONB: используем оператор @> для проверки вхождения
-            from sqlalchemy import cast
             from sqlalchemy.dialects.postgresql import JSONB as JSONB_TYPE
             tag_conditions = [models.Post.tags.op('@>')(cast([tag], JSONB_TYPE)) for tag in tags_list]
             query = query.where(or_(*tag_conditions))
+
+    if search and search.strip():
+        search_term = f'%{search.strip()}%'
+        query = query.where(
+            or_(
+                models.Post.title.ilike(search_term),
+                models.Post.body.ilike(search_term),
+                cast(models.Post.tags, String).ilike(search_term),
+            )
+        )
 
     # Фильтр по дате
     if date_range:

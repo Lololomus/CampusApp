@@ -508,6 +508,7 @@ async def get_posts_feed(
     campus_id: Optional[str] = Query(None),       # Filter by campus
     city: Optional[str] = Query(None),            # Filter by city
     tags: Optional[str] = Query(None),            # Comma-separated: "help,urgent"
+    search: Optional[str] = Query(None),
     date_range: Optional[str] = Query(None),      # 'today' | 'week' | 'month'
     sort: Optional[str] = Query('newest'),        # 'newest' | 'popular' | 'discussed'
     viewer_city: Optional[str] = Query(None),     # Город просматривающего (для scope='city')
@@ -539,6 +540,7 @@ async def get_posts_feed(
         campus_id=campus_id,
         city=city,
         tags=tags,
+        search=search,
         date_range=date_range,
         sort=sort,
         current_user_id=current_user_id,
