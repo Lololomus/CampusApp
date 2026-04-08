@@ -5,6 +5,7 @@ import theme from '../../theme';
 import SwipeableModal from '../shared/SwipeableModal';
 import { hapticFeedback } from '../../utils/telegram';
 import { getCampusDisplayName, getUserCity } from '../../constants/universityData';
+import { MARKET_CATEGORIES } from '../../constants/marketConstants';
 
 
 const MarketFilters = ({ onClose, onApply }) => {
@@ -17,6 +18,10 @@ const MarketFilters = ({ onClose, onApply }) => {
 
   const campusLabel = getCampusDisplayName(user);
   const cityLabel = getUserCity(user);
+  const marketThemes = MARKET_CATEGORIES.map((category) => ({
+    value: category.id,
+    label: `${category.icon} ${category.label}`,
+  }));
   
   const locationOptions = [
     { value: 'all', label: 'Все университеты' },
@@ -88,6 +93,14 @@ const MarketFilters = ({ onClose, onApply }) => {
         campus_id: null,
       });
     }
+  };
+
+  const handleCategoryChange = (value) => {
+    hapticFeedback('light');
+    setLocalFilters({
+      ...localFilters,
+      category: localFilters.category === value ? 'all' : value,
+    });
   };
 
   const handleQuickPrice = (min, max) => {
@@ -178,6 +191,7 @@ const MarketFilters = ({ onClose, onApply }) => {
     <SwipeableModal
       isOpen={true}
       onClose={onClose}
+      showHeaderDivider={false}
       title={
         <div style={styles.titleWrapper}>
           <span>Фильтры</span>
@@ -198,6 +212,23 @@ const MarketFilters = ({ onClose, onApply }) => {
       }
     >
       <div style={styles.container}>
+        <Section title="Темы">
+          <div style={styles.chipGroup}>
+            {marketThemes.map((themeOption) => (
+              <button
+                key={themeOption.value}
+                style={{
+                  ...styles.chip,
+                  ...(localFilters.category === themeOption.value ? styles.chipActive : {}),
+                }}
+                onClick={() => handleCategoryChange(themeOption.value)}
+              >
+                {themeOption.label}
+              </button>
+            ))}
+          </div>
+        </Section>
+
         {/* ===== ЛОКАЦИЯ ===== */}
         <Section title="📍 ЛОКАЦИЯ">
           <div style={styles.radioGroup}>
@@ -336,13 +367,13 @@ const styles = {
 
   badge: {
     background: theme.colors.premium.primary,
-    color: '#000',
-    fontSize: theme.fontSize.xs,
+    color: theme.colors.premium.primaryText,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.bold,
-    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+    padding: `0 ${theme.spacing.md}px`,
     borderRadius: theme.radius.full,
-    minWidth: 20,
-    height: 20,
+    minWidth: 28,
+    height: 28,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

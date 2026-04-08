@@ -216,6 +216,7 @@ export const useStore = create(
 
       // FILTERS STATE
       postsFilters: {
+        category: 'all',
         location: 'all',
         university: 'all',
         institute: 'all',
@@ -244,6 +245,7 @@ export const useStore = create(
       
       clearPostsFilters: () => set({
         postsFilters: {
+          category: 'all',
           location: 'all',
           university: 'all',
           institute: 'all',

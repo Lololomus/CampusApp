@@ -53,7 +53,7 @@ function MyMarketCard({ item, onEdit, onDelete, onOpen }) {
       case 'reserved':
         return { label: 'Забронировано', color: C.warning, bg: 'rgba(255, 159, 10, 0.1)' };
       default:
-        return { label: 'Активно', color: C.success, bg: 'rgba(50, 215, 75, 0.1)' };
+        return { label: 'Активно', color: C.primary, bg: 'rgba(212, 255, 0, 0.14)' };
     }
   };
 
@@ -115,8 +115,8 @@ function MyMarketCard({ item, onEdit, onDelete, onOpen }) {
         {/* КНОПКИ ДЕЙСТВИЙ */}
         <div style={styles.actions}>
           <button onClick={handleEdit} style={styles.editBtn}>
-            <Edit2 size={14} color={C.blue} />
-            <span style={{ ...styles.actionLabel, color: C.blue }}>Изменить</span>
+            <Edit2 size={14} color={C.textMuted} />
+            <span style={{ ...styles.actionLabel, color: C.textMuted }}>Изменить</span>
           </button>
           <button onClick={handleDeleteClick} style={styles.deleteBtn}>
             <Trash2 size={14} color={C.error} />
@@ -254,7 +254,7 @@ const styles = {
     padding: '7px 10px',
     borderRadius: 12,
     border: 'none',
-    backgroundColor: 'rgba(77, 166, 255, 0.08)',
+    backgroundColor: 'rgba(142, 142, 147, 0.12)',
     cursor: 'pointer',
     transition: 'opacity 0.15s, transform 0.15s cubic-bezier(0.32, 0.72, 0, 1)',
     WebkitTapHighlightColor: 'transparent',

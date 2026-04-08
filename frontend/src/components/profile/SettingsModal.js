@@ -114,6 +114,7 @@ function SettingsModal() {
     <SwipeableModal
       isOpen={showSettingsModal}
       onClose={handleClose}
+      showHeaderDivider={false}
       title={customTitle}
     >
       <div style={styles.content}>

@@ -4,7 +4,6 @@ import {
   X,
   Image as ImageIcon,
   BarChart2,
-  VenetianMask,
   MapPin,
   Check,
   Loader2,
@@ -44,6 +43,7 @@ import ConfirmationDialog from './ConfirmationDialog';
 import { toast } from './Toast';
 import { useTelegramScreen } from './telegram/useTelegramScreen';
 import SmartDatePicker from './SmartDatePicker';
+import IncognitoIcon from './IncognitoIcon';
 import { getUniversityName, getUniqueUniversities } from '../../constants/universityData';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
@@ -1459,7 +1459,7 @@ function CreateContentModal({ onClose }) {
                     {(isAnonymous || postCategory === 'confessions') && (
                       <div className="smart-block" style={styles.anonBlock}>
                         <div style={styles.anonRow}>
-                          <VenetianMask size={20} color="var(--create-primary)" />
+                          <IncognitoIcon size={24} showCircle={false} shapeColor="var(--create-primary)" style={{ flexShrink: 0 }} />
                           <div style={styles.anonInfo}>
                             <div style={styles.anonTitle}>Анонимный пост</div>
                             <div style={styles.anonSubtitle}>Авторство будет скрыто</div>
@@ -1928,7 +1928,7 @@ function CreateContentModal({ onClose }) {
                       {canUsePollByCategory && <button type="button" onClick={() => { if (postCategory !== 'polls') setHasPoll((prev) => !prev); }} style={pollVisible ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><BarChart2 size={TOOL_ICON_SIZE} /></button>}
                       {postCategory === 'help' && <button type="button" onClick={() => { setShowHelpReward((p) => !p); setShowHelpDeadline(false); setShowTagTool(false); }} style={showHelpReward || helpRewardType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Gift size={TOOL_ICON_SIZE} /></button>}
                       {postCategory === 'help' && <button type="button" onClick={() => { setShowHelpDeadline((p) => !p); setShowHelpReward(false); setShowTagTool(false); }} style={showHelpDeadline || helpDeadlineType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Clock size={TOOL_ICON_SIZE} /></button>}
-                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) { setIsAnonymous((prev) => { if (prev) setAnonComments(false); return !prev; }); } }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><VenetianMask size={TOOL_ICON_SIZE} /></button>
+                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) { setIsAnonymous((prev) => { if (prev) setAnonComments(false); return !prev; }); } }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><IncognitoIcon size={TOOL_ICON_SIZE} showCircle={false} shapeColor="currentColor" /></button>
                       <button type="button" onClick={toggleScopePanel} style={showScopePanel || postScope !== 'university' || isCrossUniversityScope ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Globe size={TOOL_ICON_SIZE} /></button>
                     </div>
                   </>
@@ -2072,7 +2072,7 @@ const styles = {
   },
   topProgressBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.08)', zIndex: 2 },
   topProgressFill: { height: '100%', background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.3s ease' },
-  switcherWrap: { padding: '12px 16px 10px', borderBottom: '1px solid var(--create-border)', flexShrink: 0 },
+  switcherWrap: { display: 'none', padding: '12px 16px 10px', borderBottom: '1px solid var(--create-border)', flexShrink: 0 },
   switcherInner: { display: 'flex', background: 'var(--create-surface-elevated)', borderRadius: 12, padding: 4 },
   switchBtn: {
     flex: 1, border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--create-text-muted)',
@@ -2545,5 +2545,3 @@ const keyframeStyles = `
 `;
 
 export default CreateContentModal;
-
-

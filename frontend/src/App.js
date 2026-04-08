@@ -205,25 +205,32 @@ function App() {
     };
   }, [activeTab]);
 
+  useEffect(() => {
+    const updateActiveTabScrollMemory = () => {
+      tabScrollMemoryRef.current[activeTab] = window.scrollY || window.pageYOffset || 0;
+    };
+
+    updateActiveTabScrollMemory();
+    window.addEventListener('scroll', updateActiveTabScrollMemory, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', updateActiveTabScrollMemory);
+    };
+  }, [activeTab]);
+
   useLayoutEffect(() => {
     if (restoreFrameRef.current) {
       window.cancelAnimationFrame(restoreFrameRef.current);
       restoreFrameRef.current = null;
     }
 
-    const previousTab = prevActiveTabRef.current;
-    const currentScrollY = window.scrollY || window.pageYOffset || 0;
     const html = document.documentElement;
     const body = document.body;
     const previousHtmlScrollBehavior = html.style.scrollBehavior;
     const previousBodyScrollBehavior = body.style.scrollBehavior;
 
-    if (previousTab && previousTab !== activeTab) {
-      tabScrollMemoryRef.current[previousTab] = currentScrollY;
-    }
-
     const targetY = tabScrollMemoryRef.current[activeTab] ?? 0;
-    const maxRestoreAttempts = targetY <= 1 ? 1 : 24;
+    const maxRestoreAttempts = targetY <= 1 ? 1 : 90;
     let attempts = 0;
     let cancelled = false;
 
@@ -251,9 +258,11 @@ function App() {
       const updatedScrollY = window.scrollY || window.pageYOffset || 0;
       const updatedMaxScrollable = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       const finalTargetY = Math.min(targetY, updatedMaxScrollable);
+      const targetIsReachable = updatedMaxScrollable >= (targetY - 1);
+      const targetAligned = Math.abs(updatedScrollY - finalTargetY) <= 1;
 
-      if (Math.abs(updatedScrollY - finalTargetY) <= 1 || attempts >= maxRestoreAttempts) {
-        if (Math.abs(updatedScrollY - finalTargetY) > 1) {
+      if ((targetIsReachable && targetAligned) || attempts >= maxRestoreAttempts) {
+        if (!targetAligned) {
           window.scrollTo(0, finalTargetY);
         }
         finishRestore();

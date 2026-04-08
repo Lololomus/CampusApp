@@ -76,6 +76,9 @@ const AppHeader = ({
   const showDrawer = hasPremiumDrawerContent && (!isScrolled || isManualExpanded);
   const showClearButton = Boolean(localSearchValue && localSearchValue.length > 0);
   const hasActiveSearchValue = typeof localSearchValue === 'string' && localSearchValue.trim().length > 0;
+  const isCategoryVisuallyActive = (categoryId) => (
+    selectedCategory === categoryId && !(activeFiltersCount > 0 && categoryId === 'all')
+  );
 
   useLayoutEffect(() => {
     const updateDimensions = () => {
@@ -288,6 +291,12 @@ const AppHeader = ({
     if (onFiltersClick) onFiltersClick();
   };
 
+  const activeFiltersBadgeStyle = {
+    backgroundColor: theme.colors.error,
+    color: '#fff',
+    border: '1.5px solid #2C2C2E',
+  };
+
   const collapsePremiumDrawer = () => {
     isManualExpandedRef.current = false;
     setIsManualExpanded(false);
@@ -310,11 +319,11 @@ const AppHeader = ({
     collapsibleWrapper: { position: 'fixed', top: 'var(--sticky-height, 56px)', left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', zIndex: 999, backgroundColor: theme.colors.bgSecondary, transform: collapsibleVisible ? 'translateY(0)' : 'translateY(-100%)', opacity: collapsibleVisible ? 1 : 0, pointerEvents: collapsibleVisible ? 'auto' : 'none', transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)', borderBottom: `1px solid ${theme.colors.border}` },
     searchRow: { display: showSearch ? 'flex' : 'none', alignItems: 'center', padding: '8px 12px', gap: 8 },
     searchContainer: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
-    searchInput: { width: '100%', height: 40, boxSizing: 'border-box', backgroundColor: theme.colors.bg, border: `1px solid ${searchFocused ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.md, padding: '0 36px', paddingTop: 0, paddingBottom: 0, fontSize: 15, lineHeight: '40px', color: theme.colors.text, outline: 'none', appearance: 'none', WebkitAppearance: 'none', transition: 'border-color 0.2s ease' },
+    searchInput: { width: '100%', height: 40, boxSizing: 'border-box', backgroundColor: theme.colors.bg, border: `1px solid ${searchFocused ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.md, paddingLeft: 36, paddingRight: 44, paddingTop: 0, paddingBottom: 0, fontSize: 15, lineHeight: '40px', color: theme.colors.text, outline: 'none', appearance: 'none', WebkitAppearance: 'none', transition: 'border-color 0.2s ease' },
     searchIcon: { position: 'absolute', left: 10, color: theme.colors.textSecondary, pointerEvents: 'none' },
-    clearButton: { position: 'absolute', right: 6, width: 24, height: 24, display: showClearButton ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.border, borderRadius: theme.radius.full, border: 'none', cursor: 'pointer', color: theme.colors.text, opacity: 0.6, transition: 'opacity 0.2s ease' },
+    clearButton: { position: 'absolute', right: 0, width: 44, height: 44, display: showClearButton ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderRadius: theme.radius.full, border: 'none', cursor: 'pointer', color: theme.colors.textSecondary, opacity: 0.85, transition: 'opacity 0.2s ease' },
     filterButton: { position: 'relative', width: 40, height: 40, display: showFilters ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', backgroundColor: activeFiltersCount > 0 ? effectiveAccentColor : theme.colors.bg, border: `1px solid ${activeFiltersCount > 0 ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.md, cursor: 'pointer', color: activeFiltersCount > 0 ? '#fff' : theme.colors.textSecondary, transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease' },
-    filterBadge: { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, backgroundColor: theme.colors.error, borderRadius: theme.radius.full, display: activeFiltersCount > 0 ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#fff', padding: '0 5px' },
+    filterBadge: { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, backgroundColor: theme.colors.error, borderRadius: theme.radius.full, display: activeFiltersCount > 0 ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', padding: '0 5px' },
     categoriesRow: { display: categories ? 'flex' : 'none', alignItems: 'center', overflowX: 'auto', overflowY: 'hidden', padding: '4px 12px 8px', gap: 6, scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' },
     categoryPill: (isActive) => ({ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: isActive ? effectiveAccentColor : theme.colors.bg, border: `1px solid ${isActive ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.full, fontSize: 14, fontWeight: isActive ? 600 : 500, color: theme.colors.text, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease' }),
     actionButton: { position: 'relative', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', border: 'none', borderRadius: theme.radius.md, cursor: 'pointer', color: theme.colors.text, transition: 'background-color 0.2s ease' },
@@ -369,8 +378,8 @@ const AppHeader = ({
       const filterSize = 40;
       const filterTop = isCompact ? compactPillTop + compactPillPadding : 96;
       const filterLeft = isCompact ? `calc(50% - ${compactHalfWidth - compactPillPadding}px)` : '0px';
-      const filterBg = isCompact ? compactFilterBg : p.surfaceElevated;
-      const filterColor = isCompact ? compactFilterColor : '#FFF';
+      const filterBg = activeFiltersCount > 0 ? p.primary : (isCompact ? compactFilterBg : p.surfaceElevated);
+      const filterColor = activeFiltersCount > 0 ? '#000' : (isCompact ? compactFilterColor : '#FFF');
       const filterRadius = isCompact ? 20 : 14;
       const filterOpacity = showFilters ? 1 : 0;
 
@@ -568,6 +577,7 @@ const AppHeader = ({
                         fontSize: 10,
                         fontWeight: 700,
                         color: '#fff',
+                        border: '1.5px solid #2C2C2E',
                         padding: '0 3px',
                         pointerEvents: 'none',
                       }}
@@ -632,7 +642,7 @@ const AppHeader = ({
                       position: 'absolute',
                       left: 44,
                       top: 0,
-                      width: 'calc(100% - 76px)',
+                      width: 'calc(100% - 88px)',
                       height: '100%',
                       boxSizing: 'border-box',
                       background: 'transparent',
@@ -661,12 +671,12 @@ const AppHeader = ({
                     }}
                     style={{
                       position: 'absolute',
-                      right: 12,
-                      top: 13,
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      background: 'rgba(255,255,255,0.14)',
+                      right: 0,
+                      top: 0,
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      background: 'transparent',
                       color: '#FFF',
                       border: 'none',
                       display: 'flex',
@@ -679,7 +689,7 @@ const AppHeader = ({
                       transition: morphClearTransition,
                     }}
                   >
-                    <X size={12} strokeWidth={3} />
+                    <X size={14} strokeWidth={3} />
                   </button>
                 </div>
               )}
@@ -732,7 +742,7 @@ const AppHeader = ({
                     }}
                   >
                     {categories.map((cat) => {
-                      const isActive = selectedCategory === cat.id;
+                      const isActive = isCategoryVisuallyActive(cat.id);
                       return (
                         <button
                           key={cat.id}
@@ -786,7 +796,7 @@ const AppHeader = ({
                         <button onClick={handleFiltersClick} style={{ width: 44, height: 44, borderRadius: 22, background: activeFiltersCount > 0 ? p.primary : p.surfaceElevated, color: activeFiltersCount > 0 ? '#000' : '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: 'none', transition: 'background 0.3s cubic-bezier(0.32, 0.72, 0, 1), color 0.3s cubic-bezier(0.32, 0.72, 0, 1)' }}>
                           <SlidersHorizontal size={18} strokeWidth={2.25} />
                         </button>
-                        {activeFiltersCount > 0 && <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, background: theme.colors.error, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', padding: '0 3px', pointerEvents: 'none' }}>{activeFiltersCount}</span>}
+                        {activeFiltersCount > 0 && <span style={{ ...activeFiltersBadgeStyle, position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, padding: '0 3px', pointerEvents: 'none' }}>{activeFiltersCount}</span>}
                       </>
                     ) : <div style={{ width: 44, height: 44 }} />}
                   </div>
@@ -843,7 +853,19 @@ const AppHeader = ({
                   <div style={{ display: 'flex', alignItems: 'center', height: 44, padding: '0 14px', background: p.surfaceElevated, borderRadius: 22, border: `1px solid ${p.border}` }}>
                     <Search size={18} style={{ color: p.textMuted, marginRight: 10, flexShrink: 0 }} />
                     <input ref={premiumSearchRef} value={localSearchValue} onChange={handleSearchInputChange} onFocus={handleSearchFocus} onBlur={handleSearchBlur} placeholder={searchPlaceholder} style={{ flex: 1, height: '100%', background: 'transparent', border: 'none', color: '#FFF', fontSize: 16, outline: 'none' }} />
-                    {localSearchValue && <X size={16} onClick={handleClearSearch} style={{ color: p.textMuted, cursor: 'pointer' }} />}
+                    {localSearchValue && (
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleClearSearch();
+                          premiumSearchRef.current?.focus();
+                        }}
+                        style={{ width: 44, height: 44, marginRight: -14, borderRadius: 22, border: 'none', background: 'transparent', color: p.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -852,14 +874,14 @@ const AppHeader = ({
                     {showFilters && (
                       <button onClick={handleFiltersClick} style={{ width: 36, height: 36, borderRadius: 18, background: activeFiltersCount > 0 ? p.primary : p.surfaceElevated, color: activeFiltersCount > 0 ? '#000' : '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', border: 'none', position: 'relative' }}>
                         <SlidersHorizontal size={16} />
-                        {activeFiltersCount > 0 && <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, background: theme.colors.error, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', padding: '0 3px' }}>{activeFiltersCount}</span>}
+                        {activeFiltersCount > 0 && <span style={{ ...activeFiltersBadgeStyle, position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, padding: '0 3px' }}>{activeFiltersCount}</span>}
                       </button>
                     )}
 
                     {categories && (
                       <div ref={categoriesRef} style={{ display: 'flex', gap: 8, overflowX: 'auto', flex: 1, scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
                         {categories.map((cat) => {
-                          const isActive = selectedCategory === cat.id;
+                          const isActive = isCategoryVisuallyActive(cat.id);
                           return (
                             <button key={cat.id} onClick={() => handleCategoryClick(cat.id)} style={{ padding: '0 14px', height: 36, borderRadius: 18, background: isActive ? (categoryOutline ? 'transparent' : p.primary) : p.surfaceElevated, color: isActive ? (categoryOutline ? p.primary : '#000') : '#FFF', border: categoryOutline ? `1px solid ${isActive ? p.primary : 'transparent'}` : 'none', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0, transition: 'background 0.2s cubic-bezier(0.32, 0.72, 0, 1), color 0.2s cubic-bezier(0.32, 0.72, 0, 1), border-color 0.2s cubic-bezier(0.32, 0.72, 0, 1)' }}>
                               {cat.emoji && `${cat.emoji} `}
@@ -908,7 +930,7 @@ const AppHeader = ({
               <div style={styles.searchContainer}>
                 <Search size={18} style={styles.searchIcon} />
                 <input type="text" value={localSearchValue} onChange={handleSearchInputChange} onFocus={handleSearchFocus} onBlur={handleSearchBlur} placeholder={searchPlaceholder} style={styles.searchInput} />
-                <button style={styles.clearButton} onClick={handleClearSearch}>
+                <button style={styles.clearButton} onMouseDown={(e) => e.preventDefault()} onClick={handleClearSearch}>
                   <X size={14} />
                 </button>
               </div>
@@ -924,7 +946,7 @@ const AppHeader = ({
           {categories && (
             <div ref={categoriesRef} style={styles.categoriesRow}>
               {categories.map((category) => (
-                <button key={category.id} style={styles.categoryPill(selectedCategory === category.id)} onClick={() => handleCategoryClick(category.id)}>
+                <button key={category.id} style={styles.categoryPill(isCategoryVisuallyActive(category.id))} onClick={() => handleCategoryClick(category.id)}>
                   {category.emoji && <span>{category.emoji}</span>}
                   {category.icon && category.icon}
                   <span>{category.label}</span>

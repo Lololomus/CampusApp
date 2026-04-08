@@ -5,7 +5,7 @@ import theme from '../../theme';
 import SwipeableModal from './SwipeableModal';
 import { hapticFeedback } from '../../utils/telegram';
 import { getCampusDisplayName, getUserCity } from '../../constants/universityData';
-
+import { CREATE_CONTENT_POST_CATEGORIES } from '../../constants/createContentUiConfig';
 
 const FiltersModal = ({ onClose, onApply }) => {
   const { 
@@ -32,18 +32,10 @@ const FiltersModal = ({ onClose, onApply }) => {
 
   // ===== ОПЦИИ ДЛЯ ПОСТОВ =====
   
-  const STUDENT_TAGS = [
-    { id: 'помощь', label: 'Помощь', emoji: '🤝' },
-    { id: 'срочно', label: 'Срочно', emoji: '⚡' },
-    { id: 'конспекты', label: 'Конспекты', emoji: '📝' },
-    { id: 'экзамены', label: 'Экзамены', emoji: '📚' },
-    { id: 'учеба', label: 'Учеба', emoji: '🎓' },
-    { id: 'курсовая', label: 'Курсовая', emoji: '📄' },
-    { id: 'общага', label: 'Общага', emoji: '🏠' },
-    { id: 'мероприятие', label: 'Мероприятие', emoji: '🎉' },
-    { id: 'стажировка', label: 'Стажировка', emoji: '💼' },
-    { id: 'практика', label: 'Практика', emoji: '🔧' },
-  ];
+  const postThemes = CREATE_CONTENT_POST_CATEGORIES.map((category) => ({
+    id: category.value,
+    label: `${category.icon} ${category.label}`,
+  }));
 
   const dateRangeOptions = [
     { value: 'all', label: 'Всё время', icon: '📅' },
@@ -142,21 +134,13 @@ const FiltersModal = ({ onClose, onApply }) => {
     }
   };
 
-  const handleTagToggle = (tagId) => {
+  const handlePostThemeChange = (categoryId) => {
     hapticFeedback('light');
-    const currentTags = localFilters.tags || [];
-    const newTags = currentTags.includes(tagId)
-      ? currentTags.filter(t => t !== tagId)
-      : [...currentTags, tagId];
-    
     setLocalFilters({
       ...localFilters,
-      tags: newTags,
+      category: localFilters.category === categoryId ? 'all' : categoryId,
+      tags: [],
     });
-  };
-
-  const isTagSelected = (tagId) => {
-    return localFilters.tags?.includes(tagId) || false;
   };
 
   const handleDateRangeChange = (value) => {
@@ -215,6 +199,7 @@ const FiltersModal = ({ onClose, onApply }) => {
     
     if (isPostsMode) {
       const defaultFilters = {
+        category: 'all',
         location: 'all',
         university: 'all',
         institute: 'all',
@@ -250,8 +235,8 @@ const FiltersModal = ({ onClose, onApply }) => {
     let count = 0;
     
     if (isPostsMode) {
+      if (localFilters.category !== 'all') count++;
       if (localFilters.location !== 'all') count++;
-      if (localFilters.tags && localFilters.tags.length > 0) count++;
       if (localFilters.dateRange !== 'all') count++;
       if (localFilters.sort !== 'newest') count++;
     } else {
@@ -310,14 +295,14 @@ const FiltersModal = ({ onClose, onApply }) => {
         {/* ===== ФИЛЬТРЫ ДЛЯ ПОСТОВ ===== */}
         {isPostsMode && (
           <>
-            <Section title="🏷️ ТЕГИ">
+            <Section title="Темы">
               <div style={styles.chipGroup}>
-                {STUDENT_TAGS.map((tag) => (
+                {postThemes.map((themeOption) => (
                   <Chip
-                    key={tag.id}
-                    label={`${tag.emoji} ${tag.label}`}
-                    selected={isTagSelected(tag.id)}
-                    onClick={() => handleTagToggle(tag.id)}
+                    key={themeOption.id}
+                    label={themeOption.label}
+                    selected={localFilters.category === themeOption.id}
+                    onClick={() => handlePostThemeChange(themeOption.id)}
                   />
                 ))}
               </div>
@@ -468,14 +453,14 @@ const styles = {
   },
 
   badge: {
-    background: theme.colors.primary,
-    color: '#fff',
-    fontSize: theme.fontSize.xs,
+    background: theme.colors.premium.primary,
+    color: theme.colors.premium.primaryText,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.bold,
-    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+    padding: `0 ${theme.spacing.md}px`,
     borderRadius: theme.radius.full,
-    minWidth: 20,
-    height: 20,
+    minWidth: 28,
+    height: 28,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

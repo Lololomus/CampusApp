@@ -1,5 +1,5 @@
 // ===== FILE: src/components/dating/LikesTab.js =====
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Heart, Sparkles, GraduationCap } from 'lucide-react';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
@@ -16,8 +16,48 @@ function LikesTab({
   matchesLoading = false,
   onViewProfile,
   onMessage,
-  onEmptyAction
+  onEmptyAction,
+  onQuickLike,
+  quickLikeIds = [],
 }) {
+  const [quickLikeFx, setQuickLikeFx] = useState({});
+  const quickLikeTimeoutsRef = useRef({});
+
+  useEffect(() => {
+    return () => {
+      Object.values(quickLikeTimeoutsRef.current).forEach((timeoutIds) => {
+        (Array.isArray(timeoutIds) ? timeoutIds : [timeoutIds]).forEach((timeoutId) => {
+          window.clearTimeout(timeoutId);
+        });
+      });
+    };
+  }, []);
+
+  const startQuickLikeFx = (user) => {
+    const userId = user?.id;
+    if (!userId) return;
+
+    const existing = quickLikeTimeoutsRef.current[userId] || [];
+    existing.forEach((timeoutId) => window.clearTimeout(timeoutId));
+
+    setQuickLikeFx((prev) => ({ ...prev, [userId]: 'arming' }));
+
+    const triggerTimeout = window.setTimeout(() => {
+      setQuickLikeFx((prev) => ({ ...prev, [userId]: 'burst' }));
+      onQuickLike?.(user);
+    }, 130);
+
+    const cleanupTimeout = window.setTimeout(() => {
+      setQuickLikeFx((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      delete quickLikeTimeoutsRef.current[userId];
+    }, 900);
+
+    quickLikeTimeoutsRef.current[userId] = [triggerTimeout, cleanupTimeout];
+  };
 
   // ===== LOADING STATE =====
   if (loading || matchesLoading) {
@@ -148,6 +188,9 @@ function LikesTab({
             {users.map((user, idx) => {
               const photo = user?.photos?.[0]?.url || user?.photos?.[0] || null;
               const commonInterests = user?.common_interests || [];
+              const isQuickLiking = quickLikeIds.includes(user.id);
+              const quickLikeStage = quickLikeFx[user.id] || 'idle';
+              const isQuickLikeActive = isQuickLiking || quickLikeStage !== 'idle';
 
               return (
                 <div
@@ -170,9 +213,41 @@ function LikesTab({
                     <div style={styles.photoGradient} />
 
                     {/* Heart badge top-right */}
-                    <div style={styles.heartBadge}>
-                      <Heart size={14} fill="#fff" color="#fff" />
-                    </div>
+                    <button
+                      type="button"
+                      aria-label="Быстрый лайк"
+                      disabled={isQuickLiking}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!onQuickLike || isQuickLiking) return;
+                        startQuickLikeFx(user);
+                      }}
+                      style={{
+                        ...styles.heartBadge,
+                        backgroundColor: isQuickLikeActive ? d.pink : 'rgba(255, 255, 255, 0.96)',
+                        color: isQuickLikeActive ? '#fff' : d.pink,
+                        boxShadow: isQuickLikeActive
+                          ? '0 6px 18px rgba(255, 45, 85, 0.42)'
+                          : '0 8px 18px rgba(0, 0, 0, 0.2)',
+                        border: isQuickLikeActive
+                          ? 'none'
+                          : '1px solid rgba(255, 45, 85, 0.18)',
+                        animation: quickLikeStage === 'burst' ? 'quickLikePop 0.42s cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+                        opacity: isQuickLiking ? 0.65 : 1,
+                        cursor: isQuickLiking ? 'default' : 'pointer',
+                      }}
+                    >
+                      <Heart
+                        size={18}
+                        fill={isQuickLikeActive ? '#fff' : 'none'}
+                        color={isQuickLikeActive ? '#fff' : d.pink}
+                        strokeWidth={2.5}
+                        style={{
+                          transform: quickLikeStage === 'burst' ? 'scale(1.08)' : 'scale(1)',
+                          transition: 'transform 0.18s ease, color 0.18s ease, fill 0.18s ease',
+                        }}
+                      />
+                    </button>
 
                     {/* Имя + вуз overlaid на фото (bottom) */}
                     <div style={styles.photoInfo}>
@@ -347,14 +422,14 @@ const styles = {
     position: 'absolute',
     top: 8,
     right: 8,
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     borderRadius: '50%',
-    backgroundColor: d.pink,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 2px 8px rgba(255, 45, 85, 0.4)',
+    padding: 0,
+    transition: 'background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
   },
   photoInfo: {
     position: 'absolute',
@@ -523,6 +598,12 @@ if (typeof document !== 'undefined' && !document.getElementById('likes-tab-style
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes quickLikePop {
+      0% { transform: scale(1); }
+      38% { transform: scale(1.16); }
+      68% { transform: scale(0.92); }
+      100% { transform: scale(1); }
     }
     @keyframes float {
       0%, 100% { transform: translateY(0px); }

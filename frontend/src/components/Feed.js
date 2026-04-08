@@ -19,8 +19,17 @@ import {
   POSTS_PAGE_SIZE,
   INFINITE_SCROLL_ROOT_MARGIN,
 } from '../constants/layoutConstants';
+import { CREATE_CONTENT_POST_CATEGORIES } from '../constants/createContentUiConfig';
 
 const IS_DEV = import.meta.env.DEV;
+const postCategories = [
+  { id: 'all', label: 'Все', emoji: '' },
+  ...CREATE_CONTENT_POST_CATEGORIES.map((category) => ({
+    id: category.value,
+    label: category.label,
+    emoji: category.icon,
+  })),
+];
 
 function Feed() {
   const [posts, setPosts] = useState([]);
@@ -46,6 +55,7 @@ function Feed() {
     clearUpdatedPost,
     posts: storePosts,
     postsFilters,
+    setPostsFilters,
     user,
   } = useStore();
 
@@ -53,22 +63,11 @@ function Feed() {
     hapticFeedback(type);
   };
 
-  const postCategories = [
-    { id: 'all', label: 'Все', emoji: '' },
-    { id: 'help', label: 'Помощь', emoji: '🤝' },
-    { id: 'news', label: 'Новости', emoji: '📰' },
-    { id: 'memes', label: 'Мемы', emoji: '🤡' },
-    { id: 'events', label: 'События', emoji: '🎉' },
-    { id: 'confessions', label: 'Признания', emoji: '💭' },
-    { id: 'lost_found', label: 'Находки', emoji: '🔍' },
-  ];
-
-
   // МЕМОИЗАЦИЯ СЧЁТЧИКА ФИЛЬТРОВ
   const countActiveFilters = useMemo(() => {
     let count = 0;
+    if (postsFilters.category && postsFilters.category !== 'all') count++;
     if (postsFilters.location !== 'all') count++;
-    if (postsFilters.tags && postsFilters.tags.length > 0) count++;
     if (postsFilters.dateRange !== 'all') count++;
     if (postsFilters.sort !== 'newest') count++;
     return count;
@@ -94,17 +93,17 @@ function Feed() {
 
   // СТАБИЛИЗАЦИЯ postsFilters через useMemo
   const stabilizedFilters = useMemo(() => ({
+    category: postsFilters.category || 'all',
     location: postsFilters.location,
     university: postsFilters.university,
     institute: postsFilters.institute,
-    tags: postsFilters.tags,
     dateRange: postsFilters.dateRange,
     sort: postsFilters.sort,
   }), [
+    postsFilters.category,
     postsFilters.location,
     postsFilters.university,
     postsFilters.institute,
-    postsFilters.tags,
     postsFilters.dateRange,
     postsFilters.sort,
   ]);
@@ -123,7 +122,7 @@ function Feed() {
 
       const nextOffset = reset ? 0 : postsOffsetRef.current;
       const apiFilters = {
-        category: activeCategory === 'all' ? null : activeCategory,
+        category: stabilizedFilters.category === 'all' ? null : stabilizedFilters.category,
         skip: nextOffset,
         limit: POSTS_PAGE_SIZE,
         search: searchQuery || undefined,
@@ -136,10 +135,6 @@ function Feed() {
         apiFilters.university = stabilizedFilters.university;
         apiFilters.institute = stabilizedFilters.institute;
         apiFilters.viewer_city = user?.city || undefined;
-      }
-
-      if (stabilizedFilters.tags && stabilizedFilters.tags.length > 0) {
-        apiFilters.tags = stabilizedFilters.tags;
       }
 
       if (stabilizedFilters.dateRange !== 'all') {
@@ -188,9 +183,13 @@ function Feed() {
       postsLoadingRef.current = false;
       setLoading(false);
     }
-  }, [activeCategory, searchQuery, stabilizedFilters, user?.city]);
+  }, [searchQuery, stabilizedFilters, user?.city]);
 
   // ✅ БЕЗ JSON.stringify
+  useEffect(() => {
+    setActiveCategory(postsFilters.category || 'all');
+  }, [postsFilters.category]);
+
   useEffect(() => {
     if (feedSubTab === 'posts') loadPosts(true);
   }, [feedSubTab, loadPosts]);
@@ -238,6 +237,7 @@ function Feed() {
 
   const handleCategoryChange = (category) => {
     setActiveCategory(category);
+    setPostsFilters({ category, tags: [] });
     haptic('light');
   };
 

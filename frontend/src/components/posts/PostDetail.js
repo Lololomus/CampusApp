@@ -970,14 +970,6 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
     },
   ];
     
-  // Генерация разных цветов для анонимов
-  const getAnonymousColor = (index) => {
-    const colors = [
-      '#8774e1', '#3b82f6', '#10b981', '#f59e0b', 
-      '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16'
-    ];
-    return colors[(index || 0) % colors.length];
-  };
   const commentImages = parseImages(comment.images);
 
   return (
@@ -991,13 +983,7 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
 
       <div style={styles.comment}>
         {isAnonymousComment ? (
-          // Заглушка для анонимных комментариев (разные цвета)
-          <div style={{
-            ...styles.commentAvatar,
-            background: getAnonymousColor(comment.anonymous_index)
-          }}>
-            ?
-          </div>
+          <Avatar size={36} isAnonymous showProfile={false} />
         ) : (
           // Avatar компонент для обычных комментариев
           <Avatar 

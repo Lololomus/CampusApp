@@ -64,6 +64,7 @@ function DatingFeed() {
   const [viewingProfile, setViewingProfile] = useState(null);
   const [showMyProfile, setShowMyProfile] = useState(false);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
+  const [quickLikeIds, setQuickLikeIds] = useState([]);
   const [guestActionGate, setGuestActionGate] = useState(null);
   const [onboardingReturnAction, setOnboardingReturnAction] = useState(null);
   const motionX = useMotionValue(0);
@@ -386,12 +387,26 @@ function DatingFeed() {
       if (isMatch && !matchedUser && fallbackUser) matchedUser = fallbackUser;
 
       if (profileId) {
+        const currentLikes = useStore.getState().whoLikedMe || [];
+        const removedPendingLike = currentLikes.some((u) => u.id === targetId);
         setWhoLikedMe(prev => (prev || []).filter(u => u.id !== targetId));
+        if (removedPendingLike) {
+          useStore.setState((state) => ({
+            likesCount: Math.max(0, Number(state.likesCount || 0) - 1),
+          }));
+        }
         setViewingProfile(null);
       }
 
       if (isMatch && matchedUser) {
-        setMatches(prev => [matchedUser, ...(prev || [])]);
+        const matchKey = matchedUser.user_id || matchedUser.id;
+        const alreadyExists = (matches || []).some((item) => (item.user_id || item.id) === matchKey);
+        if (!alreadyExists) {
+          setMatches((prev) => [matchedUser, ...(prev || [])]);
+          useStore.setState((state) => ({
+            matchesCount: Number(state.matchesCount || 0) + 1,
+          }));
+        }
         handleMatch(matchedUser);
       }
 
@@ -411,6 +426,18 @@ function DatingFeed() {
       window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
     }
     setShowMatchModal(true, user);
+  };
+
+  const handleQuickLike = async (targetUser) => {
+    const targetId = targetUser?.id;
+    if (!targetId) return;
+
+    setQuickLikeIds((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
+    try {
+      await handleLike(targetId, targetUser);
+    } finally {
+      setQuickLikeIds((prev) => prev.filter((id) => id !== targetId));
+    }
   };
 
   // === RENDER: Loading / Onboarding gates ===
@@ -609,10 +636,12 @@ function DatingFeed() {
             users={whoLikedMe}
             loading={loadingLikes}
             matchesLoading={loadingMatches}
+            quickLikeIds={quickLikeIds}
             onViewProfile={(user, type) => {
               hapticFeedback('light');
               setViewingProfile({ user, type });
             }}
+            onQuickLike={handleQuickLike}
             onMessage={(user) => {
               hapticFeedback('medium');
             }}

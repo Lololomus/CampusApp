@@ -9,10 +9,10 @@ const SAFE_MARGIN = 8;
 
 
 export const ACTION_COLORS = {
-  edit: '#0A84FF',
+  edit: theme.colors.text,
   delete: '#FF453A',
-  share: '#2AABEE',
-  default: '#FFFFFF',
+  share: theme.colors.text,
+  default: theme.colors.text,
 };
 
 

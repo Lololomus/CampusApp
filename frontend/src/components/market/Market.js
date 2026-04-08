@@ -21,12 +21,23 @@ import {
   MARKET_PAGE_SIZE,
   INFINITE_SCROLL_ROOT_MARGIN,
 } from '../../constants/layoutConstants';
+import { MARKET_CATEGORIES } from '../../constants/marketConstants';
+
+const marketCategories = [
+  { id: 'all', label: 'Все', emoji: '' },
+  ...MARKET_CATEGORIES.map((category) => ({
+    id: category.id,
+    label: category.label,
+    emoji: category.icon,
+  })),
+];
 
 const Market = () => {
   const { 
     marketItems, 
     setMarketItems, 
     marketFilters, 
+    setMarketFilters,
     isRegistered,
     user,
     editingMarketItem,
@@ -37,7 +48,7 @@ const Market = () => {
   } = useStore();
 
   // ===== STATE =====
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState(marketFilters.category || 'all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -53,23 +64,9 @@ const Market = () => {
   const observerRef = useRef(null);
   const loadMoreTriggerRef = useRef(null);
 
-  // ===== CATEGORIES =====
-  const marketCategories = [
-    { id: 'all', label: 'Все', emoji: '' },
-    { id: 'books', label: 'Учебники', emoji: '📚' },
-    { id: 'electronics', label: 'Техника', emoji: '💻' },
-    { id: 'clothes', label: 'Одежда', emoji: '👕' },
-    { id: 'home', label: 'Общага', emoji: '🛋️' },
-    { id: 'hobby', label: 'Хобби', emoji: '🎸' },
-    { id: 'tutor', label: 'Репетитор', emoji: '👨‍🏫' },
-    { id: 'homework', label: 'Курсачи', emoji: '📝' },
-    { id: 'repair', label: 'Ремонт', emoji: '🛠️' },
-    { id: 'design', label: 'Дизайн', emoji: '🎨' },
-    { id: 'delivery', label: 'Курьер', emoji: '🏃' },
-  ];
-
   // ✅ СТАБИЛИЗАЦИЯ marketFilters
   const stabilizedFilters = useMemo(() => ({
+    category: marketFilters.category || 'all',
     price_min: marketFilters.price_min,
     price_max: marketFilters.price_max,
     condition: marketFilters.condition,
@@ -78,6 +75,7 @@ const Market = () => {
     institute: marketFilters.institute,
     sort: marketFilters.sort,
   }), [
+    marketFilters.category,
     marketFilters.price_min,
     marketFilters.price_max,
     marketFilters.condition,
@@ -90,6 +88,7 @@ const Market = () => {
   // ✅ МЕМОИЗАЦИЯ СЧЁТЧИКА ФИЛЬТРОВ
   const activeFiltersCount = useMemo(() => {
     let count = 0;
+    if (stabilizedFilters.category && stabilizedFilters.category !== 'all') count++;
     if (stabilizedFilters.price_min || stabilizedFilters.price_max) count++;
     if (stabilizedFilters.condition) count++;
     if (stabilizedFilters.location && stabilizedFilters.location !== 'all') count++;
@@ -121,7 +120,7 @@ const Market = () => {
         skip: currentPage * limit,
         limit,
         search: searchQuery || undefined,
-        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        category: stabilizedFilters.category !== 'all' ? stabilizedFilters.category : undefined,
       };
 
       const result = await getMarketItems(filters);
@@ -148,14 +147,18 @@ const Market = () => {
     } finally {
       setLoading(false);
     }
-  }, [loading, page, selectedCategory, searchQuery, stabilizedFilters, user, marketItems, setMarketItems]);
+  }, [loading, page, searchQuery, stabilizedFilters, user, marketItems, setMarketItems]);
 
   // ===== EFFECTS =====
   
   // ✅ БЕЗ JSON.stringify
   useEffect(() => {
+    setSelectedCategory(marketFilters.category || 'all');
+  }, [marketFilters.category]);
+
+  useEffect(() => {
     loadItems(true);
-  }, [selectedCategory, searchQuery, stabilizedFilters]);
+  }, [searchQuery, stabilizedFilters, loadItems]);
 
   useEffect(() => {
     if (!pendingMarketItemId) return;
@@ -222,9 +225,10 @@ const Market = () => {
   const handleCategoryChange = useCallback((id) => { 
     haptic('light'); 
     setSelectedCategory(id); 
+    setMarketFilters({ category: id });
     setPage(0);
     setAnimationKey(prev => prev + 1); // ✅ АНИМАЦИЯ
-  }, []); // ✅ useCallback
+  }, [setMarketFilters]); // ✅ useCallback
 
   const handleOpenFilters = useCallback(() => { 
     haptic('light'); 

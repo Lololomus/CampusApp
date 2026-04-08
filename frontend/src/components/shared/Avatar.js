@@ -4,6 +4,7 @@ import React, { forwardRef } from 'react';
 import theme from '../../theme';
 import { getAvatarColor } from '../../utils/avatarColors';
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import IncognitoIcon from './IncognitoIcon';
 
 // Hero-формат: меняй здесь — обновится везде
 export const AVATAR_BORDER_RADIUS = theme.radius.md; // 12px
@@ -20,9 +21,8 @@ const Avatar = forwardRef(({
   const getAvatarData = () => {
     if (isAnonymous) {
       return { 
-        type: 'initial', 
-        value: '?', 
-        bg: theme.colors.textDisabled 
+        type: 'anonymous',
+        bg: theme.colors.bgSecondary,
       };
     }
 
@@ -92,6 +92,8 @@ const Avatar = forwardRef(({
             }
           }}
         />
+      ) : avatarData.type === 'anonymous' ? (
+        <IncognitoIcon size={size * 0.82} />
       ) : (
         <span style={{...styles.initial, fontSize: size * 0.45}}>{avatarData.value}</span>
       )}

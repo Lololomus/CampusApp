@@ -11,11 +11,21 @@ const URL_REGEX = /((https?:\/\/)[^\s<>\"')\]]+)/gi;
 function LinkText({ text, style }) {
   const [pendingUrl, setPendingUrl] = useState(null);
 
+  const stopEvent = useCallback((e) => {
+    e.stopPropagation();
+  }, []);
+
   const handleLinkClick = useCallback((e, url) => {
     e.preventDefault();
     e.stopPropagation();
     setPendingUrl(url);
   }, []);
+
+  const handleLinkKeyDown = useCallback((e, url) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      handleLinkClick(e, url);
+    }
+  }, [handleLinkClick]);
 
   const handleConfirm = useCallback(() => {
     if (pendingUrl) {
@@ -59,6 +69,10 @@ function LinkText({ text, style }) {
             <span
               key={i}
               onClick={(e) => handleLinkClick(e, part.value)}
+              onMouseDown={stopEvent}
+              onTouchStart={stopEvent}
+              onPointerDown={stopEvent}
+              onKeyDown={(e) => handleLinkKeyDown(e, part.value)}
               style={linkStyle}
               role="link"
               tabIndex={0}
