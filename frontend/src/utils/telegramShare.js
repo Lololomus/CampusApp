@@ -1,4 +1,3 @@
-import { POST_CATEGORY_LABELS, REQUEST_CATEGORY_LABELS } from '../constants/contentConstants';
 import { MARKET_CATEGORIES_MAP } from '../constants/marketConstants';
 import { REWARD_TYPE_ICONS, REWARD_TYPES } from '../types';
 import { buildMiniAppStartappUrl } from './deepLinks';
@@ -13,12 +12,6 @@ const POST_CATEGORY_ICONS = {
   lost_found: '🔎',
 };
 
-const REQUEST_CATEGORY_ICONS = {
-  study: '📚',
-  help: '🤝',
-  hangout: '🎉',
-};
-
 function compactText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
@@ -30,42 +23,10 @@ function truncateText(value, maxLength = 120) {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
-function joinMessageLines(lines) {
-  return lines.filter(Boolean).join('\n\n');
-}
-
 function formatMoney(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return null;
   return `${new Intl.NumberFormat('ru-RU').format(numeric)} ₽`;
-}
-
-function getPostLocationLine(post) {
-  const location = compactText(
-    post?.event_location
-      || post?.location
-      || post?.author?.university
-      || post?.university
-  );
-  return location ? `📍 ${location}` : null;
-}
-
-function getRequestLocationLine(request) {
-  const location = compactText(
-    request?.author?.university
-      || request?.university
-      || request?.location
-  );
-  return location ? `📍 ${location}` : null;
-}
-
-function getMarketLocationLine(item) {
-  const location = compactText(
-    item?.location
-      || item?.seller?.university
-      || item?.university
-  );
-  return location ? `📍 ${location}` : null;
 }
 
 function buildTelegramShareUrl(message, link) {
@@ -94,76 +55,60 @@ function sharePayloadToTelegram(payload) {
 function buildPostSharePayload(post) {
   const title = compactText(post?.title);
   const previewBody = compactText(stripLeadingTitleFromBody(title, post?.body));
-  const category = post?.category;
-  const categoryLabel = POST_CATEGORY_LABELS[category] || 'Пост';
-  const categoryIcon = POST_CATEGORY_ICONS[category] || '📝';
+  const categoryIcon = POST_CATEGORY_ICONS[post?.category] || '📝';
   const preview = truncateText(title || previewBody || 'Открыть пост в CampusApp', 110);
+  const location = compactText(
+    post?.event_location || post?.location || post?.author?.university || post?.university
+  );
+
+  const secondLine = [location, 'CampusApp'].filter(Boolean).join(' · ');
 
   return {
     link: buildMiniAppStartappUrl(`post_${post.id}`),
-    message: joinMessageLines([
-      '🎓 CampusApp',
-      `${categoryIcon} ${categoryLabel}`,
-      preview,
-      getPostLocationLine(post),
-      'Открыть в CampusApp 👇',
-    ]),
+    message: `${categoryIcon} ${preview}\n${secondLine}`,
   };
 }
 
-function buildRequestRewardLine(request) {
+function buildRequestRewardPart(request) {
   if (!request?.reward_type || request.reward_type === REWARD_TYPES.NONE) return null;
-
-  const rewardIcon = REWARD_TYPE_ICONS[request.reward_type] || '🎁';
-  const rewardValue = compactText(request.reward_value);
-
-  return rewardValue
-    ? `${rewardIcon} Вознаграждение: ${rewardValue}`
-    : `${rewardIcon} Вознаграждение`;
+  const icon = REWARD_TYPE_ICONS[request.reward_type] || '🎁';
+  const value = compactText(request.reward_value);
+  return value ? `${icon} ${value}` : icon;
 }
 
 function buildRequestSharePayload(request) {
   const title = compactText(request?.title);
   const previewBody = compactText(stripLeadingTitleFromBody(title, request?.body));
-  const category = request?.category;
-  const categoryLabel = REQUEST_CATEGORY_LABELS[category] || 'Запрос';
-  const categoryIcon = REQUEST_CATEGORY_ICONS[category] || '🤝';
   const preview = truncateText(title || previewBody || 'Открыть запрос в CampusApp', 110);
+  const location = compactText(
+    request?.author?.university || request?.university || request?.location
+  );
+  const reward = buildRequestRewardPart(request);
+
+  const secondLine = [location, reward, 'CampusApp'].filter(Boolean).join(' · ');
 
   return {
     link: buildMiniAppStartappUrl(`request_${request.id}`),
-    message: joinMessageLines([
-      '🎓 CampusApp',
-      `${categoryIcon} ${categoryLabel}`,
-      preview,
-      buildRequestRewardLine(request),
-      getRequestLocationLine(request),
-      'Открыть в CampusApp 👇',
-    ]),
+    message: `🙋 ${preview}\n${secondLine}`,
   };
 }
 
 function buildMarketItemSharePayload(item) {
   const categoryMeta = MARKET_CATEGORIES_MAP[item?.category] || {};
   const isService = item?.item_type === 'service';
-  const headline = categoryMeta.label
-    ? `${categoryMeta.icon || (isService ? '✨' : '📦')} ${categoryMeta.label}`
-    : isService
-      ? '🛠 Услуга'
-      : '🛍 Товар';
-  const priceLine = formatMoney(item?.price);
-  const preview = truncateText(item?.title || 'Открыть объявление в CampusApp', 110);
+  const categoryIcon = categoryMeta.icon || (isService ? '✨' : '📦');
+  const title = truncateText(item?.title || 'Открыть объявление в CampusApp', 110);
+  const price = formatMoney(item?.price) || 'цена договорная';
+  const location = compactText(
+    item?.location || item?.seller?.university || item?.university
+  );
+
+  const firstLine = `${categoryIcon} ${title} · ${price}`;
+  const secondLine = [location, 'CampusApp'].filter(Boolean).join(' · ');
 
   return {
     link: buildMiniAppStartappUrl(`market_${item.id}`),
-    message: joinMessageLines([
-      '🎓 CampusApp',
-      headline,
-      preview,
-      priceLine ? `💸 ${priceLine}` : isService ? '💬 Цена обсуждается' : '💬 Цена по договорённости',
-      getMarketLocationLine(item),
-      'Открыть в CampusApp 👇',
-    ]),
+    message: `${firstLine}\n${secondLine}`,
   };
 }
 

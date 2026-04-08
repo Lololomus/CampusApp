@@ -95,6 +95,21 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
 
   const canSend = hasChanges && isFormValid && !isSubmitting;
 
+  const computeProgress = () => {
+    if (!hasChanges) return 0;
+    const segs = [
+      { w: 25, v: images.length > 0 || videoFile ? 1 : 0 },
+      { w: 20, v: Math.min(1, title.trim().length / 3) },
+      { w: 15, v: Number(price) > 0 ? 1 : 0 },
+      { w: 40, v: Math.min(1, description.trim().length / 10) },
+    ];
+    if (item?.item_type === 'product') segs.push({ w: 20, v: condition !== '' ? 1 : 0 });
+    const total = segs.reduce((s, seg) => s + seg.w, 0);
+    const filled = segs.reduce((s, seg) => s + seg.w * seg.v, 0);
+    return total > 0 ? Math.round((filled / total) * 100) : 0;
+  };
+  const sendProgress = computeProgress();
+
   // --- Анимация ---
   useEffect(() => {
     const t = setTimeout(() => setIsVisible(true), 20);
@@ -485,51 +500,50 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
           </div>
 
           {/* Нижний тулбар */}
-          <div style={s.toolbar}>
-            <div style={s.toolGroup}>
-              {/* Фото */}
-              <button
-                style={{ ...s.toolBtn, ...(images.length > 0 || videoFile ? s.toolBtnActive : {}), transition: 'opacity 0.15s, background-color 0.2s' }}
-                onClick={() => !isSubmitting && fileInputRef.current?.click()}
-              >
-                <ImageIcon size={TOOL_ICON_SIZE} />
-              </button>
-
-              {/* Состояние — только для товаров */}
-              {item?.item_type === 'product' && (
+          <div style={s.bottomDock}>
+            <div style={s.toolbar}>
+              <div style={s.toolGroup}>
+                {/* Фото */}
                 <button
-                  style={{ ...s.toolBtn, ...(condition || activeSubSheet === 'cond' ? s.toolBtnActive : {}), transition: 'opacity 0.15s, background-color 0.2s' }}
-                  onClick={() => !isSubmitting && setActiveSubSheet(activeSubSheet === 'cond' ? null : 'cond')}
+                  style={{ ...s.toolBtn, ...(images.length > 0 || videoFile ? s.toolBtnActive : {}), transition: 'opacity 0.15s, background-color 0.2s' }}
+                  onClick={() => !isSubmitting && fileInputRef.current?.click()}
                 >
-                  <Sparkles size={TOOL_ICON_SIZE} />
+                  <ImageIcon size={TOOL_ICON_SIZE} />
                 </button>
-              )}
 
-              {/* Локация */}
-              <button
-                style={{ ...s.toolBtn, ...(location || activeSubSheet === 'loc' ? s.toolBtnActive : {}), transition: 'opacity 0.15s, background-color 0.2s' }}
-                onClick={() => !isSubmitting && setActiveSubSheet(activeSubSheet === 'loc' ? null : 'loc')}
-              >
-                <MapPin size={TOOL_ICON_SIZE} />
-              </button>
+                {/* Состояние — только для товаров */}
+                {item?.item_type === 'product' && (
+                  <button
+                    style={{ ...s.toolBtn, ...(condition || activeSubSheet === 'cond' ? s.toolBtnActive : {}), transition: 'opacity 0.15s, background-color 0.2s' }}
+                    onClick={() => !isSubmitting && setActiveSubSheet(activeSubSheet === 'cond' ? null : 'cond')}
+                  >
+                    <Sparkles size={TOOL_ICON_SIZE} />
+                  </button>
+                )}
+
+                {/* Локация */}
+                <button
+                  style={{ ...s.toolBtn, ...(location || activeSubSheet === 'loc' ? s.toolBtnActive : {}), transition: 'opacity 0.15s, background-color 0.2s' }}
+                  onClick={() => !isSubmitting && setActiveSubSheet(activeSubSheet === 'loc' ? null : 'loc')}
+                >
+                  <MapPin size={TOOL_ICON_SIZE} />
+                </button>
+              </div>
             </div>
 
-            {/* Кнопка сохранения */}
-            <button
-              style={{
-                ...s.sendBtn,
-                background: canSend ? 'rgba(212,255,0,0.15)' : theme.colors.premium.surfaceHover,
-                color: canSend ? theme.colors.premium.primary : theme.colors.premium.textMuted,
-                transition: 'opacity 0.15s, background-color 0.2s',
-              }}
-              disabled={!canSend}
-              onClick={handleSubmit}
-            >
-              {isSubmitting
-                ? <Loader2 size={TOOL_ICON_SIZE} style={{ animation: 'em-spin 0.7s linear infinite' }} />
-                : <Check size={TOOL_ICON_SIZE} />
-              }
-            </button>
+            <div style={s.publishBtnWrap}>
+              <button style={s.publishBtn} onClick={handleSubmit} disabled={!canSend}>
+                <div style={{ ...s.publishFill, width: `${sendProgress}%` }} />
+                <span style={{ position: 'relative', zIndex: 1, color: '#fff', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isSubmitting ? <><Loader2 size={18} style={{ animation: 'em-spin 0.7s linear infinite' }} /> Сохраняем...</> : 'Сохранить'}
+                </span>
+                <div style={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - sendProgress}% 0 0)`, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2, transition: 'clip-path 0.35s ease', pointerEvents: 'none' }}>
+                  <span style={{ color: '#000', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {isSubmitting ? <><Loader2 size={18} style={{ animation: 'em-spin 0.7s linear infinite' }} /> Сохраняем...</> : 'Сохранить'}
+                  </span>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Sub-sheet: состояние — только для товаров */}
@@ -719,7 +733,7 @@ const s = {
   scroll: {
     flex: 1,
     overflowY: 'auto',
-    padding: '0 20px 150px',
+    padding: '0 20px 200px',
     display: 'flex',
     flexDirection: 'column',
   },
@@ -871,18 +885,23 @@ const s = {
   },
 
   // Тулбар
-  toolbar: {
+  bottomDock: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 'calc(10px) 16px calc(10px + var(--screen-bottom-offset))',
+    zIndex: 10,
     background: theme.colors.premium.surfaceElevated,
     borderTop: `1px solid ${theme.colors.premium.border}`,
+  },
+  toolbar: {
+    padding: '10px 16px',
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    zIndex: 10,
+  },
+  publishBtnWrap: {
+    padding: '8px 16px',
+    paddingBottom: 'calc(10px + var(--screen-bottom-offset))',
   },
   toolGroup: {
     display: 'flex',
@@ -902,17 +921,28 @@ const s = {
     flexShrink: 0,
   },
   toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: theme.colors.premium.primary },
-  sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  publishBtn: {
+    position: 'relative',
+    width: '100%',
+    height: 52,
+    borderRadius: 26,
     border: 'none',
+    background: theme.colors.premium.surfaceHover,
+    overflow: 'hidden',
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    flexShrink: 0,
+    boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+  },
+  publishFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)',
+    transition: 'width 0.35s ease',
+    borderRadius: 26,
   },
 
   // Sub-sheet

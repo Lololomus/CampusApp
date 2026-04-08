@@ -24,7 +24,16 @@ import { CREATE_CONTENT_POST_CATEGORIES } from '../constants/createContentUiConf
 const IS_DEV = import.meta.env.DEV;
 const postCategories = [
   { id: 'all', label: 'Все', emoji: '' },
-  ...CREATE_CONTENT_POST_CATEGORIES.map((category) => ({
+  ...CREATE_CONTENT_POST_CATEGORIES
+    .filter((category) => category.value !== 'general')
+    .map((category) => ({
+      id: category.value,
+      label: category.label,
+      emoji: category.icon,
+    })),
+  ...CREATE_CONTENT_POST_CATEGORIES
+    .filter((category) => category.value === 'general')
+    .map((category) => ({
     id: category.value,
     label: category.label,
     emoji: category.icon,

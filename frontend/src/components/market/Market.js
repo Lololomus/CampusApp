@@ -63,6 +63,8 @@ const Market = () => {
   const contentRef = useRef(null);
   const observerRef = useRef(null);
   const loadMoreTriggerRef = useRef(null);
+  const loadingRef = useRef(false);
+  const pageRef = useRef(0);
 
   // ✅ СТАБИЛИЗАЦИЯ marketFilters
   const stabilizedFilters = useMemo(() => ({
@@ -106,13 +108,14 @@ const Market = () => {
 
   // ===== LOAD DATA =====
   const loadItems = useCallback(async (reset = false) => {
-    if (loading) return;
+    if (loadingRef.current) return;
     
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
 
     try {
-      const currentPage = reset ? 0 : page;
+      const currentPage = reset ? 0 : pageRef.current;
       const limit = MARKET_PAGE_SIZE;
       
       const filters = {
@@ -127,15 +130,16 @@ const Market = () => {
       
       if (reset) {
         setMarketItems(result.items);
+        pageRef.current = 1;
         setPage(1);
       } else {
-        const existingIds = new Set(marketItems.map(item => item.id));
-        const uniqueNewItems = result.items.filter(item => !existingIds.has(item.id));
-        
-        if (uniqueNewItems.length > 0) {
-          setMarketItems([...marketItems, ...uniqueNewItems]);
-        }
-        
+        setMarketItems((prevItems) => {
+          const existingIds = new Set(prevItems.map(item => item.id));
+          const uniqueNewItems = result.items.filter(item => !existingIds.has(item.id));
+          return uniqueNewItems.length > 0 ? [...prevItems, ...uniqueNewItems] : prevItems;
+        });
+
+        pageRef.current = currentPage + 1;
         setPage(currentPage + 1);
       }
 
@@ -145,9 +149,10 @@ const Market = () => {
       console.error('Ошибка загрузки товаров:', err);
       setError('Не удалось загрузить товары');
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  }, [loading, page, searchQuery, stabilizedFilters, user, marketItems, setMarketItems]);
+  }, [searchQuery, stabilizedFilters, setMarketItems]);
 
   // ===== EFFECTS =====
   
@@ -157,6 +162,7 @@ const Market = () => {
   }, [marketFilters.category]);
 
   useEffect(() => {
+    pageRef.current = 0;
     loadItems(true);
   }, [searchQuery, stabilizedFilters, loadItems]);
 
@@ -211,6 +217,7 @@ const Market = () => {
   const haptic = (type = 'light') => hapticFeedback(type);
 
   const handleRefresh = useCallback(() => {
+    pageRef.current = 0;
     setPage(0);
     loadItems(true);
   }, [loadItems]);

@@ -5,7 +5,6 @@ import {
   Image as ImageIcon,
   BarChart2,
   MapPin,
-  Check,
   Loader2,
   ChevronLeft,
   ChevronRight,
@@ -227,9 +226,9 @@ function CreateContentModal({ onClose }) {
   const [showHelpDeadline, setShowHelpDeadline] = useState(false);
   const [helpDeadlineType, setHelpDeadlineType] = useState('none');
   const [helpCustomDate, setHelpCustomDate] = useState('');
-  const [showEventPicker, setShowEventPicker] = useState(false);
-  const [showReqPicker, setShowReqPicker] = useState(false);
-  const [showHelpPicker, setShowHelpPicker] = useState(false);
+  const [activePicker, setActivePicker] = useState(null);
+  const [isPickerSheetOpen, setIsPickerSheetOpen] = useState(false);
+  const pickerCloseTimerRef = useRef(null);
 
   const sheetRef = useRef(null);
   const postBodyRef = useRef(null);
@@ -303,7 +302,19 @@ function CreateContentModal({ onClose }) {
     [helpDeadlineType, helpCustomDate]
   );
 
-  const isAnyPickerOpen = showEventPicker || showReqPicker || showHelpPicker;
+  const openPicker = (which) => {
+    clearTimeout(pickerCloseTimerRef.current);
+    setActivePicker(which);
+    setIsPickerSheetOpen(true);
+  };
+
+  const closePicker = () => {
+    setIsPickerSheetOpen(false);
+    clearTimeout(pickerCloseTimerRef.current);
+    pickerCloseTimerRef.current = setTimeout(() => setActivePicker(null), 300);
+  };
+
+  const isAnyPickerOpen = isPickerSheetOpen || activePicker !== null;
 
   const registerMediaTask = (taskPromise) => {
     mediaProcessingTasksRef.current.add(taskPromise);
@@ -414,8 +425,9 @@ function CreateContentModal({ onClose }) {
   useEffect(() => {
     setShowReqReward(false);
     setShowReqDeadline(false);
-    setShowEventPicker(false);
-    setShowReqPicker(false);
+    setIsPickerSheetOpen(false);
+    setActivePicker(null);
+    clearTimeout(pickerCloseTimerRef.current);
     setShowScopePanel(false);
     setScopePanelView('root');
     setScopeSearchQuery('');
@@ -663,9 +675,10 @@ function CreateContentModal({ onClose }) {
 
   const isPostFormValid = () => {
     const textValid = postBody.trim().length >= POST_LIMITS.BODY_MIN;
+    const titleValid = postTitle.trim().length >= POST_LIMITS.TITLE_MIN;
     if (postCategory === 'polls') return postTitle.trim().length >= 3 && isPollValid();
     if (postCategory === 'memes') return photos.length > 0 || countLetters(postTitle + postBody) >= 3;
-    if (!textValid) return false;
+    if (!textValid || !titleValid) return false;
     if (postScope === 'university' && isCrossUniversityScope && !postTargetUniversity.trim()) return false;
     if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
     if (postCategory === 'lost_found') return location.trim().length >= 3;
@@ -679,6 +692,43 @@ function CreateContentModal({ onClose }) {
     Boolean(resolvedRequestExpiresAt);
 
   const canSend = activeTab === 'post' ? isPostFormValid() : isRequestFormValid();
+
+  const computePostProgress = () => {
+    const segs = [];
+    if (postCategory === 'polls') {
+      segs.push({ w: 60, v: postTitle.trim().length >= 3 ? 1 : 0 });
+    } else if (postCategory === 'memes') {
+      segs.push({ w: 60, v: (photos.length > 0 || countLetters(postTitle + postBody) >= 3) ? 1 : 0 });
+    } else {
+      segs.push({ w: 30, v: Math.min(1, postTitle.trim().length / POST_LIMITS.TITLE_MIN) });
+      segs.push({ w: 30, v: Math.min(1, postBody.trim().length / POST_LIMITS.BODY_MIN) });
+    }
+    if (postCategory === 'events') {
+      segs.push({ w: 20, v: Boolean(buildEventDateIso(eventDateMode, customDate)) ? 1 : 0 });
+      segs.push({ w: 20, v: location.trim().length >= 3 ? 1 : 0 });
+    } else if (postCategory === 'lost_found') {
+      segs.push({ w: 40, v: location.trim().length >= 3 ? 1 : 0 });
+    } else if (postScope === 'university' && isCrossUniversityScope) {
+      segs.push({ w: 40, v: postTargetUniversity.trim() ? 1 : 0 });
+    }
+    if (hasPoll && postCategory !== 'polls') {
+      segs.push({ w: 30, v: isPollValid() ? 1 : 0 });
+    }
+    const total = segs.reduce((s, seg) => s + seg.w, 0);
+    const filled = segs.reduce((s, seg) => s + seg.w * seg.v, 0);
+    return total > 0 ? Math.round((filled / total) * 100) : 0;
+  };
+
+  const computeRequestProgress = () => {
+    const segs = [
+      { w: 40, v: Math.min(1, reqTitle.trim().length / REQUEST_LIMITS.TITLE_MIN) },
+      { w: 40, v: Math.min(1, reqBody.trim().length / REQUEST_LIMITS.BODY_MIN) },
+      { w: 20, v: Boolean(resolvedRequestExpiresAt) ? 1 : 0 },
+    ];
+    const total = segs.reduce((s, seg) => s + seg.w, 0);
+    const filled = segs.reduce((s, seg) => s + seg.w * seg.v, 0);
+    return Math.round((filled / total) * 100);
+  };
 
   const handleClose = () => {
     if (isSubmitting) return;
@@ -775,7 +825,7 @@ function CreateContentModal({ onClose }) {
 
   const selectReqDeadline = (value) => {
     setReqDeadlineType(value);
-    if (value !== 'custom') setShowReqPicker(false);
+    if (value !== 'custom') closePicker();
   };
 
   const addPostTag = (tagValue) => {
@@ -1213,6 +1263,7 @@ function CreateContentModal({ onClose }) {
   const pollVisible = hasPoll || postCategory === 'polls';
   const sendDisabled = !canSend || isSubmitting || isAwaitingMedia;
   const sendLoading = isSubmitting || isAwaitingMedia;
+  const sendProgress = activeTab === 'post' ? computePostProgress() : computeRequestProgress();
   const mediaInputAccept = activeTab === 'request' ? 'image/*' : 'image/*,video/mp4,video/quicktime,video/webm';
 
   const content = (
@@ -1408,25 +1459,22 @@ function CreateContentModal({ onClose }) {
                     {postCategory === 'events' && (
                       <div className="smart-block" style={styles.smartWrap}>
                         <div style={styles.eventRow}>
-                          <button type="button" onClick={() => { setEventDateMode('today'); setShowEventPicker(false); }} style={eventDateMode === 'today' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} className="create-spring-btn" disabled={isSubmitting}>Сегодня</button>
-                          <button type="button" onClick={() => { setEventDateMode('tomorrow'); setShowEventPicker(false); }} style={eventDateMode === 'tomorrow' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} className="create-spring-btn" disabled={isSubmitting}>Завтра</button>
-                          <div style={styles.eventPicker}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEventDateMode('custom');
-                                setShowEventPicker(true);
-                                setShowReqPicker(false);
-                                setShowReqDeadline(false);
-                                setShowReqReward(false);
-                              }}
-                              style={eventDateMode === 'custom' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn}
-                              className="create-spring-btn"
-                              disabled={isSubmitting}
-                            >
-                              {eventDateMode === 'custom' && customDate ? formatCustomDate(customDate) : 'Своя дата 📅'}
-                            </button>
-                          </div>
+                          <button type="button" onClick={() => { setEventDateMode('today'); closePicker(); }} style={eventDateMode === 'today' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} className="create-spring-btn" disabled={isSubmitting}>Сегодня</button>
+                          <button type="button" onClick={() => { setEventDateMode('tomorrow'); closePicker(); }} style={eventDateMode === 'tomorrow' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} className="create-spring-btn" disabled={isSubmitting}>Завтра</button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEventDateMode('custom');
+                              openPicker('event');
+                              setShowReqDeadline(false);
+                              setShowReqReward(false);
+                            }}
+                            style={eventDateMode === 'custom' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn}
+                            className="create-spring-btn"
+                            disabled={isSubmitting}
+                          >
+                            {eventDateMode === 'custom' && customDate ? formatCustomDate(customDate) : 'Своя дата 📅'}
+                          </button>
                         </div>
                         <div style={styles.smartInputWrap}>
                           <MapPin size={18} color="var(--create-text-muted)" />
@@ -1491,7 +1539,7 @@ function CreateContentModal({ onClose }) {
                       </div>
                     )}
 
-                    <div style={{ height: 150 }} />
+                    <div style={{ height: 200 }} />
                   </div>
                 </div>
 
@@ -1611,7 +1659,7 @@ function CreateContentModal({ onClose }) {
                       </div>
                     )}
 
-                    <div style={{ height: 150 }} />
+                    <div style={{ height: 200 }} />
                   </div>
                 </div>
               </div>
@@ -1704,7 +1752,7 @@ function CreateContentModal({ onClose }) {
                     ))}
                     <button
                       type="button"
-                      onClick={() => { setHelpDeadlineType('custom'); setShowHelpPicker(true); }}
+                      onClick={() => { setHelpDeadlineType('custom'); openPicker('help'); }}
                       style={helpDeadlineType === 'custom' ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive, ...styles.deadlineCustomBtn } : { ...styles.smartOptionBtn, ...styles.deadlineCustomBtn }}
                       className="create-spring-btn"
                       disabled={isSubmitting}
@@ -1784,7 +1832,7 @@ function CreateContentModal({ onClose }) {
                     ))}
                     <button
                       type="button"
-                      onClick={() => { setReqDeadlineType('custom'); setShowReqPicker(true); }}
+                      onClick={() => { setReqDeadlineType('custom'); openPicker('req'); }}
                       style={reqDeadlineType === 'custom' ? { ...styles.smartOptionBtn, ...styles.smartOptionBtnActive, ...styles.deadlineCustomBtn } : { ...styles.smartOptionBtn, ...styles.deadlineCustomBtn }}
                       className="create-spring-btn"
                       disabled={isSubmitting}
@@ -1941,9 +1989,6 @@ function CreateContentModal({ onClose }) {
                   </div>
                 )}
 
-                <button type="button" onClick={handleSubmit} style={canSend ? { ...styles.sendBtn, ...styles.sendBtnActive } : styles.sendBtn} className="create-spring-btn" disabled={sendDisabled}>
-                  {sendLoading ? <Loader2 size={TOOL_ICON_SIZE} style={{ animation: 'createSpin 0.7s linear infinite' }} /> : <Check size={TOOL_ICON_SIZE} />}
-                </button>
               </div>
             </div>
           </div>
@@ -1954,57 +1999,79 @@ function CreateContentModal({ onClose }) {
               <span>{error}</span>
             </div>
           )}
+
+          <div style={styles.publishBtnWrap}>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={sendDisabled}
+              className="create-spring-btn"
+              style={styles.publishBtn}
+            >
+              <div style={{ ...styles.publishFill, width: `${sendProgress}%` }} />
+              <span style={{ position: 'relative', zIndex: 1, color: '#fff', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {sendLoading ? <><Loader2 size={18} style={{ animation: 'createSpin 0.7s linear infinite' }} /> Публикуем...</> : 'Опубликовать'}
+              </span>
+              <div style={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - sendProgress}% 0 0)`, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2, transition: 'clip-path 0.35s ease', pointerEvents: 'none' }}>
+                <span style={{ color: '#000', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {sendLoading ? <><Loader2 size={18} style={{ animation: 'createSpin 0.7s linear infinite' }} /> Публикуем...</> : 'Опубликовать'}
+                </span>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 
       <div style={{ ...styles.pickerOverlay, pointerEvents: isAnyPickerOpen ? 'auto' : 'none' }}>
         <div
-          style={{ ...styles.pickerBackdrop, opacity: isAnyPickerOpen ? 1 : 0 }}
-          onClick={() => {
-            setShowEventPicker(false);
-            setShowReqPicker(false);
-            setShowHelpPicker(false);
-          }}
+          style={{ ...styles.pickerBackdrop, opacity: isPickerSheetOpen ? 1 : 0 }}
+          onClick={closePicker}
         />
-        <div style={{ ...styles.pickerSheet, transform: isAnyPickerOpen ? 'translateY(0)' : 'translateY(100%)' }}>
-          {showEventPicker && (
+        <div style={{
+          ...styles.pickerSheet,
+          transform: isPickerSheetOpen ? 'translateY(0)' : 'translateY(100%)',
+          transition: isPickerSheetOpen
+            ? 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)'
+            : 'transform 0.25s ease-in',
+        }}>
+          {activePicker === 'event' && (
             <SmartDatePicker
               initialDate={customDate}
               onSave={(iso) => {
                 setCustomDate(iso);
                 setEventDateMode('custom');
-                setShowEventPicker(false);
+                closePicker();
               }}
               onCancel={() => {
-                setShowEventPicker(false);
+                closePicker();
                 if (!customDate) setEventDateMode('today');
               }}
             />
           )}
-          {showReqPicker && (
+          {activePicker === 'req' && (
             <SmartDatePicker
               initialDate={reqCustomDate}
               onSave={(iso) => {
                 setReqCustomDate(iso);
                 setReqDeadlineType('custom');
-                setShowReqPicker(false);
+                closePicker();
               }}
               onCancel={() => {
-                setShowReqPicker(false);
+                closePicker();
                 if (!reqCustomDate) setReqDeadlineType('24h');
               }}
             />
           )}
-          {showHelpPicker && (
+          {activePicker === 'help' && (
             <SmartDatePicker
               initialDate={helpCustomDate}
               onSave={(iso) => {
                 setHelpCustomDate(iso);
                 setHelpDeadlineType('custom');
-                setShowHelpPicker(false);
+                closePicker();
               }}
               onCancel={() => {
-                setShowHelpPicker(false);
+                closePicker();
                 if (!helpCustomDate) setHelpDeadlineType('none');
               }}
             />
@@ -2265,7 +2332,6 @@ const styles = {
   eventRow: { display: 'flex', gap: 8 },
   eventBtn: { flex: 1, border: 'none', borderRadius: 12, background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', padding: '10px 4px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   eventBtnActive: { background: 'var(--create-primary)', color: '#000' },
-  eventPicker: { flex: 1, position: 'relative' },
   hiddenDateInput: { position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' },
   anonBlock: { borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16, overflow: 'hidden' },
   anonRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' },
@@ -2453,13 +2519,14 @@ const styles = {
   tagInput: { flex: 1, marginLeft: 8, border: 'none', background: 'transparent', color: '#fff', fontSize: 15, outline: 'none' },
   tagAddBtn: { width: 38, height: 38, borderRadius: 19, border: 'none', background: 'rgba(255,255,255,0.1)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   tagAddBtnActive: { background: 'var(--create-primary)', color: '#000' },
-  toolbar: { padding: '10px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', background: 'var(--create-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 20 },
+  toolbar: { padding: '10px 16px', background: 'var(--create-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 20 },
   toolGroup: { display: 'flex', gap: 8 },
   toolBtn: { width: 40, height: 40, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
   toolBtnDisabled: { opacity: 0.5 },
-  sendBtn: { width: 40, height: 40, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
-  sendBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
+  publishBtnWrap: { padding: '8px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', background: 'var(--create-surface)' },
+  publishBtn: { position: 'relative', width: '100%', height: 52, borderRadius: 26, border: 'none', background: 'var(--create-surface-elevated)', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.35)' },
+  publishFill: { position: 'absolute', left: 0, top: 0, bottom: 0, background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.35s ease', borderRadius: 26 },
   pickerOverlay: {
     position: 'fixed',
     inset: 0,
@@ -2482,7 +2549,6 @@ const styles = {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: '24px 16px calc(var(--screen-bottom-offset) + 16px)',
-    transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
   },
   errorBar: { position: 'absolute', left: 16, right: 16, bottom: 'calc(76px + var(--screen-bottom-offset))', borderRadius: 12, border: '1px solid rgba(255,69,58,0.35)', background: 'rgba(255,69,58,0.14)', color: '#ff9d98', padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, fontWeight: 500 },
 };

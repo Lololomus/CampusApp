@@ -227,6 +227,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
     const tc = theme.colors.premium.tagColors;
     if (isAd) return { label: 'Реклама', color: theme.colors.textTertiary, bg: 'rgba(150,150,150,0.15)' };
     switch(post.category) {
+      case 'general':     return { label: 'Без темы',    color: theme.colors.textTertiary, bg: 'rgba(255,255,255,0.05)' };
       case 'news':        return { label: 'Новости',     ...tc.news };
       case 'memes':       return { label: 'Мем',         ...tc.memes };
       case 'events':      return { label: 'Событие',     ...tc.events };
