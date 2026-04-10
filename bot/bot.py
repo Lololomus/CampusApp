@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -16,7 +17,9 @@ from config import (
     BOT_TOKEN,
     FOLLOWUP_POLL_INTERVAL,
     LOG_LEVEL,
+    MASKED_TELEGRAM_PROXY_URL,
     NOTIFICATION_POLL_INTERVAL,
+    TELEGRAM_PROXY_URL,
 )
 from handlers import callbacks, start
 from services.api_client import api_client
@@ -54,6 +57,12 @@ def force_ipv4_for_telegram():
 
     socket.getaddrinfo = _telegram_ipv4_getaddrinfo
     _ipv4_patch_applied = True
+
+
+def create_telegram_session() -> AiohttpSession:
+    if TELEGRAM_PROXY_URL:
+        return AiohttpSession(proxy=TELEGRAM_PROXY_URL)
+    return AiohttpSession()
 
 
 async def heartbeat_loop(stop_event: asyncio.Event):
@@ -106,8 +115,12 @@ async def main():
         force_ipv4_for_telegram()
         logger.info("BOT_FORCE_IPV4 enabled: forcing IPv4 for %s", TELEGRAM_API_HOST)
 
+    if MASKED_TELEGRAM_PROXY_URL:
+        logger.info("Telegram proxy enabled: %s", MASKED_TELEGRAM_PROXY_URL)
+
     bot = Bot(
         token=BOT_TOKEN,
+        session=create_telegram_session(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 

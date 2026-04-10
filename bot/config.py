@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
@@ -40,6 +41,27 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _first_env(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value and value.strip():
+            return value.strip()
+    return None
+
+
+def _mask_proxy_url(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    parts = urlsplit(value)
+    if "@" not in parts.netloc:
+        return value
+
+    _, host_part = parts.netloc.rsplit("@", 1)
+    masked_netloc = f"***:***@{host_part}"
+    return urlunsplit((parts.scheme, masked_netloc, parts.path, parts.query, parts.fragment))
+
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if IS_PROD:
     BOT_TOKEN = _require_prod_value("BOT_TOKEN", BOT_TOKEN, min_len=20)
@@ -70,6 +92,8 @@ if IS_PROD and not MINIAPP_URL.startswith("https://"):
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 BOT_FORCE_IPV4 = _env_bool("BOT_FORCE_IPV4", default=False)
+TELEGRAM_PROXY_URL = _first_env("TELEGRAM_PROXY_URL", "HTTPS_PROXY", "https_proxy")
+MASKED_TELEGRAM_PROXY_URL = _mask_proxy_url(TELEGRAM_PROXY_URL)
 
 BOT_HEARTBEAT_FILE = os.getenv("BOT_HEARTBEAT_FILE", "/tmp/campusapp-bot-heartbeat")
 BOT_HEARTBEAT_INTERVAL = int(os.getenv("BOT_HEARTBEAT_INTERVAL", "15"))

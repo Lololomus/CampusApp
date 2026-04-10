@@ -9,6 +9,10 @@ die() {
   exit 1
 }
 
+warn() {
+  echo "WARN: $*" >&2
+}
+
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.tuna.yml)
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 SKIP_PULL=false
@@ -45,7 +49,18 @@ container_health() {
 wait_for_service() {
   local service="$1"
   local timeout="$2"
+  local required="${3:-true}"
   local elapsed=0
+
+  fail_wait() {
+    local message="$1"
+    compose logs --tail=80 "$service" || true
+    if [[ "$required" == "true" ]]; then
+      die "$message"
+    fi
+    warn "$message"
+    return 1
+  }
 
   while [[ "$elapsed" -lt "$timeout" ]]; do
     local status health
@@ -59,16 +74,15 @@ wait_for_service() {
     fi
 
     if [[ "$health" == "unhealthy" || "$status" == "restarting" || "$status" == "exited" || "$status" == "dead" ]]; then
-      compose logs --tail=80 "$service" || true
-      die "Service '$service' failed to become healthy"
+      fail_wait "Service '$service' failed to become healthy"
+      return 1
     fi
 
     sleep 2
     elapsed=$((elapsed + 2))
   done
 
-  compose logs --tail=80 "$service" || true
-  die "Timed out waiting for service '$service'"
+  fail_wait "Timed out waiting for service '$service'"
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -102,11 +116,11 @@ echo "==> Recreating frontend to refresh bind-mounted nginx.tuna.conf"
 compose up -d --force-recreate --no-deps frontend
 
 echo "==> Waiting for services to stabilize"
-wait_for_service postgres 60
-wait_for_service redis 60
-wait_for_service backend 120
-wait_for_service frontend 120
-wait_for_service bot 120
+wait_for_service postgres 60 true
+wait_for_service redis 60 true
+wait_for_service backend 120 true
+wait_for_service frontend 120 true
+wait_for_service bot 120 false
 
 echo "==> Verifying local loopback ingress"
 curl --fail --silent --show-error http://127.0.0.1/health >/dev/null
