@@ -62,6 +62,7 @@ export const Z_MODAL_LIKES_LIST = 2850;
 
 // ========== MODALS - Market (2900-2999) ==========
 export const Z_MODAL_CREATE_MARKET_ITEM = 2900;
+export const Z_MODAL_MARKET_FAVORITES = 2940;
 export const Z_MODAL_MARKET_DETAIL = 2950;
 export const Z_MODAL_MARKET_FILTERS = 2980;
 
@@ -101,6 +102,7 @@ export const Z_EDIT_PROFILE = Z_MODAL_EDIT_PROFILE;         // EditProfile.js
 export const Z_USER_POSTS = Z_MODAL_USER_POSTS;             // UserPosts.js
 export const Z_USER_MARKET_ITEMS = Z_MODAL_USER_MARKET_ITEMS;  // UserMarketItems.js
 export const Z_CREATE_MARKET_ITEM = Z_MODAL_CREATE_MARKET_ITEM;  // CreateMarketItem.js
+export const Z_MARKET_FAVORITES = Z_MODAL_MARKET_FAVORITES;   // MarketFavoritesScreen.js
 export const Z_MARKET_DETAIL = Z_MODAL_MARKET_DETAIL;       // MarketDetail.js
 export const Z_MARKET_FILTERS = Z_MODAL_MARKET_FILTERS;     // MarketFilters.js
 

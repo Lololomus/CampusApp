@@ -135,7 +135,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
     setTimeout(() => setLikeAnimating(false), 400);
 
     const newState = !item.is_favorited;
-    toggleMarketFavoriteOptimistic(item.id, newState);
+    toggleMarketFavoriteOptimistic(item.id, newState, item);
 
     try {
       await toggleMarketFavorite(item.id);
@@ -144,7 +144,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
       }
     } catch (error) {
       console.error('Ошибка toggle избранного:', error);
-      toggleMarketFavoriteOptimistic(item.id, !newState);
+      toggleMarketFavoriteOptimistic(item.id, !newState, item);
       toast.error('Не удалось обновить избранное');
     }
   };
@@ -366,7 +366,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
 const styles = {
   card: {
     position: 'relative',
-    background: 'rgba(28, 28, 30, 0.5)',
+    background: theme.colors.premium.surfaceElevated,
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
     border: '1px solid rgba(255, 255, 255, 0.06)',
@@ -461,8 +461,8 @@ const styles = {
     position: 'absolute',
     bottom: 8,
     right: 8,
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     borderRadius: '50%',
     background: 'rgba(28,28,30,0.6)',
     backdropFilter: 'blur(8px)',

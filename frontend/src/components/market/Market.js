@@ -1,6 +1,7 @@
 // ===== 📄 ФАЙЛ: src/components/market/Market.js =====
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Heart } from 'lucide-react';
 import { useStore } from '../../store';
 import { getMarketItem, getMarketItems, triggerRegistrationPrompt } from '../../api';
 import AppHeader from '../shared/AppHeader';
@@ -9,6 +10,7 @@ import MarketDetail from './MarketDetail';
 import MarketFilters from './MarketFilters';
 import CreateMarketItem from './CreateMarketItem';
 import EditMarketItemModal from './EditMarketItemModal';
+import MarketFavoritesScreen from './MarketFavoritesScreen';
 // [LEGACY] import EdgeBlur from '../shared/EdgeBlur';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
@@ -56,6 +58,7 @@ const Market = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [showDetail, setShowDetail] = useState(null);
   const [showCreateItem, setShowCreateItem] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
   const [error, setError] = useState(null);
   const [animationKey, setAnimationKey] = useState(0); // ✅ СОХРАНИЛИ
 
@@ -247,6 +250,25 @@ const Market = () => {
     setAnimationKey(prev => prev + 1); // ✅ АНИМАЦИЯ
   }, []); // ✅ useCallback
 
+  const handleOpenFavorites = useCallback(() => {
+    haptic('medium');
+    if (!isRegistered) {
+      triggerRegistrationPrompt('market_favorites');
+      return;
+    }
+    setShowFavorites(true);
+  }, [isRegistered]);
+
+  const filterActions = useMemo(() => ([
+    {
+      key: 'favorites',
+      label: 'Избранное',
+      ariaLabel: 'Открыть избранное',
+      icon: <Heart size={16} strokeWidth={2.25} />,
+      onClick: handleOpenFavorites,
+    },
+  ]), [handleOpenFavorites]);
+
   const handleCardClick = useCallback((item) => { 
     haptic('medium'); 
     if (!isRegistered) {
@@ -304,6 +326,7 @@ const Market = () => {
         showFilters={true}
         onFiltersClick={handleOpenFilters}
         activeFiltersCount={activeFiltersCount}
+        filterActions={filterActions}
         premium
         premiumCollapsedToolbar
         freezeBottomChromeOnSearchFocus
@@ -340,10 +363,14 @@ const Market = () => {
           }}
           key={animationKey} // ✅ СОХРАНИЛИ ДЛЯ АНИМАЦИИ
         >
-          {marketRows.map((row) => (
+          {marketRows.map((row, rowIndex) => (
             row.type === 'divider' ? (
               <div key={row.key} style={styles.gridDividerItem}>
-                <FeedDateDivider label={row.label} />
+                <FeedDateDivider
+                  label={row.label}
+                  spacingBefore={rowIndex > 0 ? theme.spacing.md : 0}
+                  spacingAfter={rowIndex < marketRows.length - 1 ? theme.spacing.md : 0}
+                />
               </div>
             ) : (
               <MarketCard
@@ -376,6 +403,10 @@ const Market = () => {
 
       {showDetail && (
         <MarketDetail item={showDetail} onClose={() => setShowDetail(null)} onUpdate={handleRefresh} />
+      )}
+
+      {showFavorites && (
+        <MarketFavoritesScreen onClose={() => setShowFavorites(false)} />
       )}
 
       {editingMarketItem && (

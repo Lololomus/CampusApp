@@ -32,11 +32,14 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     toggleMarketFavoriteOptimistic, 
     deleteMarketItem: deleteFromStore, 
     marketItems,
+    marketFavorites,
     updateMarketItem: updateInStore
   } = useStore();
   
   const [localItem, setLocalItem] = useState(item);
-  const currentItem = marketItems.find(i => i.id === item.id) || localItem;
+  const currentItem = marketItems.find(i => i.id === item.id)
+    || marketFavorites.find(i => i.id === item.id)
+    || localItem;
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -143,7 +146,20 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     setTimeout(() => setLikeAnimating(false), 400);
     
     const newState = !currentItem.is_favorited;
-    toggleMarketFavoriteOptimistic(currentItem.id, newState);
+    const applyLocalFavoriteState = (isFavorited) => {
+      setLocalItem((prev) => {
+        if (!prev || prev.id !== currentItem.id) return prev;
+        const countDelta = Boolean(prev.is_favorited) === isFavorited ? 0 : (isFavorited ? 1 : -1);
+        return {
+          ...prev,
+          is_favorited: isFavorited,
+          favorites_count: Math.max(0, (Number(prev.favorites_count) || 0) + countDelta),
+        };
+      });
+    };
+
+    toggleMarketFavoriteOptimistic(currentItem.id, newState, currentItem);
+    applyLocalFavoriteState(newState);
 
     try {
       await toggleMarketFavorite(currentItem.id);
@@ -152,7 +168,8 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       }
     } catch (error) {
       console.error('Ошибка toggle избранного:', error);
-      toggleMarketFavoriteOptimistic(currentItem.id, !newState);
+      toggleMarketFavoriteOptimistic(currentItem.id, !newState, currentItem);
+      applyLocalFavoriteState(!newState);
       toast.error('Не удалось обновить избранное');
     }
   };

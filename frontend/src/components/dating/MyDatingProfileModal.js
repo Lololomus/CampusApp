@@ -28,6 +28,7 @@ import {
 } from '../../constants/datingConstants';
 
 const Z_MODAL = 2500;
+const PROFILE_MODAL_TRANSITION_MS = 420;
 const d = theme.colors.dating;
 
 // Цвета из CSS-переменных мока
@@ -128,7 +129,7 @@ function MyDatingProfileModal({ onClose }) {
   // Закрытие с exit-анимацией
   const handleClose = () => {
     setIsVisible(false);
-    setTimeout(() => onClose(), 350);
+    setTimeout(() => onClose(), PROFILE_MODAL_TRANSITION_MS);
   };
 
   useTelegramScreen({
@@ -366,7 +367,7 @@ function MyDatingProfileModal({ onClose }) {
 
       <div style={{
         ...styles.modal,
-        transform: isVisible ? 'translateX(0)' : 'translateX(100%)',
+        transform: isVisible ? 'translate3d(0, 0, 0)' : 'translate3d(100%, 0, 0)',
       }}>
         <div className="hide-scroll" style={styles.content}>
           <DrilldownHeader
@@ -843,19 +844,26 @@ function MyDatingProfileModal({ onClose }) {
 const styles = {
   overlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     backgroundColor: 'rgba(0,0,0,0.85)',
     zIndex: Z_MODAL,
-    transition: 'opacity 0.3s ease',
+    transition: `opacity ${PROFILE_MODAL_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
   },
   modal: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     zIndex: Z_MODAL + 1,
     backgroundColor: BG,
     display: 'flex',
     flexDirection: 'column',
-    transition: 'transform 0.35s cubic-bezier(0.4, 0.0, 0.2, 1)',
+    transition: `transform ${PROFILE_MODAL_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+    willChange: 'transform',
   },
   content: {
     flex: 1,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  Heart, MessageCircle, Eye, MapPin, Calendar,
+  Heart, MessageCircle, MapPin, Calendar,
   ChevronLeft, ChevronRight,
   Gift, Phone, Link2, Share2, Pencil, Trash2, Flag, CheckCircle
 } from 'lucide-react';
@@ -312,7 +312,7 @@ function PostDetail() {
     }
     hapticFeedback('medium');
     setIsLikeAnimating(true);
-    setTimeout(() => setIsLikeAnimating(false), 300);
+    setTimeout(() => setIsLikeAnimating(false), 500);
 
     const targetPostId = post.id;
     const prevCount = Number(localLikesCount || 0);
@@ -574,10 +574,11 @@ function PostDetail() {
           0% { background-position: -200% 0; }
           100% { background-position: 200% 0; }
         }
-        @keyframes likeBounce {
+        @keyframes heartBurst {
           0% { transform: scale(1); }
-          40% { transform: scale(1.25); }
-          100% { transform: scale(1); }
+          40% { transform: scale(1.4) rotate(-10deg); }
+          70% { transform: scale(0.9) rotate(5deg); }
+          100% { transform: scale(1) rotate(0); }
         }
       `}</style>
 
@@ -663,7 +664,6 @@ function PostDetail() {
                   onClose={() => setPostMenuOpen(false)}
                   anchorRef={postMenuRef}
                   items={postMenuItems}
-                  variant="premium"
                 />
 
                 <div style={styles.textContent}>
@@ -772,49 +772,45 @@ function PostDetail() {
                   </div>
 
                   <div style={styles.footerRight}>
-                    <div style={styles.readonlyMetric}>
-                      <Eye size={16} color={theme.colors.premium.textMuted} strokeWidth={2.5} />
-                      <span style={styles.readonlyMetricText}>{post.views_count || 0}</span>
-                    </div>
+                    {/* Share — icon-only */}
                     <button
-                      style={{
-                        ...styles.footerAction,
-                        background: '#161618',
-                        padding: '6px 12px',
-                        borderRadius: 20,
-                        color: '#888888',
-                        borderColor: '#222',
-                      }}
+                      className="pressable"
+                      style={styles.shareBtn}
+                      onClick={(e) => { e.stopPropagation(); handleShareLink(); }}
+                    >
+                      <Share2 size={18} />
+                    </button>
+
+                    {/* Comments */}
+                    <button
+                      className="pressable"
+                      style={styles.footerAction}
                       onClick={handleScrollToComments}
                     >
-                      <MessageCircle size={16} color="#888888" strokeWidth={2.5} />
-                      <span style={{...styles.statText, color: '#888888'}}>
-                        {comments.length}
-                      </span>
+                      <MessageCircle size={18} strokeWidth={2.5} />
+                      <span style={styles.statText}>{comments.length}</span>
                     </button>
+
+                    {/* Likes */}
                     <button
-                      style={{
-                        ...styles.footerAction,
-                        animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
-                        color: isLiked ? theme.colors.accent : '#888888',
-                        borderColor: isLiked ? theme.colors.accent : '#222',
-                        background: '#161618',
-                        padding: '6px 12px',
-                        borderRadius: 20,
-                      }}
+                      className="pressable"
+                      style={{ ...styles.footerAction, color: isLiked ? theme.colors.accent : theme.colors.text }}
                       onClick={handleLike}
                       disabled={isLikeInFlight}
                     >
-                      <Heart
-                        size={16}
-                        fill={isLiked ? theme.colors.accent : 'none'}
-                        color={isLiked ? theme.colors.accent : '#888888'}
-                        strokeWidth={isLiked ? 0 : 2.5}
-                      />
                       <span style={{
-                        ...styles.statText,
-                        color: isLiked ? theme.colors.accent : '#888888'
+                        display: 'inline-flex',
+                        animation: isLikeAnimating ? 'heartBurst 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
+                        willChange: isLikeAnimating ? 'transform' : 'auto',
                       }}>
+                        <Heart
+                          size={18}
+                          fill={isLiked ? theme.colors.accent : 'none'}
+                          color={isLiked ? theme.colors.accent : theme.colors.text}
+                          strokeWidth={isLiked ? 0 : 2.5}
+                        />
+                      </span>
+                      <span style={{ ...styles.statText, color: isLiked ? theme.colors.accent : theme.colors.text }}>
                         {localLikesCount}
                       </span>
                     </button>
@@ -1022,12 +1018,11 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
                 <OverflowMenuButton
                   ref={menuButtonRef}
                   isOpen={menuOpen === comment.id}
-                  iconSize={16}
                   onToggle={() => setMenuOpen(menuOpen === comment.id ? null : comment.id)}
                 />
                 <DropdownMenu
                   isOpen={menuOpen === comment.id} onClose={() => setMenuOpen(null)}
-                  anchorRef={menuButtonRef} items={menuItems} variant="premium"
+                  anchorRef={menuButtonRef} items={menuItems}
                 />
               </div>
             )}
@@ -1250,8 +1245,8 @@ const styles = {
   },
   statsFooter: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: `0 ${theme.spacing.lg}px 12px`,
-    marginTop: 16,
+    padding: `0 ${theme.spacing.lg}px 6px`,
+    marginTop: 8,
     backgroundColor: theme.colors.premium.bg, minHeight: 36,
   },
   footerLeft: {
@@ -1260,12 +1255,11 @@ const styles = {
   dateText: { fontSize: 12, color: theme.colors.premium.textMuted, fontWeight: theme.fontWeight.medium },
   editedLabel: { fontSize: 11, color: theme.colors.premium.textMuted, opacity: 0.7, fontStyle: 'italic' },
   footerRight: { display: 'flex', alignItems: 'center', gap: theme.spacing.sm },
-  readonlyMetric: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    color: theme.colors.premium.textMuted,
-    paddingRight: 4,
+  shareBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: theme.colors.premium.border, border: 'none',
+    padding: '8px 12px', borderRadius: theme.radius.lg,
+    color: theme.colors.text, cursor: 'pointer', flexShrink: 0,
   },
   readonlyMetricText: {
     fontSize: 13,
@@ -1290,14 +1284,16 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing.xs,
-    borderRadius: 16,
-    border: `1px solid ${theme.colors.premium.border}`,
-    backgroundColor: theme.colors.premium.surfaceElevated,
-    padding: '6px 10px',
+    borderRadius: theme.radius.lg,
+    border: 'none',
+    background: theme.colors.premium.border,
+    padding: '8px 14px',
     cursor: 'pointer',
-    color: theme.colors.premium.textMuted,
+    color: theme.colors.text,
+    fontWeight: theme.fontWeight.bold,
+    fontSize: theme.fontSize.base,
   },
-  statText: { fontSize: 13, fontWeight: 600, color: theme.colors.premium.textMuted, minWidth: 14, textAlign: 'center', lineHeight: 1 },
+  statText: { fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.bold, minWidth: 14, textAlign: 'center', lineHeight: 1 },
 
   commentsSection: {
     padding: `0 ${theme.spacing.lg}px ${theme.spacing.lg}px`,
@@ -1403,7 +1399,7 @@ const styles = {
   },
   modalContent: {
     backgroundColor: theme.colors.bgSecondary, borderRadius: theme.radius.lg,
-    padding: theme.spacing.xxl, width: '90%', maxWidth: 400,
+    padding: theme.spacing.xxl, width: 'calc(100% - 32px)', maxWidth: 'none', boxSizing: 'border-box',
     display: 'flex', flexDirection: 'column', gap: theme.spacing.md
   },
   modalTitle: { fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.semibold, color: theme.colors.text, marginBottom: theme.spacing.sm },

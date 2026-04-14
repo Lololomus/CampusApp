@@ -178,9 +178,16 @@ function ActionFeed({ onReverse }) {
         </div>
       ) : (
         <div style={styles.feed}>
-          {logRows.map((row) => {
+          {logRows.map((row, rowIndex) => {
             if (row.type === 'divider') {
-              return <FeedDateDivider key={row.key} label={row.label} />;
+              return (
+                <FeedDateDivider
+                  key={row.key}
+                  label={row.label}
+                  spacingBefore={rowIndex > 0 ? 8 : 0}
+                  spacingAfter={rowIndex < logRows.length - 1 ? 8 : 0}
+                />
+              );
             }
 
             const log = row.item;

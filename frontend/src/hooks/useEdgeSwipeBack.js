@@ -118,7 +118,7 @@ export const useEdgeSwipeBack = ({
         const el = wrapperRef.current;
         if (el) {
           el.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.6, 1)';
-          el.style.transform = 'translateX(100vw)';
+          el.style.transform = 'translateX(var(--app-fixed-width))';
         }
         t.active = false;
         t.dirLocked = null;

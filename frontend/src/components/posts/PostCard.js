@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Heart, MessageCircle, Eye, MapPin, Calendar, ArrowUpRight, Megaphone, Link, Share2, Edit2, Trash2, Flag, EyeOff, CheckCircle } from 'lucide-react';
+import { flushSync } from 'react-dom';
+import { Heart, MessageCircle, MapPin, Calendar, ArrowUpRight, Megaphone, Link, Share2, Edit2, Trash2, Flag, EyeOff, CheckCircle } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd, triggerRegistrationPrompt, resolvePost } from '../../api';
@@ -24,7 +25,7 @@ import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { sharePostViaTelegram } from '../../utils/telegramShare';
 
-function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPostResolved }) {
+function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPostResolved, skipReveal }) {
   const { likedPosts, setPostLiked, user, setEditingContent, isRegistered } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -42,11 +43,27 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   const avatarRef = useRef(null);
   const cardRef = useRef(null);
   const bodyRef = useRef(null);
+  const bodyWrapRef = useRef(null);
+  const [isExpanding, setIsExpanding] = useState(false);
   const impressionTracked = useRef(false);
   const [adHidden, setAdHidden] = useState(false);
 
   // ✅ Local state для likes_count
   const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
+
+  // Scroll-reveal: карточка вплывает при входе в viewport
+  const [isRevealed, setIsRevealed] = useState(false);
+  useEffect(() => {
+    if (skipReveal) { setIsRevealed(true); return; }
+    const card = cardRef.current;
+    if (!card) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setIsRevealed(true); observer.unobserve(card); } },
+      { threshold: 0, rootMargin: '50px' }
+    );
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [skipReveal]);
 
   // Синхронизируем локальный счетчик, когда пост обновился извне (например, лайк в PostDetail).
   useEffect(() => {
@@ -225,19 +242,19 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
 
   const catInfo = useMemo(() => {
     const tc = theme.colors.premium.tagColors;
-    if (isAd) return { label: 'Реклама', color: theme.colors.textTertiary, bg: 'rgba(150,150,150,0.15)' };
+    if (isAd) return { label: 'Реклама', color: '#fff', bg: theme.colors.textTertiary, rotate: -5 };
     switch(post.category) {
-      case 'general':     return { label: 'Без темы',    color: theme.colors.textTertiary, bg: 'rgba(255,255,255,0.05)' };
-      case 'news':        return { label: 'Новости',     ...tc.news };
-      case 'memes':       return { label: 'Мем',         ...tc.memes };
-      case 'events':      return { label: 'Событие',     ...tc.events };
-      case 'confessions': return { label: 'Подслушано',  ...tc.confessions };
-      case 'lost_found':  return { label: 'Бюро',        ...tc.lostFound };
-      case 'help':        return { label: 'Помощь',      ...tc.help };
+      case 'general':     return { label: 'Без темы',    color: '#fff', bg: theme.colors.textTertiary,    rotate: -6 };
+      case 'news':        return { label: 'Новости',     color: '#fff', bg: tc.news.color,                rotate: -8 };
+      case 'memes':       return { label: 'Мем',         color: '#fff', bg: tc.memes.color,               rotate:  6 };
+      case 'events':      return { label: 'Событие',     color: '#fff', bg: tc.events.color,              rotate: -5 };
+      case 'confessions': return { label: 'Подслушано',  color: '#fff', bg: tc.confessions.color,         rotate:  9 };
+      case 'lost_found':  return { label: 'Бюро',        color: '#fff', bg: tc.lostFound.color,           rotate: -7 };
+      case 'help':        return { label: 'Помощь',      color: '#fff', bg: tc.help.color,                rotate:  5 };
       case 'polls':       return post.poll?.type === 'quiz'
-        ? { label: 'Викторина', color: '#BF5AF2', bg: 'rgba(191,90,242,0.15)' }
-        : { label: 'Опрос',     color: theme.colors.premium.primary, bg: 'rgba(212,255,0,0.15)' };
-      default:            return { label: 'Пост',        color: theme.colors.textSecondary, bg: 'transparent' };
+        ? { label: 'Викторина', color: '#fff', bg: '#BF5AF2', rotate: -6 }
+        : { label: 'Опрос',     color: '#000', bg: theme.colors.premium.primary, rotate:  7 };
+      default:            return { label: 'Пост',        color: '#fff', bg: theme.colors.textSecondary,   rotate: -5 };
     }
   }, [post.category, isAd, post.poll?.type]);
 
@@ -278,6 +295,37 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
       if (resizeObserver) resizeObserver.disconnect();
     };
   }, [displayBody, isBodyExpanded]);
+
+  const handleExpand = useCallback((e) => {
+    e.stopPropagation();
+    const wrap = bodyWrapRef.current;
+    const p = bodyRef.current;
+    if (!wrap || !p) { setIsBodyExpanded(true); return; }
+
+    // Замеряем сжатую высоту до снятия clamp
+    const fromH = p.clientHeight;
+
+    // Синхронно рендерим isExpanding=true — React снимает line-clamp через JSX
+    flushSync(() => setIsExpanding(true));
+
+    // Теперь p без clamp, измеряем полную высоту
+    const toH = p.scrollHeight;
+
+    // Фиксируем wrapper и запускаем анимацию
+    wrap.style.height = `${fromH}px`;
+    wrap.style.overflow = 'hidden';
+    wrap.offsetHeight; // force reflow
+    wrap.style.transition = 'height 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
+    wrap.style.height = `${toH}px`;
+
+    setTimeout(() => {
+      wrap.style.height = '';
+      wrap.style.overflow = '';
+      wrap.style.transition = '';
+      setIsBodyExpanded(true);
+      setIsExpanding(false);
+    }, 360);
+  }, []);
 
   // ===== MODERATION HOOK =====
   const { moderationMenuItems, moderationModals } = useModerationActions({
@@ -363,7 +411,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
     hapticFeedback('medium');
 
     setIsLikeAnimating(true);
-    setTimeout(() => setIsLikeAnimating(false), 300);
+    setTimeout(() => setIsLikeAnimating(false), 500);
 
     const newIsLiked = !isLiked;
     setPostLiked(post.id, newIsLiked);
@@ -527,10 +575,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   return (
     <>
       <style>{`
-        @keyframes likeBounce {
+        @keyframes heartBurst {
           0% { transform: scale(1); }
-          40% { transform: scale(1.25); }
-          100% { transform: scale(1); }
+          40% { transform: scale(1.4) rotate(-10deg); }
+          70% { transform: scale(0.9) rotate(5deg); }
+          100% { transform: scale(1) rotate(0); }
         }
         @keyframes imageShimmer {
           0% { background-position: 200% 0; }
@@ -542,10 +591,18 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
         ref={cardRef}
         style={{
           ...styles.card,
-          ...(post.category === 'help' ? { borderLeft: `3px solid ${isResolved ? 'rgba(255,107,107,0.35)' : theme.colors.help}`, paddingLeft: 13 } : {}),
+          opacity: isRevealed ? 1 : 0,
+          transform: isRevealed ? 'none' : 'translateY(24px) scale(0.97)',
         }}
         onClick={handleCardClick}
       >
+
+        {/* === БЕЙДЖ КАТЕГОРИИ (штамп поверх карточки) === */}
+        {!isAd && post.category && post.category !== 'general' && (
+          <span style={{ ...styles.categoryBadge, color: catInfo.color, background: catInfo.bg, transform: `rotate(${catInfo.rotate}deg)` }}>
+            {catInfo.label}
+          </span>
+        )}
 
         {/* === HEADER: аватар + имя + меню (одна строка) === */}
         <div style={styles.header}>
@@ -599,13 +656,8 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
                 Реклама
               </span>
             )}
-            {!isAd && (
-              <span style={{ ...styles.categoryBadge, color: catInfo.color, background: catInfo.bg }}>
-                {catInfo.label}
-              </span>
-            )}
             {!isAd && isResolved && (
-              <span style={{ ...styles.categoryBadge, color: '#32D74B', background: 'rgba(50,215,75,0.15)', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span style={styles.resolvedBadge}>
                 <CheckCircle size={10} strokeWidth={2.5} /> Решено
               </span>
             )}
@@ -633,24 +685,24 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
             )}
             {displayBody && (
               <div style={{ marginTop: post.title ? 4 : 0 }}>
-                <div style={styles.bodyWrap}>
+                <div ref={bodyWrapRef} style={styles.bodyWrap}>
                   <p
                     ref={bodyRef}
                     style={{
                       ...styles.body,
-                      WebkitLineClamp: isBodyExpanded ? 'unset' : 4,
-                      overflow: isBodyExpanded ? 'visible' : 'hidden',
+                      WebkitLineClamp: (isBodyExpanded || isExpanding) ? 'unset' : 4,
+                      overflow: (isBodyExpanded || isExpanding) ? 'visible' : 'hidden',
                     }}
                   >
                     <LinkText text={displayBody} />
                   </p>
-                  {!isBodyExpanded && isBodyOverflowing && (
+                  {!isBodyExpanded && !isExpanding && isBodyOverflowing && (
                     <div style={styles.bodyBottomFade} />
                   )}
                 </div>
-                {!isBodyExpanded && isBodyOverflowing && (
+                {!isBodyExpanded && !isExpanding && isBodyOverflowing && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); setIsBodyExpanded(true); }}
+                    onClick={handleExpand}
                     style={styles.expandButton}
                   >
                     Показать всё
@@ -709,7 +761,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
               />
             </div>
           ) : (
-            <div style={{ margin: '0 16px 12px', width: 'calc(100% - 32px)' }}>
+            <div style={{ marginBottom: 12 }}>
               <MediaGrid mediaItems={images} onItemClick={handleMediaItemClick} />
             </div>
           )
@@ -717,7 +769,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
 
         {/* === CTA BUTTON (AD ONLY) === */}
         {isAd && post.cta_text && (
-          <div style={{ padding: '4px 16px 14px' }}>
+          <div style={{ padding: '4px 0 14px' }}>
             <button onClick={handleCtaClick} style={styles.ctaButton}>
               {post.cta_text} <ArrowUpRight size={18} strokeWidth={2.5} color="rgba(255,255,255,0.7)" />
             </button>
@@ -741,39 +793,42 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
             </div>
 
             <div style={styles.footerRight}>
-              {/* Views — read-only pill */}
-              <div style={styles.metricPillReadOnly}>
-                <Eye size={16} strokeWidth={2.5} />
-                <span>{post.views_count || 0}</span>
-              </div>
-
-              {/* Comments — interactive pill */}
+              {/* Share — icon-only */}
               <button
-                style={styles.metricPill}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if(onClick) onClick(post.id);
-                }}
+                className="pressable"
+                style={styles.shareBtn}
+                onClick={(e) => { e.stopPropagation(); handleShareLink(); }}
               >
-                <MessageCircle size={16} strokeWidth={2.5} />
+                <Share2 size={18} />
+              </button>
+
+              {/* Comments */}
+              <button
+                className="pressable"
+                style={styles.metricPill}
+                onClick={(e) => { e.stopPropagation(); if(onClick) onClick(post.id); }}
+              >
+                <MessageCircle size={18} strokeWidth={2.5} />
                 <span>{post.comments_count || 0}</span>
               </button>
 
-              {/* Likes — interactive pill */}
+              {/* Likes */}
               <button
-                style={{
-                  ...styles.metricPill,
-                  animation: isLikeAnimating ? 'likeBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
-                  color: isLiked ? theme.colors.accent : '#888888',
-                  borderColor: isLiked ? theme.colors.accent : '#222',
-                }}
+                className="pressable"
+                style={{ ...styles.metricPill, color: isLiked ? theme.colors.accent : theme.colors.text }}
                 onClick={handleLike}
               >
-                <Heart
-                  size={16}
-                  fill={isLiked ? theme.colors.accent : 'none'}
-                  strokeWidth={isLiked ? 0 : 2.5}
-                />
+                <span style={{
+                  display: 'inline-flex',
+                  animation: isLikeAnimating ? 'heartBurst 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
+                  willChange: isLikeAnimating ? 'transform' : 'auto',
+                }}>
+                  <Heart
+                    size={18}
+                    fill={isLiked ? theme.colors.accent : 'none'}
+                    strokeWidth={isLiked ? 0 : 2.5}
+                  />
+                </span>
                 <span>{localLikesCount}</span>
               </button>
             </div>
@@ -838,23 +893,28 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
 
 const styles = {
   card: {
-    borderBottom: `1px solid ${theme.colors.premium.border}`,
-    padding: '20px 0 12px',
+    borderRadius: theme.radius.xl,
+    margin: '0 0 12px',
+    padding: '20px 20px 10px',
     position: 'relative',
     cursor: 'pointer',
+    background: theme.colors.premium.surfaceElevated,
+    boxShadow: '0 16px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)',
+    border: `1px solid ${theme.colors.premium.border}`,
     WebkitTapHighlightColor: 'transparent',
+    transition: 'opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+    willChange: 'opacity, transform',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '0 16px',
     marginBottom: 12,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: theme.radius.full,
+    width: 46,
+    height: 46,
+    borderRadius: theme.radius.lg,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -863,6 +923,7 @@ const styles = {
     fontWeight: theme.fontWeight.bold,
     flexShrink: 0,
     overflow: 'hidden',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
   },
   authorInfo: {
     flex: 1,
@@ -880,7 +941,8 @@ const styles = {
   },
   authorName: {
     fontSize: 16,
-    fontWeight: 700,
+    fontWeight: 800,
+    letterSpacing: '-0.3px',
     color: theme.colors.text,
     lineHeight: 1.2,
     whiteSpace: 'nowrap',
@@ -891,6 +953,7 @@ const styles = {
   pinned: { fontSize: 12 },
   authorMeta: {
     fontSize: 13,
+    fontWeight: theme.fontWeight.medium,
     color: theme.colors.premium.textMuted,
     marginTop: 2,
     whiteSpace: 'nowrap',
@@ -905,13 +968,24 @@ const styles = {
     flexShrink: 0,
     paddingLeft: 8,
   },
+  resolvedBadge: {
+    display: 'flex', alignItems: 'center', gap: 3,
+    fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px',
+    padding: '4px 8px', borderRadius: theme.radius.md,
+    color: '#32D74B', background: 'rgba(50,215,75,0.15)',
+  },
   categoryBadge: {
+    position: 'absolute',
+    top: -11,
+    right: 16,
     fontSize: 11,
     fontWeight: 800,
     textTransform: 'uppercase',
-    letterSpacing: '0.5px',
+    letterSpacing: '0.8px',
     padding: '4px 10px',
     borderRadius: theme.radius.md,
+    zIndex: 2,
+    pointerEvents: 'none',
   },
   resolveBtn: {
     display: 'flex',
@@ -929,7 +1003,6 @@ const styles = {
     alignSelf: 'flex-start',
   },
   content: {
-    padding: '0 16px',
     marginBottom: 12,
   },
   title: {
@@ -959,7 +1032,7 @@ const styles = {
     right: 0,
     bottom: 0,
     height: 30,
-    background: `linear-gradient(to bottom, rgba(0, 0, 0, 0), ${theme.colors.premium.bg} 82%)`,
+    background: `linear-gradient(to bottom, rgba(14,14,15,0), #0E0E0F 82%)`,
     pointerEvents: 'none',
   },
   expandButton: {
@@ -971,7 +1044,7 @@ const styles = {
     padding: '8px 0',
     cursor: 'pointer',
   },
-  pollWrapper: { margin: `0 16px 12px` },
+  pollWrapper: { marginBottom: 12 },
   specialBlock: {
     marginTop: 12,
     display: 'flex',
@@ -991,8 +1064,8 @@ const styles = {
   },
   adImageContainer: {
     position: 'relative',
-    width: 'calc(100% - 32px)',
-    margin: '0 16px 16px',
+    width: '100%',
+    marginBottom: 16,
     borderRadius: 16,
     overflow: 'hidden',
     border: `1px solid ${theme.colors.border}`,
@@ -1021,14 +1094,12 @@ const styles = {
     zIndex: 1,
   },
   tags: {
-    padding: `0 16px`,
     display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm,
     marginBottom: 0,
   },
   footer: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: 16,
-    padding: '0 16px',
+    marginTop: 8,
     minHeight: 36,
   },
   footerLeft: {
@@ -1045,19 +1116,17 @@ const styles = {
   },
   metricPill: {
     display: 'flex', alignItems: 'center', gap: 6,
-    padding: '6px 12px', borderRadius: 20,
-    background: '#161618', border: '1px solid #222',
-    color: '#888888', cursor: 'pointer',
-    fontWeight: 600, fontSize: 13,
+    padding: '8px 14px', borderRadius: theme.radius.lg,
+    background: theme.colors.premium.border, border: 'none',
+    color: theme.colors.text, cursor: 'pointer',
+    fontWeight: theme.fontWeight.bold, fontSize: theme.fontSize.base,
     transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
   },
-  metricPillReadOnly: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    padding: '6px 4px 6px 0',
-    background: 'transparent', border: 'none',
-    color: '#666666',
-    fontWeight: 600, fontSize: 13,
-    pointerEvents: 'none',
+  shareBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: theme.colors.premium.border, border: 'none',
+    padding: '8px 12px', borderRadius: theme.radius.lg,
+    color: theme.colors.text, cursor: 'pointer', flexShrink: 0,
   },
   ctaButton: {
     width: '100%',

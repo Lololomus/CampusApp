@@ -677,7 +677,10 @@ const s = {
   submitBtnActive: { flex: 2, padding: 10, borderRadius: 10, border: 'none', background: theme.colors.premium.primary, color: '#000', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 20px rgba(212,255,0,0.28)' },
   pickerOverlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     zIndex: 5200,
     display: 'flex',
     flexDirection: 'column',

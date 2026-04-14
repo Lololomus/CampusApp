@@ -93,6 +93,13 @@ function DatingFeed() {
     if (currentProfile?.id) setShowProfileSheet(false);
   }, [currentProfile?.id]);
 
+  useEffect(() => {
+    if (!showMyProfile) return;
+    isDraggingRef.current = false;
+    motionX.set(0);
+    setShowProfileSheet(false);
+  }, [showMyProfile, motionX]);
+
   // === Check registration ===
   useEffect(() => {
     const checkRegistration = async () => {
@@ -465,6 +472,8 @@ function DatingFeed() {
   }
 
   // === RENDER: Main ===
+  const blockProfileCardInteraction = showMyProfile || showProfileSheet || showMatchModal || Boolean(guestActionGate);
+
   return (
     <div style={styles.container}>
       {!viewingProfile && (
@@ -536,7 +545,13 @@ function DatingFeed() {
         {/* ===== TAB: Profiles ===== */}
         {activeTab === 'profiles' && !viewingProfile && (
           <>
-            <div style={styles.cardWrapper}>
+            <div
+              style={{
+                ...styles.cardWrapper,
+                opacity: showMyProfile ? 0 : 1,
+                pointerEvents: blockProfileCardInteraction ? 'none' : 'auto',
+              }}
+            >
               {loading ? (
                 <FeedCardSkeleton />
               ) : !currentProfile ? (
@@ -601,12 +616,12 @@ function DatingFeed() {
 
                           <ProfileCard
                             profile={profile}
-                            onSwipeStart={isActive ? handleSwipeStart : undefined}
-                            onSwipeMove={isActive ? handleSwipeMove : undefined}
-                            onSwipeEnd={isActive ? handleSwipeEnd : undefined}
+                            onSwipeStart={isActive && !blockProfileCardInteraction ? handleSwipeStart : undefined}
+                            onSwipeMove={isActive && !blockProfileCardInteraction ? handleSwipeMove : undefined}
+                            onSwipeEnd={isActive && !blockProfileCardInteraction ? handleSwipeEnd : undefined}
                             isBlurred={isGuestMode}
                             onRegisterTrigger={() => triggerOnboarding('photo')}
-                            isInteractive={isActive}
+                            isInteractive={isActive && !blockProfileCardInteraction}
                             onExpandProfile={() => setShowProfileSheet(true)}
                             onLike={handleLike}
                             onSkip={handleSkip}
@@ -807,6 +822,8 @@ const styles = {
   cardWrapper: {
     position: 'relative', padding: '0 8px',
     flex: 1, overflow: 'hidden',
+    transition: 'opacity 240ms ease',
+    willChange: 'opacity',
   },
   swipeOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,

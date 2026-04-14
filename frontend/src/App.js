@@ -417,6 +417,8 @@ const styles = {
     marginLeft: 'auto',
     marginRight: 'auto',
     width: '100%',
+    position: 'relative',
+    overflowX: 'hidden',
   },
   loading: {
     minHeight: 'var(--tg-app-viewport-stable-height, 100vh)',

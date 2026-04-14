@@ -683,7 +683,7 @@ const BG = '#000';
 
 const styles = {
   overlay: {
-    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
     backgroundColor: BG,
     zIndex: Z_EDIT_PROFILE,
     display: 'flex', flexDirection: 'column',

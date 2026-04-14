@@ -19,6 +19,7 @@ const AppHeader = ({
   showFilters = false,
   onFiltersClick = null,
   activeFiltersCount = 0,
+  filterActions = [],
   rightActions = [],
   transparent = false,
   children = null,
@@ -70,7 +71,9 @@ const AppHeader = ({
   const isRegistered = useStore((state) => Boolean(state.isRegistered));
 
   const effectiveAccentColor = accentColor || theme.colors.primary;
-  const hasPremiumDrawerContent = Boolean(showSearch || showFilters || categories);
+  const normalizedFilterActions = Array.isArray(filterActions) ? filterActions : [];
+  const hasFilterActions = normalizedFilterActions.length > 0;
+  const hasPremiumDrawerContent = Boolean(showSearch || showFilters || categories || hasFilterActions);
   const hasSecondaryPremiumContent = premium && Boolean(children || premiumTrailing);
   const useCollapsedToolbarPremium = premium && premiumCollapsedToolbar && !hasSecondaryPremiumContent && Boolean(title) && hasPremiumDrawerContent;
   const showDrawer = hasPremiumDrawerContent && (!isScrolled || isManualExpanded);
@@ -93,7 +96,7 @@ const AppHeader = ({
     if (collapsibleRef.current) observer.observe(collapsibleRef.current);
     updateDimensions();
     return () => observer.disconnect();
-  }, [children, showSearch, categories, premium, showFilters, title]);
+  }, [children, showSearch, categories, premium, showFilters, title, normalizedFilterActions.length]);
 
   useEffect(() => {
     const totalHeight = collapsibleVisible ? dimensions.sticky + dimensions.collapsible : dimensions.sticky;
@@ -361,9 +364,14 @@ const AppHeader = ({
       const compactPillPadding = 4;
       const compactTitleGap = 6;
       const compactPillTop = compactTopInset;
+      const compactLeadingControlCount = (showFilters ? 1 : 0) + normalizedFilterActions.length;
+      const compactTrailingControlCount = showSearch ? 1 : 0;
+      const compactSideControlCount = Math.max(compactLeadingControlCount, compactTrailingControlCount);
+      const compactSideWidth = compactSideControlCount * compactControlSize;
       const compactMeasuredTitleWidth = compactTitleWidth || Math.max(64, Math.ceil(String(title || '').length * 14));
-      const compactPillWidth = Math.ceil((compactPillPadding * 2) + (compactControlSize * 2) + (compactTitleGap * 2) + compactMeasuredTitleWidth);
+      const compactPillWidth = Math.ceil((compactPillPadding * 2) + (compactSideWidth * 2) + (compactTitleGap * 2) + compactMeasuredTitleWidth);
       const compactHalfWidth = compactPillWidth / 2;
+      const compactLeftEdge = `calc(50% - ${compactHalfWidth - compactPillPadding}px)`;
       const containerHeight = isCompact ? compactPillTop + compactPillHeight : 148;
       const titleTop = isCompact ? compactPillTop + (compactPillHeight / 2) : 14;
       const titleFontSize = 24;
@@ -377,7 +385,7 @@ const AppHeader = ({
 
       const filterSize = 40;
       const filterTop = isCompact ? compactPillTop + compactPillPadding : 96;
-      const filterLeft = isCompact ? `calc(50% - ${compactHalfWidth - compactPillPadding}px)` : '0px';
+      const filterLeft = isCompact ? compactLeftEdge : '0px';
       const filterBg = activeFiltersCount > 0 ? p.primary : (isCompact ? compactFilterBg : p.surfaceElevated);
       const filterColor = activeFiltersCount > 0 ? '#000' : (isCompact ? compactFilterColor : '#FFF');
       const filterRadius = isCompact ? 20 : 14;
@@ -393,8 +401,9 @@ const AppHeader = ({
       const searchIconLeft = isCompact ? 11 : 14;
       const searchIconTop = isCompact ? 11 : 13;
 
-      const tagsLeft = showFilters ? '48px' : '0px';
-      const tagsWidth = showFilters ? 'calc(100% - 48px)' : '100%';
+      const tagsLeftPx = (showFilters ? 48 : 0) + (normalizedFilterActions.length * 48);
+      const tagsLeft = tagsLeftPx > 0 ? `${tagsLeftPx}px` : '0px';
+      const tagsWidth = tagsLeftPx > 0 ? `calc(100% - ${tagsLeftPx}px)` : '100%';
       const tagsOpacity = categories && !isCompact ? 1 : 0;
       const tagsPointer = categories && !isCompact ? 'auto' : 'none';
       const overlayActive = isScrolled && isManualExpanded && !isModalOpen;
@@ -587,6 +596,66 @@ const AppHeader = ({
                   )}
                 </button>
               )}
+
+              {normalizedFilterActions.map((action, index) => {
+                const isActive = Boolean(action.active);
+                return (
+                  <button
+                    key={action.key || index}
+                    type="button"
+                    onClick={action.onClick}
+                    aria-label={action.ariaLabel || action.label}
+                    title={action.label}
+                    style={{
+                      position: 'absolute',
+                      top: filterTop,
+                      left: isCompact
+                        ? `calc(${compactLeftEdge} + ${((showFilters ? 1 : 0) + index) * compactControlSize}px)`
+                        : `${(showFilters ? 48 : 0) + (index * 48)}px`,
+                      width: filterSize,
+                      height: filterSize,
+                      borderRadius: filterRadius,
+                      background: isActive ? p.primary : (isCompact ? 'rgba(255,255,255,0.08)' : p.surfaceElevated),
+                      color: isActive ? '#000' : '#FFF',
+                      opacity: 1,
+                      transition: morphButtonTransition,
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 3,
+                      boxShadow: isCompact ? 'none' : 'inset 0 1px 1px rgba(255,255,255,0.05), 0 0 0 1px rgba(255,255,255,0.02)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {action.icon}
+                    {action.badge && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: -4,
+                          right: -4,
+                          minWidth: 16,
+                          height: 16,
+                          background: theme.colors.error,
+                          borderRadius: 999,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: '#fff',
+                          border: '1.5px solid #2C2C2E',
+                          padding: '0 3px',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        {action.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
 
               {showSearch && (
                 <div
@@ -869,7 +938,7 @@ const AppHeader = ({
                   </div>
                 )}
 
-                {(showFilters || categories) && (
+                {(showFilters || categories || hasFilterActions) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {showFilters && (
                       <button onClick={handleFiltersClick} style={{ width: 36, height: 36, borderRadius: 18, background: activeFiltersCount > 0 ? p.primary : p.surfaceElevated, color: activeFiltersCount > 0 ? '#000' : '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', border: 'none', position: 'relative' }}>
@@ -877,6 +946,20 @@ const AppHeader = ({
                         {activeFiltersCount > 0 && <span style={{ ...activeFiltersBadgeStyle, position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, padding: '0 3px' }}>{activeFiltersCount}</span>}
                       </button>
                     )}
+
+                    {normalizedFilterActions.map((action, index) => (
+                      <button
+                        key={action.key || index}
+                        type="button"
+                        onClick={action.onClick}
+                        aria-label={action.ariaLabel || action.label}
+                        title={action.label}
+                        style={{ width: 36, height: 36, borderRadius: 18, background: action.active ? p.primary : p.surfaceElevated, color: action.active ? '#000' : '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', border: 'none', position: 'relative' }}
+                      >
+                        {action.icon}
+                        {action.badge && <span style={{ ...activeFiltersBadgeStyle, position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, padding: '0 3px' }}>{action.badge}</span>}
+                      </button>
+                    ))}
 
                     {categories && (
                       <div ref={categoriesRef} style={{ display: 'flex', gap: 8, overflowX: 'auto', flex: 1, scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
@@ -923,7 +1006,7 @@ const AppHeader = ({
         {children && <div style={styles.childrenContainer}>{children}</div>}
       </div>
 
-      {(showSearch || categories) && (
+      {(showSearch || categories || hasFilterActions) && (
         <div ref={collapsibleRef} style={styles.collapsibleWrapper}>
           {showSearch && (
             <div style={styles.searchRow}>
@@ -940,6 +1023,25 @@ const AppHeader = ({
                   {activeFiltersCount > 0 && <span style={styles.filterBadge}>{activeFiltersCount}</span>}
                 </button>
               )}
+              {normalizedFilterActions.map((action, index) => (
+                <button
+                  key={action.key || index}
+                  type="button"
+                  style={{
+                    ...styles.filterButton,
+                    display: 'flex',
+                    backgroundColor: action.active ? effectiveAccentColor : theme.colors.bg,
+                    border: `1px solid ${action.active ? effectiveAccentColor : theme.colors.border}`,
+                    color: action.active ? '#fff' : theme.colors.textSecondary,
+                  }}
+                  onClick={action.onClick}
+                  aria-label={action.ariaLabel || action.label}
+                  title={action.label}
+                >
+                  {action.icon}
+                  {action.badge && <span style={{ ...styles.filterBadge, display: 'flex' }}>{action.badge}</span>}
+                </button>
+              ))}
             </div>
           )}
 

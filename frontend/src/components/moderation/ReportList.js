@@ -226,9 +226,14 @@ function ReportList({ reports: initialReports, loading, onProcessed, onRefresh }
         </div>
       ) : (
         <div style={styles.list}>
-          {reportRows.map((row) => (
+          {reportRows.map((row, rowIndex) => (
             row.type === 'divider' ? (
-              <FeedDateDivider key={row.key} label={row.label} />
+              <FeedDateDivider
+                key={row.key}
+                label={row.label}
+                spacingBefore={rowIndex > 0 ? 8 : 0}
+                spacingAfter={rowIndex < reportRows.length - 1 ? 8 : 0}
+              />
             ) : (
               <ReportCard
                 key={row.key}

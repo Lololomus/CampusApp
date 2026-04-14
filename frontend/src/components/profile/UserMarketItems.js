@@ -227,9 +227,14 @@ function UserMarketItems() {
 
       <div style={styles.content}>
         {filteredItems.length > 0 ? (
-          itemRows.map((row) =>
+          itemRows.map((row, rowIndex) =>
             row.type === 'divider' ? (
-              <FeedDateDivider key={row.key} label={row.label} />
+              <FeedDateDivider
+                key={row.key}
+                label={row.label}
+                spacingBefore={rowIndex > 0 ? 12 : 0}
+                spacingAfter={rowIndex < itemRows.length - 1 ? 12 : 0}
+              />
             ) : (
               <div key={row.key} style={{ animation: `fadeInUp 0.35s ease ${row.index * 0.04}s both` }}>
                 <MyMarketCard
@@ -278,7 +283,7 @@ function UserMarketItems() {
 
 const styles = {
   container: {
-    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
     zIndex: Z_USER_MARKET_ITEMS,
     backgroundColor: C.bg,
     overflowY: 'auto',

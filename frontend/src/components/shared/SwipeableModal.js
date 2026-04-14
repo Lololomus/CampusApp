@@ -152,7 +152,8 @@ const SwipeableModal = ({
         ref={contentRef}
         style={{
           width: '100%',
-          maxWidth: '600px',
+          maxWidth: 'none',
+          boxSizing: 'border-box',
           backgroundColor: '#151516',
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,

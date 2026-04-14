@@ -223,9 +223,13 @@ function UserPosts() {
             </div>
           </div>
         ) : (
-          postRows.map((row) =>
+          postRows.map((row, rowIndex) =>
             row.type === 'divider' ? (
-              <FeedDateDivider key={row.key} label={row.label} />
+              <FeedDateDivider
+                key={row.key}
+                label={row.label}
+                spacingBefore={rowIndex > 0 && postRows[rowIndex - 1].type === 'item' ? 12 : 0}
+              />
             ) : (
               <div key={row.key} style={{ animation: `fadeInUp 0.35s ease ${row.index * 0.04}s both` }}>
                 <PostCard
@@ -233,6 +237,7 @@ function UserPosts() {
                   onClick={handlePostClick}
                   onPostDeleted={handlePostDeleted}
                   onLikeUpdate={handleLikeUpdate}
+                  skipReveal
                 />
               </div>
             )
@@ -262,7 +267,7 @@ function UserPosts() {
 
 const styles = {
   container: {
-    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
     zIndex: Z_USER_POSTS,
     backgroundColor: C.bg,
     overflowY: 'auto',
@@ -307,7 +312,7 @@ const styles = {
   },
 
   content: {
-    padding: '4px 0 calc(env(safe-area-inset-bottom, 20px) + 20px)',
+    padding: '4px 16px calc(env(safe-area-inset-bottom, 20px) + 20px)',
   },
 
   // Empty — dashed placeholder

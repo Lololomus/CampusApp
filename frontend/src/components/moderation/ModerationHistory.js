@@ -137,9 +137,16 @@ function ModerationHistory() {
   return (
     <div style={styles.container}>
       <div style={styles.list}>
-        {logRows.map((row) => {
+        {logRows.map((row, rowIndex) => {
           if (row.type === 'divider') {
-            return <FeedDateDivider key={row.key} label={row.label} />;
+            return (
+              <FeedDateDivider
+                key={row.key}
+                label={row.label}
+                spacingBefore={rowIndex > 0 ? 2 : 0}
+                spacingAfter={rowIndex < logRows.length - 1 ? 2 : 0}
+              />
+            );
           }
 
           const log = row.item;

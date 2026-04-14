@@ -486,7 +486,9 @@ export const useStore = create(
       })),
       
       setMyMarketItems: (items) => set({ myMarketItems: items }),
-      setMarketFavorites: (items) => set({ marketFavorites: items }),
+      setMarketFavorites: (items) => set((state) => ({
+        marketFavorites: typeof items === 'function' ? items(state.marketFavorites) : items
+      })),
       setCurrentMarketItem: (item) => set({ currentMarketItem: item }),
       setPendingMarketItemId: (pendingMarketItemId) => set({ pendingMarketItemId }),
       clearPendingMarketItemId: () => set({ pendingMarketItemId: null }),
@@ -510,33 +512,39 @@ export const useStore = create(
         }
       }),
       
-      toggleMarketFavoriteOptimistic: (itemId, isFavorited) => set((state) => ({
-        marketItems: state.marketItems.map(item =>
-          item.id === itemId 
-            ? { 
-                ...item, 
-                is_favorited: isFavorited,
-                favorites_count: item.favorites_count + (isFavorited ? 1 : -1)
-              }
-            : item
-        ),
-        myMarketItems: state.myMarketItems.map(item =>
-          item.id === itemId 
-            ? { 
-                ...item, 
-                is_favorited: isFavorited,
-                favorites_count: item.favorites_count + (isFavorited ? 1 : -1)
-              }
-            : item
-        ),
-        currentMarketItem: state.currentMarketItem?.id === itemId
-          ? {
-              ...state.currentMarketItem,
-              is_favorited: isFavorited,
-              favorites_count: state.currentMarketItem.favorites_count + (isFavorited ? 1 : -1)
-            }
-          : state.currentMarketItem
-      })),
+      toggleMarketFavoriteOptimistic: (itemId, isFavorited, itemSnapshot = null) => set((state) => {
+        const applyFavoriteState = (item) => {
+          if (!item || item.id !== itemId) return item;
+          const countDelta = Boolean(item.is_favorited) === isFavorited ? 0 : (isFavorited ? 1 : -1);
+          return {
+            ...item,
+            is_favorited: isFavorited,
+            favorites_count: Math.max(0, (Number(item.favorites_count) || 0) + countDelta)
+          };
+        };
+
+        const favoriteExists = state.marketFavorites.some(item => item.id === itemId);
+        const sourceItem = itemSnapshot
+          || state.marketItems.find(item => item.id === itemId)
+          || state.myMarketItems.find(item => item.id === itemId)
+          || state.currentMarketItem;
+        const nextFavorite = sourceItem?.id === itemId ? applyFavoriteState(sourceItem) : null;
+
+        return {
+          marketItems: state.marketItems.map(applyFavoriteState),
+          myMarketItems: state.myMarketItems.map(applyFavoriteState),
+          marketFavorites: isFavorited
+            ? (
+                favoriteExists
+                  ? state.marketFavorites.map(applyFavoriteState)
+                  : (nextFavorite ? [nextFavorite, ...state.marketFavorites] : state.marketFavorites)
+              )
+            : state.marketFavorites.filter(item => item.id !== itemId),
+          currentMarketItem: state.currentMarketItem?.id === itemId
+            ? applyFavoriteState(state.currentMarketItem)
+            : state.currentMarketItem
+        };
+      }),
 
       // TOASTS STATE
       toasts: [],

@@ -2,9 +2,10 @@
 
 import { Edit2, Trash2, Eye, Heart } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
+import theme from '../../theme';
 
 const C = {
-  surface: '#1C1C1E',
+  surface: theme.colors.premium.surfaceElevated,
   surfaceElevated: '#2C2C2E',
   border: 'rgba(255, 255, 255, 0.06)',
   text: '#FFFFFF',
@@ -130,7 +131,7 @@ function MyMarketCard({ item, onEdit, onDelete, onOpen }) {
 
 const styles = {
   card: {
-    background: 'rgba(28, 28, 30, 0.5)',
+    background: C.surface,
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
     borderRadius: 16,

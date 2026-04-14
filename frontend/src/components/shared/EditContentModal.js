@@ -1412,7 +1412,10 @@ const styles = {
   publishFill: { position: 'absolute', left: 0, top: 0, bottom: 0, background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.35s ease', borderRadius: 26 },
   pickerOverlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    bottom: 0,
+    left: 'var(--app-fixed-left)',
+    width: 'var(--app-fixed-width)',
     zIndex: getOverlayZIndex(Z_MODAL_EDIT_POST) + 3,
     display: 'flex',
     flexDirection: 'column',

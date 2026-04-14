@@ -234,8 +234,8 @@ function DeleteReasonDialog({
       <style>{`
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes scaleIn {
-          from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
-          to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          from { opacity: 0; transform: translateY(-50%) scale(0.96); }
+          to { opacity: 1; transform: translateY(-50%) scale(1); }
         }
       `}</style>
 
@@ -285,11 +285,11 @@ const deleteStyles = {
     zIndex: 5099, animation: 'fadeIn 0.2s ease',
   },
   dialog: {
-    position: 'fixed', top: '50%', left: '50%',
-    transform: 'translate(-50%, -50%)',
+    position: 'fixed', top: '50%', left: 'calc(var(--app-fixed-left) + 16px)',
+    transform: 'translateY(-50%)',
     background: theme.colors.bg,
     borderRadius: theme.radius.xl, padding: theme.spacing.xl,
-    maxWidth: 340, width: 'calc(100% - 32px)',
+    maxWidth: 'none', width: 'calc(var(--app-fixed-width) - 32px)', boxSizing: 'border-box',
     zIndex: 5100,
     boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
     animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',

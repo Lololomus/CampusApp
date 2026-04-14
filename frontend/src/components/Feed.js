@@ -421,9 +421,13 @@ function Feed() {
             </div>
           )}
 
-          {posts.length > 0 && postsWithDividers.map((row) => (
+          {posts.length > 0 && postsWithDividers.map((row, rowIndex) => (
             row.type === 'divider' ? (
-              <FeedDateDivider key={row.key} label={row.label} />
+              <FeedDateDivider
+                key={row.key}
+                label={row.label}
+                spacingBefore={rowIndex > 0 && postsWithDividers[rowIndex - 1].type === 'item' ? 12 : 0}
+              />
             ) : (
               <div
                 key={row.key}
@@ -504,8 +508,8 @@ const styles = {
     // Фиксированный paddingTop — не зависит от --header-padding, устраняет дёрганье при анимации шапки
     // Header: 4px container + 28px title + 8px margin + 8px drawer-top + 44px search + 10px gap + 36px chips + 6px drawer-bottom = 144px
     paddingTop: 'calc(var(--screen-top-offset, 0px) + 160px)',
-    paddingLeft: '0px',
-    paddingRight: '0px',
+    paddingLeft: 16,
+    paddingRight: 16,
     paddingBottom: 120,
   },
 

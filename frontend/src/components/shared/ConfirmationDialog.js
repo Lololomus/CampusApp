@@ -40,6 +40,13 @@ function ConfirmationDialog({
 
   const dialogContent = (
     <>
+      <style>{`
+        @keyframes appDialogScaleIn {
+          from { opacity: 0; transform: translateY(-50%) scale(0.96); }
+          to { opacity: 1; transform: translateY(-50%) scale(1); }
+        }
+      `}</style>
+
       {/* Overlay */}
       <div 
         style={styles.overlay}
@@ -92,19 +99,20 @@ const styles = {
   dialog: {
     position: 'fixed',
     top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
+    left: 'calc(var(--app-fixed-left) + 16px)',
+    transform: 'translateY(-50%)',
     background: '#1e1e1e', // Hardcode или theme.colors.card
     borderRadius: 20,
     padding: 24,
     margin: 0,
-    maxWidth: '320px',
-    width: 'calc(100% - 48px)',
+    maxWidth: 'none',
+    width: 'calc(var(--app-fixed-width) - 32px)',
+    boxSizing: 'border-box',
     textAlign: 'center',
     zIndex: Z_CONFIRMATION_DIALOG + 1,
     boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
     border: '1px solid rgba(255,255,255,0.1)',
-    animation: 'scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    animation: 'appDialogScaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
   },
   title: {
     fontSize: 18,
