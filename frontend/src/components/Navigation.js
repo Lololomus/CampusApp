@@ -219,7 +219,7 @@ function Navigation() {
 const styles = {
   outerWrapper: {
     position: 'fixed',
-    bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+    bottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
     left: 'calc(var(--app-fixed-left) + 16px)',
     width: 'calc(var(--app-fixed-width) - 32px)',
     zIndex: Z_NAVIGATION,
