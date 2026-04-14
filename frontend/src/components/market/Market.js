@@ -327,7 +327,6 @@ const Market = () => {
         onFiltersClick={handleOpenFilters}
         activeFiltersCount={activeFiltersCount}
         filterActions={filterActions}
-        premium
         premiumCollapsedToolbar
         freezeBottomChromeOnSearchFocus
       />

@@ -480,7 +480,6 @@ function DatingFeed() {
         <>
           <AppHeader
             title="Знакомства"
-            premium
             premiumTrailing={
               <button
                 style={styles.avatarButton}

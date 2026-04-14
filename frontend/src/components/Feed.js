@@ -395,7 +395,6 @@ function Feed() {
         showFilters={true}
         onFiltersClick={handleFiltersClick}
         activeFiltersCount={countActiveFilters}
-        premium
         premiumCollapsedToolbar
         freezeBottomChromeOnSearchFocus
       />

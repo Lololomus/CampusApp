@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Filter, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Search, SlidersHorizontal, X } from 'lucide-react';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 import { useStore } from '../../store';
@@ -8,7 +8,6 @@ import { BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS } from '../../constants/layoutC
 
 const AppHeader = ({
   title = '',
-  subtitle = null,
   showSearch = false,
   searchValue = '',
   searchPlaceholder = 'Поиск...',
@@ -20,11 +19,7 @@ const AppHeader = ({
   onFiltersClick = null,
   activeFiltersCount = 0,
   filterActions = [],
-  rightActions = [],
-  transparent = false,
   children = null,
-  accentColor,
-  premium = false,
   premiumTrailing = null,
   premiumCollapsedToolbar = false,
   freezeBottomChromeOnSearchFocus = false,
@@ -70,14 +65,12 @@ const AppHeader = ({
   ));
   const isRegistered = useStore((state) => Boolean(state.isRegistered));
 
-  const effectiveAccentColor = accentColor || theme.colors.primary;
   const normalizedFilterActions = Array.isArray(filterActions) ? filterActions : [];
   const hasFilterActions = normalizedFilterActions.length > 0;
   const hasPremiumDrawerContent = Boolean(showSearch || showFilters || categories || hasFilterActions);
-  const hasSecondaryPremiumContent = premium && Boolean(children || premiumTrailing);
-  const useCollapsedToolbarPremium = premium && premiumCollapsedToolbar && !hasSecondaryPremiumContent && Boolean(title) && hasPremiumDrawerContent;
+  const hasSecondaryPremiumContent = Boolean(children || premiumTrailing);
+  const useCollapsedToolbarPremium = premiumCollapsedToolbar && !hasSecondaryPremiumContent && Boolean(title) && hasPremiumDrawerContent;
   const showDrawer = hasPremiumDrawerContent && (!isScrolled || isManualExpanded);
-  const showClearButton = Boolean(localSearchValue && localSearchValue.length > 0);
   const hasActiveSearchValue = typeof localSearchValue === 'string' && localSearchValue.trim().length > 0;
   const isCategoryVisuallyActive = (categoryId) => (
     selectedCategory === categoryId && !(activeFiltersCount > 0 && categoryId === 'all')
@@ -96,7 +89,7 @@ const AppHeader = ({
     if (collapsibleRef.current) observer.observe(collapsibleRef.current);
     updateDimensions();
     return () => observer.disconnect();
-  }, [children, showSearch, categories, premium, showFilters, title, normalizedFilterActions.length]);
+  }, [children, showSearch, categories, showFilters, title, normalizedFilterActions.length]);
 
   useEffect(() => {
     const totalHeight = collapsibleVisible ? dimensions.sticky + dimensions.collapsible : dimensions.sticky;
@@ -120,7 +113,7 @@ const AppHeader = ({
 
     const currentScrollY = window.scrollY || window.pageYOffset || 0;
     const nextCollapsibleVisible = currentScrollY < 10;
-    const nextIsScrolled = premium && currentScrollY > 40;
+    const nextIsScrolled = currentScrollY > 40;
 
     lastScrollYRef.current = currentScrollY;
     collapsibleVisibleRef.current = nextCollapsibleVisible;
@@ -133,7 +126,7 @@ const AppHeader = ({
       isManualExpandedRef.current = false;
       setIsManualExpanded(false);
     }
-  }, [premium, isModalOpen]);
+  }, [isModalOpen]);
 
   useLayoutEffect(() => {
     if (!useCollapsedToolbarPremium) return undefined;
@@ -199,17 +192,15 @@ const AppHeader = ({
           setCollapsibleVisible(nextCollapsibleVisible);
         }
 
-        if (premium) {
-          const nextIsScrolled = currentScrollY > 40;
-          if (nextIsScrolled !== isScrolledRef.current) {
-            isScrolledRef.current = nextIsScrolled;
-            setIsScrolled(nextIsScrolled);
-          }
+        const nextIsScrolled = currentScrollY > 40;
+        if (nextIsScrolled !== isScrolledRef.current) {
+          isScrolledRef.current = nextIsScrolled;
+          setIsScrolled(nextIsScrolled);
+        }
 
-          if (!nextIsScrolled && isManualExpandedRef.current) {
-            isManualExpandedRef.current = false;
-            setIsManualExpanded(false);
-          }
+        if (!nextIsScrolled && isManualExpandedRef.current) {
+          isManualExpandedRef.current = false;
+          setIsManualExpanded(false);
         }
 
         lastScrollYRef.current = currentScrollY;
@@ -226,7 +217,7 @@ const AppHeader = ({
         scrollRafRef.current = null;
       }
     };
-  }, [premium, isModalOpen]);
+  }, [isModalOpen]);
 
   useEffect(() => {
     if (!showDrawer && premiumSearchRef.current) premiumSearchRef.current.blur();
@@ -311,31 +302,11 @@ const AppHeader = ({
     }
   };
 
-  const styles = {
-    stickyHeader: { position: 'fixed', top: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', zIndex: 1000, backgroundColor: transparent ? 'rgba(26, 26, 26, 0.8)' : theme.colors.bgSecondary, backdropFilter: transparent ? 'blur(20px)' : 'blur(0px)', WebkitBackdropFilter: transparent ? 'blur(20px)' : 'blur(0px)', borderBottom: `1px solid ${theme.colors.border}`, paddingTop: 'calc(var(--screen-top-offset) + 4px)', transition: 'background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), backdrop-filter 0.3s cubic-bezier(0.4, 0, 0.2, 1), -webkit-backdrop-filter 0.3s cubic-bezier(0.4, 0, 0.2, 1)' },
-    titleRow: { height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 12px', position: 'relative' },
-    titleBlock: { textAlign: 'center', flex: 1 },
-    title: { fontSize: 20, fontWeight: 600, color: theme.colors.text, margin: 0, lineHeight: '24px' },
-    subtitle: { fontSize: 13, fontWeight: 400, color: theme.colors.textSecondary, margin: '2px 0 0 0' },
-    rightActions: { position: 'absolute', right: 8, display: 'flex', gap: 4 },
-    childrenContainer: { display: children ? 'block' : 'none' },
-    collapsibleWrapper: { position: 'fixed', top: 'var(--sticky-height, 56px)', left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', zIndex: 999, backgroundColor: theme.colors.bgSecondary, transform: collapsibleVisible ? 'translateY(0)' : 'translateY(-100%)', opacity: collapsibleVisible ? 1 : 0, pointerEvents: collapsibleVisible ? 'auto' : 'none', transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)', borderBottom: `1px solid ${theme.colors.border}` },
-    searchRow: { display: showSearch ? 'flex' : 'none', alignItems: 'center', padding: '8px 12px', gap: 8 },
-    searchContainer: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
-    searchInput: { width: '100%', height: 40, boxSizing: 'border-box', backgroundColor: theme.colors.bg, border: `1px solid ${searchFocused ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.md, paddingLeft: 36, paddingRight: 44, paddingTop: 0, paddingBottom: 0, fontSize: 15, lineHeight: '40px', color: theme.colors.text, outline: 'none', appearance: 'none', WebkitAppearance: 'none', transition: 'border-color 0.2s ease' },
-    searchIcon: { position: 'absolute', left: 10, color: theme.colors.textSecondary, pointerEvents: 'none' },
-    clearButton: { position: 'absolute', right: 0, width: 44, height: 44, display: showClearButton ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderRadius: theme.radius.full, border: 'none', cursor: 'pointer', color: theme.colors.textSecondary, opacity: 0.85, transition: 'opacity 0.2s ease' },
-    filterButton: { position: 'relative', width: 40, height: 40, display: showFilters ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', backgroundColor: activeFiltersCount > 0 ? effectiveAccentColor : theme.colors.bg, border: `1px solid ${activeFiltersCount > 0 ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.md, cursor: 'pointer', color: activeFiltersCount > 0 ? '#fff' : theme.colors.textSecondary, transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease' },
-    filterBadge: { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, backgroundColor: theme.colors.error, borderRadius: theme.radius.full, display: activeFiltersCount > 0 ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', padding: '0 5px' },
-    categoriesRow: { display: categories ? 'flex' : 'none', alignItems: 'center', overflowX: 'auto', overflowY: 'hidden', padding: '4px 12px 8px', gap: 6, scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' },
-    categoryPill: (isActive) => ({ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: isActive ? effectiveAccentColor : theme.colors.bg, border: `1px solid ${isActive ? effectiveAccentColor : theme.colors.border}`, borderRadius: theme.radius.full, fontSize: 14, fontWeight: isActive ? 600 : 500, color: theme.colors.text, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease' }),
-    actionButton: { position: 'relative', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', border: 'none', borderRadius: theme.radius.md, cursor: 'pointer', color: theme.colors.text, transition: 'background-color 0.2s ease' },
-    actionBadge: { position: 'absolute', top: 4, right: 4, minWidth: 16, height: 16, backgroundColor: theme.colors.error, borderRadius: theme.radius.full, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: '#fff', padding: '0 4px' },
+  const p = {
+      ...theme.colors.premium,
+      surfaceElevated: theme.colors.premium.legacySurfaceElevated || theme.colors.premium.surfaceElevated,
   };
-
-  if (premium) {
-    const p = theme.colors.premium;
-    const hasSecondaryContent = hasSecondaryPremiumContent;
+  const hasSecondaryContent = hasSecondaryPremiumContent;
     const useCollapsedToolbar = useCollapsedToolbarPremium;
     const showCollapsedToolbar = useCollapsedToolbar && isScrolled;
     const showCollapsedBtn = !useCollapsedToolbar && hasPremiumDrawerContent && isScrolled && !isManualExpanded && !hasSecondaryContent;
@@ -982,84 +953,6 @@ const AppHeader = ({
         )}
       </div>
     );
-  }
-
-  return (
-    <>
-      <div ref={stickyRef} style={styles.stickyHeader}>
-        <div style={styles.titleRow}>
-          <div style={styles.titleBlock}>
-            <h1 style={styles.title}>{title}</h1>
-            {subtitle && <p style={styles.subtitle}>{subtitle}</p>}
-          </div>
-          {rightActions.length > 0 && (
-            <div style={styles.rightActions}>
-              {rightActions.map((action, index) => (
-                <button key={index} style={styles.actionButton} onClick={action.onClick}>
-                  {action.icon}
-                  {action.badge && <span style={styles.actionBadge}>{action.badge}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {children && <div style={styles.childrenContainer}>{children}</div>}
-      </div>
-
-      {(showSearch || categories || hasFilterActions) && (
-        <div ref={collapsibleRef} style={styles.collapsibleWrapper}>
-          {showSearch && (
-            <div style={styles.searchRow}>
-              <div style={styles.searchContainer}>
-                <Search size={18} style={styles.searchIcon} />
-                <input type="text" value={localSearchValue} onChange={handleSearchInputChange} onFocus={handleSearchFocus} onBlur={handleSearchBlur} placeholder={searchPlaceholder} style={styles.searchInput} />
-                <button style={styles.clearButton} onMouseDown={(e) => e.preventDefault()} onClick={handleClearSearch}>
-                  <X size={14} />
-                </button>
-              </div>
-              {showFilters && (
-                <button style={styles.filterButton} onClick={handleFiltersClick}>
-                  <Filter size={18} />
-                  {activeFiltersCount > 0 && <span style={styles.filterBadge}>{activeFiltersCount}</span>}
-                </button>
-              )}
-              {normalizedFilterActions.map((action, index) => (
-                <button
-                  key={action.key || index}
-                  type="button"
-                  style={{
-                    ...styles.filterButton,
-                    display: 'flex',
-                    backgroundColor: action.active ? effectiveAccentColor : theme.colors.bg,
-                    border: `1px solid ${action.active ? effectiveAccentColor : theme.colors.border}`,
-                    color: action.active ? '#fff' : theme.colors.textSecondary,
-                  }}
-                  onClick={action.onClick}
-                  aria-label={action.ariaLabel || action.label}
-                  title={action.label}
-                >
-                  {action.icon}
-                  {action.badge && <span style={{ ...styles.filterBadge, display: 'flex' }}>{action.badge}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {categories && (
-            <div ref={categoriesRef} style={styles.categoriesRow}>
-              {categories.map((category) => (
-                <button key={category.id} style={styles.categoryPill(isCategoryVisuallyActive(category.id))} onClick={() => handleCategoryClick(category.id)}>
-                  {category.emoji && <span>{category.emoji}</span>}
-                  {category.icon && category.icon}
-                  <span>{category.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  );
 };
 
 export default AppHeader;
