@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Heart, MessageCircle, MapPin, Calendar,
   ChevronLeft, ChevronRight,
@@ -173,7 +173,7 @@ function PostDetail() {
   }, []);
 
   // Блокировка скролла страницы пока PostDetail открыт
-  useEffect(() => {
+  useLayoutEffect(() => {
     lockBodyScroll();
     return () => unlockBodyScroll();
   }, []);

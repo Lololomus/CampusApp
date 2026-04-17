@@ -5,9 +5,48 @@ let _lockCount = 0;
 let _savedScrollY = 0;
 let _savedBodyStyle = null;
 let _savedHtmlOverflow = '';
+let _isRestoringScroll = false;
+let _restoreFrameId = null;
+let _restoreTimeoutId = null;
+
+function clearRestoreMarkers() {
+  if (_restoreFrameId) {
+    window.cancelAnimationFrame(_restoreFrameId);
+    _restoreFrameId = null;
+  }
+  if (_restoreTimeoutId) {
+    window.clearTimeout(_restoreTimeoutId);
+    _restoreTimeoutId = null;
+  }
+}
+
+function markRestoringScroll() {
+  clearRestoreMarkers();
+  _isRestoringScroll = true;
+  document.documentElement.dataset.bodyScrollRestoring = 'true';
+
+  const finish = () => {
+    _isRestoringScroll = false;
+    delete document.documentElement.dataset.bodyScrollRestoring;
+    clearRestoreMarkers();
+  };
+
+  _restoreFrameId = window.requestAnimationFrame(() => {
+    _restoreFrameId = window.requestAnimationFrame(finish);
+  });
+  _restoreTimeoutId = window.setTimeout(finish, 120);
+}
+
+export function isBodyScrollRestoring() {
+  return _isRestoringScroll;
+}
 
 export function lockBodyScroll() {
   if (_lockCount === 0) {
+    clearRestoreMarkers();
+    _isRestoringScroll = false;
+    delete document.documentElement.dataset.bodyScrollRestoring;
+
     const body = document.body;
     const html = document.documentElement;
 
@@ -40,7 +79,12 @@ export function unlockBodyScroll() {
     const body = document.body;
     const html = document.documentElement;
     const restoreScrollY = _savedScrollY;
+    const previousHtmlScrollBehavior = html.style.scrollBehavior;
+    const previousBodyScrollBehavior = body.style.scrollBehavior;
 
+    markRestoringScroll();
+    html.style.scrollBehavior = 'auto';
+    body.style.scrollBehavior = 'auto';
     html.style.overflow = _savedHtmlOverflow;
 
     if (_savedBodyStyle) {
@@ -62,5 +106,7 @@ export function unlockBodyScroll() {
     _savedBodyStyle = null;
     _savedHtmlOverflow = '';
     window.scrollTo(0, restoreScrollY);
+    html.style.scrollBehavior = previousHtmlScrollBehavior;
+    body.style.scrollBehavior = previousBodyScrollBehavior;
   }
 }

@@ -5,6 +5,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import { useStore } from '../../store';
 import { triggerRegistrationPrompt } from '../../api';
 import { BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS } from '../../constants/layoutConstants';
+import { isBodyScrollRestoring } from '../../utils/bodyScrollLock';
 
 const AppHeader = ({
   title = '',
@@ -109,7 +110,7 @@ const AppHeader = ({
   }, [isManualExpanded]);
 
   useLayoutEffect(() => {
-    if (isModalOpen || document.body.style.position === 'fixed') return;
+    if (isModalOpen || document.body.style.position === 'fixed' || isBodyScrollRestoring()) return;
 
     const currentScrollY = window.scrollY || window.pageYOffset || 0;
     const nextCollapsibleVisible = currentScrollY < 10;
@@ -178,7 +179,7 @@ const AppHeader = ({
       if (scrollRafRef.current) return;
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null;
-        if (isModalOpen || document.body.style.position === 'fixed') return;
+        if (isModalOpen || document.body.style.position === 'fixed' || isBodyScrollRestoring()) return;
 
         const currentScrollY = window.scrollY;
         let nextCollapsibleVisible = collapsibleVisibleRef.current;

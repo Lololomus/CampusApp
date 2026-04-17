@@ -3,6 +3,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from './store';
 import { getTelegramWebApp, initTelegramApp, setClosingConfirmation } from './utils/telegram';
+import { isBodyScrollRestoring } from './utils/bodyScrollLock';
 import {
   deepLinkNeedsModerationRole,
   executeDeepLink,
@@ -207,7 +208,7 @@ function App() {
 
   useEffect(() => {
     const updateActiveTabScrollMemory = () => {
-      if (viewPostId) return;
+      if (viewPostId || isBodyScrollRestoring()) return;
       tabScrollMemoryRef.current[activeTab] = window.scrollY || window.pageYOffset || 0;
     };
 
