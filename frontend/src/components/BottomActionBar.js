@@ -1,23 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Paperclip, Send, X } from 'lucide-react';
 
 import theme from '../theme';
 import { hapticFeedback } from '../utils/telegram';
 import { processImageFiles, revokeObjectURLs } from '../utils/media';
 import { toast } from './shared/Toast';
-
-const KEYBOARD_SCROLL_GUARD_OPEN_MS = 900;
-const KEYBOARD_SCROLL_GUARD_CLOSE_MS = 650;
-const KEYBOARD_SCROLL_GUARD_FRAMES = 12;
-const KEYBOARD_OPEN_SETTLE_MS = 80;
-
-const getWindowScrollY = () => (
-  window.scrollY
-  || window.pageYOffset
-  || document.documentElement.scrollTop
-  || document.body.scrollTop
-  || 0
-);
 
 function BottomActionBar({
   onCommentSend,
@@ -27,7 +14,6 @@ function BottomActionBar({
   onCancelReply = null,
   maxImages = 3,
   disableKeyboardLift = false,
-  scrollLockTargetRef = null,
 }) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -39,17 +25,6 @@ function BottomActionBar({
   const barRef = useRef(null);
   const attachmentUrlsRef = useRef(new Set());
   const keyboardInsetRef = useRef(0);
-  const keyboardSettleTimerRef = useRef(null);
-  const pendingKeyboardInsetRef = useRef(0);
-  const focusScrollGuardRef = useRef({
-    isActive: false,
-    hasSnapshot: false,
-    windowY: 0,
-    targetScrollTop: 0,
-    restoreRafId: null,
-    loopRafId: null,
-    releaseTimerId: null,
-  });
 
   const canSend = useMemo(() => {
     return !disabled && !isSending && (text.trim().length > 0 || attachments.length > 0);
@@ -61,121 +36,17 @@ function BottomActionBar({
     textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 100)}px`;
   }, [text]);
 
-  const captureFocusScroll = useCallback(() => {
-    const guard = focusScrollGuardRef.current;
-    guard.windowY = getWindowScrollY();
-    guard.targetScrollTop = scrollLockTargetRef?.current?.scrollTop || 0;
-    guard.hasSnapshot = true;
-  }, [scrollLockTargetRef]);
-
-  const restoreFocusScroll = useCallback(() => {
-    const guard = focusScrollGuardRef.current;
-    if (!guard.isActive || !guard.hasSnapshot) return;
-
-    const scrollTarget = scrollLockTargetRef?.current;
-    if (scrollTarget && Math.abs(scrollTarget.scrollTop - guard.targetScrollTop) > 1) {
-      scrollTarget.scrollTop = guard.targetScrollTop;
-    }
-
-    if (Math.abs(getWindowScrollY() - guard.windowY) > 1) {
-      window.scrollTo(0, guard.windowY);
-    }
-  }, [scrollLockTargetRef]);
-
-  const scheduleFocusScrollRestore = useCallback(() => {
-    const guard = focusScrollGuardRef.current;
-    if (!guard.isActive) return;
-
-    if (guard.restoreRafId) {
-      cancelAnimationFrame(guard.restoreRafId);
-    }
-
-    guard.restoreRafId = requestAnimationFrame(() => {
-      guard.restoreRafId = null;
-      restoreFocusScroll();
-    });
-  }, [restoreFocusScroll]);
-
-  const runFocusScrollRestoreLoop = useCallback((framesLeft = KEYBOARD_SCROLL_GUARD_FRAMES) => {
-    const guard = focusScrollGuardRef.current;
-    if (guard.loopRafId) {
-      cancelAnimationFrame(guard.loopRafId);
-      guard.loopRafId = null;
-    }
-
-    const tick = (remaining) => {
-      const currentGuard = focusScrollGuardRef.current;
-      if (!currentGuard.isActive || remaining <= 0) return;
-
-      restoreFocusScroll();
-      currentGuard.loopRafId = requestAnimationFrame(() => tick(remaining - 1));
-    };
-
-    tick(framesLeft);
-  }, [restoreFocusScroll]);
-
-  const activateFocusScrollGuard = useCallback((durationMs, options = {}) => {
-    const { recapture = false, clearSnapshotOnRelease = false } = options;
-    const guard = focusScrollGuardRef.current;
-
-    if (recapture || !guard.hasSnapshot) {
-      captureFocusScroll();
-    }
-
-    guard.isActive = true;
-
-    if (guard.releaseTimerId) {
-      clearTimeout(guard.releaseTimerId);
-    }
-
-    restoreFocusScroll();
-    runFocusScrollRestoreLoop();
-
-    guard.releaseTimerId = window.setTimeout(() => {
-      restoreFocusScroll();
-      guard.isActive = false;
-      guard.releaseTimerId = null;
-
-      if (clearSnapshotOnRelease) {
-        guard.hasSnapshot = false;
-      }
-    }, durationMs);
-  }, [captureFocusScroll, restoreFocusScroll, runFocusScrollRestoreLoop]);
-
-  const handleTextareaPointerDownCapture = useCallback(() => {
-    activateFocusScrollGuard(KEYBOARD_SCROLL_GUARD_OPEN_MS, { recapture: true });
-  }, [activateFocusScrollGuard]);
-
-  const handleTextareaFocus = useCallback(() => {
-    activateFocusScrollGuard(KEYBOARD_SCROLL_GUARD_OPEN_MS);
-  }, [activateFocusScrollGuard]);
-
-  const handleTextareaBlur = useCallback(() => {
-    activateFocusScrollGuard(KEYBOARD_SCROLL_GUARD_CLOSE_MS, {
-      recapture: true,
-      clearSnapshotOnRelease: true,
-    });
-  }, [activateFocusScrollGuard]);
-
   useEffect(() => {
     let rafId;
     const barNode = barRef.current;
-    const clearKeyboardSettleTimer = () => {
-      if (keyboardSettleTimerRef.current) {
-        clearTimeout(keyboardSettleTimerRef.current);
-        keyboardSettleTimerRef.current = null;
-      }
-    };
-
-    const applyKeyboardInset = (node, inset, transition) => {
+    const applyKeyboardInset = (node, inset) => {
       const nextInset = String(inset);
       if (node.dataset.keyboardInset === nextInset) return;
 
-      node.style.transition = transition;
+      node.style.transition = 'none';
       keyboardInsetRef.current = inset;
       node.dataset.keyboardInset = nextInset;
       node.style.transform = `translate3d(0, -${inset}px, 0)`;
-      scheduleFocusScrollRestore();
     };
 
     const onViewportResize = () => {
@@ -200,29 +71,7 @@ function BottomActionBar({
           ? 0
           : Math.max(0, layoutHeight - viewport.height - viewport.offsetTop);
         const roundedInset = Math.round(keyboardInset);
-        const nextInset = String(roundedInset);
-
-        if (node.dataset.keyboardInset !== nextInset) {
-          const isOpening = roundedInset > keyboardInsetRef.current;
-          if (isOpening) {
-            pendingKeyboardInsetRef.current = roundedInset;
-            clearKeyboardSettleTimer();
-            keyboardSettleTimerRef.current = window.setTimeout(() => {
-              keyboardSettleTimerRef.current = null;
-              applyKeyboardInset(
-                node,
-                pendingKeyboardInsetRef.current,
-                'transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1)'
-              );
-            }, KEYBOARD_OPEN_SETTLE_MS);
-          } else {
-            clearKeyboardSettleTimer();
-            pendingKeyboardInsetRef.current = roundedInset;
-            applyKeyboardInset(node, roundedInset, 'transform 0.2s ease');
-          }
-        }
-
-        scheduleFocusScrollRestore();
+        applyKeyboardInset(node, roundedInset);
       });
     };
 
@@ -235,7 +84,6 @@ function BottomActionBar({
 
     return () => {
       cancelAnimationFrame(rafId);
-      clearKeyboardSettleTimer();
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', onViewportResize);
         window.visualViewport.removeEventListener('scroll', onViewportResize);
@@ -246,34 +94,8 @@ function BottomActionBar({
         delete barNode.dataset.keyboardInset;
       }
       keyboardInsetRef.current = 0;
-      pendingKeyboardInsetRef.current = 0;
     };
-  }, [disableKeyboardLift, scheduleFocusScrollRestore]);
-
-  useEffect(() => {
-    const onScroll = () => {
-      scheduleFocusScrollRestore();
-    };
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
-
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      document.removeEventListener('scroll', onScroll, { capture: true });
-    };
-  }, [scheduleFocusScrollRestore]);
-
-  useEffect(() => {
-    const guard = focusScrollGuardRef.current;
-
-    return () => {
-      if (guard.restoreRafId) cancelAnimationFrame(guard.restoreRafId);
-      if (guard.loopRafId) cancelAnimationFrame(guard.loopRafId);
-      if (guard.releaseTimerId) clearTimeout(guard.releaseTimerId);
-      if (keyboardSettleTimerRef.current) clearTimeout(keyboardSettleTimerRef.current);
-    };
-  }, []);
+  }, [disableKeyboardLift]);
 
   useEffect(() => {
     const attachmentUrls = attachmentUrlsRef.current;
@@ -429,9 +251,6 @@ function BottomActionBar({
             ref={textareaRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onPointerDownCapture={handleTextareaPointerDownCapture}
-            onFocus={handleTextareaFocus}
-            onBlur={handleTextareaBlur}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();

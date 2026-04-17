@@ -869,7 +869,6 @@ function PostDetail() {
           replyToName={replyToName}
           onCancelReply={() => { setReplyTo(null); setReplyToName(''); }}
           disableKeyboardLift={Boolean(editingComment)}
-          scrollLockTargetRef={scrollContentRef}
         />
 
         {isPhotoViewerOpen && (
