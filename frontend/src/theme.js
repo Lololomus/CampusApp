@@ -1,7 +1,6 @@
 // ===== 📄 ФАЙЛ: frontend/src/theme.js =====
 
-const PREMIUM_GRAPHITE = 'rgba(28, 28, 30, 0.5)';
-const LEGACY_PREMIUM_SURFACE_ELEVATED = '#1C1C1E'; // legacy
+const PREMIUM_GRAPHITE = '#1C1C1E';
 
 export const theme = {
   // ========== COLORS ==========
@@ -13,7 +12,6 @@ export const theme = {
       primaryText: '#000000',
       graphite: PREMIUM_GRAPHITE,
       surfaceElevated: PREMIUM_GRAPHITE,
-      legacySurfaceElevated: LEGACY_PREMIUM_SURFACE_ELEVATED,
       surfaceHover: '#2C2C2E',
       border: 'rgba(255, 255, 255, 0.08)',
       textMuted: '#888888',
@@ -54,7 +52,7 @@ export const theme = {
       accentText: '#000000',
       pink: '#FF2D55',
       pinkGlow: 'rgba(255, 45, 85, 0.3)',
-      surface: LEGACY_PREMIUM_SURFACE_ELEVATED,
+      surface: PREMIUM_GRAPHITE,
       surfaceHover: '#2C2C2E',
       cardBg: '#121212',
       textMuted: '#8E8E93',

@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSwipe } from '../../hooks/useSwipe';
 import theme from '../../theme';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 // Счётчик открытых модалок — чтобы не снимать лок раньше времени
 let openModalCount = 0;
@@ -63,21 +64,6 @@ const SwipeableModal = ({
   const contentRef = useRef(null);
   const overlayRef = useRef(null);
 
-  // Блокируем touch-события под модалкой (pull-to-refresh и свайп ленты)
-  useEffect(() => {
-    if (!isOpen) return;
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-    const block = (e) => e.stopPropagation();
-    const blockPrevent = (e) => { e.stopPropagation(); e.preventDefault(); };
-    overlay.addEventListener('touchstart', block, { passive: true });
-    overlay.addEventListener('touchmove', blockPrevent, { passive: false });
-    return () => {
-      overlay.removeEventListener('touchstart', block);
-      overlay.removeEventListener('touchmove', blockPrevent);
-    };
-  }, [isOpen]);
-
   // Блокировка скролла фона
   useEffect(() => {
     if (isOpen) {
@@ -127,6 +113,8 @@ const SwipeableModal = ({
   return createPortal(
     <div
       ref={overlayRef}
+      {...modalBoundaryProps}
+      {...modalTouchBoundaryHandlers}
       style={{
         position: 'fixed',
         top: 0,

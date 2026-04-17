@@ -6,7 +6,7 @@ import React, { useState, useCallback, Fragment } from 'react';
 import ConfirmationDialog from './ConfirmationDialog';
 import theme from '../../theme';
 
-const URL_REGEX = /((https?:\/\/)[^\s<>\"')\]]+)/gi;
+const URL_REGEX = /((https?:\/\/)[^\s<>"')\]]+)/gi;
 
 function LinkText({ text, style }) {
   const [pendingUrl, setPendingUrl] = useState(null);

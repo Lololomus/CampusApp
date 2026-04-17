@@ -29,6 +29,7 @@ export const useSwipe = ({
   const onMove = useCallback((e) => {
     if (!isSwiping.current) return;
     if (!e.touches && !isMouseDown.current) return;
+    if (isModal) e.stopPropagation();
 
     const deltaX = getX(e) - startPos.current.x;
     const deltaY = getY(e) - startPos.current.y;
@@ -56,7 +57,9 @@ export const useSwipe = ({
     currentOffset.current = { x: translateX, y: translateY };
   }, [elementRef, isModal]);
 
-  const onCancel = useCallback(() => {
+  const onCancel = useCallback((e) => {
+    if (isModal) e?.stopPropagation?.();
+
     if (elementRef.current) {
       elementRef.current.style.transition = 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)';
       elementRef.current.style.transform = 'translate3d(0, 0, 0) rotate(0deg)';
@@ -67,9 +70,10 @@ export const useSwipe = ({
     directionLocked.current = null;
     currentOffset.current = { x: 0, y: 0 };
     clearGlobalMouseListeners();
-  }, [clearGlobalMouseListeners, elementRef]);
+  }, [clearGlobalMouseListeners, elementRef, isModal]);
 
-  const onEnd = useCallback(() => {
+  const onEnd = useCallback((e) => {
+    if (isModal) e?.stopPropagation?.();
     if (!isSwiping.current) return;
     isSwiping.current = false;
     isMouseDown.current = false;
@@ -101,6 +105,7 @@ export const useSwipe = ({
   }, [clearGlobalMouseListeners, elementRef, isModal, onSwipeDown, onSwipeLeft, onSwipeRight, threshold]);
 
   const onStart = useCallback((e) => {
+    if (isModal) e.stopPropagation();
     const isTouchEvent = Boolean(e.touches);
 
     if (!isTouchEvent) {
@@ -133,7 +138,7 @@ export const useSwipe = ({
         window.removeEventListener('blur', handleWindowBlur);
       };
     }
-  }, [clearGlobalMouseListeners, elementRef, onCancel, onEnd, onMove]);
+  }, [clearGlobalMouseListeners, elementRef, isModal, onCancel, onEnd, onMove]);
 
   useEffect(() => () => clearGlobalMouseListeners(), [clearGlobalMouseListeners]);
 

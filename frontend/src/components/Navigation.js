@@ -230,7 +230,7 @@ const styles = {
   },
 
   nav: {
-    background: theme.colors.premium.legacySurfaceElevated,
+    background: theme.colors.premium.surfaceElevated,
     borderRadius: 32,
     padding: '8px 12px',
     display: 'flex',

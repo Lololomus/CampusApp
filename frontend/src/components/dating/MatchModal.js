@@ -5,6 +5,7 @@ import { useStore } from '../../store';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
 import { getPrimaryDatingPhoto } from './photoUtils';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 function Particle({ delay, type }) {
   const [remove, setRemove] = useState(false);
@@ -120,6 +121,8 @@ function MatchModal() {
   return (
     <AnimatePresence>
       <motion.div
+        {...modalBoundaryProps}
+        {...modalTouchBoundaryHandlers}
         style={styles.overlay}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

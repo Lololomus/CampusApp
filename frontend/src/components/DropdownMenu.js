@@ -52,11 +52,11 @@ function DropdownMenu({
     const menuHeight = menuRef.current.offsetHeight;
     const menuWidth = menuRef.current.offsetWidth;
 
-    let finalTop = 0;
-    let finalLeft = 'auto';
-    let finalRight = 'auto';
-    let originY = 'top';
-    let originX = 'right';
+    let finalTop;
+    let finalLeft;
+    let finalRight;
+    let originY;
+    let originX;
 
     const spaceBelow = viewportHeight - anchorRect.bottom;
     const spaceAbove = anchorRect.top;

@@ -157,10 +157,10 @@ function Feed() {
       const data = await getPosts(apiFilters);
       
       const postsWithImages = (data.items || []).map(post => {
-        let images = [];
+        let images;
         try {
           images = typeof post.images === 'string' ? JSON.parse(post.images) : (post.images || []);
-        } catch (e) { images = []; }
+        } catch { images = []; }
         return { ...post, images };
       });
       

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import theme from '../../theme';
 import { Z_CONFIRMATION_DIALOG } from '../../constants/zIndex';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 function ConfirmationDialog({
   isOpen,
@@ -49,12 +50,18 @@ function ConfirmationDialog({
 
       {/* Overlay */}
       <div 
+        {...modalBoundaryProps}
+        {...modalTouchBoundaryHandlers}
         style={styles.overlay}
         onClick={onCancel}
       />
       
       {/* Dialog Box */}
-      <div style={styles.dialog}>
+      <div
+        {...modalBoundaryProps}
+        {...modalTouchBoundaryHandlers}
+        style={styles.dialog}
+      >
         <h3 style={styles.title}>{title}</h3>
         <p style={styles.message}>{message}</p>
         

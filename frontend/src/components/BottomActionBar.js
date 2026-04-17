@@ -35,28 +35,31 @@ function BottomActionBar({
   }, [text]);
 
   useEffect(() => {
+    let rafId;
     const onViewportResize = () => {
-      if (!window.visualViewport) return;
-      const keyboardHeight = disableKeyboardLift
-        ? 0
-        : Math.max(0, window.innerHeight - window.visualViewport.height);
-      const node = document.querySelector('.post-detail-bottom-bar');
-      if (node) {
-        node.style.transform = `translateY(-${keyboardHeight}px)`;
-      }
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (!window.visualViewport) return;
+        const keyboardHeight = disableKeyboardLift
+          ? 0
+          : Math.max(0, window.innerHeight - window.visualViewport.height);
+        const node = document.querySelector('.post-detail-bottom-bar');
+        if (node) {
+          node.style.transform = `translateY(-${keyboardHeight}px)`;
+        }
+      });
     };
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', onViewportResize);
-      window.visualViewport.addEventListener('scroll', onViewportResize);
     }
 
     onViewportResize();
 
     return () => {
+      cancelAnimationFrame(rafId);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', onViewportResize);
-        window.visualViewport.removeEventListener('scroll', onViewportResize);
       }
     };
   }, [disableKeyboardLift]);
@@ -263,9 +266,7 @@ const styles = {
     gap: 0,
     borderRadius: 24,
     border: '1px solid rgba(255,255,255,0.1)',
-    background: 'rgba(28, 28, 30, 0.85)',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)',
+    background: theme.colors.premium.surfaceElevated,
     boxShadow: '0 16px 40px rgba(0, 0, 0, 0.5)',
     overflow: 'hidden',
   },

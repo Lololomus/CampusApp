@@ -15,6 +15,7 @@ import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_MODAL_CREATE_MARKET_ITEM } from '../../constants/zIndex';
 import { MARKET_CATEGORIES, MARKET_CONDITIONS } from '../../constants/marketConstants';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 const MAX_IMAGES = 3;
 const MIN_TITLE_LEN = 3;
@@ -548,6 +549,8 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
   const sheet = (
     <div
+      {...modalBoundaryProps}
+      {...modalTouchBoundaryHandlers}
       style={{ ...s.backdrop, opacity: isVisible ? 1 : 0 }}
       onClick={handleClose}
     >

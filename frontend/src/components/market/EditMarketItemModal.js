@@ -15,6 +15,7 @@ import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { MARKET_CONDITIONS, MARKET_CATEGORIES_MAP } from '../../constants/marketConstants';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 const MAX_IMAGES = 3;
 const TOOL_ICON_SIZE = 26;
@@ -346,6 +347,8 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
   const modal = (
     <>
       <div
+        {...modalBoundaryProps}
+        {...modalTouchBoundaryHandlers}
         style={{
           ...s.overlay,
           opacity: isVisible ? 1 : 0,

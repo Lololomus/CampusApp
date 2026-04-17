@@ -66,7 +66,7 @@ export const validateVideoFile = async (file) => {
     return { valid: false, error: 'Video must be 100 MB or smaller' };
   }
 
-  let durationSeconds = 0;
+  let durationSeconds;
   try {
     durationSeconds = await loadVideoDuration(file);
   } catch {

@@ -300,7 +300,7 @@ const deleteStyles = {
   },
   message: {
     fontSize: theme.fontSize.sm, color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.md, lineHeight: 1.5, margin: 0,
+    lineHeight: 1.5, margin: 0,
     marginBottom: theme.spacing.md,
   },
   textarea: {

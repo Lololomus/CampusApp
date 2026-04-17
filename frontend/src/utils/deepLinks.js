@@ -1,7 +1,7 @@
 import { getUserPublic } from '../api';
 import { toast } from '../components/shared/Toast';
 
-const FALLBACK_MINIAPP_URL = 'https://t.me/MyCampusBot/app';
+const FALLBACK_MINIAPP_URL = 'https://t.me/CampusApp_bot/app';
 
 const EXACT_ACTIONS = Object.freeze({
   tab_feed: { action: 'tab_feed' },

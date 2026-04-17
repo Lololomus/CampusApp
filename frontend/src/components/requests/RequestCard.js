@@ -182,7 +182,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
-    let text = '';
+    let text;
     if (days > 0) text = `${days}д ${hours % 24}ч`;
     else if (hours > 0) text = `${hours}ч ${minutes % 60}м`;
     else text = `${minutes}м`;

@@ -44,6 +44,7 @@ import { useTelegramScreen } from './telegram/useTelegramScreen';
 import SmartDatePicker from './SmartDatePicker';
 import IncognitoIcon from './IncognitoIcon';
 import { getUniversityName, getUniqueUniversities } from '../../constants/universityData';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
@@ -704,7 +705,7 @@ function CreateContentModal({ onClose }) {
       segs.push({ w: 30, v: Math.min(1, postBody.trim().length / POST_LIMITS.BODY_MIN) });
     }
     if (postCategory === 'events') {
-      segs.push({ w: 20, v: Boolean(buildEventDateIso(eventDateMode, customDate)) ? 1 : 0 });
+      segs.push({ w: 20, v: buildEventDateIso(eventDateMode, customDate) ? 1 : 0 });
       segs.push({ w: 20, v: location.trim().length >= 3 ? 1 : 0 });
     } else if (postCategory === 'lost_found') {
       segs.push({ w: 40, v: location.trim().length >= 3 ? 1 : 0 });
@@ -723,7 +724,7 @@ function CreateContentModal({ onClose }) {
     const segs = [
       { w: 40, v: Math.min(1, reqTitle.trim().length / REQUEST_LIMITS.TITLE_MIN) },
       { w: 40, v: Math.min(1, reqBody.trim().length / REQUEST_LIMITS.BODY_MIN) },
-      { w: 20, v: Boolean(resolvedRequestExpiresAt) ? 1 : 0 },
+      { w: 20, v: resolvedRequestExpiresAt ? 1 : 0 },
     ];
     const total = segs.reduce((s, seg) => s + seg.w, 0);
     const filled = segs.reduce((s, seg) => s + seg.w * seg.v, 0);
@@ -1269,7 +1270,11 @@ function CreateContentModal({ onClose }) {
   const content = (
     <>
       <style>{keyframeStyles}</style>
-      <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0, pointerEvents: (showConfirmation || showRestoreDialog) ? 'none' : 'auto' }}>
+      <div
+        {...modalBoundaryProps}
+        {...modalTouchBoundaryHandlers}
+        style={{ ...styles.overlay, opacity: isVisible ? 1 : 0, pointerEvents: (showConfirmation || showRestoreDialog) ? 'none' : 'auto' }}
+      >
         <div style={{ ...styles.backdrop, opacity: isVisible ? 1 : 0 }} onClick={handleClose} />
         <div
           ref={sheetRef}
@@ -2397,8 +2402,7 @@ const styles = {
     bottom: '100%',
     zIndex: 10,
     padding: '16px',
-    background: 'rgba(28,28,30,0.95)',
-    backdropFilter: 'blur(20px)',
+    background: theme.colors.premium.surfaceElevated,
     borderTop: '1px solid rgba(255,255,255,0.1)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

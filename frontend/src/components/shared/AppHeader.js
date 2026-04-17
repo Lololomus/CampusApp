@@ -302,10 +302,7 @@ const AppHeader = ({
     }
   };
 
-  const p = {
-      ...theme.colors.premium,
-      surfaceElevated: theme.colors.premium.legacySurfaceElevated || theme.colors.premium.surfaceElevated,
-  };
+  const p = theme.colors.premium;
   const hasSecondaryContent = hasSecondaryPremiumContent;
     const useCollapsedToolbar = useCollapsedToolbarPremium;
     const showCollapsedToolbar = useCollapsedToolbar && isScrolled;
@@ -335,7 +332,7 @@ const AppHeader = ({
       const compactPillPadding = 4;
       const compactTitleGap = 6;
       const compactPillTop = compactTopInset;
-      const compactLeadingControlCount = (showFilters ? 1 : 0) + normalizedFilterActions.length;
+      const compactLeadingControlCount = showFilters ? 1 : 0;
       const compactTrailingControlCount = showSearch ? 1 : 0;
       const compactSideControlCount = Math.max(compactLeadingControlCount, compactTrailingControlCount);
       const compactSideWidth = compactSideControlCount * compactControlSize;
@@ -568,7 +565,7 @@ const AppHeader = ({
                 </button>
               )}
 
-              {normalizedFilterActions.map((action, index) => {
+              {!isCompact && normalizedFilterActions.map((action, index) => {
                 const isActive = Boolean(action.active);
                 return (
                   <button

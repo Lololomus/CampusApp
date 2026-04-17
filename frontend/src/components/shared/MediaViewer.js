@@ -9,6 +9,8 @@ import { useSwipe } from '../../hooks/useSwipe';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
 import Avatar, { AVATAR_BORDER_RADIUS } from './Avatar';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import theme from '../../theme';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 const DATA_OR_BLOB_PREFIX = /^(data:|blob:)/i;
 const HTTP_PREFIX = /^https?:\/\//i;
@@ -571,16 +573,22 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
       `}</style>
 
       {/* Overlay — закрывает по клику */}
-      <div style={{
-        ...styles.overlay,
-        animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards' : styles.overlay.animation,
-        opacity: swipeClosing ? 0 : (dragY > 0 ? Math.max(0.05, 1 - dragY / 250) : undefined),
-        transition: swipeClosing ? 'opacity 0.3s ease' : (dragY > 0 ? 'none' : undefined),
-      }} onClick={isSwipeOnlyDismiss ? undefined : closeWithAnimation} />
+      <div
+        {...modalBoundaryProps}
+        {...modalTouchBoundaryHandlers}
+        style={{
+          ...styles.overlay,
+          animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards' : styles.overlay.animation,
+          opacity: swipeClosing ? 0 : (dragY > 0 ? Math.max(0.05, 1 - dragY / 250) : undefined),
+          transition: swipeClosing ? 'opacity 0.3s ease' : (dragY > 0 ? 'none' : undefined),
+        }}
+        onClick={isSwipeOnlyDismiss ? undefined : closeWithAnimation}
+      />
 
       {/* Контейнер */}
       <div
-        data-no-edge-swipe="true"
+        {...modalBoundaryProps}
+        {...modalTouchBoundaryHandlers}
         style={{
           ...styles.container,
           animation: isClosing
@@ -829,9 +837,7 @@ const styles = {
     WebkitUserSelect: 'none',
   },
   counter: {
-    background: 'rgba(28,28,30,0.6)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
+    background: theme.colors.premium.surfaceElevated,
     padding: '6px 14px',
     borderRadius: 16,
     fontSize: 13,
@@ -844,9 +850,7 @@ const styles = {
     width: 44,
     height: 44,
     borderRadius: '50%',
-    background: 'rgba(28,28,30,0.6)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
+    background: theme.colors.premium.surfaceElevated,
     border: '1px solid rgba(255,255,255,0.1)',
     color: '#fff',
     display: 'flex',
@@ -898,9 +902,7 @@ const styles = {
     width: 40,
     height: 40,
     borderRadius: '50%',
-    background: 'rgba(28,28,30,0.6)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
+    background: theme.colors.premium.surfaceElevated,
     border: '1px solid rgba(255,255,255,0.1)',
     color: '#fff',
     display: 'flex',
@@ -936,9 +938,7 @@ const styles = {
     width: 72,
     height: 72,
     borderRadius: 36,
-    background: 'rgba(28,28,30,0.6)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
+    background: theme.colors.premium.surfaceElevated,
     border: '1px solid rgba(255,255,255,0.1)',
     color: '#D4FF00',
     display: 'flex',
@@ -952,9 +952,7 @@ const styles = {
     width: 40,
     height: 40,
     borderRadius: 20,
-    background: 'rgba(28,28,30,0.6)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
+    background: theme.colors.premium.surfaceElevated,
     border: '1px solid rgba(255,255,255,0.1)',
     color: '#fff',
     display: 'flex',
@@ -995,9 +993,7 @@ const styles = {
     width: 40,
     height: 40,
     borderRadius: 20,
-    background: 'rgba(28,28,30,0.75)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
+    background: theme.colors.premium.surfaceElevated,
     border: '1px solid rgba(255,255,255,0.12)',
     color: '#fff',
     display: 'flex',

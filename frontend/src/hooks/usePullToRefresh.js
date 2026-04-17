@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PULL_TO_REFRESH_THRESHOLD } from '../constants/layoutConstants';
 import { hapticFeedback } from '../utils/telegram';
+import { shouldIgnoreBackgroundGesture } from '../utils/modalEventBoundary';
 
 // Максимальное визуальное смещение контента / высота пространства (px)
 export const PTR_DISPLAY_MAX = 60;
@@ -46,12 +47,22 @@ export function usePullToRefresh({ onRefresh, loading, disabled = false }) {
     if (disabled) return;
 
     const handleTouchStart = (e) => {
+      if (shouldIgnoreBackgroundGesture(e)) {
+        startYRef.current = 0;
+        return;
+      }
       if (lockRef.current) return;
       startYRef.current = window.scrollY === 0 ? e.touches[0].clientY : 0;
       setSnapping(false);
     };
 
     const handleTouchMove = (e) => {
+      if (shouldIgnoreBackgroundGesture(e)) {
+        startYRef.current = 0;
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => setPullProgress(0));
+        return;
+      }
       if (startYRef.current === 0 || lockRef.current || window.scrollY !== 0) return;
 
       const delta = e.touches[0].clientY - startYRef.current;
@@ -77,7 +88,12 @@ export function usePullToRefresh({ onRefresh, loading, disabled = false }) {
       }
     };
 
-    const handleTouchEnd = () => {
+    const handleTouchEnd = (e) => {
+      if (shouldIgnoreBackgroundGesture(e)) {
+        startYRef.current = 0;
+        setPullProgress(0);
+        return;
+      }
       if (lockRef.current) return;
       setSnapping(true);
       setPullProgress(0);

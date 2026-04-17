@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { isIOS } from '../utils/platform';
 import { hapticFeedback } from '../utils/telegram';
+import { isEventFromModalBoundary } from '../utils/modalEventBoundary';
 
 export const useEdgeSwipeBack = ({
   onBack,
@@ -157,6 +158,7 @@ export const useEdgeSwipeBack = ({
 
       // Игнорируем если внутри галереи/карусели
       if (e.target?.closest?.('[data-no-edge-swipe]')) return;
+      if (isEventFromModalBoundary(e)) return;
 
       // Отвечает только самый верхний EdgeSwipeBack (по z-index)
       // Если под пальцем есть другой EdgeSwipeBack с более высоким z-index — уступаем ему

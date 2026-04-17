@@ -425,7 +425,9 @@ function PostDetail() {
     try {
       const result = await likeComment(commentId);
       setCommentLikes(prev => ({ ...prev, [commentId]: { isLiked: result.is_liked, count: result.likes } }));
-    } catch (error) {}
+    } catch {
+      // Keep the current optimistic state when a like request fails.
+    }
   };
 
   const handleReply = (comment) => {
@@ -448,7 +450,9 @@ function PostDetail() {
         setComments(prev => prev.map(c => c.id === commentId ? { ...c, body: 'Комментарий удалён', is_deleted: true, images: [] } : c));
       }
       await refreshPost();
-    } catch (error) {}
+    } catch {
+      // The UI stays unchanged if deleting a comment fails.
+    }
   };
 
   const handleEditComment = (comment) => {

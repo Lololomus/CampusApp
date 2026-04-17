@@ -1,4 +1,4 @@
-const ISO_TZ_RE = /(Z|[+\-]\d{2}:\d{2})$/i;
+const ISO_TZ_RE = /(Z|[+-]\d{2}:\d{2})$/i;
 
 export function parseApiDate(value) {
   if (!value) return null;

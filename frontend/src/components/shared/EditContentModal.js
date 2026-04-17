@@ -44,6 +44,7 @@ import { toast } from './Toast';
 import ConfirmationDialog from './ConfirmationDialog';
 import SmartDatePicker from './SmartDatePicker';
 import { useTelegramScreen } from './telegram/useTelegramScreen';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
@@ -386,7 +387,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
         segs.push({ w: 30, v: Math.min(1, postBody.trim().length / POST_LIMITS.BODY_MIN) });
       }
       if (postCategory === 'events') {
-        segs.push({ w: 20, v: Boolean(buildEventDateIso(eventDateMode, customDate)) ? 1 : 0 });
+        segs.push({ w: 20, v: buildEventDateIso(eventDateMode, customDate) ? 1 : 0 });
         segs.push({ w: 20, v: location.trim().length >= 3 ? 1 : 0 });
       } else if (postCategory === 'lost_found') {
         segs.push({ w: 40, v: location.trim().length >= 3 ? 1 : 0 });
@@ -394,7 +395,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
     } else {
       segs.push({ w: 40, v: Math.min(1, reqTitle.trim().length / REQUEST_LIMITS.TITLE_MIN) });
       segs.push({ w: 40, v: Math.min(1, reqBody.trim().length / REQUEST_LIMITS.BODY_MIN) });
-      segs.push({ w: 20, v: Boolean(resolvedRequestExpiresAt) ? 1 : 0 });
+      segs.push({ w: 20, v: resolvedRequestExpiresAt ? 1 : 0 });
     }
     const total = segs.reduce((s, seg) => s + seg.w, 0);
     const filled = segs.reduce((s, seg) => s + seg.w * seg.v, 0);
@@ -730,7 +731,11 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
   return createPortal(
     <>
       <style>{keyframeStyles}</style>
-      <div style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}>
+      <div
+        {...modalBoundaryProps}
+        {...modalTouchBoundaryHandlers}
+        style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}
+      >
         <div style={styles.backdrop} onClick={handleClose} />
         <div ref={sheetRef} style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }} onClick={(e) => e.stopPropagation()}>
           {isSubmitting && (
@@ -1323,8 +1328,7 @@ const styles = {
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     borderTop: '1px solid rgba(255,255,255,0.1)',
-    background: 'rgba(28,28,30,0.95)',
-    backdropFilter: 'blur(18px)',
+    background: theme.colors.premium.surfaceElevated,
     boxShadow: '0 -8px 30px rgba(0,0,0,0.45)',
   },
   suggestionBtn: {

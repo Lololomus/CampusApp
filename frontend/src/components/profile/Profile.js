@@ -23,6 +23,7 @@ import RequestCard from '../requests/RequestCard';
 import MyMarketCard from './MyMarketCard';
 import PhotoViewer from '../shared/PhotoViewer';
 import SettingsModal from './SettingsModal';
+import theme from '../../theme';
 import EditContentModal from '../shared/EditContentModal';
 import EditMarketItemModal from '../market/EditMarketItemModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
@@ -336,7 +337,7 @@ function Profile() {
                 onClick={handleOpenMyPosts}
               />
               {previewPosts.length > 0 ? (
-                <div style={styles.listGap}>
+                <div style={styles.previewPostList}>
                   {previewPosts.map((post) => (
                     <PostCard
                       key={post.id}
@@ -930,11 +931,12 @@ const styles = {
     padding: '0 3px',
   },
   secondaryAction: {
+    width: 52, height: 52,
     background: '#2C2C2E',
     color: '#FFF',
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: 16,
-    padding: '14px 14px',
+    padding: 0,
     fontSize: 14, fontWeight: 700,
     display: 'flex',
     alignItems: 'center',
@@ -1021,9 +1023,7 @@ const styles = {
   statCard: {
     borderRadius: 16,
     padding: '14px 8px',
-    background: 'rgba(28,28,30,0.4)',
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
+    background: theme.colors.premium.surfaceElevated,
     border: '1px solid rgba(255,255,255,0.05)',
     boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.03)',
     display: 'flex',
@@ -1089,6 +1089,13 @@ const styles = {
     gap: 0,
   },
 
+  previewPostList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 0,
+    padding: '0 16px',
+  },
+
   marketList: {
     display: 'flex',
     flexDirection: 'column',
@@ -1098,9 +1105,7 @@ const styles = {
 
   actionCard: {
     margin: '0 16px 12px',
-    background: 'rgba(28, 28, 30, 0.5)',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)',
+    background: theme.colors.premium.surfaceElevated,
     borderRadius: 16,
     padding: '14px 16px',
     display: 'flex',
