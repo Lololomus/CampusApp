@@ -207,6 +207,7 @@ function App() {
 
   useEffect(() => {
     const updateActiveTabScrollMemory = () => {
+      if (viewPostId) return;
       tabScrollMemoryRef.current[activeTab] = window.scrollY || window.pageYOffset || 0;
     };
 
@@ -216,7 +217,7 @@ function App() {
     return () => {
       window.removeEventListener('scroll', updateActiveTabScrollMemory);
     };
-  }, [activeTab]);
+  }, [activeTab, viewPostId]);
 
   useLayoutEffect(() => {
     if (restoreFrameRef.current) {

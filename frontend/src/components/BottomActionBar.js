@@ -22,6 +22,7 @@ function BottomActionBar({
 
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const barRef = useRef(null);
   const attachmentUrlsRef = useRef(new Set());
 
   const canSend = useMemo(() => {
@@ -36,22 +37,29 @@ function BottomActionBar({
 
   useEffect(() => {
     let rafId;
+    const barNode = barRef.current;
     const onViewportResize = () => {
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        if (!window.visualViewport) return;
-        const keyboardHeight = disableKeyboardLift
-          ? 0
-          : Math.max(0, window.innerHeight - window.visualViewport.height);
-        const node = document.querySelector('.post-detail-bottom-bar');
-        if (node) {
-          node.style.transform = `translateY(-${keyboardHeight}px)`;
+        const node = barNode;
+        if (!node) return;
+
+        if (!window.visualViewport) {
+          node.style.transform = 'translate3d(0, 0, 0)';
+          return;
         }
+
+        const viewport = window.visualViewport;
+        const keyboardInset = disableKeyboardLift
+          ? 0
+          : Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+        node.style.transform = `translate3d(0, -${keyboardInset}px, 0)`;
       });
     };
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', onViewportResize);
+      window.visualViewport.addEventListener('scroll', onViewportResize);
     }
 
     onViewportResize();
@@ -60,6 +68,10 @@ function BottomActionBar({
       cancelAnimationFrame(rafId);
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', onViewportResize);
+        window.visualViewport.removeEventListener('scroll', onViewportResize);
+      }
+      if (barNode) {
+        barNode.style.transform = 'translate3d(0, 0, 0)';
       }
     };
   }, [disableKeyboardLift]);
@@ -154,7 +166,7 @@ function BottomActionBar({
     : '';
 
   return (
-    <div className="post-detail-bottom-bar" style={styles.container}>
+    <div ref={barRef} className="post-detail-bottom-bar" style={styles.container}>
       <input
         ref={fileInputRef}
         type="file"
