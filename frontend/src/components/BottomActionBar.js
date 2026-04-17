@@ -169,9 +169,15 @@ function BottomActionBar({
         }
 
         const viewport = window.visualViewport;
+        const layoutHeight = (
+          node.offsetParent?.getBoundingClientRect?.().height
+          || node.parentElement?.getBoundingClientRect?.().height
+          || window.innerHeight
+          || viewport.height
+        );
         const keyboardInset = disableKeyboardLift
           ? 0
-          : Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+          : Math.max(0, layoutHeight - viewport.height - viewport.offsetTop);
         const roundedInset = Math.round(keyboardInset);
         const nextInset = String(roundedInset);
 
