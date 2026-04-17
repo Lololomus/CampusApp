@@ -9,6 +9,7 @@ import { toast } from './shared/Toast';
 const KEYBOARD_SCROLL_GUARD_OPEN_MS = 900;
 const KEYBOARD_SCROLL_GUARD_CLOSE_MS = 650;
 const KEYBOARD_SCROLL_GUARD_FRAMES = 12;
+const KEYBOARD_OPEN_SETTLE_MS = 80;
 
 const getWindowScrollY = () => (
   window.scrollY
@@ -38,6 +39,8 @@ function BottomActionBar({
   const barRef = useRef(null);
   const attachmentUrlsRef = useRef(new Set());
   const keyboardInsetRef = useRef(0);
+  const keyboardSettleTimerRef = useRef(null);
+  const pendingKeyboardInsetRef = useRef(0);
   const focusScrollGuardRef = useRef({
     isActive: false,
     hasSnapshot: false,
@@ -157,6 +160,24 @@ function BottomActionBar({
   useEffect(() => {
     let rafId;
     const barNode = barRef.current;
+    const clearKeyboardSettleTimer = () => {
+      if (keyboardSettleTimerRef.current) {
+        clearTimeout(keyboardSettleTimerRef.current);
+        keyboardSettleTimerRef.current = null;
+      }
+    };
+
+    const applyKeyboardInset = (node, inset, transition) => {
+      const nextInset = String(inset);
+      if (node.dataset.keyboardInset === nextInset) return;
+
+      node.style.transition = transition;
+      keyboardInsetRef.current = inset;
+      node.dataset.keyboardInset = nextInset;
+      node.style.transform = `translate3d(0, -${inset}px, 0)`;
+      scheduleFocusScrollRestore();
+    };
+
     const onViewportResize = () => {
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
@@ -183,10 +204,22 @@ function BottomActionBar({
 
         if (node.dataset.keyboardInset !== nextInset) {
           const isOpening = roundedInset > keyboardInsetRef.current;
-          node.style.transition = isOpening ? 'none' : 'transform 0.2s ease';
-          keyboardInsetRef.current = roundedInset;
-          node.dataset.keyboardInset = nextInset;
-          node.style.transform = `translate3d(0, -${roundedInset}px, 0)`;
+          if (isOpening) {
+            pendingKeyboardInsetRef.current = roundedInset;
+            clearKeyboardSettleTimer();
+            keyboardSettleTimerRef.current = window.setTimeout(() => {
+              keyboardSettleTimerRef.current = null;
+              applyKeyboardInset(
+                node,
+                pendingKeyboardInsetRef.current,
+                'transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1)'
+              );
+            }, KEYBOARD_OPEN_SETTLE_MS);
+          } else {
+            clearKeyboardSettleTimer();
+            pendingKeyboardInsetRef.current = roundedInset;
+            applyKeyboardInset(node, roundedInset, 'transform 0.2s ease');
+          }
         }
 
         scheduleFocusScrollRestore();
@@ -202,6 +235,7 @@ function BottomActionBar({
 
     return () => {
       cancelAnimationFrame(rafId);
+      clearKeyboardSettleTimer();
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', onViewportResize);
         window.visualViewport.removeEventListener('scroll', onViewportResize);
@@ -212,6 +246,7 @@ function BottomActionBar({
         delete barNode.dataset.keyboardInset;
       }
       keyboardInsetRef.current = 0;
+      pendingKeyboardInsetRef.current = 0;
     };
   }, [disableKeyboardLift, scheduleFocusScrollRestore]);
 
@@ -236,6 +271,7 @@ function BottomActionBar({
       if (guard.restoreRafId) cancelAnimationFrame(guard.restoreRafId);
       if (guard.loopRafId) cancelAnimationFrame(guard.loopRafId);
       if (guard.releaseTimerId) clearTimeout(guard.releaseTimerId);
+      if (keyboardSettleTimerRef.current) clearTimeout(keyboardSettleTimerRef.current);
     };
   }, []);
 
