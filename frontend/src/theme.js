@@ -1,6 +1,6 @@
 // ===== 📄 ФАЙЛ: frontend/src/theme.js =====
 
-const PREMIUM_GRAPHITE = '#1C1C1E';
+const PREMIUM_GRAPHITE = '#111113';
 
 export const theme = {
   // ========== COLORS ==========

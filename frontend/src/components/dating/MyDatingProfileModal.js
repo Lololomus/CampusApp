@@ -12,6 +12,7 @@ import PhotoViewer from '../shared/PhotoViewer';
 import SwipeableModal from '../shared/SwipeableModal';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import {
   PROMPT_OPTIONS,
   PROMPTS_BY_CATEGORY,
@@ -359,7 +360,12 @@ function MyDatingProfileModal({ onClose }) {
   const icebreakerCanSave = tempIcebreaker.question.trim() && tempIcebreaker.answer.trim();
 
   return (
-    <>
+    <EdgeSwipeBack
+      onBack={handleClose}
+      disabled={showPhotoViewer || Boolean(activeSheet)}
+      zIndex={Z_MODAL}
+    >
+      <>
       <div
         style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}
         onClick={handleClose}
@@ -836,7 +842,8 @@ function MyDatingProfileModal({ onClose }) {
           {saving ? 'Сохраняем...' : 'Сохранить фото'}
         </button>
       </SwipeableModal>
-    </>
+      </>
+    </EdgeSwipeBack>
   );
 }
 

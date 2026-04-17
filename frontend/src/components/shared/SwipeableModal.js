@@ -22,14 +22,17 @@ if (import.meta.hot) {
 
 // Единая ручка свайпа — iOS/Telegram стиль. Переиспользуется во всех bottom-sheet модалках.
 // gap — отступ от ручки до первого элемента контента (единственное место управления отступом сверху).
-export const DragHandle = ({ handlers = {}, gap = 12 }) => (
+const DRAG_HANDLE_VISUAL_HEIGHT = 4;
+const DRAG_HANDLE_PADDING_TOP = 8;
+
+export const DragHandle = ({ handlers = {}, gap = 12, handleRef = null }) => (
   <div
-    {...handlers}
+    {...(!handleRef ? handlers : {})}
     style={{
       width: '100%',
       display: 'flex',
       justifyContent: 'center',
-      paddingTop: 8,
+      paddingTop: DRAG_HANDLE_PADDING_TOP,
       paddingBottom: gap,
       touchAction: 'none',
       userSelect: 'none',
@@ -39,9 +42,10 @@ export const DragHandle = ({ handlers = {}, gap = 12 }) => (
     }}
   >
     <div
+      ref={handleRef}
       style={{
         width: 36,
-        height: 4,
+        height: DRAG_HANDLE_VISUAL_HEIGHT,
         backgroundColor: 'rgba(255, 255, 255, 0.3)',
         borderRadius: 999,
         flexShrink: 0,
@@ -63,6 +67,7 @@ const SwipeableModal = ({
   const [isAnimating, setIsAnimating] = useState(false);
   const contentRef = useRef(null);
   const overlayRef = useRef(null);
+  const dragHandleRef = useRef(null);
 
   // Блокировка скролла фона
   useEffect(() => {
@@ -103,6 +108,7 @@ const SwipeableModal = ({
 
   const swipeHandlers = useSwipe({
     elementRef: contentRef,
+    activationRef: dragHandleRef,
     onSwipeDown: onClose,
     isModal: true,
     threshold: 120
@@ -160,7 +166,7 @@ const SwipeableModal = ({
           perspective: 1000,
         }}
       >
-        <DragHandle handlers={swipeHandlers} gap={title ? 0 : 12} />
+        <DragHandle handlers={swipeHandlers} handleRef={dragHandleRef} gap={title ? 0 : 12} />
 
         {/* Header */}
         {title && (

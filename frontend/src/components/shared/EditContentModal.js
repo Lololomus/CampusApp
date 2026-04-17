@@ -40,6 +40,7 @@ import {
 } from '../../constants/createContentUiConfig';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import { composeSingleTextFromTitleBody } from '../../utils/contentTextParser';
 import { toast } from './Toast';
 import ConfirmationDialog from './ConfirmationDialog';
 import SmartDatePicker from './SmartDatePicker';
@@ -212,7 +213,11 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
   const [error, setError] = useState('');
 
   const [postTitle, setPostTitle] = useState(initialData?.title || '');
-  const [postBody, setPostBody] = useState(initialData?.body || '');
+  const [postBody, setPostBody] = useState(
+    initialData?.category === 'polls'
+      ? (initialData?.body || '')
+      : composeSingleTextFromTitleBody(initialData?.title || '', initialData?.body || '')
+  );
   const [reqTitle, setReqTitle] = useState(initialData?.title || '');
   const [reqBody, setReqBody] = useState(initialData?.body || '');
   const [videoFile, setVideoFile] = useState(null);
@@ -265,6 +270,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
   };
 
   const sheetRef = useRef(null);
+  const dragHandleRef = useRef(null);
   const fileInputRef = useRef(null);
   const postTextareaRef = useRef(null);
   const reqTextareaRef = useRef(null);
@@ -383,8 +389,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
       } else if (postCategory === 'memes') {
         segs.push({ w: 60, v: (photos.length > 0 || countLetters(postBody) >= 3) ? 1 : 0 });
       } else {
-        segs.push({ w: 30, v: Math.min(1, postTitle.trim().length / POST_LIMITS.TITLE_MIN) });
-        segs.push({ w: 30, v: Math.min(1, postBody.trim().length / POST_LIMITS.BODY_MIN) });
+        segs.push({ w: 60, v: Math.min(1, postBody.trim().length / POST_LIMITS.BODY_MIN) });
       }
       if (postCategory === 'events') {
         segs.push({ w: 20, v: buildEventDateIso(eventDateMode, customDate) ? 1 : 0 });
@@ -497,6 +502,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
 
   const swipeHandlers = useSwipe({
     elementRef: sheetRef,
+    activationRef: dragHandleRef,
     onSwipeDown: handleClose,
     isModal: true,
     threshold: 120,
@@ -632,7 +638,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
           formData.append('title', question.slice(0, POST_LIMITS.TITLE_MAX));
           formData.append('body', question);
         } else {
-          formData.append('title', postTitle.trim().slice(0, POST_LIMITS.TITLE_MAX));
+          formData.append('title', '');
           formData.append('body', postBody.trim());
         }
         formData.append('tags', JSON.stringify(tags));
@@ -646,7 +652,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
 
         if (postCategory === 'events') {
           const eventDateIso = buildEventDateIso(eventDateMode, customDate);
-          formData.append('event_name', (postTitle.trim() || postBody.trim()).slice(0, 200) || 'Событие');
+          formData.append('event_name', (postBody.trim().split('\n')[0] || postBody.trim()).slice(0, 200) || 'Событие');
           if (eventDateIso) formData.append('event_date', eventDateIso);
           formData.append('event_location', location.trim());
         }
@@ -743,7 +749,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
               <div style={{ ...styles.progressFill, width: `${uploadProgress}%` }} />
             </div>
           )}
-          <DragHandle handlers={swipeHandlers} gap={6} />
+          <DragHandle handlers={swipeHandlers} handleRef={dragHandleRef} gap={6} />
 
           <div className="hide-scroll" style={styles.content}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--create-text-muted)', marginBottom: 10 }}>
@@ -767,13 +773,13 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
               <span style={{ marginLeft: 'auto', color: 'var(--create-text-muted)', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Lock size={12} /> категория зафиксирована</span>
             </div>
 
-            {!(isPost && postCategory === 'polls') && (
+            {!isPost && (
               <input
                 type="text"
-                value={isPost ? postTitle : reqTitle}
-                onChange={(e) => isPost ? setPostTitle(e.target.value) : setReqTitle(e.target.value)}
-                placeholder={isPost ? (postPlaceholder.split('\n')[0] || 'Заголовок...') : 'Заголовок запроса...'}
-                style={isPost ? styles.postTitleInput : styles.reqTitleInput}
+                value={reqTitle}
+                onChange={(e) => setReqTitle(e.target.value)}
+                placeholder="Заголовок запроса..."
+                style={styles.reqTitleInput}
                 maxLength={POST_LIMITS.TITLE_MAX}
                 disabled={isSubmitting}
               />
@@ -794,9 +800,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
                     setReqBody(e.target.value);
                   }
                 }}
-                placeholder={isPost
-                  ? (postCategory === 'polls' ? postPlaceholder : (postPlaceholder.split('\n')[1] || 'Подробности...'))
-                  : requestPlaceholder}
+                placeholder={isPost ? postPlaceholder : requestPlaceholder}
                 className="hide-scroll create-post-input"
                 style={isPost ? styles.postTextareaInput : styles.requestTextareaInput}
                 maxLength={isPost ? POST_LIMITS.BODY_MAX : REQUEST_LIMITS.BODY_MAX}

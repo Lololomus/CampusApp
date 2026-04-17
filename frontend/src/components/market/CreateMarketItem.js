@@ -71,6 +71,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const titleRef      = useRef(null);
   const descRef       = useRef(null);
   const sheetRef      = useRef(null);
+  const dragHandleRef = useRef(null);
   const skipItemTypeResetRef = useRef(false);
   const mediaProcessingTasksRef = useRef(new Set());
   const photosRef = useRef(photos);
@@ -252,6 +253,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
   const swipeHandlers = useSwipe({
     elementRef: sheetRef,
+    activationRef: dragHandleRef,
     onSwipeDown: () => {
       if (showConfirmation || showRestoreDialog) return false;
       if (hasAnyContent()) {
@@ -571,7 +573,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
         )}
 
         {/* Drag handle */}
-        <DragHandle handlers={swipeHandlers} gap={0} />
+        <DragHandle handlers={swipeHandlers} handleRef={dragHandleRef} gap={0} />
 
         {/* Таб-свитчер Товар / Услуга */}
         <div style={s.switcherWrap}>

@@ -298,7 +298,7 @@ function DatingFeed() {
   };
 
   useTelegramScreen({
-    id: 'dating-guest-gate',
+    id: guestActionGate ? 'dating-guest-gate' : undefined,
     priority: 3100,
     back: {
       visible: Boolean(guestActionGate),

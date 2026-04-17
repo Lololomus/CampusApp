@@ -59,6 +59,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
   const fileInputRef = useRef(null);
   const descRef      = useRef(null);
   const sheetRef     = useRef(null);
+  const dragHandleRef = useRef(null);
 
   // --- Baseline для отслеживания изменений ---
   const baseline = useMemo(() => ({
@@ -173,6 +174,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
 
   const swipeHandlers = useSwipe({
     elementRef: sheetRef,
+    activationRef: dragHandleRef,
     onSwipeDown: () => {
       if (showConfirmation) return;
       handleClose();
@@ -372,7 +374,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
           )}
 
           {/* Drag handle */}
-          <DragHandle handlers={swipeHandlers} gap={0} />
+          <DragHandle handlers={swipeHandlers} handleRef={dragHandleRef} gap={0} />
 
           {/* Скролл-область */}
           <div className="market-hide-scroll" style={s.scroll}>

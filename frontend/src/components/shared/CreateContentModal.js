@@ -135,7 +135,6 @@ const hasCreateContentDraftData = (draft) => {
   if (!draft || typeof draft !== 'object') return false;
 
   const hasPostDraft =
-    String(draft.postTitle || '').trim().length > 0 ||
     String(draft.postBody || '').trim().length > 0 ||
     (Array.isArray(draft.postTags) && draft.postTags.length > 0) ||
     (Array.isArray(draft.photos) && draft.photos.length > 0) ||
@@ -232,6 +231,7 @@ function CreateContentModal({ onClose }) {
   const pickerCloseTimerRef = useRef(null);
 
   const sheetRef = useRef(null);
+  const dragHandleRef = useRef(null);
   const postBodyRef = useRef(null);
   const reqBodyRef = useRef(null);
   const postFileInputRef = useRef(null);
@@ -484,7 +484,6 @@ function CreateContentModal({ onClose }) {
 
   const hasAnyContent = () => {
     const hasPostDraft =
-      postTitle.trim().length > 0 ||
       postBody.trim().length > 0 ||
       postTags.length > 0 ||
       photos.length > 0 ||
@@ -645,6 +644,7 @@ function CreateContentModal({ onClose }) {
 
   const swipeHandlers = useSwipe({
     elementRef: sheetRef,
+    activationRef: dragHandleRef,
     onSwipeDown: () => {
       if (showConfirmation || showRestoreDialog) return false;
       if (hasAnyContent()) {
@@ -676,10 +676,9 @@ function CreateContentModal({ onClose }) {
 
   const isPostFormValid = () => {
     const textValid = postBody.trim().length >= POST_LIMITS.BODY_MIN;
-    const titleValid = postTitle.trim().length >= POST_LIMITS.TITLE_MIN;
     if (postCategory === 'polls') return postTitle.trim().length >= 3 && isPollValid();
-    if (postCategory === 'memes') return photos.length > 0 || countLetters(postTitle + postBody) >= 3;
-    if (!textValid || !titleValid) return false;
+    if (postCategory === 'memes') return photos.length > 0 || countLetters(postBody) >= 3;
+    if (!textValid) return false;
     if (postScope === 'university' && isCrossUniversityScope && !postTargetUniversity.trim()) return false;
     if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
     if (postCategory === 'lost_found') return location.trim().length >= 3;
@@ -699,10 +698,9 @@ function CreateContentModal({ onClose }) {
     if (postCategory === 'polls') {
       segs.push({ w: 60, v: postTitle.trim().length >= 3 ? 1 : 0 });
     } else if (postCategory === 'memes') {
-      segs.push({ w: 60, v: (photos.length > 0 || countLetters(postTitle + postBody) >= 3) ? 1 : 0 });
+      segs.push({ w: 60, v: (photos.length > 0 || countLetters(postBody) >= 3) ? 1 : 0 });
     } else {
-      segs.push({ w: 30, v: Math.min(1, postTitle.trim().length / POST_LIMITS.TITLE_MIN) });
-      segs.push({ w: 30, v: Math.min(1, postBody.trim().length / POST_LIMITS.BODY_MIN) });
+      segs.push({ w: 60, v: Math.min(1, postBody.trim().length / POST_LIMITS.BODY_MIN) });
     }
     if (postCategory === 'events') {
       segs.push({ w: 20, v: buildEventDateIso(eventDateMode, customDate) ? 1 : 0 });
@@ -1050,7 +1048,7 @@ function CreateContentModal({ onClose }) {
     const isPostFormValidForSubmit = () => {
       const textValid = postBody.trim().length >= POST_LIMITS.BODY_MIN;
       if (postCategory === 'polls') return postTitle.trim().length >= 3 && isPollValid();
-      if (postCategory === 'memes') return currentPhotos.length > 0 || countLetters(postTitle + postBody) >= 3;
+      if (postCategory === 'memes') return currentPhotos.length > 0 || countLetters(postBody) >= 3;
       if (!textValid) return false;
       if (postScope === 'university' && isCrossUniversityScope && !postTargetUniversity.trim()) return false;
       if (postCategory === 'events') return Boolean(buildEventDateIso(eventDateMode, customDate)) && location.trim().length >= 3;
@@ -1090,7 +1088,7 @@ function CreateContentModal({ onClose }) {
           formData.append('title', pollQuestion.slice(0, MAX_TITLE_LENGTH));
           formData.append('body', pollQuestion);
         } else {
-          formData.append('title', postTitle.trim().slice(0, POST_LIMITS.TITLE_MAX));
+          formData.append('title', '');
           formData.append('body', postBody.trim());
         }
 
@@ -1108,7 +1106,7 @@ function CreateContentModal({ onClose }) {
 
         if (postCategory === 'events') {
           const eventDateIso = buildEventDateIso(eventDateMode, customDate);
-          const eventName = (postTitle.trim() || postBody.trim()).slice(0, 200);
+          const eventName = (postBody.trim().split('\n')[0] || postBody.trim()).slice(0, 200);
           formData.append('event_name', eventName || 'Событие');
           formData.append('event_date', eventDateIso || new Date().toISOString());
           formData.append('event_location', location.trim());
@@ -1287,7 +1285,7 @@ function CreateContentModal({ onClose }) {
             </div>
           )}
 
-          <DragHandle handlers={swipeHandlers} gap={0} />
+          <DragHandle handlers={swipeHandlers} handleRef={dragHandleRef} gap={0} />
 
           <div style={styles.switcherWrap}>
             <div style={styles.switcherInner}>
@@ -1388,23 +1386,12 @@ function CreateContentModal({ onClose }) {
                       </div>
                     )}
 
-                    {postCategory !== 'polls' && (
-                      <input
-                        type="text"
-                        value={postTitle}
-                        onChange={(e) => setPostTitle(e.target.value)}
-                        placeholder={postPlaceholder.split('\n')[0] || 'Заголовок...'}
-                        style={styles.postTitleInput}
-                        maxLength={POST_LIMITS.TITLE_MAX}
-                        disabled={isSubmitting}
-                      />
-                    )}
                     <div className="create-grow-wrap" data-replicated-value={(postCategory === 'polls' ? postTitle : postBody) || ' '} style={{ marginBottom: 16 }}>
                       <textarea
                         ref={postBodyRef}
                         value={postCategory === 'polls' ? postTitle : postBody}
                         onChange={(e) => postCategory === 'polls' ? setPostTitle(e.target.value) : setPostBody(e.target.value)}
-                        placeholder={postCategory === 'polls' ? postPlaceholder : (postPlaceholder.split('\n')[1] || 'Подробности...')}
+                        placeholder={postPlaceholder}
                         className="hide-scroll create-post-input"
                         style={styles.postTextareaInput}
                         maxLength={POST_LIMITS.BODY_MAX}

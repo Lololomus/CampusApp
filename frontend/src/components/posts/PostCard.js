@@ -21,7 +21,7 @@ import { toast } from '../shared/Toast';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
-import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
+import { composeSingleTextFromTitleBody } from '../../utils/contentTextParser';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { sharePostViaTelegram } from '../../utils/telegramShare';
 
@@ -259,7 +259,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   }, [post.category, isAd, post.poll?.type]);
 
   const displayBody = useMemo(
-    () => stripLeadingTitleFromBody(post.title, post.body),
+    () => composeSingleTextFromTitleBody(post.title, post.body),
     [post.title, post.body]
   );
 
@@ -678,13 +678,10 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
         </div>
 
         {/* === КОНТЕНТ: текст + опрос === */}
-        {(post.title || displayBody || specialMetaItems.length > 0 || post.poll) && (
+        {(displayBody || specialMetaItems.length > 0 || post.poll) && (
           <div style={styles.content}>
-            {post.title && post.category !== 'polls' && (
-              <h3 style={styles.title}>{post.title}</h3>
-            )}
             {displayBody && (
-              <div style={{ marginTop: post.title ? 4 : 0 }}>
+              <div style={{ marginTop: 0 }}>
                 <div ref={bodyWrapRef} style={styles.bodyWrap}>
                   <p
                     ref={bodyRef}
