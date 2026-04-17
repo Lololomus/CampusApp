@@ -29,11 +29,14 @@ async def cmd_start_deep_link(message: Message, command: CommandObject):
 
     logger.info(f"👤 /start deep_link='{args}' от {telegram_id}")
 
+    name = message.from_user.first_name or ""
+
     if args.startswith("enable_notifications"):
-        msg = format_welcome()
+        msg = format_welcome(name)
         await message.answer(
             text=msg["text"],
             reply_markup=msg["reply_markup"],
+            parse_mode="HTML",
         )
         return
 
@@ -44,10 +47,11 @@ async def cmd_start_deep_link(message: Message, command: CommandObject):
         )
         return
 
-    msg = format_welcome()
+    msg = format_welcome(name)
     await message.answer(
         text=msg["text"],
         reply_markup=msg["reply_markup"],
+        parse_mode="HTML",
     )
 
 
@@ -57,10 +61,12 @@ async def cmd_start(message: Message):
     telegram_id = message.from_user.id
     logger.info(f"👤 /start от {telegram_id}")
 
-    msg = format_welcome()
+    name = message.from_user.first_name or ""
+    msg = format_welcome(name)
     await message.answer(
         text=msg["text"],
         reply_markup=msg["reply_markup"],
+        parse_mode="HTML",
     )
 
 
@@ -85,12 +91,12 @@ async def handle_text(message: Message):
 
     await message.answer(
         text=(
-            "Я бот-уведомитель CampusApp 🤖\n"
+            "Я уведомляю, а не общаюсь 🤖\n"
             "\n"
-            "Мне не нужно писать — я сам пришлю тебе "
-            "матчи, комментарии и отклики.\n"
+            "Мне не нужно писать — я сам пришлю тебе\n"
+            "мэтчи, комментарии и отклики.\n"
             "\n"
-            "Все общение — в приложении 👇"
+            "Всё общение — в приложении 👇"
         ),
         reply_markup=open_miniapp_kb(),
     )

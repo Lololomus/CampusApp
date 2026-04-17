@@ -12,9 +12,20 @@ from keyboards.inline import (
 )
 
 
-def format_welcome() -> dict:
+def format_welcome(name: str = "") -> dict:
     """Welcome message for /start."""
-    text = "Добро пожаловать в CampusApp!"
+    greeting = f"Привет, {name}! 👋" if name else "Привет! 👋"
+    text = (
+        f"{greeting}\n"
+        "\n"
+        "Добро пожаловать в <b>CampusApp</b> — соцсеть твоего кампуса.\n"
+        "\n"
+        "📰  Лента постов и событий\n"
+        "💘  Dating для студентов\n"
+        "🛍  Маркет и услуги\n"
+        "\n"
+        "Я буду присылать уведомления о мэтчах, комментариях и откликах — прямо сюда."
+    )
     return {"text": text, "reply_markup": welcome_kb()}
 
 

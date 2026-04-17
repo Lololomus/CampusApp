@@ -179,9 +179,10 @@ function Feed() {
       hasMorePostsRef.current = Boolean(data.has_more);
       setHasMorePosts(hasMorePostsRef.current);
 
-      // Подгрузка рекламы
       if (reset) {
-        try { const ads = await getAdsForFeed(3); setFeedAds(ads || []); } catch { setFeedAds([]); }
+        getAdsForFeed(3)
+          .then((ads) => setFeedAds(ads || []))
+          .catch(() => setFeedAds([]));
       }
     } catch (error) {
       console.error('Error loading posts:', error);
