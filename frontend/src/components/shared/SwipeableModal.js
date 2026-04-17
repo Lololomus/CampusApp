@@ -43,6 +43,7 @@ export const DragHandle = ({ handlers = {}, gap = 12, handleRef = null }) => (
   >
     <div
       ref={handleRef}
+      {...(handleRef ? handlers : {})}
       style={{
         width: 36,
         height: DRAG_HANDLE_VISUAL_HEIGHT,

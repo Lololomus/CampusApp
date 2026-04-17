@@ -291,7 +291,7 @@ export const useSwipe = ({
   }, [clearGlobalMouseListeners, elementRef, isModal, onCancel, onEnd, onMove]);
 
   useEffect(() => {
-    if (!activationRef?.current || typeof document === 'undefined') return undefined;
+    if (!activationRef || typeof document === 'undefined') return undefined;
 
     const handleTouchStart = (event) => onSmartStart(event, true);
     const handleTouchMove = (event) => onSmartMove(event);

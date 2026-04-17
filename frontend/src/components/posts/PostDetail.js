@@ -26,7 +26,7 @@ import LinkText from '../shared/LinkText';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
-import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
+import { composeSingleTextFromTitleBody } from '../../utils/contentTextParser';
 import { IMAGE_ASPECT_RATIO_MIN, IMAGE_ASPECT_RATIO_MAX } from '../../constants/layoutConstants';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
@@ -299,7 +299,7 @@ function PostDetail() {
   }, [post?.author, post?.is_anonymous]);
 
   const displayBody = useMemo(
-    () => stripLeadingTitleFromBody(post?.title, post?.body),
+    () => composeSingleTextFromTitleBody(post?.title, post?.body),
     [post?.title, post?.body]
   );
 
@@ -671,11 +671,8 @@ function PostDetail() {
                 />
 
                 <div style={styles.textContent}>
-                  {post.title && post.category !== 'polls' && (
-                    <h3 style={styles.title}>{post.title}</h3>
-                  )}
                   {displayBody && (
-                    <div style={{ marginTop: post.title ? 4 : 0 }}>
+                    <div style={{ marginTop: 0 }}>
                       <p style={styles.body}><LinkText text={displayBody} /></p>
                     </div>
                   )}

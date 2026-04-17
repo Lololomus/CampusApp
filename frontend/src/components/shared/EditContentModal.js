@@ -297,7 +297,9 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
   const baseline = useMemo(
     () => ({
       title: (initialData?.title || '').trim(),
-      body: (initialData?.body || '').trim(),
+      body: (isPost && initialData?.category !== 'polls')
+        ? composeSingleTextFromTitleBody(initialData?.title || '', initialData?.body || '').trim()
+        : (initialData?.body || '').trim(),
       tags: initialTags,
       photos: initialImages.map((item) => item.key).filter(Boolean),
       isAnonymous: Boolean(initialData?.is_anonymous) || postCategory === 'confessions',
@@ -308,7 +310,7 @@ function EditContentModal({ contentType = 'post', initialData = {}, onClose, onS
       rewardValue: (initialData?.reward_value || '').trim(),
       requestExpiresAt: toIso(initialData?.expires_at),
     }),
-    [initialData, initialEventPreset.custom, initialEventPreset.mode, initialImages, initialTags, postCategory]
+    [initialData, initialEventPreset.custom, initialEventPreset.mode, initialImages, initialTags, postCategory, isPost]
   );
 
   const hasChanges = useMemo(() => {
