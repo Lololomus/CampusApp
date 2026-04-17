@@ -37,6 +37,7 @@ function BottomActionBar({
   const fileInputRef = useRef(null);
   const barRef = useRef(null);
   const attachmentUrlsRef = useRef(new Set());
+  const keyboardInsetRef = useRef(0);
   const focusScrollGuardRef = useRef({
     isActive: false,
     hasSnapshot: false,
@@ -175,6 +176,9 @@ function BottomActionBar({
         const nextInset = String(roundedInset);
 
         if (node.dataset.keyboardInset !== nextInset) {
+          const isOpening = roundedInset > keyboardInsetRef.current;
+          node.style.transition = isOpening ? 'none' : 'transform 0.2s ease';
+          keyboardInsetRef.current = roundedInset;
           node.dataset.keyboardInset = nextInset;
           node.style.transform = `translate3d(0, -${roundedInset}px, 0)`;
         }
@@ -198,8 +202,10 @@ function BottomActionBar({
       }
       if (barNode) {
         barNode.style.transform = 'translate3d(0, 0, 0)';
+        barNode.style.transition = '';
         delete barNode.dataset.keyboardInset;
       }
+      keyboardInsetRef.current = 0;
     };
   }, [disableKeyboardLift, scheduleFocusScrollRestore]);
 

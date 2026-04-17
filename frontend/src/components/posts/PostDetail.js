@@ -118,6 +118,9 @@ function PostDetail() {
   const closeTimeoutRef = useRef(null);
   const scrollContentRef = useRef(null);
   const commentsSectionRef = useRef(null);
+  const lockedViewportHeightRef = useRef(
+    typeof window !== 'undefined' ? Math.round(window.innerHeight || 0) : 0
+  );
 
   const closeDetail = useCallback(() => {
     if (isExiting) return;
@@ -557,6 +560,10 @@ function PostDetail() {
   if (!viewPostId) return null;
   const containerStyle = {
     ...styles.container,
+    bottom: 'auto',
+    height: lockedViewportHeightRef.current
+      ? `${lockedViewportHeightRef.current}px`
+      : 'var(--tg-app-viewport-stable-height, 100lvh)',
     animation: isExiting
       ? 'pdSlideOut 0.32s cubic-bezier(0.32,0.72,0,1) forwards'
       : 'pdSlideIn 0.38s cubic-bezier(0.32,0.72,0,1) forwards',
