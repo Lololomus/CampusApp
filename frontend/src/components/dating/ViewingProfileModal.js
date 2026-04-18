@@ -11,11 +11,12 @@ import PhotoViewer from '../shared/PhotoViewer';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 import { useModalAnimation, SCREEN_EXIT_MS } from '../../hooks/useModalAnimation';
+import { Z_MODAL_LIKES_LIST } from '../../constants/zIndex';
 import theme from '../../theme';
 
 const d = theme.colors.dating;
 
-function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage }) {
+function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage, zIndex = Z_MODAL_LIKES_LIST }) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isLiking, setIsLiking] = useState(false);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
@@ -24,6 +25,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
   const hasPhotos = photos.length > 0;
   const isMatchProfile = profileType === 'match';
   const commonInterests = profile?.common_interests || [];
+  const commonGoals = profile?.common_goals || [];
 
   const { isMounted, isVisible, handleClose } = useModalAnimation(onClose, SCREEN_EXIT_MS);
 
@@ -86,19 +88,22 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
   if (!isMounted) return null;
 
   return (
-    <EdgeSwipeBack onBack={handleClose}>
+    <EdgeSwipeBack onBack={handleClose} disabled={showPhotoViewer} zIndex={zIndex}>
       <div style={{
         ...styles.overlay,
         transform: isVisible ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
       }}>
-        <DrilldownHeader
-          title=""
-          onBack={handleClose}
-          showTitle={false}
-          showDivider={false}
-          background="#000000"
-        />
+        <div style={styles.headerOverlay}>
+          <DrilldownHeader
+            title=""
+            onBack={handleClose}
+            showTitle={false}
+            showDivider={false}
+            sticky={false}
+            transparent
+          />
+        </div>
 
         <div style={styles.scrollContent}>
           {/* Фото 4:5 с градиентом и overlaid инфо */}
@@ -189,11 +194,14 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage 
               <div style={styles.section}>
                 <div style={styles.sectionTitle}>Цели</div>
                 <div style={styles.goalsRow}>
-                  {profile.goals.map(goal => (
-                    <div key={goal} style={styles.goalTag}>
-                      {GOAL_LABELS[goal] || goal}
-                    </div>
-                  ))}
+                  {profile.goals.map(goal => {
+                    const isCommon = commonGoals.includes(goal);
+                    return (
+                      <div key={goal} style={isCommon ? styles.goalTagCommon : styles.goalTag}>
+                        {GOAL_LABELS[goal] || goal}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -268,6 +276,13 @@ const styles = {
     zIndex: 1000,
     display: 'flex',
     flexDirection: 'column',
+  },
+  headerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
   header: {
     position: 'absolute',
@@ -456,6 +471,19 @@ const styles = {
     alignItems: 'center',
     gap: 6,
   },
+  goalTagCommon: {
+    backgroundColor: d.commonBg,
+    border: `1px solid ${d.commonBorder}`,
+    color: d.accent,
+    padding: '8px 16px',
+    borderRadius: 12,
+    fontSize: 14,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    boxShadow: d.commonGlow,
+  },
   bioText: {
     fontSize: 16,
     color: d.textLight,
@@ -504,7 +532,7 @@ const styles = {
     position: 'absolute',
     bottom: 0, left: 0, right: 0,
     padding: '16px 20px',
-    paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
+    paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
     background: 'linear-gradient(to top, #050505, #050505 80%, transparent)',
     zIndex: 5,
   },

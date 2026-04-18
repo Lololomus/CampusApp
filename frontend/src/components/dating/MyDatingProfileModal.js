@@ -376,14 +376,16 @@ function MyDatingProfileModal({ onClose }) {
         transform: isVisible ? 'translate3d(0, 0, 0)' : 'translate3d(100%, 0, 0)',
       }}>
         <div className="hide-scroll" style={styles.content}>
-          <DrilldownHeader
-            title="Мой профиль"
-            onBack={handleClose}
-            sticky={false}
-            showDivider={false}
-            background="#000000"
-            titleVariant="app"
-          />
+          <div style={styles.headerOverlay}>
+            <DrilldownHeader
+              title="Мой профиль"
+              onBack={handleClose}
+              sticky={false}
+              showDivider={false}
+              transparent
+              titleVariant="app"
+            />
+          </div>
           <div style={styles.contentInner}>
 
           {/* ===== HERO PHOTO ===== */}
@@ -876,6 +878,14 @@ const styles = {
     flex: 1,
     overflowY: 'auto',
     paddingBottom: 100,
+    position: 'relative',
+  },
+  headerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
   },
   contentInner: {
     padding: '0 16px',

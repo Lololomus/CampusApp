@@ -170,6 +170,7 @@ async def get_dating_feed(
             "looking_for": profile.looking_for,
             "match_reason": get_match_reason_label(result_score["match_reason"]),
             "common_interests": result_score["breakdown"].get("common_interests", []),
+            "common_goals": result_score["breakdown"].get("common_goals", []),
         }
 
         if debug:

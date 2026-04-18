@@ -32,6 +32,7 @@ const ProfileCard = memo(function ProfileCard({
   const dragDistanceRef = useRef(0);
 
   const photos = getDatingPhotoList(profile);
+  const commonGoals = profile?.common_goals || [];
 
   useEffect(() => {
     setImageLoaded(false);
@@ -281,11 +282,14 @@ const ProfileCard = memo(function ProfileCard({
                       Из твоего вуза
                     </div>
                   )}
-                  {profile.goals?.slice(0, 2).map(goal => (
-                    <div key={goal} style={styles.goalPill}>
-                      {GOAL_LABELS[goal] || goal}
-                    </div>
-                  ))}
+                  {profile.goals?.slice(0, 2).map(goal => {
+                    const isCommon = commonGoals.includes(goal);
+                    return (
+                      <div key={goal} style={isCommon ? styles.goalPillCommon : styles.goalPill}>
+                        {GOAL_LABELS[goal] || goal}
+                      </div>
+                    );
+                  })}
                   {profile.interests?.slice(0, 2).map(interest => (
                     <div key={interest} style={styles.interestPill}>
                       {INTEREST_LABELS[interest] || interest}
@@ -542,6 +546,13 @@ const styles = {
   },
   goalPill: {
     ...solidPill,
+  },
+  goalPillCommon: {
+    ...solidPill,
+    background: d.commonBg,
+    border: `1px solid ${d.commonBorder}`,
+    color: d.accent,
+    boxShadow: d.commonGlow,
   },
   interestPill: {
     ...solidPill,

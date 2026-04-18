@@ -22,7 +22,7 @@ import { USE_MOCK_DATA, MOCK_PROFILES, MOCK_LIKES, MOCK_MATCHES } from './mockDa
 import { SWIPE_THRESHOLD } from '../../constants/layoutConstants';
 import { getPrimaryDatingPhoto } from './photoUtils';
 import SwipeableModal from '../shared/SwipeableModal';
-import { Z_ONBOARDING_DATING } from '../../constants/zIndex';
+import { Z_MODAL_LIKES_LIST, Z_ONBOARDING_DATING } from '../../constants/zIndex';
 
 
 function DatingFeed() {
@@ -476,9 +476,7 @@ function DatingFeed() {
 
   return (
     <div style={styles.container}>
-      {!viewingProfile && (
-        <>
-          <AppHeader
+      <AppHeader
             title="Знакомства"
             premiumTrailing={
               <button
@@ -536,9 +534,7 @@ function DatingFeed() {
                 )}
               </button>
             </div>
-          </AppHeader>
-        </>
-      )}
+      </AppHeader>
 
       <div style={styles.content}>
         {/* ===== TAB: Profiles ===== */}
@@ -644,7 +640,7 @@ function DatingFeed() {
         )}
 
         {/* ===== TAB: Likes ===== */}
-        {activeTab === 'likes' && !viewingProfile && (
+        {activeTab === 'likes' && (
           <LikesTab
             matches={matches}
             users={whoLikedMe}
@@ -668,6 +664,7 @@ function DatingFeed() {
           <ViewingProfileModal
             profile={viewingProfile.user}
             profileType={viewingProfile.type}
+            zIndex={Z_MODAL_LIKES_LIST}
             onClose={() => { hapticFeedback('light'); setViewingProfile(null); }}
             onLike={() => {
               if (viewingProfile.type === 'like') {

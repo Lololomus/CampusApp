@@ -14,6 +14,7 @@ function ProfileSheet({ profile, isOpen, onClose, onLike, onSkip }) {
   if (!profile) return null;
 
   const commonInterests = profile.common_interests || [];
+  const commonGoals = profile.common_goals || [];
   const isFromUni = profile.match_reason && (
     profile.match_reason.includes('вуз') ||
     profile.match_reason.includes('факультет') ||
@@ -72,11 +73,14 @@ function ProfileSheet({ profile, isOpen, onClose, onLike, onSkip }) {
             <Sparkles size={14} /> Из твоего вуза
           </div>
         )}
-        {profile.goals?.map(goal => (
-          <div key={goal} style={styles.goalBadge}>
-            {GOAL_LABELS[goal] || goal}
-          </div>
-        ))}
+        {profile.goals?.map(goal => {
+          const isCommon = commonGoals.includes(goal);
+          return (
+            <div key={goal} style={isCommon ? styles.goalBadgeCommon : styles.goalBadge}>
+              {GOAL_LABELS[goal] || goal}
+            </div>
+          );
+        })}
       </div>
 
       {/* Icebreaker */}
@@ -179,6 +183,16 @@ const styles = {
     borderRadius: 12,
     fontSize: 13,
     fontWeight: 700,
+  },
+  goalBadgeCommon: {
+    backgroundColor: d.commonBg,
+    border: `1px solid ${d.commonBorder}`,
+    color: d.accent,
+    padding: '6px 12px',
+    borderRadius: 12,
+    fontSize: 13,
+    fontWeight: 700,
+    boxShadow: d.commonGlow,
   },
   icebreaker: {
     position: 'relative',

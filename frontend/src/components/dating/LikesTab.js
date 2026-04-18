@@ -188,6 +188,7 @@ function LikesTab({
             {users.map((user, idx) => {
               const photo = user?.photos?.[0]?.url || user?.photos?.[0] || null;
               const commonInterests = user?.common_interests || [];
+              const commonGoals = user?.common_goals || [];
               const isQuickLiking = quickLikeIds.includes(user.id);
               const quickLikeStage = quickLikeFx[user.id] || 'idle';
               const isQuickLikeActive = isQuickLiking || quickLikeStage !== 'idle';
@@ -266,11 +267,14 @@ function LikesTab({
                     {/* Цели: emoji-only pills */}
                     {user.goals?.length > 0 && (
                       <div style={styles.goalsRow}>
-                        {user.goals.map(goal => (
-                          <div key={goal} style={styles.goalPill} title={goal}>
-                            <span style={{ fontSize: 16, lineHeight: 1 }}>{GOAL_EMOJIS[goal] || '✨'}</span>
-                          </div>
-                        ))}
+                        {user.goals.map(goal => {
+                          const isCommon = commonGoals.includes(goal);
+                          return (
+                            <div key={goal} style={isCommon ? styles.goalPillCommon : styles.goalPill} title={goal}>
+                              <span style={{ fontSize: 16, lineHeight: 1 }}>{GOAL_EMOJIS[goal] || '✨'}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -473,6 +477,16 @@ const styles = {
   goalPill: {
     backgroundColor: d.surface,
     border: '1px solid rgba(255, 255, 255, 0.08)',
+    padding: '4px 10px',
+    borderRadius: 10,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalPillCommon: {
+    backgroundColor: d.commonBg,
+    border: `1px solid ${d.commonBorder}`,
+    boxShadow: d.commonGlow,
     padding: '4px 10px',
     borderRadius: 10,
     display: 'flex',

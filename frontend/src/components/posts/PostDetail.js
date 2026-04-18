@@ -23,6 +23,7 @@ import EdgeBlur from '../shared/EdgeBlur';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import LinkText from '../shared/LinkText';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
@@ -115,6 +116,8 @@ function PostDetail() {
   const [commentViewer, setCommentViewer] = useState({ isOpen: false, photos: [], index: 0 });
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [showDeleteCommentDialog, setShowDeleteCommentDialog] = useState(false);
+  const [deleteCommentId, setDeleteCommentId] = useState(null);
   const closeTimeoutRef = useRef(null);
   const scrollContentRef = useRef(null);
   const commentsSectionRef = useRef(null);
@@ -441,10 +444,18 @@ function PostDetail() {
     setMenuOpen(null);
   };
 
-  const handleDeleteComment = async (commentId) => {
-    if (!window.confirm('Удалить комментарий?')) return;
-    hapticFeedback('medium');
+  const handleDeleteComment = (commentId) => {
     setMenuOpen(null);
+    setDeleteCommentId(commentId);
+    setShowDeleteCommentDialog(true);
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!deleteCommentId) return;
+    hapticFeedback('medium');
+    const commentId = deleteCommentId;
+    setShowDeleteCommentDialog(false);
+    setDeleteCommentId(null);
     try {
       const result = await deleteComment(commentId);
       if (result.type === 'hard_delete') {
@@ -887,6 +898,19 @@ function PostDetail() {
             onClose={() => setCommentViewer({ isOpen: false, photos: [], index: 0 })}
           />
         )}
+
+        <ConfirmationDialog
+          isOpen={showDeleteCommentDialog}
+          title="Удалить комментарий?"
+          message="Это действие нельзя отменить."
+          confirmText="Удалить"
+          confirmType="danger"
+          onConfirm={confirmDeleteComment}
+          onCancel={() => {
+            setShowDeleteCommentDialog(false);
+            setDeleteCommentId(null);
+          }}
+        />
 
         <ReportModal
           isOpen={showPostReportModal}

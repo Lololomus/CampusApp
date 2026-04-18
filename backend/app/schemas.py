@@ -866,9 +866,10 @@ class DatingProfile(BaseModel):
     goals: List[str] = []
     match_reason: Optional[str] = None
     common_interests: List[str] = []
+    common_goals: List[str] = []
 
     # ✅ Фаза 5.1: единый coerce
-    @field_validator('interests', 'common_interests', 'goals', mode='before')
+    @field_validator('interests', 'common_interests', 'goals', 'common_goals', mode='before')
     @classmethod
     def coerce_list(cls, v):
         return _coerce_json_list(v)

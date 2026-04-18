@@ -12,6 +12,7 @@ const d = theme.colors.dating;
 function MatchCard({ match, onClick, onMessage }) {
   const photo = match?.photos?.[0]?.url || match?.photos?.[0] || null;
   const commonInterests = match?.common_interests || [];
+  const commonGoals = match?.common_goals || [];
 
   const timeLabel = match?.hours_left > 0
     ? `${match.hours_left}ч`
@@ -49,11 +50,14 @@ function MatchCard({ match, onClick, onMessage }) {
         {/* Цели: emoji-only pills */}
         {match.goals?.length > 0 && (
           <div style={styles.goalsRow}>
-            {match.goals.map(goal => (
-              <div key={goal} style={styles.goalPill} title={goal}>
-                <span style={{ fontSize: 16, lineHeight: 1 }}>{GOAL_EMOJIS[goal] || '✨'}</span>
-              </div>
-            ))}
+            {match.goals.map(goal => {
+              const isCommon = commonGoals.includes(goal);
+              return (
+                <div key={goal} style={isCommon ? styles.goalPillCommon : styles.goalPill} title={goal}>
+                  <span style={{ fontSize: 16, lineHeight: 1 }}>{GOAL_EMOJIS[goal] || '✨'}</span>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -185,6 +189,16 @@ const styles = {
   goalPill: {
     backgroundColor: d.surface,
     border: '1px solid rgba(255, 255, 255, 0.08)',
+    padding: '4px 10px',
+    borderRadius: 10,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalPillCommon: {
+    backgroundColor: d.commonBg,
+    border: `1px solid ${d.commonBorder}`,
+    boxShadow: d.commonGlow,
     padding: '4px 10px',
     borderRadius: 10,
     display: 'flex',

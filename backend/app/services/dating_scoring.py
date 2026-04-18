@@ -202,15 +202,22 @@ def calculate_score(
     breakdown["common_interests"] = list(common_interests)
 
     # --- Цели ---
-    my_goals = set(g.lower().strip() for g in (_parse_json_safe(me_profile.goals) if me_profile else []))
-    their_goals = set(g.lower().strip() for g in _parse_json_safe(candidate_profile.goals))
+    my_goals_raw = _parse_json_safe(me_profile.goals) if me_profile else []
+    their_goals_raw = _parse_json_safe(candidate_profile.goals)
+    my_goals = set(g.lower().strip() for g in my_goals_raw)
+    their_goals = set(g.lower().strip() for g in their_goals_raw)
+    common_goals = my_goals & their_goals
     goal_score = 0
     if my_goals and their_goals:
-        if my_goals & their_goals:
+        if common_goals:
             goal_score = WEIGHT_GOAL_MATCH
         else:
             goal_score = WEIGHT_GOAL_CONFLICT
     breakdown["goals"] = goal_score
+    breakdown["common_goals"] = [
+        goal for goal in their_goals_raw
+        if str(goal).lower().strip() in common_goals
+    ]
 
     # --- Входящий лайк ---
     like_score = WEIGHT_INCOMING_LIKE if candidate_user.id in incoming_like_ids else 0

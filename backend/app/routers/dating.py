@@ -378,7 +378,12 @@ async def get_likes_received(
         my_goals = set(g.lower().strip() for g in my_goals_raw)
         their_goals_raw = _parse_json_safe(dp.goals) if dp else []
         their_goals = set(g.lower().strip() for g in their_goals_raw)
-        goal_score = 25 if (my_goals and their_goals and my_goals & their_goals) else 0
+        common_goals_set = my_goals & their_goals
+        common_goals = [
+            goal for goal in their_goals_raw
+            if str(goal).lower().strip() in common_goals_set
+        ]
+        goal_score = 25 if (my_goals and their_goals and common_goals_set) else 0
 
         reason_code = _determine_match_reason(
             {}, uni_score, set(common_interests), goal_score
@@ -400,6 +405,7 @@ async def get_likes_received(
             "goals": goals_list,
             "match_reason": match_reason,
             "common_interests": common_interests,
+            "common_goals": common_goals,
             "user_id": u.id
         })
 
@@ -525,8 +531,14 @@ async def get_active_matches(
 
             my_goals_raw = _parse_json_safe(my_profile.goals) if my_profile else []
             my_goals = set(g.lower().strip() for g in my_goals_raw)
-            their_goals = set(g.lower().strip() for g in _parse_json_safe(dp.goals))
-            goal_score = 25 if (my_goals and their_goals and my_goals & their_goals) else 0
+            their_goals_raw = _parse_json_safe(dp.goals)
+            their_goals = set(g.lower().strip() for g in their_goals_raw)
+            common_goals_set = my_goals & their_goals
+            common_goals = [
+                goal for goal in their_goals_raw
+                if str(goal).lower().strip() in common_goals_set
+            ]
+            goal_score = 25 if (my_goals and their_goals and common_goals_set) else 0
 
             reason_code = _determine_match_reason(
                 {}, uni_score, set(common_interests), goal_score
@@ -550,6 +562,7 @@ async def get_active_matches(
                 "interests": interests_list,
                 "goals": goals_list,
                 "common_interests": common_interests,
+                "common_goals": common_goals,
                 "match_reason": match_reason,
                 "prompts": prompts_dict,
                 "matched_at": match.matched_at.isoformat(),
