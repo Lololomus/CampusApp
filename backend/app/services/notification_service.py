@@ -13,6 +13,16 @@ from app import models
 
 logger = logging.getLogger(__name__)
 
+CONTACT_STATUS_PENDING = "pending"
+CONTACT_STATUS_ACCEPTED = "accepted"
+CONTACT_STATUS_DECLINED = "declined"
+
+
+def _telegram_contact(user) -> str | None:
+    if not user or not user.username:
+        return None
+    return str(user.username).lstrip("@").strip() or None
+
 
 async def create_notification(db: AsyncSession, recipient_id: int, notif_type: str, payload: dict):
     """Create a queued notification. Commit is handled by caller transaction."""
@@ -23,6 +33,53 @@ async def create_notification(db: AsyncSession, recipient_id: int, notif_type: s
     )
     db.add(notif)
     logger.info("Notification created: type=%s, recipient=%s", notif_type, recipient_id)
+
+
+async def create_contact_request(
+    db: AsyncSession,
+    *,
+    source_type: str,
+    source_id: int,
+    owner,
+    requester,
+    related_type: str | None = None,
+    related_id: int | None = None,
+    payload: dict | None = None,
+) -> tuple[models.ContactRequest, bool]:
+    """Create or reuse a pending in-app contact approval request."""
+    existing_result = await db.execute(
+        select(models.ContactRequest).where(
+            models.ContactRequest.source_type == source_type,
+            models.ContactRequest.source_id == source_id,
+            models.ContactRequest.owner_id == owner.id,
+            models.ContactRequest.requester_id == requester.id,
+            models.ContactRequest.status.in_([CONTACT_STATUS_PENDING, CONTACT_STATUS_ACCEPTED]),
+        )
+        .order_by(models.ContactRequest.created_at.desc())
+        .limit(1)
+    )
+    existing = existing_result.scalar_one_or_none()
+    if existing:
+        existing.related_type = related_type or existing.related_type
+        existing.related_id = related_id or existing.related_id
+        existing.requester_contact = _telegram_contact(requester)
+        existing.payload = payload or existing.payload
+        return existing, False
+
+    contact_request = models.ContactRequest(
+        source_type=source_type,
+        source_id=source_id,
+        owner_id=owner.id,
+        requester_id=requester.id,
+        related_type=related_type,
+        related_id=related_id,
+        status=CONTACT_STATUS_PENDING,
+        requester_contact=_telegram_contact(requester),
+        payload=payload or {},
+    )
+    db.add(contact_request)
+    await db.flush()
+    return contact_request, True
 
 
 async def create_followup(
@@ -127,18 +184,70 @@ async def notify_dating_like(db: AsyncSession, liked_user_id: int):
     await create_notification(db, liked_user_id, "dating_like", {})
 
 
-async def notify_market_contact(db: AsyncSession, seller, buyer, item):
-    await create_notification(
+async def notify_market_contact(
+    db: AsyncSession,
+    seller,
+    buyer,
+    item,
+    *,
+    is_waitlist: bool = False,
+    related_type: str | None = None,
+    related_id: int | None = None,
+    create_sold_followup: bool = True,
+):
+    payload = {
+        "item_id": item.id,
+        "item_title": item.title,
+        "item_type": item.item_type,
+        "buyer_id": buyer.id,
+        "buyer_name": buyer.name,
+        "buyer_username": buyer.username,
+        "is_waitlist": is_waitlist,
+    }
+
+    if item.item_type != "service":
+        await create_notification(db, seller.id, "market_contact", payload)
+        if not create_sold_followup:
+            return
+        await create_followup(
+            db,
+            user_id=seller.id,
+            followup_type="market_sold",
+            target_type="market_item",
+            target_id=item.id,
+            payload={
+                "item_title": item.title,
+                "item_type": item.item_type,
+                "buyer_id": buyer.id,
+                "buyer_name": buyer.name,
+                "buyer_username": buyer.username,
+            },
+            delay_hours=24,
+        )
+        return
+
+    payload["approval_required"] = True
+    contact_request, is_new = await create_contact_request(
         db,
-        seller.id,
-        "market_contact",
-        {
-            "item_id": item.id,
-            "item_title": item.title,
-            "buyer_name": buyer.name,
-            "buyer_username": buyer.username,
-        },
+        source_type="market_item",
+        source_id=item.id,
+        owner=seller,
+        requester=buyer,
+        related_type=related_type,
+        related_id=related_id,
+        payload=payload,
     )
+    payload = {
+        **payload,
+        "contact_request_id": contact_request.id,
+        "contact_status": contact_request.status,
+    }
+
+    if is_new:
+        await create_notification(db, seller.id, "market_contact", payload)
+
+    if not create_sold_followup or not is_new:
+        return
 
     await create_followup(
         db,

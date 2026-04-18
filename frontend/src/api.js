@@ -1442,6 +1442,23 @@ export async function markAllNotificationsRead() {
   return response.data;
 }
 
+/** Принять или отклонить заявку на открытие Telegram-контакта */
+export async function decideContactRequest(contactRequestId, decision) {
+  if (IS_DEV) {
+    try {
+      const { decideDevMockContactRequest } = await loadNotificationsMockModule();
+      return decideDevMockContactRequest(contactRequestId, decision);
+    } catch (error) {
+      console.warn('Notifications mock decision failed, falling back to API:', error);
+    }
+  }
+
+  const response = await api.post(`/notifications/contact-requests/${contactRequestId}/decision`, {
+    decision,
+  });
+  return response.data;
+}
+
 
 // ===== CAMPUS MANAGEMENT =====
 

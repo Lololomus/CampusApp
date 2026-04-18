@@ -8,7 +8,7 @@ import {
 import DrilldownHeader from '../shared/DrilldownHeader';
 import EdgeBlur from '../shared/EdgeBlur';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
-import { getNotifications, markAllNotificationsRead } from '../../api';
+import { getNotifications, markAllNotificationsRead, decideContactRequest } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
@@ -53,6 +53,7 @@ const TYPE_TO_FILTER = {
   market_contact: 'market',
   review_request: 'market',
   request_response: 'request',
+  contact_request_decision: 'market',
 };
 
 const BADGE_CONFIG = {
@@ -64,6 +65,7 @@ const BADGE_CONFIG = {
   market_contact: { icon: ShoppingBag, color: COLORS.badgeMarket },
   review_request: { icon: Star, color: COLORS.badgeMarket },
   request_response: { icon: LifeBuoy, color: COLORS.badgeRequest },
+  contact_request_decision: { icon: Check, color: COLORS.success },
 };
 
 // ========== ХЕЛПЕРЫ ==========
@@ -119,9 +121,13 @@ function parseNotification(notif) {
         userName: p.buyer_name,
         userLetter: (p.buyer_name || '?')[0].toUpperCase(),
         userColor: COLORS.badgeMarket,
-        text: `хочет забрать твой "${p.item_title || ''}"`,
+        text: p.approval_required
+          ? `хочет связаться по услуге "${p.item_title || ''}"`
+          : `хочет забрать твой "${p.item_title || ''}"`,
         thumbnailUrl: null,
-        hasActions: true,
+        hasActions: Boolean(p.contact_request_id) && (p.contact_status || 'pending') === 'pending',
+        contactRequestId: p.contact_request_id,
+        contactStatus: p.contact_status || 'pending',
         isDatingLikeAnon: false,
       };
     case 'request_response':
@@ -134,6 +140,25 @@ function parseNotification(notif) {
         hasActions: false,
         isDatingLikeAnon: false,
       };
+    case 'contact_request_decision': {
+      const accepted = p.decision === 'accepted' || p.contact_status === 'accepted';
+      const title = p.source_title ? ` «${p.source_title}»` : '';
+      const username = p.owner_username;
+      return {
+        userName: p.owner_name,
+        userLetter: accepted ? '✓' : '↩',
+        userColor: accepted ? COLORS.success : COLORS.muted,
+        text: accepted
+          ? `открыл(а) контакт по заявке${title}`
+          : `отклонил(а) заявку по контакту${title}`,
+        thumbnailUrl: null,
+        hasActions: false,
+        isContactDecision: true,
+        isAcceptedDecision: accepted,
+        ownerUsername: username,
+        isDatingLikeAnon: false,
+      };
+    }
     case 'milestone':
       return {
         userName: null,
@@ -288,6 +313,18 @@ function getDateGroup(isoString) {
   return 'older';
 }
 
+function openTelegramUsername(username) {
+  const cleanUsername = String(username || '').replace('@', '').trim();
+  if (!cleanUsername) return;
+  const url = `https://t.me/${cleanUsername}`;
+  hapticFeedback('light');
+  if (window.Telegram?.WebApp?.openTelegramLink) {
+    window.Telegram.WebApp.openTelegramLink(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
 // ========== КОМПОНЕНТЫ ==========
 
 const FilterChip = ({ label, active, onClick }) => (
@@ -313,14 +350,39 @@ const FilterChip = ({ label, active, onClick }) => (
 );
 
 const NotificationItem = React.memo(({ notif }) => {
-  const [resolved, setResolved] = useState(false);
+  const display = parseNotification(notif);
+  const initialContactStatus = display.contactStatus && display.contactStatus !== 'pending'
+    ? display.contactStatus
+    : false;
+  const [resolved, setResolved] = useState(initialContactStatus);
+  const [contactActionLoading, setContactActionLoading] = useState(null);
   const [reviewModal, setReviewModal] = useState(null);
   const [isPollExpanded, setIsPollExpanded] = useState(false);
-  const display = parseNotification(notif);
   const badge = BADGE_CONFIG[notif.type];
   const isMilestone = display.isMilestone;
   const isDatingLikeAnon = display.isDatingLikeAnon;
   const isPollVote = display.isPollVote;
+  const isContactActionNotification = notif.type === 'market_contact';
+
+  useEffect(() => {
+    setResolved(display.contactStatus && display.contactStatus !== 'pending' ? display.contactStatus : false);
+  }, [display.contactStatus, notif.id]);
+
+  const handleContactDecision = async (decision) => {
+    if (!display.contactRequestId || contactActionLoading) return;
+    setContactActionLoading(decision);
+    try {
+      hapticFeedback(decision === 'accepted' ? 'success' : 'light');
+      const result = await decideContactRequest(display.contactRequestId, decision);
+      setResolved(result.status);
+      toast.success(decision === 'accepted' ? 'Контакт открыт' : 'Заявка отклонена');
+    } catch (error) {
+      hapticFeedback('error');
+      toast.error(error?.response?.data?.detail || 'Не удалось сохранить решение');
+    } finally {
+      setContactActionLoading(null);
+    }
+  };
 
   return (
     <div style={{
@@ -472,36 +534,42 @@ const NotificationItem = React.memo(({ notif }) => {
           {formatTime(notif.created_at)}
         </div>
 
-        {/* Quick Actions — market_contact */}
-        {notif.type === 'market_contact' && display.hasActions && !resolved && (
+        {/* Quick Actions — contact approval */}
+        {isContactActionNotification && display.hasActions && !resolved && (
           <div className="ns-quick-actions" style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button
-              onClick={(e) => { e.stopPropagation(); hapticFeedback('success'); setResolved('accepted'); }}
+              onClick={(e) => { e.stopPropagation(); handleContactDecision('accepted'); }}
+              disabled={Boolean(contactActionLoading)}
               style={{
                 flex: 1, background: COLORS.lime, color: '#000',
-                border: 'none', borderRadius: 10, padding: '10px',
-                fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                border: 'none', borderRadius: 8, padding: '10px',
+                fontSize: 14, fontWeight: 700, cursor: contactActionLoading ? 'wait' : 'pointer',
+                opacity: contactActionLoading && contactActionLoading !== 'accepted' ? 0.55 : 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               }}
             >
-              <Check size={16} strokeWidth={3} /> Принять
+              <Check size={16} strokeWidth={3} />
+              {contactActionLoading === 'accepted' ? 'Сохраняем...' : 'Принять'}
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); hapticFeedback('light'); setResolved('declined'); }}
+              onClick={(e) => { e.stopPropagation(); handleContactDecision('declined'); }}
+              disabled={Boolean(contactActionLoading)}
               style={{
                 flex: 1, background: COLORS.surfaceElevated, color: COLORS.text,
-                border: 'none', borderRadius: 10, padding: '10px',
-                fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                border: 'none', borderRadius: 8, padding: '10px',
+                fontSize: 14, fontWeight: 700, cursor: contactActionLoading ? 'wait' : 'pointer',
+                opacity: contactActionLoading && contactActionLoading !== 'declined' ? 0.55 : 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               }}
             >
-              <X size={16} strokeWidth={3} /> Отказать
+              <X size={16} strokeWidth={3} />
+              {contactActionLoading === 'declined' ? 'Сохраняем...' : 'Отказать'}
             </button>
           </div>
         )}
 
         {/* Resolved state */}
-        {notif.type === 'market_contact' && display.hasActions && resolved && (
+        {isContactActionNotification && resolved && (
           <div className="ns-quick-actions" style={{
             marginTop: 10, fontSize: 13, fontWeight: 600,
             color: resolved === 'accepted' ? COLORS.success : COLORS.muted,
@@ -510,6 +578,34 @@ const NotificationItem = React.memo(({ notif }) => {
             <Check size={14} strokeWidth={3} />
             {resolved === 'accepted' ? 'Заявка одобрена' : 'Заявка отклонена'}
           </div>
+        )}
+
+        {display.isContactDecision && display.isAcceptedDecision && display.ownerUsername && (
+          <button
+            type="button"
+            className="ns-quick-actions"
+            onClick={(e) => {
+              e.stopPropagation();
+              openTelegramUsername(display.ownerUsername);
+            }}
+            style={{
+              marginTop: 12,
+              background: COLORS.lime,
+              color: '#000',
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 14px',
+              fontSize: 14,
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <MessageCircle size={16} strokeWidth={3} />
+            Написать @{display.ownerUsername}
+          </button>
         )}
 
         {/* Quick Action — review_request */}
@@ -633,6 +729,9 @@ function NotificationsScreen() {
   // Фильтрация
   const filtered = notifications.filter(n => {
     if (activeFilter === 'all') return true;
+    if (n.type === 'contact_request_decision') {
+      return activeFilter === 'market';
+    }
     return TYPE_TO_FILTER[n.type] === activeFilter;
   });
 
@@ -774,4 +873,3 @@ function NotificationsScreen() {
 }
 
 export default NotificationsScreen;
-

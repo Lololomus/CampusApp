@@ -202,9 +202,136 @@ NOTIF_TYPE_TO_SETTING = {
     'market_contact': 'market_enabled',
     'market_deal_update': 'market_enabled',
     'request_response': 'requests_enabled',
+    'contact_request_decision': None,
     'milestone': 'milestones_enabled',
     'admin_report': None,
 }
+
+
+def _load_payload(raw_payload) -> dict:
+    if isinstance(raw_payload, dict):
+        return raw_payload
+    if isinstance(raw_payload, str):
+        try:
+            return json.loads(raw_payload)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _dump_payload(payload: dict) -> str:
+    return json.dumps(payload, ensure_ascii=False)
+
+
+async def _sync_contact_owner_notifications(
+    db: AsyncSession,
+    contact_request: models.ContactRequest,
+    *,
+    now: datetime,
+) -> None:
+    result = await db.execute(
+        select(models.Notification).where(
+            models.Notification.recipient_id == contact_request.owner_id,
+            models.Notification.type == "market_contact",
+        )
+    )
+    for notif in result.scalars().all():
+        payload = _load_payload(notif.payload)
+        if int(payload.get("contact_request_id") or 0) != contact_request.id:
+            continue
+        payload["contact_status"] = contact_request.status
+        payload["decided_at"] = now.isoformat()
+        notif.payload = _dump_payload(payload)
+        notif.is_read = True
+        notif.read_at = now
+
+
+def _contact_decision_payload(
+    contact_request: models.ContactRequest,
+    owner: models.User,
+) -> dict:
+    source_payload = contact_request.payload or {}
+    source_type = contact_request.source_type
+    source_label = "market"
+    title_key = "item_title"
+
+    payload = {
+        "contact_request_id": contact_request.id,
+        "source_type": source_type,
+        "source_id": contact_request.source_id,
+        "source_label": source_label,
+        "source_title": source_payload.get(title_key, ""),
+        "contact_status": contact_request.status,
+        "decision": contact_request.status,
+        "owner_name": owner.name,
+    }
+    if contact_request.status == "accepted":
+        payload["owner_username"] = contact_request.owner_contact or owner.username
+    return payload
+
+
+@router.post(
+    "/contact-requests/{contact_request_id}/decision",
+    response_model=schemas.ContactDecisionResponse,
+)
+async def decide_contact_request(
+    contact_request_id: int,
+    data: schemas.ContactDecisionRequest,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.ContactRequest)
+        .where(models.ContactRequest.id == contact_request_id)
+        .with_for_update()
+    )
+    contact_request = result.scalar_one_or_none()
+    if not contact_request:
+        raise HTTPException(status_code=404, detail="Contact request not found")
+    if contact_request.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Only contact request owner can decide")
+
+    if contact_request.status != "pending":
+        return contact_request
+
+    if data.decision == "accepted" and not (contact_request.owner_contact or user.username):
+        raise HTTPException(
+            status_code=400,
+            detail="Set a Telegram username before accepting contact requests",
+        )
+
+    now = datetime.utcnow()
+    contact_request.status = data.decision
+    if data.decision == "accepted":
+        contact_request.owner_contact = contact_request.owner_contact or user.username.lstrip("@")
+    contact_request.decided_by = user.id
+    contact_request.decided_at = now
+    contact_request.updated_at = now
+
+    await _sync_contact_owner_notifications(db, contact_request, now=now)
+    await notification_service.create_notification(
+        db,
+        contact_request.requester_id,
+        "contact_request_decision",
+        _contact_decision_payload(contact_request, user),
+    )
+    await record_server_event(
+        db,
+        user.id,
+        "notification_open",
+        entity_type="contact_request",
+        entity_id=contact_request.id,
+        properties_json={
+            "acted": True,
+            "decision": data.decision,
+            "source_type": contact_request.source_type,
+            "source_id": contact_request.source_id,
+        },
+        commit=False,
+    )
+    await db.commit()
+    await db.refresh(contact_request)
+    return contact_request
 
 
 @router.get("/queue")

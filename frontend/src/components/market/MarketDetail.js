@@ -195,6 +195,19 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const handleContact = async () => {
     hapticFeedback('medium');
     const username = currentItem.seller?.username;
+
+    if (currentItem.item_type === 'service') {
+      try {
+        await contactMarketSeller(currentItem.id);
+        hapticFeedback('success');
+        toast.success('Заявка отправлена. Исполнитель откроет контакт после подтверждения.');
+      } catch (error) {
+        console.error('Ошибка отправки заявки исполнителю:', error);
+        hapticFeedback('error');
+        toast.error(error?.response?.data?.detail || 'Не удалось отправить заявку');
+      }
+      return;
+    }
     
     if (username) {
       try {
@@ -597,7 +610,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
           ) : (
             <button style={styles.contactButton} onClick={handleContact}>
               <MessageCircle size={20} />
-              <span>Написать продавцу</span>
+              <span>{currentItem.item_type === 'service' ? 'Оставить заявку' : 'Написать продавцу'}</span>
             </button>
           )}
         </div>

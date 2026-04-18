@@ -1993,7 +1993,7 @@ async def contact_market_seller_endpoint(
 
     if settings.deal_flow_v2_enabled:
         try:
-            _, is_waitlist, is_new_interest = await crud.create_market_interest(db, item_id, buyer.id)
+            lead, is_waitlist, is_new_interest = await crud.create_market_interest(db, item_id, buyer.id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -2001,19 +2001,16 @@ async def contact_market_seller_endpoint(
         if not seller:
             raise HTTPException(status_code=404, detail="Seller not found")
 
-        if is_new_interest:
-            await notification_service.create_notification(
+        if item.item_type == "service" or is_new_interest:
+            await notification_service.notify_market_contact(
                 db,
-                seller.id,
-                "market_contact",
-                {
-                    "item_id": item.id,
-                    "item_title": item.title,
-                    "item_type": item.item_type,
-                    "buyer_name": buyer.name,
-                    "buyer_username": buyer.username,
-                    "is_waitlist": is_waitlist,
-                },
+                seller,
+                buyer,
+                item,
+                is_waitlist=is_waitlist,
+                related_type="market_lead",
+                related_id=lead.id,
+                create_sold_followup=False,
             )
             await db.commit()
     else:
@@ -2055,19 +2052,16 @@ async def create_market_interest_endpoint(
 
     item = await db.get(models.MarketItem, item_id)
     seller = await db.get(models.User, item.seller_id) if item else None
-    if item and seller and is_new_interest:
-        await notification_service.create_notification(
+    if item and seller and (item.item_type == "service" or is_new_interest):
+        await notification_service.notify_market_contact(
             db,
-            seller.id,
-            "market_contact",
-            {
-                "item_id": item.id,
-                "item_title": item.title,
-                "item_type": item.item_type,
-                "buyer_name": user.name,
-                "buyer_username": user.username,
-                "is_waitlist": is_waitlist,
-            },
+            seller,
+            user,
+            item,
+            is_waitlist=is_waitlist,
+            related_type="market_lead",
+            related_id=lead.id,
+            create_sold_followup=False,
         )
         await db.commit()
 

@@ -376,6 +376,37 @@ class RequestResponse(Base):
     )
 
 
+class ContactRequest(Base):
+    """In-app approval for opening a Telegram contact."""
+    __tablename__ = 'contact_requests'
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_type = Column(String(30), nullable=False, index=True)  # market_item
+    source_id = Column(Integer, nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    requester_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    related_type = Column(String(30), nullable=True)  # market_lead
+    related_id = Column(Integer, nullable=True)
+    status = Column(String(20), default='pending', nullable=False, index=True)
+    requester_contact = Column(String(255), nullable=True)
+    owner_contact = Column(String(255), nullable=True)
+    decided_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    decided_at = Column(DateTime, nullable=True)
+    payload = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+
+    owner = relationship('User', foreign_keys=[owner_id])
+    requester = relationship('User', foreign_keys=[requester_id])
+    decision_actor = relationship('User', foreign_keys=[decided_by])
+
+    __table_args__ = (
+        Index('ix_contact_requests_owner_status_created', 'owner_id', 'status', 'created_at'),
+        Index('ix_contact_requests_requester_status_created', 'requester_id', 'status', 'created_at'),
+        Index('ix_contact_requests_source_requester', 'source_type', 'source_id', 'requester_id'),
+    )
+
+
 class Comment(Base):
     __tablename__ = 'comments'
     

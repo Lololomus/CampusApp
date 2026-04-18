@@ -20,8 +20,12 @@ export const MOCK_NOTIFICATIONS = [
     payload: {
       item_id: 42,
       item_title: 'Конспект по Вышмату',
+      item_type: 'service',
       buyer_name: 'Артём',
       buyer_username: 'artem_dev',
+      approval_required: true,
+      contact_request_id: 1001,
+      contact_status: 'pending',
     },
   },
   {
@@ -96,6 +100,7 @@ export const MOCK_NOTIFICATIONS = [
     payload: {
       item_id: 19,
       item_title: 'Свитшот M серый',
+      item_type: 'product',
       buyer_name: 'Саша',
       buyer_username: 'sasha_x',
     },
@@ -133,6 +138,60 @@ export function markAllDevMockNotificationsRead() {
   ));
 
   return { success: true };
+}
+
+export function decideDevMockContactRequest(contactRequestId, decision) {
+  const normalizedId = Number(contactRequestId);
+  let sourcePayload = null;
+
+  mockNotificationsState = mockNotificationsState.map((notif) => {
+    if (Number(notif.payload?.contact_request_id) !== normalizedId) {
+      return notif;
+    }
+
+    sourcePayload = notif.payload;
+    return {
+      ...notif,
+      is_read: true,
+      payload: {
+        ...notif.payload,
+        contact_status: decision,
+        decided_at: new Date().toISOString(),
+      },
+    };
+  });
+
+  if (sourcePayload) {
+    mockNotificationsState = [
+      {
+        id: Date.now(),
+        type: 'contact_request_decision',
+        is_read: false,
+        created_at: new Date().toISOString(),
+        payload: {
+          contact_request_id: normalizedId,
+          source_type: 'market_item',
+          source_id: sourcePayload.item_id,
+          source_title: sourcePayload.item_title || '',
+          contact_status: decision,
+          decision,
+          owner_name: 'Демо-пользователь',
+          owner_username: decision === 'accepted' ? 'campus_demo' : null,
+        },
+      },
+      ...mockNotificationsState,
+    ];
+  }
+
+  return {
+    id: normalizedId,
+    status: decision,
+    source_type: 'market_item',
+    source_id: sourcePayload?.item_id,
+    owner_contact: decision === 'accepted' ? 'campus_demo' : null,
+    requester_contact: sourcePayload?.buyer_username || null,
+    decided_at: new Date().toISOString(),
+  };
 }
 
 export function resetDevMockNotifications() {

@@ -43,6 +43,7 @@ def format_notification(notif_type: str, payload: dict) -> dict:
         "market_contact": _format_market_contact,
         "market_deal_update": _format_market_deal_update,
         "request_response": _format_request_response,
+        "contact_request_decision": _format_contact_request_decision,
         "milestone": _format_milestone,
         "admin_report": _format_admin_report,
     }
@@ -212,7 +213,10 @@ def _format_market_contact(payload: dict) -> dict:
     )
     if username:
         text += f" (@{username})"
-    text += "\nНаписал тебе в ЛС, проверь сообщения 👆"
+    if payload.get("approval_required"):
+        text += "\nОткрой приложение и реши, открыть ли ему твой Telegram."
+    else:
+        text += "\nНаписал тебе в ЛС, проверь сообщения 👆"
 
     return {"text": text, "reply_markup": open_miniapp_kb("📦 Открыть объявление")}
 
@@ -265,6 +269,35 @@ def _format_request_response(payload: dict) -> dict:
     text += "\nНаписал тебе в ЛС 👆"
 
     return {"text": text, "reply_markup": open_miniapp_kb("📋 Открыть запрос")}
+
+
+def _format_contact_request_decision(payload: dict) -> dict:
+    decision = payload.get("decision") or payload.get("contact_status")
+    owner = _escape(payload.get("owner_name", "Пользователь"))
+    username = payload.get("owner_username")
+    source_title = _escape(payload.get("source_title", ""))
+    source_label = "услуге"
+
+    if decision == "accepted":
+        text = (
+            "✅ <b>Контакт открыт</b>\n\n"
+            f"{owner} принял(а) заявку по {source_label}"
+        )
+        if source_title:
+            text += f" «{source_title}»"
+        if username:
+            text += f"\n\nTelegram: @{_escape(username)}"
+        else:
+            text += "\n\nУ пользователя пока нет публичного @username."
+    else:
+        text = (
+            "↩️ <b>Заявка отклонена</b>\n\n"
+            f"{owner} не открыл(а) контакт по {source_label}"
+        )
+        if source_title:
+            text += f" «{source_title}»"
+
+    return {"text": text, "reply_markup": open_miniapp_kb()}
 
 
 def _format_milestone(payload: dict) -> dict:

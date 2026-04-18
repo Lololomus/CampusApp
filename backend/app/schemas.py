@@ -1325,6 +1325,22 @@ class NotificationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ContactDecisionRequest(BaseModel):
+    decision: str = Field(..., pattern="^(accepted|declined)$")
+
+
+class ContactDecisionResponse(BaseModel):
+    id: int
+    status: str
+    source_type: str
+    source_id: int
+    owner_contact: Optional[str] = None
+    requester_contact: Optional[str] = None
+    decided_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class FollowupAnswer(BaseModel):
     answer: str = Field(..., pattern="^(yes|no|in_progress)$")
 
