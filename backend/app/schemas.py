@@ -1146,11 +1146,12 @@ class DatingProfileResponse(BaseModel):
     looking_for: str
     bio: Optional[str] = None
     goals: List[str] = []
+    interests: List[str] = []
     photos: List[Any] = []
     lifestyle: List[str] = []
     prompts: Optional[Dict[str, str]] = None
     is_active: bool
-    
+
     name: str
     age: Optional[int] = None
     university: str
@@ -1158,7 +1159,7 @@ class DatingProfileResponse(BaseModel):
     course: Optional[int] = None
 
     # ✅ Фаза 5.1: единые coerce
-    @field_validator('photos', 'goals', 'lifestyle', mode='before')
+    @field_validator('photos', 'goals', 'lifestyle', 'interests', mode='before')
     @classmethod
     def coerce_list(cls, v):
         return _coerce_json_list(v)
