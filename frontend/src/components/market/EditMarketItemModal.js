@@ -693,7 +693,7 @@ const s = {
     background: theme.colors.premium.surfaceElevated,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: '92%',
+    height: '85%',
     display: 'flex',
     flexDirection: 'column',
     position: 'relative',
@@ -896,8 +896,9 @@ const s = {
     left: 0,
     right: 0,
     zIndex: 10,
-    background: theme.colors.premium.surfaceElevated,
-    borderTop: `1px solid ${theme.colors.premium.border}`,
+    background: 'transparent',
+    borderTop: 'none',
+    pointerEvents: 'none',
   },
   toolbar: {
     padding: '10px 16px',
@@ -924,6 +925,7 @@ const s = {
     cursor: 'pointer',
     transition: 'opacity 0.15s, background-color 0.2s',
     flexShrink: 0,
+    pointerEvents: 'auto',
   },
   toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: theme.colors.premium.primary },
   publishBtn: {
@@ -939,6 +941,7 @@ const s = {
     alignItems: 'center',
     justifyContent: 'center',
     boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+    pointerEvents: 'auto',
   },
   publishFill: {
     position: 'absolute',

@@ -10,6 +10,7 @@ export const useEdgeSwipeBack = ({
   disabled = false,
   edgeZone = 28,
   threshold = 90,
+  allowModalBoundary = false,
 }) => {
   const wrapperRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -27,6 +28,7 @@ export const useEdgeSwipeBack = ({
     dirLocked: null,
     currentX: 0,
   });
+  const previousTransitionRef = useRef('');
 
   const setTransform = useCallback((tx, withTransition = false) => {
     const el = wrapperRef.current;
@@ -47,6 +49,12 @@ export const useEdgeSwipeBack = ({
     t.currentX = 0;
     setIsDragging(false);
     setTransform(0, true);
+    const previousTransition = previousTransitionRef.current;
+    setTimeout(() => {
+      const el = wrapperRef.current;
+      if (!el || trackingRef.current.active) return;
+      el.style.transition = previousTransition;
+    }, 350);
   }, [setTransform]);
 
   useEffect(() => {
@@ -156,14 +164,16 @@ export const useEdgeSwipeBack = ({
       // Только от левого края
       if (touch.clientX > edgeZone) return;
 
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+
       // Игнорируем если внутри галереи/карусели
-      if (e.target?.closest?.('[data-no-edge-swipe]')) return;
-      if (isEventFromModalBoundary(e)) return;
+      const noEdgeElement = e.target?.closest?.('[data-no-edge-swipe]');
+      if (noEdgeElement && !(allowModalBoundary && noEdgeElement === wrapper)) return;
+      if (isEventFromModalBoundary(e) && !(allowModalBoundary && wrapper.contains(e.target))) return;
 
       // Отвечает только самый верхний EdgeSwipeBack (по z-index)
       // Если под пальцем есть другой EdgeSwipeBack с более высоким z-index — уступаем ему
-      const wrapper = wrapperRef.current;
-      if (!wrapper) return;
       const topEdgeWrapper = document.elementsFromPoint(touch.clientX, touch.clientY)
         .find(el => el.hasAttribute('data-edge-swipe-wrapper'));
       if (topEdgeWrapper !== wrapper) return;
@@ -175,6 +185,7 @@ export const useEdgeSwipeBack = ({
         dirLocked: null,
         currentX: 0,
       };
+      previousTransitionRef.current = wrapper.style.transition || '';
 
       setIsDragging(true);
 
@@ -196,7 +207,7 @@ export const useEdgeSwipeBack = ({
       // Сбрасываем transform если компонент размонтирован в середине свайпа
       trackingRef.current.active = false;
     };
-  }, [disabled, edgeZone, threshold, cancelTracking]);
+  }, [disabled, edgeZone, threshold, allowModalBoundary, cancelTracking]);
 
   return { wrapperRef, isDragging };
 };

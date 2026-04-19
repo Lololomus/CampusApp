@@ -36,6 +36,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import { toast } from './Toast';
 import ConfirmationDialog from './ConfirmationDialog';
 import SwipeableModal from './SwipeableModal';
+import EdgeSwipeBack from './EdgeSwipeBack';
 import theme from '../../theme';
 
 // Action types для DropdownMenu (цвета акцентов)
@@ -230,7 +231,7 @@ function DeleteReasonDialog({
   };
 
   return (
-    <>
+    <EdgeSwipeBack onBack={onCancel} zIndex={5099}>
       <style>{`
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes scaleIn {
@@ -273,7 +274,7 @@ function DeleteReasonDialog({
           </button>
         </div>
       </div>
-    </>
+    </EdgeSwipeBack>
   );
 }
 
@@ -359,7 +360,7 @@ function BanSheet({ isOpen, form, onChange, onConfirm, onCancel, isProcessing })
   );
 
   return (
-    <SwipeableModal isOpen={isOpen} onClose={onCancel} zIndex={5099} footer={footer}>
+    <SwipeableModal isOpen={isOpen} onClose={onCancel} zIndex={5099} footer={footer} edgeSwipeBack>
       <div style={banStyles.header}>
         <span style={{ fontSize: 24 }}>🚫</span>
         <h3 style={banStyles.title}>Теневой бан</h3>

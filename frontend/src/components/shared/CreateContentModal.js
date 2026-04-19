@@ -2118,7 +2118,7 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    height: '92%',
+    height: '85%',
     background: 'var(--create-surface)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

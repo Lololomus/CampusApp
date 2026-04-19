@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSwipe } from '../../hooks/useSwipe';
+import { useEdgeSwipeBack } from '../../hooks/useEdgeSwipeBack';
 import theme from '../../theme';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
@@ -63,12 +64,17 @@ const SwipeableModal = ({
   footer,
   zIndex = 9999,
   showHeaderDivider = true,
+  edgeSwipeBack = false,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const contentRef = useRef(null);
-  const overlayRef = useRef(null);
   const dragHandleRef = useRef(null);
+  const { wrapperRef: edgeSwipeWrapperRef, isDragging: isEdgeDragging } = useEdgeSwipeBack({
+    onBack: onClose,
+    disabled: !edgeSwipeBack || !isOpen,
+    allowModalBoundary: true,
+  });
 
   // Блокировка скролла фона
   useEffect(() => {
@@ -119,8 +125,9 @@ const SwipeableModal = ({
 
   return createPortal(
     <div
-      ref={overlayRef}
+      ref={edgeSwipeWrapperRef}
       {...modalBoundaryProps}
+      {...(edgeSwipeBack ? { 'data-edge-swipe-wrapper': '' } : {})}
       {...modalTouchBoundaryHandlers}
       style={{
         position: 'fixed',
@@ -137,6 +144,7 @@ const SwipeableModal = ({
         opacity: isOpen ? 1 : 0,
         transition: 'opacity 0.3s ease',
         zIndex,
+        willChange: isEdgeDragging ? 'transform' : undefined,
         touchAction: 'none',
       }}
       onClick={(e) => {

@@ -3,6 +3,7 @@ import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from
 import { createPortal } from 'react-dom';
 import theme from '../theme';
 import { hapticFeedback } from '../utils/telegram';
+import EdgeSwipeBack from './shared/EdgeSwipeBack';
 
 
 const SAFE_MARGIN = 8;
@@ -301,7 +302,7 @@ function DropdownMenu({
 
 
   const dropdownContent = (
-    <>
+    <EdgeSwipeBack onBack={onClose} zIndex={10000}>
       <div 
         style={{
           ...styles.backdrop,
@@ -374,7 +375,7 @@ function DropdownMenu({
           );
         })}
       </div>
-    </>
+    </EdgeSwipeBack>
   );
 
 

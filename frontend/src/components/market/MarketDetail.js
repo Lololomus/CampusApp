@@ -1121,7 +1121,7 @@ const styles = {
     left: 0,
     right: 0,
     padding: `16px ${theme.spacing.lg}px calc(16px + env(safe-area-inset-bottom, 0px))`,
-    background: `linear-gradient(to top, ${theme.colors.premium.bg}, ${theme.colors.premium.bg} 78%, transparent)`,
+    background: 'transparent',
     zIndex: 100,
     pointerEvents: 'none',
   },
