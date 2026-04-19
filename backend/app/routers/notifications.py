@@ -261,12 +261,13 @@ def _contact_decision_payload(
         "source_id": contact_request.source_id,
         "source_label": source_label,
         "source_title": source_payload.get(title_key, ""),
+        "source_item_type": source_payload.get("item_type"),
         "contact_status": contact_request.status,
         "decision": contact_request.status,
         "owner_name": owner.name,
     }
     if contact_request.status == "accepted":
-        payload["owner_username"] = contact_request.owner_contact or owner.username
+        payload["owner_username"] = contact_request.owner_contact or notification_service._telegram_contact(owner)
     return payload
 
 
@@ -294,16 +295,17 @@ async def decide_contact_request(
     if contact_request.status != "pending":
         return contact_request
 
-    if data.decision == "accepted" and not (contact_request.owner_contact or user.username):
+    owner_contact = contact_request.owner_contact or notification_service._telegram_contact(user)
+    if data.decision == "accepted" and not owner_contact:
         raise HTTPException(
             status_code=400,
-            detail="Set a Telegram username before accepting contact requests",
+            detail="Добавь username в Telegram и заново открой Campus, чтобы открыть контакт.",
         )
 
     now = datetime.utcnow()
     contact_request.status = data.decision
     if data.decision == "accepted":
-        contact_request.owner_contact = contact_request.owner_contact or user.username.lstrip("@")
+        contact_request.owner_contact = owner_contact
     contact_request.decided_by = user.id
     contact_request.decided_at = now
     contact_request.updated_at = now

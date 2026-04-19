@@ -447,7 +447,7 @@ function EditProfile() {
                       style={{ ...styles.input, color: '#D4FF00', fontWeight: 500 }}
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="username"
+                      placeholder="ник в Campus (не Telegram)"
                       autoCapitalize="none"
                       maxLength={ONBOARDING_LIMITS.USERNAME_MAX}
                     />

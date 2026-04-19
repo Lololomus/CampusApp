@@ -153,7 +153,7 @@ function Onboarding() {
 
 
 // =============================================
-// Шаг 1: фото + имя + username
+// Шаг 1: фото + имя + ник в Campus
 // =============================================
 
 function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onNext }) {
@@ -310,7 +310,7 @@ function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onN
               <AtSign size={20} color="#D4FF00" style={styles.iosInputIcon} />
               <input
                 type="text"
-                placeholder="username (по желанию)"
+                placeholder="ник в Campus (не Telegram)"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleNext(); } }}

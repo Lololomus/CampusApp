@@ -17,6 +17,7 @@ import {
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import SmartDatePicker from '../shared/SmartDatePicker';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
 
 const AD_IMAGE_SETTINGS = {
   ALLOWED_FORMATS: ['image/jpeg', 'image/png', 'image/webp'],
@@ -49,6 +50,7 @@ function CampaignManager({ isAdmin = false }) {
   const [expandedId, setExpandedId] = useState(null);
   const [statsCache, setStatsCache] = useState({});
   const [overview, setOverview] = useState(null);
+  const [deleteAdId, setDeleteAdId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,12 +88,19 @@ function CampaignManager({ isAdmin = false }) {
   };
   const handlePause = (id) => { hapticFeedback('medium'); act(pauseAdPost, id, 'На паузе'); };
   const handleResume = (id) => { hapticFeedback('medium'); act(resumeAdPost, id, 'Возобновлено'); };
-  const handleDelete = async (id) => {
+  const handleDelete = (id) => {
     hapticFeedback('heavy');
-    if (!window.confirm('Удалить рекламный пост?')) return;
+    setDeleteAdId(id);
+  };
+
+  const confirmDelete = async () => {
+    const adId = deleteAdId;
+    if (adId == null) return;
+
+    setDeleteAdId(null);
     try {
-      await deleteAdPost(id);
-      setAds(prev => prev.filter(a => a.id !== id));
+      await deleteAdPost(adId);
+      setAds(prev => prev.filter(a => a.id !== adId));
       toast.success('Удалено');
     } catch { toast.error('Ошибка'); }
   };
@@ -124,6 +133,7 @@ function CampaignManager({ isAdmin = false }) {
   const pendingCount = isAdmin ? ads.filter(a => a.status === 'pending_review').length : 0;
 
   return (
+    <>
     <div style={s.wrap}>
       {/* Сводка (админ) */}
       {isAdmin && overview && (
@@ -198,6 +208,17 @@ function CampaignManager({ isAdmin = false }) {
         </div>
       )}
     </div>
+
+    <ConfirmationDialog
+      isOpen={deleteAdId !== null}
+      title="Удалить рекламный пост?"
+      message="Это действие нельзя отменить."
+      confirmText="Удалить"
+      confirmType="danger"
+      onConfirm={confirmDelete}
+      onCancel={() => setDeleteAdId(null)}
+    />
+    </>
   );
 }
 

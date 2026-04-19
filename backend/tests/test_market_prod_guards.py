@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from app import auth_service
 from app.crud import market as market_crud
+from app.services import notification_service
 
 
 class _FakeResult:
@@ -72,6 +73,54 @@ class RequireUserSessionBindingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(resolved.id, 1)
         self.assertEqual(db.execute.call_count, 1)
+
+
+class MarketLocationTests(unittest.TestCase):
+    def test_default_location_omits_missing_institute(self):
+        seller = SimpleNamespace(university="Campus University", institute=None)
+
+        self.assertEqual(
+            market_crud._resolve_market_location(None, seller),
+            "Campus University",
+        )
+
+    def test_default_location_does_not_render_none(self):
+        seller = SimpleNamespace(university=None, institute=None)
+
+        self.assertIsNone(market_crud._resolve_market_location(None, seller))
+        self.assertIsNone(market_crud._resolve_market_location("None", seller))
+
+
+class MarketContactVisibilityTests(unittest.TestCase):
+    def test_public_telegram_contact_uses_trusted_telegram_username(self):
+        self.assertEqual(
+            notification_service._public_telegram_contact(
+                SimpleNamespace(
+                    username="fake_inside_campus",
+                    telegram_username="real_tg_user",
+                    show_profile=True,
+                    show_telegram_id=True,
+                )
+            ),
+            "real_tg_user",
+        )
+
+    def test_public_telegram_contact_requires_trusted_username_and_visibility(self):
+        self.assertTrue(notification_service._has_public_telegram_contact(
+            SimpleNamespace(telegram_username="seller_name", show_profile=True, show_telegram_id=True)
+        ))
+        self.assertFalse(notification_service._has_public_telegram_contact(
+            SimpleNamespace(telegram_username="seller_name", show_profile=False, show_telegram_id=True)
+        ))
+        self.assertFalse(notification_service._has_public_telegram_contact(
+            SimpleNamespace(telegram_username="seller_name", show_profile=True, show_telegram_id=False)
+        ))
+        self.assertFalse(notification_service._has_public_telegram_contact(
+            SimpleNamespace(username="fake_inside_campus", telegram_username=None, show_profile=True, show_telegram_id=True)
+        ))
+        self.assertFalse(notification_service._has_public_telegram_contact(
+            SimpleNamespace(telegram_username="боров", show_profile=True, show_telegram_id=True)
+        ))
 
 
 class MarketExpiryAndReviewWindowTests(unittest.TestCase):

@@ -361,10 +361,10 @@ export async function getPost(id) {
 
 export async function createPost(postData, onProgress = null) {
   try {
+    const hasVideo = postData instanceof FormData && postData.has('video');
     const config = {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: hasVideo ? 120000 : 15000,
     };
 
     if (onProgress) {
@@ -385,16 +385,16 @@ export async function createPost(postData, onProgress = null) {
 
 export async function updatePost(postId, postData, onProgress = null) {
   try {
+    const hasVideo = postData instanceof FormData && postData.has('video');
     const config = {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: hasVideo ? 120000 : 15000,
     };
-    
+
     if (onProgress) {
       config.onUploadProgress = onProgress;
     }
-    
+
     const response = await api.patch(`/posts/${postId}`, postData, config);
     return response.data;
   } catch (error) {
@@ -753,8 +753,10 @@ export async function contactMarketSeller(itemId) {
 
 export async function createMarketItem(itemData, onProgress = null) {
   try {
+    const hasVideo = itemData instanceof FormData && itemData.has('video');
     const config = {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: hasVideo ? 120000 : 15000,
     };
 
     if (onProgress) config.onUploadProgress = onProgress;
@@ -769,8 +771,10 @@ export async function createMarketItem(itemData, onProgress = null) {
 
 export async function updateMarketItem(itemId, itemData, onProgress = null) {
   try {
+    const hasVideo = itemData instanceof FormData && itemData.has('video');
     const config = {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: hasVideo ? 120000 : 15000,
     };
 
     if (onProgress) config.onUploadProgress = onProgress;

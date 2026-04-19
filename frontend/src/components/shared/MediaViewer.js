@@ -354,6 +354,8 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
   const scrollRef = useRef(null);
   const footerRef = useRef(null);
   const swipeTouchStartY = useRef(null);
+  const swipeTouchStartX = useRef(null);
+  const swipeDirRef = useRef(null); // null | 'h' | 'v' — блокировка оси жеста
 
   const resetVerticalDrag = useCallback(() => {
     dragYRef.current = 0;
@@ -636,7 +638,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
           ref={scrollRef}
           onScroll={handleScroll}
           className="mv-swiper"
-          style={{ ...styles.swiper, touchAction: 'pan-x pan-y' }}
+          style={{ ...styles.swiper, touchAction: 'pan-x' }}
         >
           {items.map((media, idx) => {
             const isCurrentSlide = idx === currentIndex;
@@ -653,14 +655,25 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
                   if (e.touches.length === 1) {
                     suppressTapRef.current = false;
                     swipeTouchStartY.current = e.touches[0].clientY;
+                    swipeTouchStartX.current = e.touches[0].clientX;
+                    swipeDirRef.current = null;
                   }
                 }}
                 onTouchMove={(e) => {
                   if (!isCurrentSlide || isZoomed || e.touches.length !== 1 || swipeTouchStartY.current === null) return;
-                  updateVerticalDrag(e.touches[0].clientY - swipeTouchStartY.current);
+                  const dy = e.touches[0].clientY - swipeTouchStartY.current;
+                  const dx = e.touches[0].clientX - (swipeTouchStartX.current ?? e.touches[0].clientX);
+                  if (swipeDirRef.current === null) {
+                    if (Math.abs(dy) > 8 || Math.abs(dx) > 8) {
+                      swipeDirRef.current = Math.abs(dy) > Math.abs(dx) ? 'v' : 'h';
+                    }
+                  }
+                  if (swipeDirRef.current === 'v') {
+                    updateVerticalDrag(dy);
+                  }
                 }}
-                onTouchEnd={finishVerticalDrag}
-                onTouchCancel={finishVerticalDrag}
+                onTouchEnd={() => { swipeDirRef.current = null; finishVerticalDrag(); }}
+                onTouchCancel={() => { swipeDirRef.current = null; finishVerticalDrag(); }}
                 onMouseDown={(e) => handleDesktopDragStart(e, isCurrentSlide)}
               >
                 {media.type === 'video' ? (

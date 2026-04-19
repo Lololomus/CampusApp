@@ -70,6 +70,7 @@ class UserCreate(UserBase):
     """Создание нового пользователя"""
     telegram_id: int
     username: Optional[str] = Field(None, max_length=64)
+    telegram_username: Optional[str] = Field(None, max_length=64)
     age: Optional[int] = Field(None, ge=14, le=100)
     group: Optional[str] = Field(None, max_length=50)
     bio: Optional[str] = Field(None, max_length=500)
@@ -117,6 +118,7 @@ class UserResponse(BaseModel):
     id: int
     telegram_id: int
     username: Optional[str] = None
+    telegram_username: Optional[str] = None
     name: str
     age: Optional[int] = None
     bio: Optional[str] = None
@@ -173,6 +175,7 @@ class UserShort(BaseModel):
     id: Optional[int] = None
     telegram_id: Optional[int] = None
     username: Optional[str] = None
+    telegram_username: Optional[str] = None
     name: str
     avatar: Optional[str] = None
     campus_id: Optional[str] = None
@@ -987,6 +990,7 @@ class MarketItemResponse(BaseModel):
     updated_at: Optional[datetime] = None
     is_seller: bool = False
     is_favorited: bool = False
+    has_requested: bool = False
     is_deleted: bool = False
     
     # ✅ Фаза 5.1: единый coerce

@@ -11,6 +11,7 @@ import { getAvatarColor } from '../../utils/avatarColors';
 
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { AVATAR_BORDER_RADIUS } from './Avatar';
+import { normalizeTelegramUsername } from '../../utils/telegramUsername';
 
 function ProfileMiniCard({
   isOpen,
@@ -32,8 +33,9 @@ function ProfileMiniCard({
   };
 
   const avatarUrl = getAvatarUrl();
-  const usernameValue = user.username ? String(user.username).replace(/^@/, '') : null;
-  const displayName = usernameValue ? `@${usernameValue}` : (user.name || 'Пользователь');
+  const usernameValue = user.username ? String(user.username).replace(/^@/, '').trim() : null;
+  const telegramUsername = normalizeTelegramUsername(user.telegram_username);
+  const displayName = user.name || usernameValue || 'Пользователь';
   const targetUserId = user.id != null ? String(user.id) : null;
   const currentUserId = currentUser?.id != null
     ? String(currentUser.id)
@@ -58,10 +60,9 @@ function ProfileMiniCard({
   };
 
   const handleTelegramOpen = () => {
-    if (!user.username) return;
+    if (!telegramUsername) return;
     hapticFeedback('light');
-    const cleanUsername = user.username.replace('@', '');
-    window.open(`https://t.me/${cleanUsername}`, '_blank');
+    window.open(`https://t.me/${telegramUsername}`, '_blank');
   };
 
   const handleReport = () => {
@@ -81,7 +82,7 @@ function ProfileMiniCard({
       actionType: 'share',
       onClick: handleViewPhoto,
     },
-    user.show_telegram_id && user.username && {
+    user.show_telegram_id && telegramUsername && {
       label: 'Написать',
       icon: <MessageCircle size={18} strokeWidth={2.1} />,
       actionType: 'edit',

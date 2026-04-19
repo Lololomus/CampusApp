@@ -16,6 +16,7 @@ import { toast } from '../shared/Toast';
 import { Z_MODAL_NOTIFICATIONS_SCREEN } from '../../constants/zIndex';
 import ReviewModal from '../market/ReviewModal';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { normalizeTelegramUsername } from '../../utils/telegramUsername';
 
 // ========== КОНСТАНТЫ ==========
 
@@ -116,20 +117,27 @@ function parseNotification(notif) {
       };
     case 'poll_vote':
       return buildPollVoteDisplay(p);
-    case 'market_contact':
+    case 'market_contact': {
+      const marketContactSourceLabel = p.item_type === 'service' ? 'услуге' : 'товару';
       return {
         userName: p.buyer_name,
         userLetter: (p.buyer_name || '?')[0].toUpperCase(),
         userColor: COLORS.badgeMarket,
         text: p.approval_required
-          ? `хочет связаться по услуге "${p.item_title || ''}"`
+          ? `хочет связаться по ${marketContactSourceLabel} "${p.item_title || ''}"`
           : `хочет забрать твой "${p.item_title || ''}"`,
         thumbnailUrl: null,
         hasActions: Boolean(p.contact_request_id) && (p.contact_status || 'pending') === 'pending',
         contactRequestId: p.contact_request_id,
         contactStatus: p.contact_status || 'pending',
+        requesterUsername: normalizeTelegramUsername(p.buyer_username),
+        approvalRequired: Boolean(p.approval_required),
+        actionHint: p.approval_required
+          ? 'Если примешь, покупатель получит твой Telegram username.'
+          : null,
         isDatingLikeAnon: false,
       };
+    }
     case 'request_response':
       return {
         userName: p.responder_name,
@@ -143,19 +151,23 @@ function parseNotification(notif) {
     case 'contact_request_decision': {
       const accepted = p.decision === 'accepted' || p.contact_status === 'accepted';
       const title = p.source_title ? ` «${p.source_title}»` : '';
-      const username = p.owner_username;
+      const sourceLabel = p.source_item_type === 'service' ? 'услуге' : 'товару';
+      const username = normalizeTelegramUsername(p.owner_username);
       return {
         userName: p.owner_name,
         userLetter: accepted ? '✓' : '↩',
         userColor: accepted ? COLORS.success : COLORS.muted,
         text: accepted
-          ? `открыл(а) контакт по заявке${title}`
-          : `отклонил(а) заявку по контакту${title}`,
+          ? `открыл(а) контакт по ${sourceLabel}${title}`
+          : `отклонил(а) заявку по ${sourceLabel}${title}`,
         thumbnailUrl: null,
         hasActions: false,
         isContactDecision: true,
         isAcceptedDecision: accepted,
         ownerUsername: username,
+        actionHint: accepted && username
+          ? 'Напиши продавцу в Telegram, чтобы договориться о деталях.'
+          : null,
         isDatingLikeAnon: false,
       };
     }
@@ -314,8 +326,11 @@ function getDateGroup(isoString) {
 }
 
 function openTelegramUsername(username) {
-  const cleanUsername = String(username || '').replace('@', '').trim();
-  if (!cleanUsername) return;
+  const cleanUsername = normalizeTelegramUsername(username);
+  if (!cleanUsername) {
+    toast.error('Telegram username недоступен');
+    return;
+  }
   const url = `https://t.me/${cleanUsername}`;
   hapticFeedback('light');
   if (window.Telegram?.WebApp?.openTelegramLink) {
@@ -467,6 +482,12 @@ const NotificationItem = React.memo(({ notif }) => {
           {display.text}
         </div>
 
+        {display.actionHint && (
+          <div style={{ fontSize: 13, color: COLORS.muted, lineHeight: 1.35, marginTop: 6 }}>
+            {display.actionHint}
+          </div>
+        )}
+
         {isPollVote && display.pollQuestion && (
           <div style={{
             marginTop: 8,
@@ -575,9 +596,37 @@ const NotificationItem = React.memo(({ notif }) => {
             color: resolved === 'accepted' ? COLORS.success : COLORS.muted,
             display: 'flex', alignItems: 'center', gap: 6,
           }}>
-            <Check size={14} strokeWidth={3} />
+            {resolved === 'accepted' ? <Check size={14} strokeWidth={3} /> : <X size={14} strokeWidth={3} />}
             {resolved === 'accepted' ? 'Заявка одобрена' : 'Заявка отклонена'}
           </div>
+        )}
+
+        {isContactActionNotification && resolved === 'accepted' && display.requesterUsername && (
+          <button
+            type="button"
+            className="ns-quick-actions"
+            onClick={(e) => {
+              e.stopPropagation();
+              openTelegramUsername(display.requesterUsername);
+            }}
+            style={{
+              marginTop: 10,
+              background: COLORS.surfaceElevated,
+              color: COLORS.text,
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 8,
+              padding: '9px 12px',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <MessageCircle size={15} strokeWidth={3} />
+            Написать @{display.requesterUsername}
+          </button>
         )}
 
         {display.isContactDecision && display.isAcceptedDecision && display.ownerUsername && (

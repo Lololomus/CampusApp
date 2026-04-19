@@ -173,6 +173,7 @@ export function decideDevMockContactRequest(contactRequestId, decision) {
           source_type: 'market_item',
           source_id: sourcePayload.item_id,
           source_title: sourcePayload.item_title || '',
+          source_item_type: sourcePayload.item_type || 'product',
           contact_status: decision,
           decision,
           owner_name: 'Демо-пользователь',

@@ -3,6 +3,8 @@
 # ✅ Фаза 3.2: async/await, legacy_sync_db_dep → get_db, Session → AsyncSession
 # ✅ Фаза 4.2: _rate_buckets (in-memory) → Redis rate limiter
 
+import re
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update as sa_update
@@ -19,6 +21,17 @@ from app.database import get_db
 from app.rate_limiter import check_rate_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+TELEGRAM_USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{5,32}$")
+EMPTY_USERNAME_VALUES = {"none", "null", "undefined"}
+
+
+def _clean_telegram_username(value) -> str | None:
+    username = str(value or "").lstrip("@").strip()
+    if username.lower() in EMPTY_USERNAME_VALUES:
+        return None
+    if not TELEGRAM_USERNAME_RE.match(username):
+        return None
+    return username
 
 
 @router.post("/telegram/login", response_model=schemas.AuthLoginResponse)
@@ -44,14 +57,21 @@ async def telegram_login(
     telegram_id = tg_user.get("id")
     if not isinstance(telegram_id, int):
         raise HTTPException(status_code=401, detail="Invalid Telegram user id")
+    telegram_username = _clean_telegram_username(tg_user.get("username"))
 
     user = await crud.get_user_by_telegram_id(db, telegram_id)
+    if user and user.telegram_username != telegram_username:
+        user.telegram_username = telegram_username
+        await db.commit()
+        await db.refresh(user)
+
     access_token, refresh_token, _ = await create_auth_session(
         db=db,
         telegram_id=telegram_id,
         user_id=user.id if user else None,
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client else None,
+        telegram_username=telegram_username,
     )
 
     from app.config import get_settings
@@ -87,6 +107,7 @@ async def register_user(
 
     create_payload = schemas.UserCreate(
         telegram_id=identity.telegram_id,
+        telegram_username=identity.telegram_username,
         **user_data.model_dump(),
     )
     user = await crud.create_user(db, create_payload)

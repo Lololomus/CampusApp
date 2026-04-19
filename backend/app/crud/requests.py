@@ -363,7 +363,7 @@ async def create_response(db: AsyncSession, request_id: int, user_id: int, data:
         raise ValueError("Вы уже откликнулись на этот запрос")
 
     user = await db.get(models.User, user_id)
-    telegram = data.telegram_contact or (user.username if user else None)
+    telegram = notif._telegram_contact(user)
 
     response = models.RequestResponse(
         request_id=request_id,

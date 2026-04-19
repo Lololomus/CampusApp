@@ -51,6 +51,26 @@ EXPIRABLE_DEAL_STATUSES = (
 )
 FINAL_DEAL_STATUSES = ('completed', 'cancelled', 'expired')
 REVIEW_WINDOW_DAYS = 7
+EMPTY_LOCATION_VALUES = {'none', 'null', 'undefined'}
+
+
+def _clean_location_part(value: Optional[str]) -> Optional[str]:
+    text = str(value or '').strip()
+    if not text or text.lower() in EMPTY_LOCATION_VALUES:
+        return None
+    return text
+
+
+def _default_market_location(seller: models.User) -> Optional[str]:
+    parts = [
+        _clean_location_part(getattr(seller, 'university', None)),
+        _clean_location_part(getattr(seller, 'institute', None)),
+    ]
+    return ', '.join(part for part in parts if part) or None
+
+
+def _resolve_market_location(value: Optional[str], seller: models.User) -> Optional[str]:
+    return _clean_location_part(value) or _default_market_location(seller)
 
 
 def _utcnow() -> datetime:
@@ -355,7 +375,7 @@ async def create_market_item(
         condition=item.condition,
         capacity=capacity,
         pause_reason=None,
-        location=item.location or f'{seller.university}, {seller.institute}',
+        location=_resolve_market_location(item.location, seller),
         images=saved_images_meta,
         status='active',
         university=seller.university,
@@ -767,6 +787,22 @@ async def create_market_interest(
             refreshed_active_deals = await _count_active_item_deals(db, item.id)
             return existing, _is_waitlist_interest(item, refreshed_active_deals), False
         raise
+
+
+async def has_active_market_interest(db: AsyncSession, item_id: int, buyer_id: Optional[int]) -> bool:
+    if not buyer_id:
+        return False
+
+    result = await db.execute(
+        select(models.MarketLead.id)
+        .where(
+            models.MarketLead.item_id == item_id,
+            models.MarketLead.buyer_id == buyer_id,
+            models.MarketLead.status == ACTIVE_LEAD_STATUS,
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
 
 
 async def cancel_market_interest(db: AsyncSession, item_id: int, buyer_id: int) -> bool:

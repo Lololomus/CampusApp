@@ -25,6 +25,46 @@ import { parseApiDate } from '../../utils/datetime';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { shareMarketItemViaTelegram } from '../../utils/telegramShare';
+import { normalizeTelegramUsername } from '../../utils/telegramUsername';
+
+const EMPTY_OPTIONAL_VALUES = new Set(['none', 'null', 'undefined']);
+
+const normalizeLocationText = (value) => {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!text || EMPTY_OPTIONAL_VALUES.has(text.toLowerCase())) return '';
+
+  return text
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part && !EMPTY_OPTIONAL_VALUES.has(part.toLowerCase()))
+    .join(', ');
+};
+
+const getPublicSellerUsername = (item) => (
+  item?.seller?.show_profile && item?.seller?.show_telegram_id
+    ? normalizeTelegramUsername(item?.seller?.telegram_username)
+    : ''
+);
+
+const usesRequestContactFlow = (item) => item?.item_type === 'service' || !getPublicSellerUsername(item);
+
+const getContactRequestSuccessText = (item) => {
+  if (item?.item_type === 'service') {
+    return 'Заявка отправлена. Исполнитель откроет контакт после подтверждения.';
+  }
+
+  return 'Контакт продавца закрыт. Заявка отправлена, продавец сам откроет контакт, если готов.';
+};
+
+const hasSentMarketRequest = (item) => Boolean(
+  usesRequestContactFlow(item) && (
+    item?.has_contacted ||
+    item?.has_requested ||
+    item?.has_active_interest ||
+    item?.is_interested ||
+    item?.contact_requested
+  )
+);
 
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 
@@ -56,15 +96,23 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [sellerRating, setSellerRating] = useState({ avg: null, count: 0 });
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [requestSent, setRequestSent] = useState(() => hasSentMarketRequest(item));
   
   const menuRef = useRef(null);
   const sellerAvatarRef = useRef(null);
+  const currentItemRequestSent = hasSentMarketRequest(currentItem);
 
   // Блокировка скролла страницы пока MarketDetail открыт
   useEffect(() => {
     lockBodyScroll();
     return () => unlockBodyScroll();
   }, []);
+
+  useEffect(() => {
+    setContactSubmitting(false);
+    setRequestSent(currentItemRequestSent);
+  }, [currentItem.id, currentItemRequestSent]);
 
   useEffect(() => {
     const sellerId = currentItem?.seller_id || currentItem?.seller?.id;
@@ -193,41 +241,57 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   };
 
   const handleContact = async () => {
-    hapticFeedback('medium');
-    const username = currentItem.seller?.username;
+    if (contactSubmitting || requestSent) return;
 
-    if (currentItem.item_type === 'service') {
+    hapticFeedback('medium');
+    const username = getPublicSellerUsername(currentItem);
+    const useRequestFlow = usesRequestContactFlow(currentItem);
+
+    setContactSubmitting(true);
+
+    if (useRequestFlow) {
       try {
         await contactMarketSeller(currentItem.id);
+        const contactedItem = {
+          ...currentItem,
+          has_contacted: true,
+          has_requested: true,
+        };
+
+        setLocalItem((prev) => (
+          prev?.id === currentItem.id ? { ...prev, ...contactedItem } : prev
+        ));
+        updateInStore?.(contactedItem);
+        setRequestSent(true);
         hapticFeedback('success');
-        toast.success('Заявка отправлена. Исполнитель откроет контакт после подтверждения.');
+        toast.success(getContactRequestSuccessText(currentItem));
       } catch (error) {
-        console.error('Ошибка отправки заявки исполнителю:', error);
+        console.error('Ошибка отправки заявки продавцу:', error);
         hapticFeedback('error');
         toast.error(error?.response?.data?.detail || 'Не удалось отправить заявку');
+      } finally {
+        setContactSubmitting(false);
       }
       return;
     }
     
-    if (username) {
-      try {
-        await contactMarketSeller(currentItem.id);
-      } catch (error) {
-        console.error('Ошибка регистрации контакта с продавцом:', error);
-      }
+    try {
+      await contactMarketSeller(currentItem.id);
+    } catch (error) {
+      console.error('Ошибка регистрации контакта с продавцом:', error);
+    } finally {
+      setContactSubmitting(false);
+    }
 
-      const message = encodeURIComponent(
-        `Привет! Интересует "${currentItem.title}" за ${formatPrice(currentItem.price)} ₽.\n\nКогда можем встретиться?`
-      );
-      const url = `https://t.me/${username}?text=${message}`;
-      
-      if (window.Telegram?.WebApp?.openTelegramLink) {
-        window.Telegram.WebApp.openTelegramLink(url);
-      } else {
-        window.open(url, '_blank');
-      }
+    const message = encodeURIComponent(
+      `Привет! Интересует "${currentItem.title}" за ${formatPrice(currentItem.price)} ₽.\n\nКогда можем встретиться?`
+    );
+    const url = `https://t.me/${username}?text=${message}`;
+
+    if (window.Telegram?.WebApp?.openTelegramLink) {
+      window.Telegram.WebApp.openTelegramLink(url);
     } else {
-      toast.error('У продавца не указан username');
+      window.open(url, '_blank');
     }
   };
 
@@ -341,6 +405,18 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
 
   const university = currentItem.seller?.university || 'Университет';
   const institute = currentItem.seller?.institute || '';
+  const locationText = normalizeLocationText(currentItem.location);
+  const isContactDisabled = contactSubmitting || requestSent;
+  const shouldRequestContact = usesRequestContactFlow(currentItem);
+  const contactButtonText = requestSent
+    ? 'Заявка отправлена'
+    : contactSubmitting
+      ? 'Отправляем...'
+      : currentItem.item_type === 'service'
+        ? 'Оставить заявку'
+        : shouldRequestContact
+          ? 'Запросить контакт'
+        : 'Написать продавцу';
 
   const handleShareLink = () => {
     hapticFeedback('light');
@@ -547,7 +623,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                 />
 
                 <div style={styles.sellerInfo}>
-                  <div style={styles.sellerName}>{currentItem.seller.username || currentItem.seller.name}</div>
+                  <div style={styles.sellerName}>{currentItem.seller.name || currentItem.seller.username}</div>
                   <div style={styles.sellerMeta}>
                     {university}
                     {institute && ` • ${institute}`}
@@ -571,12 +647,12 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
             <p style={styles.description}><LinkText text={currentItem.description} /></p>
           </div>
 
-          {currentItem.location && (
+          {locationText && (
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>Местоположение</h2>
               <div style={styles.locationRow}>
                 <MapPin size={16} color={theme.colors.premium.primary} style={{ flexShrink: 0 }} />
-                <span style={styles.locationText}>{currentItem.location}</span>
+                <span style={styles.locationText}>{locationText}</span>
               </div>
             </div>
           )}
@@ -608,9 +684,16 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
               </button>
             </div>
           ) : (
-            <button style={styles.contactButton} onClick={handleContact}>
+            <button
+              style={{
+                ...styles.contactButton,
+                ...(isContactDisabled ? styles.contactButtonDisabled : {}),
+              }}
+              onClick={handleContact}
+              disabled={isContactDisabled}
+            >
               <MessageCircle size={20} />
-              <span>{currentItem.item_type === 'service' ? 'Оставить заявку' : 'Написать продавцу'}</span>
+              <span>{contactButtonText}</span>
             </button>
           )}
         </div>
@@ -1029,23 +1112,24 @@ const styles = {
   },
 
   bottomSpacer: {
-    height: 16,
+    height: 132,
   },
 
   footer: {
-    position: 'sticky',
+    position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: `${theme.spacing.lg}px ${theme.spacing.lg}px calc(${theme.spacing.lg}px + env(safe-area-inset-bottom))`,
-    background: theme.colors.premium.surfaceElevated,
-    borderTop: `1px solid ${theme.colors.premium.border}`,
+    padding: `16px ${theme.spacing.lg}px calc(16px + env(safe-area-inset-bottom, 0px))`,
+    background: `linear-gradient(to top, ${theme.colors.premium.bg}, ${theme.colors.premium.bg} 78%, transparent)`,
     zIndex: 100,
+    pointerEvents: 'none',
   },
 
   ownerActions: {
     display: 'flex',
     gap: theme.spacing.md,
+    pointerEvents: 'auto',
   },
 
   editButton: {
@@ -1109,6 +1193,15 @@ const styles = {
     gap: 10,
     minHeight: 56,
     boxShadow: '0 8px 24px rgba(212,255,0,0.2)',
+    pointerEvents: 'auto',
+  },
+
+  contactButtonDisabled: {
+    background: theme.colors.premium.surfaceHover,
+    color: theme.colors.premium.textMuted,
+    cursor: 'default',
+    boxShadow: 'none',
+    opacity: 0.82,
   },
 };
 

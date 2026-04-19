@@ -1288,6 +1288,7 @@ async def create_request_endpoint(
         university=user.university,
         institute=user.institute,
         username=user.username,
+        telegram_username=user.telegram_username,
         avatar=user.avatar
     )
     
@@ -1360,6 +1361,7 @@ async def get_requests_feed_endpoint(
             university=req_dict['author'].university,
             institute=req_dict['author'].institute,
             username=req_dict['author'].username,
+            telegram_username=req_dict['author'].telegram_username,
             avatar=req_dict['author'].avatar
         )
 
@@ -1410,6 +1412,7 @@ async def get_my_requests_endpoint(
             university=user.university,
             institute=user.institute,
             username=user.username,
+            telegram_username=user.telegram_username,
             avatar=user.avatar
         )
         
@@ -1463,6 +1466,7 @@ async def get_request_endpoint(
         university=request_dict['author'].university,
         institute=request_dict['author'].institute,
         username=request_dict['author'].username,
+        telegram_username=request_dict['author'].telegram_username,
         avatar=request_dict['author'].avatar,
         show_profile=request_dict['author'].show_profile,
         show_telegram_id=request_dict['author'].show_telegram_id,
@@ -1508,6 +1512,7 @@ async def update_request_endpoint(
         university=user.university,
         institute=user.institute,
         username=user.username,
+        telegram_username=user.telegram_username,
         avatar=user.avatar
     )
     
@@ -1565,10 +1570,11 @@ async def create_response_endpoint(
         properties_json={"response_id": response.id},
     )
     
-    author_data = schemas.ResponseAuthor(
+    author_data = schemas.UserShort(
         id=user.id,
         name=user.name,
-        username=user.username
+        username=user.username,
+        telegram_username=user.telegram_username,
     )
     
     return schemas.ResponseItem(
@@ -1592,10 +1598,11 @@ async def get_responses_endpoint(
     
     result = []
     for resp in responses:
-        author_data = schemas.ResponseAuthor(
+        author_data = schemas.UserShort(
             id=resp.author.id,
             name=resp.author.name,
-            username=resp.author.username
+            username=resp.author.username,
+            telegram_username=resp.author.telegram_username,
         )
         result.append(schemas.ResponseItem(
             id=resp.id,
@@ -1754,6 +1761,7 @@ async def get_market_feed_endpoint(
             id=item.seller.id,
             name=item.seller.name,
             username=item.seller.username,
+            telegram_username=item.seller.telegram_username,
             university=item.seller.university,
             institute=item.seller.institute,
             course=item.seller.course,
@@ -1764,6 +1772,7 @@ async def get_market_feed_endpoint(
 
         is_seller = bool(user and item.seller_id == user.id)
         is_favorited = await crud.is_item_favorited(db, item.id, user.id) if user else False
+        has_requested = await crud.has_active_market_interest(db, item.id, user.id) if user and not is_seller else False
         
         item_dict = {
             "id": item.id,
@@ -1787,7 +1796,8 @@ async def get_market_feed_endpoint(
             "created_at": item.created_at,
             "updated_at": item.updated_at,
             "is_seller": is_seller,
-            "is_favorited": is_favorited
+            "is_favorited": is_favorited,
+            "has_requested": has_requested
         }
         items.append(item_dict)
     
@@ -1814,6 +1824,7 @@ async def get_market_favorites_endpoint(
             id=item.seller.id,
             name=item.seller.name,
             username=item.seller.username,
+            telegram_username=item.seller.telegram_username,
             university=item.seller.university,
             institute=item.seller.institute,
             course=item.seller.course,
@@ -1823,6 +1834,7 @@ async def get_market_favorites_endpoint(
         )
         
         is_seller = item.seller_id == user.id
+        has_requested = await crud.has_active_market_interest(db, item.id, user.id) if not is_seller else False
         
         item_dict = {
             "id": item.id,
@@ -1846,7 +1858,8 @@ async def get_market_favorites_endpoint(
             "created_at": item.created_at,
             "updated_at": item.updated_at,
             "is_seller": is_seller,
-            "is_favorited": True
+            "is_favorited": True,
+            "has_requested": has_requested
         }
         result.append(item_dict)
 
@@ -1870,6 +1883,7 @@ async def get_my_market_items_endpoint(
             id=user.id,
             name=user.name,
             username=user.username,
+            telegram_username=user.telegram_username,
             university=user.university,
             institute=user.institute,
             course=user.course,
@@ -1900,7 +1914,8 @@ async def get_my_market_items_endpoint(
             "created_at": item.created_at,
             "updated_at": item.updated_at,
             "is_seller": True,
-            "is_favorited": False
+            "is_favorited": False,
+            "has_requested": False
         }
         result.append(item_dict)
 
@@ -1940,6 +1955,7 @@ async def get_market_item_endpoint(
         id=item.seller.id,
         name=item.seller.name,
         username=item.seller.username,
+        telegram_username=item.seller.telegram_username,
         university=item.seller.university,
         institute=item.seller.institute,
         course=item.seller.course,
@@ -1950,6 +1966,7 @@ async def get_market_item_endpoint(
     
     is_favorited = await crud.is_item_favorited(db, item.id, user.id) if user else False
     is_seller = bool(user and item.seller_id == user.id)
+    has_requested = await crud.has_active_market_interest(db, item.id, user.id) if user and not is_seller else False
     
     return normalize_datetime_payload({
         "id": item.id,
@@ -1973,7 +1990,8 @@ async def get_market_item_endpoint(
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "is_seller": is_seller,
-        "is_favorited": is_favorited
+        "is_favorited": is_favorited,
+        "has_requested": has_requested
     })
 
 
@@ -2332,6 +2350,7 @@ async def create_market_item_endpoint(
         id=user.id,
         name=user.name,
         username=user.username,
+        telegram_username=user.telegram_username,
         university=user.university,
         institute=user.institute,
         course=user.course,
@@ -2362,7 +2381,8 @@ async def create_market_item_endpoint(
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "is_seller": True,
-        "is_favorited": False
+        "is_favorited": False,
+        "has_requested": False
     })
 
 @app.patch("/market/{item_id}", response_model=schemas.MarketItemResponse)
@@ -2432,6 +2452,7 @@ async def update_market_item_endpoint(
         id=user.id,
         name=user.name,
         username=user.username,
+        telegram_username=user.telegram_username,
         university=user.university,
         institute=user.institute,
         course=user.course,
@@ -2464,7 +2485,8 @@ async def update_market_item_endpoint(
         "created_at": updated_item.created_at,
         "updated_at": updated_item.updated_at,
         "is_seller": True,
-        "is_favorited": is_favorited
+        "is_favorited": is_favorited,
+        "has_requested": False
     })
 
 @app.delete("/market/{item_id}")

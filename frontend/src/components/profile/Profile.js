@@ -31,6 +31,7 @@ import RequestDetailModal from '../requests/RequestDetailModal';
 import MarketDetail from '../market/MarketDetail';
 import EdgeBlur from '../shared/EdgeBlur';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
+import { normalizeTelegramUsername } from '../../utils/telegramUsername';
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
@@ -512,6 +513,7 @@ const CampusIDCard = ({ user, onAvatarClick }) => {
 
   const campusLabel = getCampusDisplayName(user);
   const profileQrUrl = buildMiniAppStartappUrl(`user_${user.id}`);
+  const telegramUsername = normalizeTelegramUsername(user.telegram_username);
 
   const courseInstituteParts = [];
   if (user.course) courseInstituteParts.push(`${user.course} курс`);
@@ -520,7 +522,7 @@ const CampusIDCard = ({ user, onAvatarClick }) => {
 
   const handleCopyUsername = (e) => {
     e.stopPropagation();
-    const text = user.username ? `@${user.username}` : `#${user.telegram_id}`;
+    const text = telegramUsername ? `@${telegramUsername}` : `#${user.telegram_id}`;
     navigator.clipboard.writeText(text).then(() => {
       setCopiedUsername(true);
       setTimeout(() => setCopiedUsername(false), 2000);
@@ -585,7 +587,7 @@ const CampusIDCard = ({ user, onAvatarClick }) => {
                 {copiedUsername ? (
                   <><Check size={13} />&nbsp;Скопировано</>
                 ) : (
-                  user.username ? `@${user.username}` : `ID #${user.telegram_id}`
+                  telegramUsername ? `@${telegramUsername}` : `ID #${user.telegram_id}`
                 )}
               </div>
 

@@ -50,6 +50,7 @@ def _ensure_dev_mode():
 def _apply_preset_user_profile(user: models.User, preset: dict, telegram_id: int) -> None:
     user.name = preset["name"]
     user.username = preset["username"]
+    user.telegram_username = preset["username"]
     user.role = preset["role"]
     user.campus_id = preset["campus_id"]
     user.university = preset["university"]
@@ -76,6 +77,7 @@ async def _ensure_preset_dev_user(db: AsyncSession, telegram_id: int, user: mode
             telegram_id=telegram_id,
             name=preset["name"],
             username=preset["username"],
+            telegram_username=preset["username"],
             role=preset["role"],
             campus_id=preset["campus_id"],
             university=preset["university"],
@@ -118,6 +120,7 @@ async def dev_login_as(
         user_id=user.id if user else None,
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client else None,
+        telegram_username=user.telegram_username if user else None,
     )
 
     response.set_cookie(

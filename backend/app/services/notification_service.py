@@ -3,6 +3,7 @@
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import cast, select
@@ -16,12 +17,31 @@ logger = logging.getLogger(__name__)
 CONTACT_STATUS_PENDING = "pending"
 CONTACT_STATUS_ACCEPTED = "accepted"
 CONTACT_STATUS_DECLINED = "declined"
+TELEGRAM_USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{5,32}$")
+EMPTY_USERNAME_VALUES = {"none", "null", "undefined"}
 
 
 def _telegram_contact(user) -> str | None:
-    if not user or not user.username:
+    if not user or not getattr(user, "telegram_username", None):
         return None
-    return str(user.username).lstrip("@").strip() or None
+    username = str(user.telegram_username).lstrip("@").strip()
+    if username.lower() in EMPTY_USERNAME_VALUES:
+        return None
+    if not TELEGRAM_USERNAME_RE.match(username):
+        return None
+    return username
+
+
+def _public_telegram_contact(user) -> str | None:
+    if not getattr(user, "show_profile", False):
+        return None
+    if not getattr(user, "show_telegram_id", False):
+        return None
+    return _telegram_contact(user)
+
+
+def _has_public_telegram_contact(user) -> bool:
+    return bool(_public_telegram_contact(user))
 
 
 async def create_notification(db: AsyncSession, recipient_id: int, notif_type: str, payload: dict):
@@ -62,7 +82,7 @@ async def create_contact_request(
     if existing:
         existing.related_type = related_type or existing.related_type
         existing.related_id = related_id or existing.related_id
-        existing.requester_contact = _telegram_contact(requester)
+        existing.requester_contact = _public_telegram_contact(requester)
         existing.payload = payload or existing.payload
         return existing, False
 
@@ -74,7 +94,7 @@ async def create_contact_request(
         related_type=related_type,
         related_id=related_id,
         status=CONTACT_STATUS_PENDING,
-        requester_contact=_telegram_contact(requester),
+        requester_contact=_public_telegram_contact(requester),
         payload=payload or {},
     )
     db.add(contact_request)
@@ -165,7 +185,7 @@ async def notify_match(db: AsyncSession, user_a, user_b):
         {
             "matched_name": user_b.name,
             "matched_age": user_b.age,
-            "matched_username": user_b.username,
+            "matched_username": _telegram_contact(user_b),
         },
     )
     await create_notification(
@@ -175,7 +195,7 @@ async def notify_match(db: AsyncSession, user_a, user_b):
         {
             "matched_name": user_a.name,
             "matched_age": user_a.age,
-            "matched_username": user_a.username,
+            "matched_username": _telegram_contact(user_a),
         },
     )
 
@@ -201,11 +221,13 @@ async def notify_market_contact(
         "item_type": item.item_type,
         "buyer_id": buyer.id,
         "buyer_name": buyer.name,
-        "buyer_username": buyer.username,
+        "buyer_username": _public_telegram_contact(buyer),
         "is_waitlist": is_waitlist,
     }
 
-    if item.item_type != "service":
+    approval_required = item.item_type == "service" or not _has_public_telegram_contact(seller)
+
+    if not approval_required:
         await create_notification(db, seller.id, "market_contact", payload)
         if not create_sold_followup:
             return
@@ -220,7 +242,7 @@ async def notify_market_contact(
                 "item_type": item.item_type,
                 "buyer_id": buyer.id,
                 "buyer_name": buyer.name,
-                "buyer_username": buyer.username,
+                "buyer_username": payload.get("buyer_username"),
             },
             delay_hours=24,
         )
@@ -260,7 +282,7 @@ async def notify_market_contact(
             "item_type": item.item_type,
             "buyer_id": buyer.id,
             "buyer_name": buyer.name,
-            "buyer_username": buyer.username,
+            "buyer_username": payload.get("buyer_username"),
         },
         delay_hours=24,
     )
@@ -361,7 +383,7 @@ async def notify_request_response(db: AsyncSession, request_obj, responder):
             "request_id": request_obj.id,
             "request_title": request_obj.title,
             "responder_name": responder.name,
-            "responder_username": responder.username,
+            "responder_username": _telegram_contact(responder),
         },
     )
 

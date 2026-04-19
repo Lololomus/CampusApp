@@ -116,6 +116,7 @@ function PostDetail() {
   const [commentViewer, setCommentViewer] = useState({ isOpen: false, photos: [], index: 0 });
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [showDeletePostDialog, setShowDeletePostDialog] = useState(false);
   const [showDeleteCommentDialog, setShowDeleteCommentDialog] = useState(false);
   const [deleteCommentId, setDeleteCommentId] = useState(null);
   const closeTimeoutRef = useRef(null);
@@ -364,18 +365,23 @@ function PostDetail() {
     setEditingContent(post, 'post');
   };
 
-  const handleDeletePost = async () => {
+  const handleDeletePost = () => {
     setPostMenuOpen(false);
-    if (window.confirm('Удалить этот пост?')) {
-      hapticFeedback('heavy');
-      try {
-        await deletePost(post.id);
-        toast.success('Пост удалён');
-        handleBack();
-      } catch (error) {
-        console.error('Ошибка удаления:', error);
-        toast.error('Не удалось удалить пост');
-      }
+    setShowDeletePostDialog(true);
+  };
+
+  const confirmDeletePost = async () => {
+    if (!post) return;
+
+    setShowDeletePostDialog(false);
+    hapticFeedback('heavy');
+    try {
+      await deletePost(post.id);
+      toast.success('Пост удалён');
+      handleBack();
+    } catch (error) {
+      console.error('Ошибка удаления:', error);
+      toast.error('Не удалось удалить пост');
     }
   };
 
@@ -898,6 +904,16 @@ function PostDetail() {
             onClose={() => setCommentViewer({ isOpen: false, photos: [], index: 0 })}
           />
         )}
+
+        <ConfirmationDialog
+          isOpen={showDeletePostDialog}
+          title="Удалить этот пост?"
+          message="Это действие нельзя отменить."
+          confirmText="Удалить"
+          confirmType="danger"
+          onConfirm={confirmDeletePost}
+          onCancel={() => setShowDeletePostDialog(false)}
+        />
 
         <ConfirmationDialog
           isOpen={showDeleteCommentDialog}

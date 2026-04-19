@@ -32,6 +32,7 @@ class AuthIdentity:
     user_id: Optional[int]
     role: str
     session_id: int
+    telegram_username: Optional[str] = None
 
 
 def _utcnow() -> datetime:
@@ -104,6 +105,8 @@ def _encode_access_token(identity: AuthIdentity) -> str:
         "iat": now_ts,
         "exp": now_ts + settings.access_ttl_min * 60,
     }
+    if identity.telegram_username:
+        payload["tg_username"] = identity.telegram_username
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_alg)
 
 
@@ -127,6 +130,7 @@ async def create_auth_session(
     user_id: Optional[int],
     user_agent: Optional[str],
     ip: Optional[str],
+    telegram_username: Optional[str] = None,
 ) -> tuple[str, str, models.AuthSession]:
     settings = get_settings()
     raw_refresh = secrets.token_urlsafe(48)
@@ -145,18 +149,23 @@ async def create_auth_session(
     await db.refresh(session)
 
     user_role = "user"
+    resolved_telegram_username = telegram_username
     if user_id is not None:
         result = await db.execute(
             select(models.User).where(models.User.id == user_id)
         )
         user = result.scalar_one_or_none()
-        user_role = user.role if user else "user"
+        if user:
+            user_role = user.role
+            if resolved_telegram_username is None:
+                resolved_telegram_username = user.telegram_username
 
     identity = AuthIdentity(
         telegram_id=telegram_id,
         user_id=user_id,
         role=user_role,
         session_id=session.id,
+        telegram_username=resolved_telegram_username,
     )
     access_token = _encode_access_token(identity)
     return access_token, raw_refresh, session
@@ -237,6 +246,7 @@ def get_identity_from_request(request: Request) -> AuthIdentity:
         user_id=user_id,
         role=payload.get("role", "user"),
         session_id=session_id,
+        telegram_username=payload.get("tg_username"),
     )
 
 

@@ -18,6 +18,20 @@ import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { shareMarketItemViaTelegram } from '../../utils/telegramShare';
 
+const EMPTY_LOCATION_VALUES = new Set(['none', 'null', 'undefined']);
+
+const normalizeLocationText = (value) => {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!text || EMPTY_LOCATION_VALUES.has(text.toLowerCase())) return '';
+
+  const parts = text
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part && !EMPTY_LOCATION_VALUES.has(part.toLowerCase()));
+
+  return parts.join(', ');
+};
+
 const MarketCard = ({ item, onClick, index = 0 }) => {
   const {
     toggleMarketFavoriteOptimistic,
@@ -234,6 +248,8 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
   ];
 
   const categoryInfo = getCategoryInfo();
+  const locationText = normalizeLocationText(item.location);
+  const createdAtText = formatRelativeDate(item.created_at);
 
   return (
     <>
@@ -317,10 +333,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
           <div style={styles.metaGroup}>
             <div style={styles.metaCondition}>{getConditionText()}</div>
             <div style={styles.metaLocationRow}>
-              {item.location
-                ? `${item.location} • ${formatRelativeDate(item.created_at)}`
-                : formatRelativeDate(item.created_at)
-              }
+              {[locationText, createdAtText].filter(Boolean).join(' • ')}
             </div>
           </div>
         </div>

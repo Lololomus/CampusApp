@@ -195,31 +195,50 @@ def _probe_video(file_path: Path) -> dict:
 
 # ================= COMPRESSION =================
 
+def _can_stream_copy(probe: dict) -> bool:
+    """
+    Возвращает True если видео уже H.264 и не превышает лимиты —
+    тогда можно ремуксировать без перекодирования (в 10x быстрее).
+    """
+    return (
+        probe["codec"] == "h264"
+        and probe["width"] <= MAX_VIDEO_DIMENSION
+        and probe["height"] <= MAX_VIDEO_DIMENSION
+    )
+
+
 def _compress_video(input_path: Path, output_path: Path, probe: dict) -> None:
     """
     Сжимает видео через FFmpeg в H.264/MP4:
-    - CRF 23, preset medium
-    - Масштаб ≤ 1080px (сохраняет пропорции, делает чётным)
+    - Stream copy если уже H.264 и в пределах MAX_VIDEO_DIMENSION (быстро)
+    - Иначе: CRF 23, preset veryfast, масштаб ≤ 1080px
     - AAC 128k (или -an если аудио нет)
     - -movflags +faststart для стриминга
     - -map_metadata -1 снимает все метаданные (GPS, устройство и т.д.)
     """
-    scale_filter = (
-        f"scale='min({MAX_VIDEO_DIMENSION},iw)':'min({MAX_VIDEO_DIMENSION},ih)'"
-        ":force_original_aspect_ratio=decrease"
-        ":force_divisible_by=2"
-    )
+    use_copy = _can_stream_copy(probe)
 
     cmd = [
         _resolve_media_binary("ffmpeg"),
         "-i", str(input_path),
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", str(VIDEO_CRF),
-        "-vf", scale_filter,
-        "-movflags", "+faststart",
-        "-map_metadata", "-1",   # стрип всех метаданных
     ]
+
+    if use_copy:
+        cmd += ["-c:v", "copy"]
+    else:
+        scale_filter = (
+            f"scale='min({MAX_VIDEO_DIMENSION},iw)':'min({MAX_VIDEO_DIMENSION},ih)'"
+            ":force_original_aspect_ratio=decrease"
+            ":force_divisible_by=2"
+        )
+        cmd += [
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", str(VIDEO_CRF),
+            "-vf", scale_filter,
+        ]
+
+    cmd += ["-movflags", "+faststart", "-map_metadata", "-1"]
 
     if probe["has_audio"]:
         cmd += ["-c:a", "aac", "-b:a", AUDIO_BITRATE]

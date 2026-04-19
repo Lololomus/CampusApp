@@ -37,6 +37,7 @@ import { parseApiDate } from '../../utils/datetime';
 import { stripLeadingTitleFromBody } from '../../utils/contentTextParser';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { shareRequestViaTelegram } from '../../utils/telegramShare';
+import { normalizeTelegramUsername } from '../../utils/telegramUsername';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import LinkText from '../shared/LinkText';
@@ -351,9 +352,12 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   };
 
   const openTelegramChat = (username) => {
-    if (!username) return;
+    const cleanUsername = normalizeTelegramUsername(username);
+    if (!cleanUsername) {
+      toast.error('Telegram username недоступен');
+      return;
+    }
     hapticFeedback('light');
-    const cleanUsername = username.replace('@', '');
     window.open(`https://t.me/${cleanUsername}`, '_blank');
   };
 
@@ -642,32 +646,35 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
           <div style={styles.section}>
             <h4 style={styles.sectionTitle}>ОТКЛИКИ ({responses.length})</h4>
             <div style={styles.responsesList}>
-              {responses.map((response) => (
-                <div key={response.id} style={styles.responseCard}>
-                  <div style={styles.responseHeader}>
-                    <div style={styles.responseAvatar}>
-                      {response.author?.name?.[0]?.toUpperCase() || 'A'}
+              {responses.map((response) => {
+                const responseTelegramUsername = normalizeTelegramUsername(response.telegram_contact);
+                return (
+                  <div key={response.id} style={styles.responseCard}>
+                    <div style={styles.responseHeader}>
+                      <div style={styles.responseAvatar}>
+                        {response.author?.name?.[0]?.toUpperCase() || 'A'}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={styles.responseName}>{response.author?.name || 'Аноним'}</div>
+                        <div style={styles.responseTime}>{formatRuDateTime(response.created_at)}</div>
+                      </div>
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={styles.responseName}>{response.author?.name || 'Аноним'}</div>
-                      <div style={styles.responseTime}>{formatRuDateTime(response.created_at)}</div>
-                    </div>
+                    {response.message && (
+                      <div style={styles.responseMessage}>{response.message}</div>
+                    )}
+                    {responseTelegramUsername && (
+                      <button
+                        type="button"
+                        onClick={() => openTelegramChat(responseTelegramUsername)}
+                        style={styles.telegramButton}
+                      >
+                        <User size={16} />
+                        Написать в Telegram
+                      </button>
+                    )}
                   </div>
-                  {response.message && (
-                    <div style={styles.responseMessage}>{response.message}</div>
-                  )}
-                  {response.telegram_contact && (
-                    <button
-                      type="button"
-                      onClick={() => openTelegramChat(response.telegram_contact)}
-                      style={styles.telegramButton}
-                    >
-                      <User size={16} />
-                      Написать в Telegram
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

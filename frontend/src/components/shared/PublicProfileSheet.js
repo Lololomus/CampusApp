@@ -3,6 +3,7 @@ import { MessageCircle } from 'lucide-react';
 import SwipeableModal from './SwipeableModal';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { hapticFeedback } from '../../utils/telegram';
+import { normalizeTelegramUsername } from '../../utils/telegramUsername';
 import theme from '../../theme';
 
 function PublicProfileSheet({ user, isOpen, onClose }) {
@@ -14,20 +15,21 @@ function PublicProfileSheet({ user, isOpen, onClose }) {
 
   if (!user) return null;
 
-  const username = user.username ? String(user.username).replace(/^@/, '') : null;
-  const displayName = user.name || (username ? `@${username}` : 'Пользователь');
+  const username = user.username ? String(user.username).replace(/^@/, '').trim() : null;
+  const telegramUsername = normalizeTelegramUsername(user.telegram_username);
+  const displayName = user.name || username || 'Пользователь';
   const subtitleParts = [
     user.university,
     user.institute,
     user.course ? `${user.course} курс` : null,
     user.city,
   ].filter(Boolean);
-  const canMessage = Boolean(user.show_telegram_id && username);
+  const canMessage = Boolean(user.show_telegram_id && telegramUsername);
 
   const handleOpenTelegram = () => {
     if (!canMessage) return;
     hapticFeedback('light');
-    const url = `https://t.me/${username}`;
+    const url = `https://t.me/${telegramUsername}`;
     if (window.Telegram?.WebApp?.openTelegramLink) {
       window.Telegram.WebApp.openTelegramLink(url);
     } else {
@@ -54,7 +56,7 @@ function PublicProfileSheet({ user, isOpen, onClose }) {
         </button>
 
         <div style={styles.name}>{displayName}</div>
-        {username && <div style={styles.username}>@{username}</div>}
+        {canMessage && <div style={styles.username}>@{telegramUsername}</div>}
         {subtitleParts.length > 0 && (
           <div style={styles.meta}>{subtitleParts.join(' • ')}</div>
         )}

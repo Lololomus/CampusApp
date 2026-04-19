@@ -1,6 +1,8 @@
 # ===== FILE: bot/templates/messages.py =====
 # Шаблоны сообщений бота. parse_mode=HTML.
 
+import re
+
 from keyboards.inline import (
     admin_report_kb,
     match_kb,
@@ -10,6 +12,19 @@ from keyboards.inline import (
     open_post_kb,
     welcome_kb,
 )
+
+
+TELEGRAM_USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{5,32}$")
+EMPTY_USERNAME_VALUES = {"none", "null", "undefined"}
+
+
+def _clean_username(value) -> str | None:
+    username = str(value or "").lstrip("@").strip()
+    if username.lower() in EMPTY_USERNAME_VALUES:
+        return None
+    if not TELEGRAM_USERNAME_RE.match(username):
+        return None
+    return username
 
 
 def format_welcome(name: str = "") -> dict:
@@ -63,8 +78,8 @@ def format_followup(followup_type: str, payload: dict) -> str:
     if followup_type == "market_sold":
         title = _escape(payload.get("item_title", "товар"))
         buyer = _escape(payload.get("buyer_name", "покупатель"))
-        buyer_username = _escape(payload.get("buyer_username")) if payload.get("buyer_username") else None
-        buyer_label = f"{buyer} (@{buyer_username})" if buyer_username else buyer
+        buyer_username = _clean_username(payload.get("buyer_username"))
+        buyer_label = f"{buyer} (@{_escape(buyer_username)})" if buyer_username else buyer
         item_type = payload.get("item_type", "product")
         question = "Услуга оказана?" if item_type == "service" else "Удалось продать?"
         return (
@@ -97,7 +112,7 @@ def format_followup(followup_type: str, payload: dict) -> str:
 def _format_match(payload: dict) -> dict:
     name = _escape(payload.get("matched_name", "Кто-то"))
     age = payload.get("matched_age")
-    username = payload.get("matched_username")
+    username = _clean_username(payload.get("matched_username"))
 
     text = (
         "🎉 <b>У тебя новый мэтч!</b>\n"
@@ -201,11 +216,14 @@ def _format_poll_vote(payload: dict) -> dict:
 
 def _format_market_contact(payload: dict) -> dict:
     buyer = _escape(payload.get("buyer_name", "Кто-то"))
-    username = payload.get("buyer_username")
+    username = _clean_username(payload.get("buyer_username"))
     title = _escape(payload.get("item_title", "товар"))
+    item_type = payload.get("item_type")
+    source_label = "услуге" if item_type == "service" else "товару"
+    header = "Заявка на контакт" if payload.get("approval_required") else "Интерес к твоему товару"
 
     text = (
-        "📦 <b>Интерес к твоему товару!</b>\n"
+        f"📦 <b>{header}!</b>\n"
         "\n"
         f"«{title}»\n"
         "\n"
@@ -214,7 +232,7 @@ def _format_market_contact(payload: dict) -> dict:
     if username:
         text += f" (@{username})"
     if payload.get("approval_required"):
-        text += "\nОткрой приложение и реши, открыть ли ему твой Telegram."
+        text += f"\nОткрой приложение и реши, открыть ли ему твой Telegram по {source_label}."
     else:
         text += "\nНаписал тебе в ЛС, проверь сообщения 👆"
 
@@ -254,7 +272,7 @@ def _format_market_deal_update(payload: dict) -> dict:
 
 def _format_request_response(payload: dict) -> dict:
     responder = _escape(payload.get("responder_name", "Кто-то"))
-    username = payload.get("responder_username")
+    username = _clean_username(payload.get("responder_username"))
     title = _escape(payload.get("request_title", "запрос"))
 
     text = (
@@ -274,9 +292,10 @@ def _format_request_response(payload: dict) -> dict:
 def _format_contact_request_decision(payload: dict) -> dict:
     decision = payload.get("decision") or payload.get("contact_status")
     owner = _escape(payload.get("owner_name", "Пользователь"))
-    username = payload.get("owner_username")
+    username = _clean_username(payload.get("owner_username"))
     source_title = _escape(payload.get("source_title", ""))
-    source_label = "услуге"
+    source_item_type = payload.get("source_item_type") or payload.get("item_type")
+    source_label = "услуге" if source_item_type == "service" else "товару"
 
     if decision == "accepted":
         text = (
