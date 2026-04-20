@@ -1,10 +1,10 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/shared/Avatar.js =====
+// ===== FILE: frontend/src/components/user/Avatar.js =====
 
 import React, { forwardRef } from 'react';
 import theme from '../../theme';
 import { getAvatarColor } from '../../utils/avatarColors';
 import { resolveImageUrl } from '../../utils/mediaUrl';
-import IncognitoIcon from './IncognitoIcon';
+import IncognitoIcon from '../icons/IncognitoIcon';
 
 // Hero-формат: меняй здесь — обновится везде
 export const AVATAR_BORDER_RADIUS = theme.radius.md; // 12px

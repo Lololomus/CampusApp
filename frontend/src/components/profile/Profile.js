@@ -21,10 +21,10 @@ import { getCampusDisplayName } from '../../constants/universityData';
 import PostCard from '../posts/PostCard';
 import RequestCard from '../requests/RequestCard';
 import MyMarketCard from './MyMarketCard';
-import PhotoViewer from '../shared/PhotoViewer';
+import PhotoViewer from '../media/PhotoViewer';
 import SettingsModal from './SettingsModal';
 import theme from '../../theme';
-import EditContentModal from '../shared/EditContentModal';
+import EditPostModal from '../posts/EditPostModal';
 import EditMarketItemModal from '../market/EditMarketItemModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import RequestDetailModal from '../requests/RequestDetailModal';
@@ -422,7 +422,7 @@ function Profile() {
       <SettingsModal />
 
       {editingRequest && (
-        <EditContentModal
+        <EditPostModal
           contentType="request"
           initialData={editingRequest}
           onClose={() => setEditingRequest(null)}

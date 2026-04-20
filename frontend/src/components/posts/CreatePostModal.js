@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { compressImage } from '../../utils/media';
 import { useSwipe } from '../../hooks/useSwipe';
-import { DragHandle } from './SwipeableModal';
+import { DragHandle } from '../shared/SwipeableModal';
 import { useStore } from '../../store';
 import { createPost, createRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
@@ -27,7 +27,7 @@ import { Z_MODAL_CREATE_POST, getOverlayZIndex } from '../../constants/zIndex';
 import { REWARD_TYPES } from '../../types';
 import { POST_LIMITS, REQUEST_LIMITS, IMAGE_SETTINGS } from '../../constants/contentConstants';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
-import PollCreator from '../posts/PollCreator';
+import PollCreator from './PollCreator';
 import {
   CREATE_CONTENT_CATEGORY_CAPABILITIES,
   CREATE_CONTENT_POST_CATEGORIES,
@@ -38,11 +38,11 @@ import {
   CREATE_CONTENT_REQUEST_REWARD_OPTIONS,
   CREATE_CONTENT_SUGGESTED_TAGS,
 } from '../../constants/createContentUiConfig';
-import ConfirmationDialog from './ConfirmationDialog';
-import { toast } from './Toast';
-import { useTelegramScreen } from './telegram/useTelegramScreen';
-import SmartDatePicker from './SmartDatePicker';
-import IncognitoIcon from './IncognitoIcon';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
+import { toast } from '../shared/Toast';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
+import SmartDatePicker from '../shared/SmartDatePicker';
+import IncognitoIcon from '../icons/IncognitoIcon';
 import { getUniversityName, getUniqueUniversities } from '../../constants/universityData';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
@@ -155,7 +155,7 @@ const hasCreateContentDraftData = (draft) => {
   return hasPostDraft || hasRequestDraft;
 };
 
-function CreateContentModal({ onClose }) {
+function CreatePostModal({ onClose }) {
   const {
     addNewPost,
     addNewRequest,
@@ -2604,4 +2604,4 @@ const keyframeStyles = `
 }
 `;
 
-export default CreateContentModal;
+export default CreatePostModal;

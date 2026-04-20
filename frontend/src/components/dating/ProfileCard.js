@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, memo } from 'react';
 import { Lock, ChevronUp, GraduationCap, Heart, X } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import theme from '../../theme';
-import PhotoViewer from '../shared/PhotoViewer';
+import PhotoViewer from '../media/PhotoViewer';
 import { getDatingPhotoList } from './photoUtils';
 
 const d = theme.colors.dating;

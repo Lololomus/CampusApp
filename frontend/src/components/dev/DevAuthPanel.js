@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useStore } from '../../store';
 import { devLoginAs, devResetUser } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
-import { toast } from './Toast';
+import { toast } from '../shared/Toast';
 import { theme } from '../../theme';
 import { parseDeepLink } from '../../utils/deepLinks';
 

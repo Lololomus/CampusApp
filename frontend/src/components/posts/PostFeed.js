@@ -1,25 +1,25 @@
-// ===== 📄 ФАЙЛ: src/components/Feed.js =====
+// ===== FILE: frontend/src/components/posts/PostFeed.js =====
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import PostCard from './posts/PostCard';
-// [LEGACY] import RequestsFeed from './requests/RequestsFeed';
-import FiltersModal from './shared/FiltersModal';
-import { getPosts, getAdsForFeed, triggerRegistrationPrompt } from '../api';
-import { useStore } from '../store';
-import PostCardSkeleton from './posts/PostCardSkeleton';
-import theme from '../theme';
-import AppHeader from './shared/AppHeader';
-import FeedDateDivider from './shared/FeedDateDivider';
-import { buildFeedSections } from '../utils/feedDateSections';
-import { hapticFeedback } from '../utils/telegram';
-import { usePullToRefresh } from '../hooks/usePullToRefresh';
-import PullToRefreshIndicator from './shared/PullToRefreshIndicator';
-// [LEGACY] import EdgeBlur from './shared/EdgeBlur';
+import PostCard from './PostCard';
+// [LEGACY] import RequestsFeed from '../requests/RequestsFeed';
+import PostFiltersModal from './PostFiltersModal';
+import { getPosts, getAdsForFeed, triggerRegistrationPrompt } from '../../api';
+import { useStore } from '../../store';
+import PostCardSkeleton from './PostCardSkeleton';
+import theme from '../../theme';
+import AppHeader from '../shared/AppHeader';
+import FeedDateDivider from '../shared/FeedDateDivider';
+import { buildFeedSections } from '../../utils/feedDateSections';
+import { hapticFeedback } from '../../utils/telegram';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import PullToRefreshIndicator from '../shared/PullToRefreshIndicator';
+// [LEGACY] import EdgeBlur from '../shared/EdgeBlur';
 import {
   POSTS_PAGE_SIZE,
   INFINITE_SCROLL_ROOT_MARGIN,
-} from '../constants/layoutConstants';
-import { CREATE_CONTENT_POST_CATEGORIES } from '../constants/createContentUiConfig';
+} from '../../constants/layoutConstants';
+import { CREATE_CONTENT_POST_CATEGORIES } from '../../constants/createContentUiConfig';
 
 const IS_DEV = import.meta.env.DEV;
 const postCategories = [
@@ -40,7 +40,7 @@ const postCategories = [
   })),
 ];
 
-function Feed() {
+function PostFeed() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasMorePosts, setHasMorePosts] = useState(true);
@@ -484,7 +484,7 @@ function Feed() {
       </div>
 
       {showFiltersModal && (
-        <FiltersModal
+        <PostFiltersModal
           onClose={() => setShowFiltersModal(false)}
           onApply={handleFiltersApply}
         />
@@ -570,4 +570,4 @@ const styles = {
   },
 };
 
-export default Feed;
+export default PostFeed;

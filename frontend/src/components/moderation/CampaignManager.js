@@ -317,7 +317,7 @@ function formatEndsAtLabel(value) {
   });
 }
 
-// CSS для кнопок с пружинной анимацией (инжектируется, если CreateContentModal не открыт)
+// CSS для кнопок с пружинной анимацией (инжектируется, если CreatePostModal не открыт)
 const CREATE_SPRING_CSS = `
 .create-spring-btn {
   transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s, background-color 0.2s, border-color 0.2s;

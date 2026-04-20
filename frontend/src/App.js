@@ -11,17 +11,17 @@ import {
 } from './utils/deepLinks';
 
 import Navigation from './components/Navigation';
-import Feed from './components/Feed';
+import PostFeed from './components/posts/PostFeed';
 import Market from './components/market/Market';
 import Profile from './components/profile/Profile';
 import DatingFeed from './components/dating/DatingFeed';
 
-import CreateContentModal from './components/shared/CreateContentModal';
-import EditContentModal from './components/shared/EditContentModal';
+import CreatePostModal from './components/posts/CreatePostModal';
+import EditPostModal from './components/posts/EditPostModal';
 import CreateMarketItem from './components/market/CreateMarketItem';
 import AuthModal from './components/AuthModal';
 import EditProfile from './components/profile/EditProfile';
-import DevAuthPanel from './components/shared/DevAuthPanel';
+import DevAuthPanel from './components/dev/DevAuthPanel';
 
 import Onboarding from './components/Onboarding';
 import SplashScreen from './components/SplashScreen';
@@ -30,7 +30,7 @@ import UserRequests from './components/profile/UserRequests';
 import UserMarketItems from './components/profile/UserMarketItems';
 import PostDetail from './components/posts/PostDetail';
 import ToastContainer from './components/shared/Toast';
-import PublicProfileSheet from './components/shared/PublicProfileSheet';
+import PublicProfileSheet from './components/user/PublicProfileSheet';
 
 import AmbassadorPanel from './components/moderation/AmbassadorPanel';
 import AdminPanel from './components/moderation/AdminPanel';
@@ -291,7 +291,7 @@ function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'feed':
-        return <Feed />;
+        return <PostFeed />;
       case 'market':
         return <Market />;
       case 'people':
@@ -303,7 +303,7 @@ function App() {
       case 'admin':
         return <AdminPanel />;
       default:
-        return <Feed />;
+        return <PostFeed />;
     }
   };
 
@@ -342,11 +342,11 @@ function App() {
         )}
 
         {showCreateModal && (
-          <CreateContentModal onClose={() => setShowCreateModal(false)} />
+          <CreatePostModal onClose={() => setShowCreateModal(false)} />
         )}
 
         {editingContent && (
-          <EditContentModal
+          <EditPostModal
             key={editingContent?.id || Date.now()}
             contentType={editingType}
             initialData={editingContent}

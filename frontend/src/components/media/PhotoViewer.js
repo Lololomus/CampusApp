@@ -1,4 +1,4 @@
-// ===== 📄 ФАЙЛ: src/components/shared/PhotoViewer.js =====
+// ===== FILE: frontend/src/components/media/PhotoViewer.js =====
 // Backward-compatibility re-export. Используй MediaViewer напрямую для видео и meta.
 
 import MediaViewer from './MediaViewer';

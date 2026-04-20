@@ -7,15 +7,15 @@ import {
 import { getPost, getPostComments, createComment, likePost, likeComment, deleteComment, updateComment, deletePost, resolvePost, triggerRegistrationPrompt } from '../../api';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
-import BottomActionBar from '../BottomActionBar';
-import DropdownMenu from '../DropdownMenu';
+import PostCommentBar from './PostCommentBar';
+import DropdownMenu from '../shared/DropdownMenu';
 import { Z_MODAL_POST_DETAIL } from '../../constants/zIndex';
 import theme from '../../theme';
 import PollView from './PollView';
-import PhotoViewer from '../shared/PhotoViewer';
-import ReportModal from '../shared/ReportModal';
-import Avatar from '../shared/Avatar';
-import ProfileMiniCard from '../shared/ProfileMiniCard';
+import PhotoViewer from '../media/PhotoViewer';
+import ReportModal from '../moderation/ReportModal';
+import Avatar from '../user/Avatar';
+import ProfileMiniCard from '../user/ProfileMiniCard';
 import { toast } from '../shared/Toast'; 
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
@@ -902,7 +902,7 @@ function PostDetail() {
           )}
         </div>
 
-        <BottomActionBar
+        <PostCommentBar
           onCommentSend={handleSendComment}
           replyTo={replyTo}
           replyToName={replyToName}

@@ -5,14 +5,15 @@ import { Heart, Link, Share2, Edit2, Trash2, Flag } from 'lucide-react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem, triggerRegistrationPrompt } from '../../api';
 import theme from '../../theme';
-import DropdownMenu from '../DropdownMenu';
+import DropdownMenu from '../shared/DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
+import RubleIcon from '../icons/RubleIcon';
 import { toast } from '../shared/Toast';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
-import ReportModal from '../shared/ReportModal';
-import { useModerationActions } from '../shared/ModerationMenu';
+import ReportModal from '../moderation/ReportModal';
+import { useModerationActions } from '../moderation/ModerationMenu';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
@@ -327,7 +328,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
             activeBorderColor={theme.colors.border}
           />
 
-          <div style={styles.price}>{formatPrice(item.price)} ₽</div>
+          <div style={styles.price}>{formatPrice(item.price)} <RubleIcon size={14} color={theme.colors.premium.primary} /></div>
           <div style={styles.title}>{item.title}</div>
 
           <div style={styles.metaGroup}>

@@ -1,4 +1,4 @@
-// ===== FILE: MediaGrid.js =====
+// ===== FILE: frontend/src/components/media/MediaGrid.js =====
 import React, { useState, useCallback, useMemo } from 'react';
 import theme from '../../theme';
 import { resolveImageUrl } from '../../utils/mediaUrl';

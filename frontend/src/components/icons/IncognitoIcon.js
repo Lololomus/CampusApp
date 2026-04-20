@@ -1,3 +1,4 @@
+// ===== FILE: frontend/src/components/icons/IncognitoIcon.js =====
 import React from 'react';
 
 function IncognitoIcon({

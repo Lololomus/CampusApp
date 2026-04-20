@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/hooks/useModalAnimation.js =====
 // Единый контракт mount/unmount анимации для модалок.
-// Паттерн взят с CreateContentModal.
+// Паттерн взят с CreatePostModal.
 //
 // isMounted  — DOM-гейт: предотвращает рендер до монтирования.
 // isVisible  — CSS-триггер: true через 20ms (enter-transition) / false при закрытии (exit).

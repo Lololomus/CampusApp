@@ -190,7 +190,7 @@ function RequestsFeed({ category = 'all', searchQuery = '' }) {
       // Загружаем полные данные запроса
       const fullRequest = await getRequestById(request.id);
 
-      // Открываем EditContentModal с ПОЛНЫМИ данными
+      // Открываем EditPostModal с ПОЛНЫМИ данными
       setEditingContent(fullRequest, 'request');
       
     } catch (error) {

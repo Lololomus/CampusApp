@@ -8,7 +8,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import RequestCard from '../requests/RequestCard';
 import RequestDetailModal from '../requests/RequestDetailModal';
-import EditContentModal from '../shared/EditContentModal';
+import EditPostModal from '../posts/EditPostModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
@@ -253,7 +253,7 @@ function UserRequests() {
       </div>
 
       {editingRequest && (
-        <EditContentModal
+        <EditPostModal
           contentType="request"
           initialData={editingRequest}
           onClose={() => setEditingRequest(null)}

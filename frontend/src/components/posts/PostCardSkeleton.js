@@ -1,5 +1,5 @@
 import React from 'react';
-import { AVATAR_BORDER_RADIUS } from '../shared/Avatar';
+import { AVATAR_BORDER_RADIUS } from '../user/Avatar';
 
 function PostCardSkeleton() {
   return (

@@ -8,7 +8,7 @@ import { processImageFiles, revokeObjectURLs } from '../../utils/media';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { toast } from '../shared/Toast';
-import PhotoViewer from '../shared/PhotoViewer';
+import PhotoViewer from '../media/PhotoViewer';
 import SwipeableModal from '../shared/SwipeableModal';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
@@ -88,7 +88,7 @@ const buildProfileFormData = (datingProfile, overrides = {}) => {
 function MyDatingProfileModal({ onClose }) {
   const { datingProfile, setDatingProfile, user } = useStore();
 
-  // Анимация появления/скрытия (паттерн как в CreateContentModal)
+  // Анимация появления/скрытия (паттерн как в CreatePostModal)
   const [isMounted, setIsMounted] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -113,7 +113,7 @@ function MyDatingProfileModal({ onClose }) {
 
   const fileInputRef = useRef(null);
 
-  // Монтирование + триггер анимации появления (паттерн CreateContentModal)
+  // Монтирование + триггер анимации появления (паттерн CreatePostModal)
   useEffect(() => {
     setIsMounted(true);
     const timer = setTimeout(() => setIsVisible(true), 20);

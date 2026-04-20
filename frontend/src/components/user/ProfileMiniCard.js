@@ -1,11 +1,11 @@
-// ===== FILE: frontend/src/components/shared/ProfileMiniCard.js =====
+// ===== FILE: frontend/src/components/user/ProfileMiniCard.js =====
 
 import React, { useState } from 'react';
 import { Camera, Flag, MessageCircle } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import PhotoViewer from './PhotoViewer';
-import DropdownMenu from '../DropdownMenu';
+import PhotoViewer from '../media/PhotoViewer';
+import DropdownMenu from '../shared/DropdownMenu';
 import { useStore } from '../../store';
 import { getAvatarColor } from '../../utils/avatarColors';
 

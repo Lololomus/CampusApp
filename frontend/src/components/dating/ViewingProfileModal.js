@@ -7,7 +7,7 @@ import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
-import PhotoViewer from '../shared/PhotoViewer';
+import PhotoViewer from '../media/PhotoViewer';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 import { useModalAnimation, SCREEN_EXIT_MS } from '../../hooks/useModalAnimation';

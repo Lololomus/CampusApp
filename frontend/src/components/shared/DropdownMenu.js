@@ -1,9 +1,9 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/DropdownMenu.js =====
+// ===== FILE: frontend/src/components/shared/DropdownMenu.js =====
 import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import theme from '../theme';
-import { hapticFeedback } from '../utils/telegram';
-import EdgeSwipeBack from './shared/EdgeSwipeBack';
+import theme from '../../theme';
+import { hapticFeedback } from '../../utils/telegram';
+import EdgeSwipeBack from './EdgeSwipeBack';
 
 
 const SAFE_MARGIN = 8;

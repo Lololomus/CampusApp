@@ -1,11 +1,11 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/shared/ReportModal.js =====
+// ===== FILE: frontend/src/components/moderation/ReportModal.js =====
 import React, { useState, useEffect } from 'react';
 import { Send, Check } from 'lucide-react';
 import { createReport, triggerRegistrationPrompt } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
-import { toast } from './Toast';
+import { toast } from '../shared/Toast';
 import theme from '../../theme';
-import SwipeableModal from './SwipeableModal';
+import SwipeableModal from '../shared/SwipeableModal';
 import { getReportReasons, REPORT_TARGET_LABELS } from '../../constants/reportConstants';
 import { useStore } from '../../store';
 

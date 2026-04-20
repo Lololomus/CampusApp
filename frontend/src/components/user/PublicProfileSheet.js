@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
-import SwipeableModal from './SwipeableModal';
+import SwipeableModal from '../shared/SwipeableModal';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { hapticFeedback } from '../../utils/telegram';
 import { normalizeTelegramUsername } from '../../utils/telegramUsername';

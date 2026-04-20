@@ -24,11 +24,11 @@ import {
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS } from '../../types';
-import DropdownMenu from '../DropdownMenu';
-import MediaViewer from '../shared/MediaViewer';
-import ReportModal from '../shared/ReportModal';
-import Avatar from '../shared/Avatar';
-import ProfileMiniCard from '../shared/ProfileMiniCard';
+import DropdownMenu from '../shared/DropdownMenu';
+import MediaViewer from '../media/MediaViewer';
+import ReportModal from '../moderation/ReportModal';
+import Avatar from '../user/Avatar';
+import ProfileMiniCard from '../user/ProfileMiniCard';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import { toast } from '../shared/Toast';
 import { getEntityActionSet, isEntityOwner } from '../../utils/entityActions';

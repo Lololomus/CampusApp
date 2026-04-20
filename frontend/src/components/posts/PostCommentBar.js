@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Paperclip, Send, X } from 'lucide-react';
 
-import theme from '../theme';
-import { hapticFeedback } from '../utils/telegram';
-import { processImageFiles, revokeObjectURLs } from '../utils/media';
-import { toast } from './shared/Toast';
+import theme from '../../theme';
+import { hapticFeedback } from '../../utils/telegram';
+import { processImageFiles, revokeObjectURLs } from '../../utils/media';
+import { toast } from '../shared/Toast';
 
-function BottomActionBar({
+function PostCommentBar({
   onCommentSend,
   disabled = false,
   replyTo = null,
@@ -420,4 +420,4 @@ const styles = {
   },
 };
 
-export default BottomActionBar;
+export default PostCommentBar;

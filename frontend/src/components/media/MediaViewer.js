@@ -1,10 +1,10 @@
-// ===== FILE: MediaViewer.js =====
+// ===== FILE: frontend/src/components/media/MediaViewer.js =====
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Download, ChevronUp } from 'lucide-react';
 import { useSwipe } from '../../hooks/useSwipe';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
-import Avatar from './Avatar';
+import Avatar from '../user/Avatar';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 import theme from '../../theme';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';

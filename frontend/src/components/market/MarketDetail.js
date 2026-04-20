@@ -5,19 +5,20 @@ import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info,
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem, getSellerRating, contactMarketSeller } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
-import PhotoViewer from '../shared/PhotoViewer';
+import PhotoViewer from '../media/PhotoViewer';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
-import ReportModal from '../shared/ReportModal';
+import ReportModal from '../moderation/ReportModal';
+import RubleIcon from '../icons/RubleIcon';
 import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import { Z_MARKET_DETAIL } from '../../constants/zIndex';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { hapticFeedback } from '../../utils/telegram';
 import LinkText from '../shared/LinkText';
-import DropdownMenu from '../DropdownMenu';
+import DropdownMenu from '../shared/DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
-import Avatar from '../shared/Avatar';
-import ProfileMiniCard from '../shared/ProfileMiniCard';
+import Avatar from '../user/Avatar';
+import ProfileMiniCard from '../user/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
@@ -552,7 +553,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
           )}
           <div style={styles.mainInfo}>
             <div style={styles.priceRow}>
-              <div style={styles.price}>{formatPrice(currentItem.price)} ₽</div>
+              <div style={styles.price}>{formatPrice(currentItem.price)} <RubleIcon size={24} color={theme.colors.premium.primary} /></div>
               
               <div style={styles.actions}>
                 <button

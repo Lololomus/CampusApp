@@ -1,10 +1,10 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/shared/ModerationMenu.js =====
+// ===== FILE: frontend/src/components/moderation/ModerationMenu.js =====
 
 /**
  * Хук и компоненты модерации для встраивания в карточки контента.
  *
  * Использование:
- *   import { useModerationActions, ModerationModals } from '../shared/ModerationMenu';
+ *   import { useModerationActions, ModerationModals } from '../moderation/ModerationMenu';
  *
  *   const { moderationMenuItems, moderationModals } = useModerationActions({
  *     targetType: 'post',
@@ -33,10 +33,10 @@ import {
   shadowBanUser,
 } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
-import { toast } from './Toast';
-import ConfirmationDialog from './ConfirmationDialog';
-import SwipeableModal from './SwipeableModal';
-import EdgeSwipeBack from './EdgeSwipeBack';
+import { toast } from '../shared/Toast';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
+import SwipeableModal from '../shared/SwipeableModal';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import theme from '../../theme';
 
 // Action types для DropdownMenu (цвета акцентов)

@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { compressImage } from '../../utils/media';
 import { useSwipe } from '../../hooks/useSwipe';
-import { DragHandle } from './SwipeableModal';
+import { DragHandle } from '../shared/SwipeableModal';
 import { updatePost, updateRequest } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
@@ -41,10 +41,10 @@ import {
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { composeSingleTextFromTitleBody } from '../../utils/contentTextParser';
-import { toast } from './Toast';
-import ConfirmationDialog from './ConfirmationDialog';
-import SmartDatePicker from './SmartDatePicker';
-import { useTelegramScreen } from './telegram/useTelegramScreen';
+import { toast } from '../shared/Toast';
+import ConfirmationDialog from '../shared/ConfirmationDialog';
+import SmartDatePicker from '../shared/SmartDatePicker';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
@@ -190,7 +190,7 @@ const mapRewardTypeToUi = (value) => {
   return 'none';
 };
 
-function EditContentModal({ contentType = 'post', initialData = {}, onClose, onSuccess }) {
+function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSuccess }) {
   const isPost = contentType === 'post';
   const postCategory = initialData.category || 'news';
   const requestCategory = initialData.category || 'help';
@@ -1488,4 +1488,4 @@ const keyframeStyles = `
 }
 `;
 
-export default EditContentModal;
+export default EditPostModal;

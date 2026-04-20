@@ -1,8 +1,8 @@
-// ===== 📄 ФАЙЛ: frontend/src/components/shared/FiltersModal.js =====
+// ===== FILE: frontend/src/components/posts/PostFiltersModal.js =====
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../store';
 import theme from '../../theme';
-import SwipeableModal from './SwipeableModal';
+import SwipeableModal from '../shared/SwipeableModal';
 import { hapticFeedback } from '../../utils/telegram';
 import { getCampusDisplayName, getUserCity } from '../../constants/universityData';
 import { CREATE_CONTENT_POST_CATEGORIES } from '../../constants/createContentUiConfig';
@@ -24,7 +24,7 @@ const D = {
   transUI:         '0.2s cubic-bezier(0.4,0,0.2,1)',
 };
 
-const FiltersModal = ({ onClose, onApply }) => {
+const PostFiltersModal = ({ onClose, onApply }) => {
   const {
     user,
     feedSubTab,
@@ -677,4 +677,4 @@ const styles = {
 };
 
 
-export default FiltersModal;
+export default PostFiltersModal;
