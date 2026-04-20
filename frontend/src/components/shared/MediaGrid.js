@@ -68,7 +68,7 @@ const cellStyles = {
 
 // Одна ячейка сетки
 const MediaCell = React.memo(function MediaCell({
-  item, index, total, maxVisible, onItemClick, isSingleItem, spanStyle, isHidden,
+  item, index, total, maxVisible, onItemClick, isSingleItem, spanStyle, isHidden, hiddenRect,
 }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -88,8 +88,8 @@ const MediaCell = React.memo(function MediaCell({
     overflow: 'hidden',
     cursor: 'pointer',
     width: '100%',
-    height: isSingleItem ? 'auto' : '100%',
-    minHeight: isSingleItem ? 200 : undefined,
+    height: isSingleItem ? (isHidden && hiddenRect?.height ? hiddenRect.height : 'auto') : '100%',
+    minHeight: isSingleItem ? (isHidden && hiddenRect?.height ? hiddenRect.height : 200) : undefined,
     backgroundColor: theme.colors.surfaceElevated,
     ...spanStyle,
   };
@@ -134,7 +134,7 @@ const MediaCell = React.memo(function MediaCell({
 });
 
 // Динамическая плитка медиа (1–4 элемента)
-const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVisible = 4, containerStyle, hiddenIndex = null }) {
+const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVisible = 4, containerStyle, hiddenIndex = null, hiddenRect = null }) {
   const total = mediaItems.length;
   const count = Math.min(total, maxVisible);
   const isSingleItem = count === 1;
@@ -174,6 +174,7 @@ const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVi
           onItemClick={onItemClick}
           isSingleItem={isSingleItem}
           isHidden={hiddenIndex === index}
+          hiddenRect={hiddenRect}
           // При 3 элементах первый занимает оба столбца
           spanStyle={count === 3 && index === 0 ? { gridColumn: '1 / span 2' } : {}}
         />

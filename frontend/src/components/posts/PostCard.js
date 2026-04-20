@@ -792,6 +792,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
                 onItemClick={handleMediaItemClick}
                 containerStyle={{ borderRadius: 0, border: 'none' }}
                 hiddenIndex={isPhotoViewerOpen ? viewerActiveIndex : null}
+                hiddenRect={viewerSourceRect}
               />
             </div>
           )
