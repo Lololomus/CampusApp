@@ -167,7 +167,7 @@ const SwipeableModal = ({
             : 'transform 0.25s ease-in',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '85vh',
+          maxHeight: '90vh',
           backfaceVisibility: 'hidden',
           WebkitBackfaceVisibility: 'hidden',
           WebkitFontSmoothing: 'antialiased',

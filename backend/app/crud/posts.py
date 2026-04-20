@@ -535,7 +535,10 @@ async def resolve_post(
     """Отметить help-пост как решённый. Только автор. Идемпотентно."""
     result = await db.execute(
         select(models.Post)
-        .options(selectinload(models.Post.author))
+        .options(
+            selectinload(models.Post.author),
+            selectinload(models.Post.poll).selectinload(models.Poll.votes),
+        )
         .where(
             models.Post.id == post_id,
             models.Post.is_deleted == False,

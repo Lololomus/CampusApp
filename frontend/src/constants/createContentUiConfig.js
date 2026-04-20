@@ -81,15 +81,15 @@ export const CREATE_CONTENT_CATEGORY_CAPABILITIES = {
 };
 
 export const CREATE_CONTENT_POST_PLACEHOLDERS = {
-  general: 'Что думаешь...',
-  help: 'Что нужна помощь? Опиши подробнее...',
-  news: 'Раскрой детали...',
-  memes: 'Подпись к мему...',
-  events: 'Название события, место, детали...',
-  confessions: 'Выскажи всё, что на душе...',
-  lost_found: 'Подробно опиши вещь...',
-  polls: 'Вопрос для опроса...',
-  default: 'Подробности...',
+  general: 'Что у тебя на уме?',
+  help: 'Опиши задачу — кампусники помогут',
+  news: 'Поделись тем, что узнал...',
+  memes: 'Добавь подпись к шедевру...',
+  events: 'Где, когда, зачем — расскажи всё',
+  confessions: 'Всё анонимно. Говори как есть...',
+  lost_found: 'Как выглядит, где потерял, когда...',
+  polls: 'Спроси кампус — узнай мнение',
+  default: 'Пиши...',
 };
 
 export const CREATE_CONTENT_REQUEST_PLACEHOLDERS = {

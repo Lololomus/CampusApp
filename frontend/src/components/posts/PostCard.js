@@ -26,7 +26,7 @@ import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { sharePostViaTelegram } from '../../utils/telegramShare';
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPostResolved, skipReveal }) {
-  const { likedPosts, setPostLiked, user, setEditingContent, isRegistered } = useStore();
+  const { likedPosts, setPostLiked, user, setEditingContent, isRegistered, updatePost } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
@@ -39,7 +39,9 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isResolved, setIsResolved] = useState(Boolean(post.is_resolved));
+  useEffect(() => { setIsResolved(Boolean(post.is_resolved)); }, [post.is_resolved]);
   const [resolving, setResolving] = useState(false);
+  const [showResolveConfirm, setShowResolveConfirm] = useState(false);
   const avatarRef = useRef(null);
   const cardRef = useRef(null);
   const bodyRef = useRef(null);
@@ -385,13 +387,14 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
     if (onClick) onClick(post.id);
   };
 
-  const handleResolve = async (e) => {
-    e.stopPropagation();
+  const handleResolve = async () => {
     if (resolving || isResolved) return;
+    setShowResolveConfirm(false);
     setResolving(true);
     try {
       await resolvePost(post.id);
       setIsResolved(true);
+      updatePost(post.id, { is_resolved: true });
       hapticFeedback('success');
       if (onPostResolved) onPostResolved(post.id);
     } catch {
@@ -492,8 +495,10 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   };
 
   const [viewerStartIndex, setViewerStartIndex] = useState(0);
-  const handleMediaItemClick = useCallback((index) => {
+  const [viewerSourceRect, setViewerSourceRect] = useState(null);
+  const handleMediaItemClick = useCallback((index, rect) => {
     hapticFeedback('light');
+    setViewerSourceRect(rect || null);
     setViewerStartIndex(index);
     setIsPhotoViewerOpen(true);
   }, []);
@@ -691,7 +696,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
                       overflow: (isBodyExpanded || isExpanding) ? 'visible' : 'hidden',
                     }}
                   >
-                    <LinkText text={displayBody} />
+                    <span onClick={e => e.stopPropagation()}><LinkText text={displayBody} /></span>
                   </p>
                   {!isBodyExpanded && !isExpanding && isBodyOverflowing && (
                     <div style={styles.bodyBottomFade} />
@@ -724,18 +729,30 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
             )}
           </div>
         )}
-        {/* Кнопка «Вопрос решён» — только автору, только для help-постов */}
+        {/* Строчка «Вопрос решён?» — только автору, только для help-постов */}
         {!isAd && post.category === 'help' && isOwner && !isResolved && (
           <button
-            onClick={handleResolve}
+            onClick={(e) => { e.stopPropagation(); hapticFeedback('light'); setShowResolveConfirm(true); }}
             disabled={resolving}
-            style={styles.resolveBtn}
+            style={styles.resolveHint}
             className="pressable"
           >
-            <CheckCircle size={14} strokeWidth={2} />
-            {resolving ? 'Отмечаем...' : 'Вопрос решён'}
+            {resolving ? 'Отмечаем...' : 'Вопрос решён?'}
           </button>
         )}
+
+        <div onClick={e => e.stopPropagation()}>
+          <ConfirmationDialog
+            isOpen={showResolveConfirm}
+            title="Вопрос решён?"
+            message={'Отметьте его — это покажет другим, что ответ уже найден, и они не будут беспокоить вас впустую.'}
+            confirmText="Да, решён"
+            cancelText="Нет"
+            confirmType="primary"
+            onConfirm={handleResolve}
+            onCancel={() => setShowResolveConfirm(false)}
+          />
+        </div>
 
         {images.length > 0 && (
           isAd ? (
@@ -758,8 +775,12 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
               />
             </div>
           ) : (
-            <div style={{ marginBottom: 12 }}>
-              <MediaGrid mediaItems={images} onItemClick={handleMediaItemClick} />
+            <div style={{ margin: '0 -20px 12px', overflow: 'hidden' }}>
+              <MediaGrid
+                mediaItems={images}
+                onItemClick={handleMediaItemClick}
+                containerStyle={{ borderRadius: 0, border: 'none' }}
+              />
             </div>
           )
         )}
@@ -838,6 +859,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
             initialIndex={viewerStartIndex}
             onClose={() => setIsPhotoViewerOpen(false)}
             meta={viewerMeta}
+            sourceRect={viewerSourceRect}
           />
         )}
       </div>
@@ -983,6 +1005,20 @@ const styles = {
     borderRadius: theme.radius.md,
     zIndex: 2,
     pointerEvents: 'none',
+  },
+  resolveHint: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    margin: '6px 0 2px',
+    padding: '4px 0',
+    background: 'none',
+    border: 'none',
+    borderBottom: '1px dashed rgba(255,255,255,0.2)',
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 12,
+    fontWeight: 400,
+    cursor: 'pointer',
+    letterSpacing: '0.1px',
   },
   resolveBtn: {
     display: 'flex',

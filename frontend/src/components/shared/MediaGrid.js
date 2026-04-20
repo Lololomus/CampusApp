@@ -80,7 +80,7 @@ const MediaCell = React.memo(function MediaCell({
 
   const handleClick = useCallback((e) => {
     e.stopPropagation();
-    onItemClick(index);
+    onItemClick(index, e.currentTarget.getBoundingClientRect());
   }, [index, onItemClick]);
 
   const wrapperStyle = {
@@ -134,7 +134,7 @@ const MediaCell = React.memo(function MediaCell({
 });
 
 // Динамическая плитка медиа (1–4 элемента)
-const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVisible = 4 }) {
+const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVisible = 4, containerStyle }) {
   const total = mediaItems.length;
   const count = Math.min(total, maxVisible);
   const isSingleItem = count === 1;
@@ -146,12 +146,13 @@ const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVi
       borderRadius: 12,
       overflow: 'hidden',
       border: `1px solid ${theme.colors.premium.border}`,
+      ...containerStyle,
     };
     if (count === 1) return { ...base, gridTemplateColumns: '1fr', maxHeight: 500 };
     if (count === 2) return { ...base, gridTemplateColumns: '1fr 1fr', height: 320 };
     // 3 или 4: двухколоночная сетка 2×2
     return { ...base, gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', height: 320 };
-  }, [count]);
+  }, [count, containerStyle]);
 
   const visibleItems = mediaItems.slice(0, maxVisible);
 

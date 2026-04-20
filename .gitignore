@@ -16,6 +16,7 @@ frontend/build/
 .vscode/
 .idea/
 .claude/
+AGENTS.md
 
 # OS
 .DS_Store

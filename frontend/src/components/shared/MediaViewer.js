@@ -1,13 +1,10 @@
 // ===== FILE: MediaViewer.js =====
-// Полноэкранный просмотрщик медиа: фото и видео.
-// Заменяет PhotoViewer. PhotoViewer.js — тонкая обёртка для обратной совместимости.
-
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX, Download, ChevronUp } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Download, ChevronUp } from 'lucide-react';
 import { useSwipe } from '../../hooks/useSwipe';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
-import Avatar, { AVATAR_BORDER_RADIUS } from './Avatar';
+import Avatar from './Avatar';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 import theme from '../../theme';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
@@ -19,18 +16,11 @@ const extractUploadsPathFromAbsolute = (value) => {
   try {
     const parsed = new URL(value);
     const path = String(parsed.pathname || '').replace(/\\/g, '/');
-    const markerIndex = path.indexOf('/uploads/');
-    if (markerIndex >= 0) {
-      return path.slice(markerIndex);
-    }
-  } catch {
-    return '';
-  }
-  return '';
+    const idx = path.indexOf('/uploads/');
+    return idx >= 0 ? path.slice(idx) : '';
+  } catch { return ''; }
 };
 
-// ─── URL-резолвер для медиа (image / video / thumbs) ──────────────────────────
-// Принимает относительный путь вида "2026/03/uuid.mp4" или уже полный "/uploads/..."
 const toAbsoluteUrl = (path, kind = 'images') => {
   if (!path) return '';
   const s = String(path).replace(/\\/g, '/').trim();
@@ -38,93 +28,56 @@ const toAbsoluteUrl = (path, kind = 'images') => {
   if (DATA_OR_BLOB_PREFIX.test(s)) return s;
   if (s.startsWith('/')) return s;
   if (s.startsWith('uploads/')) return `/${s}`;
-  if (HTTP_PREFIX.test(s)) {
-    return extractUploadsPathFromAbsolute(s) || s;
-  }
+  if (HTTP_PREFIX.test(s)) return extractUploadsPathFromAbsolute(s) || s;
   return `/uploads/${kind}/${s}`;
 };
 
-// ─── Нормализация элемента медиа ─────────────────────────────────────────────
 const normalizeItem = (item) => {
   if (!item) return null;
-  if (typeof item === 'string') {
-    return { type: 'image', url: toAbsoluteUrl(item, 'images') };
-  }
-  if (item.type === 'video') {
-    return {
-      type: 'video',
-      url: toAbsoluteUrl(item.url, 'videos'),
-      thumbnail_url: toAbsoluteUrl(item.thumbnail_url, 'thumbs'),
-      duration: item.duration,
-      w: item.w,
-      h: item.h,
-    };
-  }
-  return {
-    type: 'image',
-    url: toAbsoluteUrl(item.url, 'images'),
-    w: item.w,
-    h: item.h,
+  if (typeof item === 'string') return { type: 'image', url: toAbsoluteUrl(item, 'images') };
+  if (item.type === 'video') return {
+    type: 'video',
+    url: toAbsoluteUrl(item.url, 'videos'),
+    thumbnail_url: toAbsoluteUrl(item.thumbnail_url, 'thumbs'),
+    duration: item.duration, w: item.w, h: item.h,
   };
+  return { type: 'image', url: toAbsoluteUrl(item.url, 'images'), w: item.w, h: item.h };
 };
 
-// ─── Pinch-to-zoom обёртка ────────────────────────────────────────────────────
+// ─── Pinch-to-zoom ────────────────────────────────────────────────────────────
 const Zoomable = ({ children, onTap, onZoomStart, onZoomEnd }) => {
   const [scale, setScale] = useState(1);
   const startDist = useRef(null);
   const isPinching = useRef(false);
 
-  const handleTouchStart = (e) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      startDist.current = Math.hypot(dx, dy);
-      if (!isPinching.current) {
-        isPinching.current = true;
-        onZoomStart?.();
-      }
-    }
-  };
-
-  const handleTouchMove = (e) => {
-    if (e.touches.length === 2 && startDist.current) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const currentDist = Math.hypot(dx, dy);
-      setScale(Math.min(Math.max(1, currentDist / startDist.current), 4));
-    }
-  };
-
-  const handleTouchEnd = () => {
-    setScale(1);
-    startDist.current = null;
-    if (isPinching.current) {
-      isPinching.current = false;
-      onZoomEnd?.();
-    }
-  };
-
-  const handleDoubleClick = () => {
-    setScale(prev => prev === 1 ? 2 : 1);
-  };
-
   return (
     <div
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onDoubleClick={handleDoubleClick}
+      onTouchStart={(e) => {
+        if (e.touches.length === 2) {
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          startDist.current = Math.hypot(dx, dy);
+          if (!isPinching.current) { isPinching.current = true; onZoomStart?.(); }
+        }
+      }}
+      onTouchMove={(e) => {
+        if (e.touches.length === 2 && startDist.current) {
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          setScale(Math.min(Math.max(1, Math.hypot(dx, dy) / startDist.current), 4));
+        }
+      }}
+      onTouchEnd={() => {
+        setScale(1); startDist.current = null;
+        if (isPinching.current) { isPinching.current = false; onZoomEnd?.(); }
+      }}
+      onDoubleClick={() => setScale(p => p === 1 ? 2 : 1)}
       onClick={onTap}
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         transition: scale === 1 ? 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
-        transform: `scale(${scale})`,
-        transformOrigin: 'center center',
-        maxWidth: '100%',
-        maxHeight: '100%',
-        cursor: 'pointer',
+        transform: `scale(${scale})`, transformOrigin: 'center center',
+        maxWidth: '100%', maxHeight: '100%', cursor: 'pointer',
       }}
     >
       {children}
@@ -132,7 +85,7 @@ const Zoomable = ({ children, onTap, onZoomStart, onZoomEnd }) => {
   );
 };
 
-// ─── Слайд с видео ───────────────────────────────────────────────────────────
+// ─── Видео-слайд ──────────────────────────────────────────────────────────────
 const VideoSlide = ({ media, isActive, showUI, footerHeight, footerOpen, hasFooter, toggleUI, onFooterOpen }) => {
   const videoRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -140,175 +93,64 @@ const VideoSlide = ({ media, isActive, showUI, footerHeight, footerOpen, hasFoot
   const [progress, setProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Пауза при смене слайда
   useEffect(() => {
     if (!isActive && videoRef.current) {
-      videoRef.current.pause();
-      setIsPlaying(false);
-      setProgress(0);
+      videoRef.current.pause(); setIsPlaying(false); setProgress(0);
       if (videoRef.current) videoRef.current.currentTime = 0;
     }
   }, [isActive]);
-
-  // Обновление прогресса
-  const handleTimeUpdate = () => {
-    const v = videoRef.current;
-    if (!v || isDragging) return;
-    const pct = v.duration ? (v.currentTime / v.duration) * 100 : 0;
-    setProgress(pct);
-  };
-
-  const handleEnded = () => {
-    setIsPlaying(false);
-    setProgress(0);
-    if (videoRef.current) videoRef.current.currentTime = 0;
-  };
 
   const togglePlay = (e) => {
     e.stopPropagation();
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) {
-      v.play();
-      setIsPlaying(true);
-    } else {
-      v.pause();
-      setIsPlaying(false);
-    }
+    if (v.paused) { v.play(); setIsPlaying(true); } else { v.pause(); setIsPlaying(false); }
   };
 
-  const handleSeek = (e) => {
-    const v = videoRef.current;
-    if (!v || !v.duration) return;
-    const val = parseFloat(e.target.value);
-    setProgress(val);
-    v.currentTime = (val / 100) * v.duration;
-  };
-
-  const toggleMute = (e) => {
-    e.stopPropagation();
-    const v = videoRef.current;
-    if (!v) return;
-    v.muted = !v.muted;
-    setIsMuted(v.muted);
-  };
-
-  // Реальная визуальная высота футера (0 если свёрнут или UI скрыт)
+  const EASE = '0.4s cubic-bezier(0.32, 0.72, 0, 1)';
   const effectiveFooterH = (showUI && footerOpen && hasFooter) ? footerHeight : 0;
   const barBottom = showUI ? effectiveFooterH + 12 : 16;
   const chevronVisible = showUI && hasFooter && !footerOpen;
 
-  const EASE = '0.4s cubic-bezier(0.32, 0.72, 0, 1)';
-
   return (
-    <div
-      onClick={toggleUI}
-      style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}
-    >
+    <div onClick={toggleUI} style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
       <video
-        ref={videoRef}
-        src={media.url}
-        poster={media.thumbnail_url || undefined}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleEnded}
-        onClick={togglePlay}
-        playsInline
-        preload="metadata"
+        ref={videoRef} src={media.url} poster={media.thumbnail_url || undefined}
+        onTimeUpdate={() => {
+          const v = videoRef.current;
+          if (!v || isDragging) return;
+          setProgress(v.duration ? (v.currentTime / v.duration) * 100 : 0);
+        }}
+        onEnded={() => { setIsPlaying(false); setProgress(0); if (videoRef.current) videoRef.current.currentTime = 0; }}
+        onClick={togglePlay} playsInline preload="metadata"
         style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', cursor: 'pointer' }}
       />
-
-      {/* Кнопка Play по центру */}
       {!isPlaying && (
         <button onClick={togglePlay} style={styles.playButton} className="mv-play-btn">
           <Play size={32} fill="#D4FF00" style={{ marginLeft: 4 }} />
         </button>
       )}
-
-      {/* ── Единая строка контролов: [ползунок──────] [🔈] [⌃?] ── */}
       <div
         onClick={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        onTouchMove={(e) => e.stopPropagation()}
-        style={{
-          position: 'absolute',
-          bottom: barBottom,
-          left: 16,
-          right: 16,
-          height: 40,
-          zIndex: 150,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          transition: `bottom ${EASE}`,
-        }}
+        onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}
+        style={{ position: 'absolute', bottom: barBottom, left: 16, right: 16, height: 40, zIndex: 150, display: 'flex', alignItems: 'center', gap: 8, transition: `bottom ${EASE}` }}
       >
-        {/* Ползунок прогресса — занимает всё свободное место */}
-        <div style={{
-          flex: 1,
-          position: 'relative',
-          height: 40,
-          display: 'flex',
-          alignItems: 'center',
-          opacity: showUI ? 1 : 0.35,
-          transition: `opacity ${EASE}`,
-          minWidth: 0,
-        }}>
-          {/* Трек */}
-          <div style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: '50%',
-            marginTop: -2,
-            height: 4,
-            borderRadius: 2,
-            background: `linear-gradient(to right, #D4FF00 ${progress}%, rgba(255,255,255,0.18) ${progress}%)`,
-            pointerEvents: 'none',
-            zIndex: 1,
-            boxShadow: showUI ? '0 0 8px rgba(212,255,0,0.25)' : 'none',
-            transition: `box-shadow ${EASE}`,
-          }} />
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="0.1"
-            value={progress}
-            onChange={handleSeek}
-            onMouseDown={() => setIsDragging(true)}
-            onMouseUp={() => setIsDragging(false)}
-            onTouchStart={() => setIsDragging(true)}
-            onTouchEnd={() => setIsDragging(false)}
-            className="mv-slider"
-            style={{ position: 'relative', zIndex: 2, width: '100%' }}
+        <div style={{ flex: 1, position: 'relative', height: 40, display: 'flex', alignItems: 'center', opacity: showUI ? 1 : 0.35, transition: `opacity ${EASE}`, minWidth: 0 }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', marginTop: -2, height: 4, borderRadius: 2, background: `linear-gradient(to right, #D4FF00 ${progress}%, rgba(255,255,255,0.18) ${progress}%)`, pointerEvents: 'none', zIndex: 1 }} />
+          <input type="range" min="0" max="100" step="0.1" value={progress}
+            onChange={(e) => { const v = videoRef.current; if (!v || !v.duration) return; const val = parseFloat(e.target.value); setProgress(val); v.currentTime = (val / 100) * v.duration; }}
+            onMouseDown={() => setIsDragging(true)} onMouseUp={() => setIsDragging(false)}
+            onTouchStart={() => setIsDragging(true)} onTouchEnd={() => setIsDragging(false)}
+            className="mv-slider" style={{ position: 'relative', zIndex: 2, width: '100%' }}
           />
         </div>
-
-        {/* Кнопка звука */}
-        <div style={{
-          opacity: showUI ? 1 : 0,
-          pointerEvents: showUI ? 'auto' : 'none',
-          transition: `opacity ${EASE}`,
-          flexShrink: 0,
-        }}>
-          <button onClick={toggleMute} style={styles.iconButton}>
+        <div style={{ opacity: showUI ? 1 : 0, pointerEvents: showUI ? 'auto' : 'none', transition: `opacity ${EASE}`, flexShrink: 0 }}>
+          <button onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; v.muted = !v.muted; setIsMuted(v.muted); }} style={styles.iconButton}>
             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>
         </div>
-
-        {/* Шеврон — появляется когда футер свёрнут */}
-        <div style={{
-          width: chevronVisible ? 40 : 0,
-          opacity: chevronVisible ? 1 : 0,
-          overflow: 'hidden',
-          flexShrink: 0,
-          transition: `width ${EASE}, opacity ${EASE}`,
-          pointerEvents: chevronVisible ? 'auto' : 'none',
-        }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); onFooterOpen?.(); }}
-            style={{ ...styles.iconButton, width: 40 }}
-          >
+        <div style={{ width: chevronVisible ? 40 : 0, opacity: chevronVisible ? 1 : 0, overflow: 'hidden', flexShrink: 0, transition: `width ${EASE}, opacity ${EASE}`, pointerEvents: chevronVisible ? 'auto' : 'none' }}>
+          <button onClick={(e) => { e.stopPropagation(); onFooterOpen?.(); }} style={{ ...styles.iconButton, width: 40 }}>
             <ChevronUp size={18} />
           </button>
         </div>
@@ -318,7 +160,7 @@ const VideoSlide = ({ media, isActive, showUI, footerHeight, footerOpen, hasFoot
 };
 
 // ─── Главный компонент ────────────────────────────────────────────────────────
-function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissMode = 'default' }) {
+function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissMode = 'default', sourceRect }) {
   const items = mediaList.map(normalizeItem).filter(Boolean);
   const isSwipeOnlyDismiss = dismissMode === 'swipe';
 
@@ -330,11 +172,31 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
   const [isClosing, setIsClosing] = useState(false);
   const [dragY, setDragY] = useState(0);
   const [swipeClosing, setSwipeClosing] = useState(false);
+
+  // Hero-анимация: плавающий снимок изображения летит обратно в ячейку
+  // from = реальный BoundingRect <img> во вьювере, to = sourceRect ячейки
+  const [heroAnim, setHeroAnim] = useState(null); // { url, from, to } | null
+  const [heroAnimActive, setHeroAnimActive] = useState(false); // true → запустить CSS-переход
+
   const dragYRef = useRef(0);
-  const isDraggingDownRef = useRef(false);
+  const isDraggingRef = useRef(false);
   const mouseDragStartYRef = useRef(null);
   const dragCleanupRef = useRef(null);
   const suppressTapRef = useRef(false);
+  const scrollRef = useRef(null);
+  const footerRef = useRef(null);
+  const touchStartY = useRef(null);
+  const touchStartX = useRef(null);
+  const swipeDirRef = useRef(null);
+  // Ссылка на <img> текущего слайда — используется для захвата реальных bounds
+  const currentImgRef = useRef(null);
+
+  // Запускаем CSS-переход плавающего изображения после первой отрисовки
+  useEffect(() => {
+    if (!heroAnim) return;
+    const id = requestAnimationFrame(() => setHeroAnimActive(true));
+    return () => cancelAnimationFrame(id);
+  }, [heroAnim]);
 
   const closeWithAnimation = useCallback(() => {
     if (isClosing) return;
@@ -342,364 +204,269 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
     setTimeout(onClose, 280);
   }, [isClosing, onClose]);
 
-  // Закрытие свайпом вниз: слайд улетает вниз + фон гаснет
+  // Fallback: улетаем вниз (без источника или для видео)
   const closeViaSwipe = useCallback(() => {
-    if (isClosing || swipeClosing) return;
-    isDraggingDownRef.current = false;
+    if (isClosing || swipeClosing || heroAnim) return;
+    isDraggingRef.current = false;
     setDragY(window.innerHeight);
     setSwipeClosing(true);
     setTimeout(onClose, 300);
-  }, [isClosing, swipeClosing, onClose]);
+  }, [isClosing, swipeClosing, heroAnim, onClose]);
 
-  const scrollRef = useRef(null);
-  const footerRef = useRef(null);
-  const swipeTouchStartY = useRef(null);
-  const swipeTouchStartX = useRef(null);
-  const swipeDirRef = useRef(null); // null | 'h' | 'v' — блокировка оси жеста
+  // Hero-закрытие: плавающий снимок летит от реальных bounds к ячейке
+  const closeViaHero = useCallback(() => {
+    if (isClosing || swipeClosing || heroAnim) return;
 
-  const resetVerticalDrag = useCallback(() => {
-    dragYRef.current = 0;
-    setDragY(0);
-  }, []);
+    const imgEl = currentImgRef.current;
+    const currentItem = items[currentIndex];
 
-  const updateVerticalDrag = useCallback((dy) => {
-    if (dy <= 0) {
-      isDraggingDownRef.current = false;
-      resetVerticalDrag();
-      return;
-    }
-
-    if (dy > 6) {
-      suppressTapRef.current = true;
-    }
-
-    isDraggingDownRef.current = true;
-    dragYRef.current = dy;
-    setDragY(dy);
-  }, [resetVerticalDrag]);
-
-  const finishVerticalDrag = useCallback(() => {
-    mouseDragStartYRef.current = null;
-    swipeTouchStartY.current = null;
-
-    if (!isDraggingDownRef.current) {
-      resetVerticalDrag();
-      return;
-    }
-
-    isDraggingDownRef.current = false;
-    if (dragYRef.current > 120) {
+    // Для видео — fallback на свайп вниз
+    if (!imgEl || !sourceRect || currentItem?.type === 'video') {
       closeViaSwipe();
       return;
     }
 
-    resetVerticalDrag();
-  }, [closeViaSwipe, resetVerticalDrag]);
+    const from = imgEl.getBoundingClientRect();
 
-  const cleanupDesktopDrag = useCallback(() => {
-    if (dragCleanupRef.current) {
-      dragCleanupRef.current();
-      dragCleanupRef.current = null;
+    // Если изображение ещё не загружено (нулевые размеры) — fallback
+    if (!from.width || !from.height) {
+      closeViaSwipe();
+      return;
     }
+
+    isDraggingRef.current = false;
+    dragYRef.current = 0;
+    setDragY(0);
+
+    setHeroAnim({ url: currentItem.url, from, to: sourceRect });
+    setTimeout(onClose, 360);
+  }, [isClosing, swipeClosing, heroAnim, onClose, items, currentIndex, sourceRect, closeViaSwipe]);
+
+  const resetDrag = useCallback(() => {
+    dragYRef.current = 0;
+    isDraggingRef.current = false;
+    setDragY(0);
+  }, []);
+
+  const updateDrag = useCallback((dy) => {
+    if (dy <= 0) { resetDrag(); return; }
+    if (dy > 6) suppressTapRef.current = true;
+    isDraggingRef.current = true;
+    dragYRef.current = dy;
+    setDragY(dy);
+  }, [resetDrag]);
+
+  const finishDrag = useCallback(() => {
+    mouseDragStartYRef.current = null;
+    touchStartY.current = null;
+    if (!isDraggingRef.current) { resetDrag(); return; }
+    isDraggingRef.current = false;
+    if (dragYRef.current > 80) {
+      sourceRect ? closeViaHero() : closeViaSwipe();
+    } else {
+      resetDrag();
+    }
+  }, [sourceRect, closeViaHero, closeViaSwipe, resetDrag]);
+
+  const cleanupMouseDrag = useCallback(() => {
+    if (dragCleanupRef.current) { dragCleanupRef.current(); dragCleanupRef.current = null; }
     mouseDragStartYRef.current = null;
   }, []);
 
-  const footerSwipe = useSwipe({
-    elementRef: footerRef,
-    isModal: true,
-    threshold: 60,
-    onSwipeDown: () => setFooterOpen(false),
-  });
+  const footerSwipe = useSwipe({ elementRef: footerRef, isModal: true, threshold: 60, onSwipeDown: () => setFooterOpen(false) });
 
-  // Авто-сворачивание футера при пинче, восстановление при отпускании
-  // Блокировка скролла страницы пока MediaViewer открыт
-  useEffect(() => {
-    lockBodyScroll();
-    return () => {
-      cleanupDesktopDrag();
-      unlockBodyScroll();
-    };
-  }, [cleanupDesktopDrag]);
-
-  useEffect(() => {
-    if (isZoomed) {
-      setFooterOpen(false);
-    } else {
-      setFooterOpen(true);
-    }
-  }, [isZoomed]);
-
-  // Инициализация позиции scroll без анимации
+  useEffect(() => { lockBodyScroll(); return () => { cleanupMouseDrag(); unlockBodyScroll(); }; }, [cleanupMouseDrag]);
+  useEffect(() => { setFooterOpen(!isZoomed); }, [isZoomed]);
   useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.style.scrollBehavior = 'auto';
     scrollRef.current.scrollLeft = scrollRef.current.clientWidth * initialIndex;
-    setTimeout(() => {
-      if (scrollRef.current) scrollRef.current.style.scrollBehavior = 'smooth';
-    }, 50);
+    setTimeout(() => { if (scrollRef.current) scrollRef.current.style.scrollBehavior = 'smooth'; }, 50);
   }, [initialIndex]);
-
-  // Замер высоты футера
   useEffect(() => {
-    if (footerRef.current) {
-      setFooterHeight(footerRef.current.offsetHeight);
-    }
+    if (footerRef.current) setFooterHeight(footerRef.current.offsetHeight);
   }, [currentIndex, showUI, meta]);
-
-  // Отслеживание текущего слайда по scroll
-  const handleScroll = useCallback((e) => {
-    if (!scrollRef.current) return;
-    const newIndex = Math.round(e.target.scrollLeft / e.target.clientWidth);
-    if (newIndex !== currentIndex) {
-      setCurrentIndex(newIndex);
-      setDragY(0);
-      dragYRef.current = 0;
-    }
-  }, [currentIndex]);
-
-  // Клавиатура
   useEffect(() => {
     const handleKey = (e) => {
       if (e.key === 'Escape' && !isSwipeOnlyDismiss) closeWithAnimation();
-      if (e.key === 'ArrowLeft' && scrollRef.current) scrollRef.current.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' });
-      if (e.key === 'ArrowRight' && scrollRef.current) scrollRef.current.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' });
+      if (e.key === 'ArrowLeft') scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' });
+      if (e.key === 'ArrowRight') scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' });
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [closeWithAnimation, isSwipeOnlyDismiss]);
 
   const toggleUI = useCallback(() => {
-    if (suppressTapRef.current) {
-      suppressTapRef.current = false;
-      return;
-    }
-    setShowUI(prev => !prev);
+    if (suppressTapRef.current) { suppressTapRef.current = false; return; }
+    setShowUI(p => !p);
   }, []);
 
-  const handleDesktopDragStart = useCallback((e, isCurrentSlide) => {
+  const handleMouseDown = useCallback((e, isCurrentSlide) => {
     if (!isCurrentSlide || isZoomed || e.button !== 0) return;
-
-    cleanupDesktopDrag();
+    cleanupMouseDrag();
     suppressTapRef.current = false;
     mouseDragStartYRef.current = e.clientY;
+    const onMove = (ev) => { if (mouseDragStartYRef.current !== null) updateDrag(ev.clientY - mouseDragStartYRef.current); };
+    const onUp = () => { cleanupMouseDrag(); finishDrag(); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    dragCleanupRef.current = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [cleanupMouseDrag, finishDrag, isZoomed, updateDrag]);
 
-    const handleMouseMove = (moveEvent) => {
-      if (mouseDragStartYRef.current === null) return;
-      updateVerticalDrag(moveEvent.clientY - mouseDragStartYRef.current);
-    };
-
-    const handleMouseUp = () => {
-      cleanupDesktopDrag();
-      finishVerticalDrag();
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-
-    dragCleanupRef.current = () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [cleanupDesktopDrag, finishVerticalDrag, isZoomed, updateVerticalDrag]);
-
-  const currentItem = items[currentIndex];
-  const hasFooter = Boolean(meta);
-  const isCurrentVideo = currentItem?.type === 'video';
-  const openFooter = useCallback(() => setFooterOpen(true), []);
-
-  // Скачивание текущего медиа
   const handleDownload = (e) => {
     e.stopPropagation();
-    if (!currentItem?.url) return;
-    const link = document.createElement('a');
-    link.href = currentItem.url;
-    link.download = currentItem.url.split('/').pop() || 'media';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const url = items[currentIndex]?.url;
+    if (!url) return;
+    const a = document.createElement('a'); a.href = url; a.download = url.split('/').pop() || 'media';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
   if (!items.length) return null;
 
+  const isHeroClosing = Boolean(heroAnim);
+
+  // Фон тускнеет при свайпе и полностью гаснет при hero-закрытии
+  const overlayOpacity = swipeClosing || isHeroClosing
+    ? 0
+    : dragY > 0 ? Math.max(0.04, 1 - dragY / 280) : undefined;
+  const overlayTransition = swipeClosing || isHeroClosing
+    ? 'opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
+    : dragY > 0 ? 'none' : undefined;
+
   return createPortal(
     <>
-      {/* CSS для анимаций и slider */}
       <style>{`
-        @keyframes mv-play-pulse {
-          0%   { box-shadow: 0 0 0 0 rgba(212,255,0,0.4); }
-          70%  { box-shadow: 0 0 0 15px rgba(212,255,0,0); }
-          100% { box-shadow: 0 0 0 0 rgba(212,255,0,0); }
-        }
-        @keyframes mv-fade-in {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-        @keyframes mv-fade-in-scale {
-          from { opacity: 0; transform: scale(0.95) translateY(10px); }
-          to   { opacity: 1; transform: scale(1) translateY(0); }
-        }
-        @keyframes mv-slide-out {
-          from { opacity: 1; transform: scale(1) translateY(0); }
-          to   { opacity: 0; transform: scale(0.96) translateY(48px); }
-        }
-        .mv-play-btn {
-          animation: mv-play-pulse 2s infinite;
-        }
-        .mv-swiper::-webkit-scrollbar { display: none; }
-        .mv-slider {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 100%;
-          height: 24px;
-          background: transparent;
-          outline: none;
-          margin: 0;
-        }
-        .mv-slider::-webkit-slider-runnable-track {
-          width: 100%; height: 24px; background: transparent;
-        }
-        .mv-slider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 14px;
-          height: 14px;
-          border-radius: 50%;
-          background: #fff;
-          margin-top: 5px;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-          transition: transform 0.2s cubic-bezier(0.32,0.72,0,1);
-        }
-        .mv-slider:active::-webkit-slider-thumb {
-          transform: scale(1.4);
-        }
+        @keyframes mv-play-pulse { 0%{box-shadow:0 0 0 0 rgba(212,255,0,.4)} 70%{box-shadow:0 0 0 15px rgba(212,255,0,0)} 100%{box-shadow:0 0 0 0 rgba(212,255,0,0)} }
+        @keyframes mv-fade-in { from{opacity:0} to{opacity:1} }
+        @keyframes mv-fade-in-scale { from{opacity:0;transform:scale(.95) translateY(10px)} to{opacity:1;transform:scale(1) translateY(0)} }
+        @keyframes mv-slide-out { from{opacity:1;transform:scale(1) translateY(0)} to{opacity:0;transform:scale(.96) translateY(48px)} }
+        .mv-play-btn { animation: mv-play-pulse 2s infinite }
+        .mv-swiper::-webkit-scrollbar { display:none }
+        .mv-slider { -webkit-appearance:none; appearance:none; width:100%; height:24px; background:transparent; outline:none; margin:0 }
+        .mv-slider::-webkit-slider-runnable-track { width:100%; height:24px; background:transparent }
+        .mv-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%; background:#fff; margin-top:5px; box-shadow:0 2px 6px rgba(0,0,0,.4); transition:transform .2s cubic-bezier(.32,.72,0,1) }
+        .mv-slider:active::-webkit-slider-thumb { transform:scale(1.4) }
       `}</style>
 
-      {/* Overlay — закрывает по клику */}
+      {/* ── Плавающий снимок для hero-анимации (поверх всего) ── */}
+      {heroAnim && (
+        <div
+          style={{
+            position: 'fixed',
+            zIndex: Z_PHOTO_VIEWER + 10,
+            pointerEvents: 'none',
+            overflow: 'hidden',
+            borderRadius: heroAnimActive ? 8 : 2,
+            left:   heroAnimActive ? heroAnim.to.x      : heroAnim.from.x,
+            top:    heroAnimActive ? heroAnim.to.y      : heroAnim.from.y,
+            width:  heroAnimActive ? heroAnim.to.width  : heroAnim.from.width,
+            height: heroAnimActive ? heroAnim.to.height : heroAnim.from.height,
+            transition: heroAnimActive
+              ? 'left 0.34s cubic-bezier(0.32,0.72,0,1), top 0.34s cubic-bezier(0.32,0.72,0,1), width 0.34s cubic-bezier(0.32,0.72,0,1), height 0.34s cubic-bezier(0.32,0.72,0,1), border-radius 0.34s ease'
+              : 'none',
+          }}
+        >
+          <img
+            src={heroAnim.url}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        </div>
+      )}
+
+      {/* Затемнение */}
       <div
-        {...modalBoundaryProps}
-        {...modalTouchBoundaryHandlers}
+        {...modalBoundaryProps} {...modalTouchBoundaryHandlers}
         style={{
           ...styles.overlay,
-          animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards' : styles.overlay.animation,
-          opacity: swipeClosing ? 0 : (dragY > 0 ? Math.max(0.05, 1 - dragY / 250) : undefined),
-          transition: swipeClosing ? 'opacity 0.3s ease' : (dragY > 0 ? 'none' : undefined),
+          animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32,0.72,0,1) forwards' : styles.overlay.animation,
+          opacity: overlayOpacity,
+          transition: overlayTransition,
         }}
         onClick={isSwipeOnlyDismiss ? undefined : closeWithAnimation}
       />
 
       {/* Контейнер */}
       <div
-        {...modalBoundaryProps}
-        {...modalTouchBoundaryHandlers}
+        {...modalBoundaryProps} {...modalTouchBoundaryHandlers}
         style={{
           ...styles.container,
-          animation: isClosing
-            ? 'mv-slide-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards'
-            : styles.container.animation,
-          background: dragY > 0 ? `rgba(0,0,0,${Math.max(0.15, 1 - dragY / 250)})` : '#000',
-          opacity: swipeClosing ? 0 : 1,
-          transition: swipeClosing ? 'opacity 0.3s ease' : undefined,
+          animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32,0.72,0,1) forwards' : styles.container.animation,
+          background: isHeroClosing
+            ? 'transparent'
+            : dragY > 0 ? `rgba(0,0,0,${Math.max(0.12, 1 - dragY / 280)})` : '#000',
+          transition: isHeroClosing ? 'background 0.32s cubic-bezier(0.32,0.72,0,1)' : undefined,
+          opacity: swipeClosing ? 0 : isHeroClosing ? 0 : 1,
+          ...(swipeClosing || isHeroClosing ? { transition: 'opacity 0.22s ease, background 0.32s cubic-bezier(0.32,0.72,0,1)' } : {}),
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Header: центрированная пилюля-счётчик + X при отсутствии футера ── */}
+        {/* Счётчик */}
         {items.length > 1 && (
-          <div style={{
-            ...styles.counter,
-            position: 'absolute',
-            top: 'max(16px, env(safe-area-inset-top, 16px))',
-            left: '50%',
-            transform: `translateX(-50%) ${showUI ? 'translateY(0)' : 'translateY(-100px)'}`,
-            opacity: showUI ? 1 : 0,
-            transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-            zIndex: 10,
-          }}>
+          <div style={{ ...styles.counter, position: 'absolute', top: 'max(16px, env(safe-area-inset-top, 16px))', left: '50%', transform: `translateX(-50%) ${showUI ? 'translateY(0)' : 'translateY(-100px)'}`, opacity: showUI ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.32,0.72,0,1)', zIndex: 10 }}>
             {currentIndex + 1} / {items.length}
           </div>
         )}
-        {/* Кнопка закрытия в хедере — только если нет футера */}
-        {!hasFooter && !isSwipeOnlyDismiss && (
-          <button style={{
-            ...styles.closeButton,
-            position: 'absolute',
-            top: 'max(16px, env(safe-area-inset-top, 16px))',
-            right: 16,
-            opacity: showUI ? 1 : 0,
-            transform: showUI ? 'translateY(0)' : 'translateY(-100px)',
-            transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-            zIndex: 10,
-          }} onClick={closeWithAnimation}>
+        {!meta && !isSwipeOnlyDismiss && (
+          <button style={{ ...styles.closeButton, position: 'absolute', top: 'max(16px, env(safe-area-inset-top, 16px))', right: 16, opacity: showUI ? 1 : 0, transform: showUI ? 'translateY(0)' : 'translateY(-100px)', transition: 'all 0.4s cubic-bezier(0.32,0.72,0,1)', zIndex: 10 }} onClick={closeWithAnimation}>
             <X size={22} />
           </button>
         )}
 
-        {/* ── Scroll-snap swiper ── */}
-        <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          className="mv-swiper"
-          style={{ ...styles.swiper, touchAction: 'pan-x' }}
-        >
+        {/* Swiper */}
+        <div ref={scrollRef} onScroll={(e) => {
+          if (!scrollRef.current) return;
+          const idx = Math.round(e.target.scrollLeft / e.target.clientWidth);
+          if (idx !== currentIndex) { setCurrentIndex(idx); dragYRef.current = 0; setDragY(0); }
+        }} className="mv-swiper" style={{ ...styles.swiper, touchAction: 'pan-x' }}>
           {items.map((media, idx) => {
-            const isCurrentSlide = idx === currentIndex;
-            const slideDragY = isCurrentSlide && dragY > 0 ? dragY : 0;
+            const isCurrent = idx === currentIndex;
+            const slideDy = isCurrent ? dragY : 0;
+
+            const slideTransform = slideDy > 0 ? `translateY(${slideDy}px)` : undefined;
+            const slideTransition = isDraggingRef.current ? 'none' : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
+
             return (
               <div
                 key={idx}
-                style={{
-                  ...styles.slide,
-                  transform: slideDragY > 0 ? `translateY(${slideDragY}px)` : undefined,
-                  transition: isDraggingDownRef.current ? 'none' : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
-                }}
+                style={{ ...styles.slide, transform: slideTransform, transition: slideTransition }}
                 onTouchStart={(e) => {
-                  if (e.touches.length === 1) {
-                    suppressTapRef.current = false;
-                    swipeTouchStartY.current = e.touches[0].clientY;
-                    swipeTouchStartX.current = e.touches[0].clientX;
-                    swipeDirRef.current = null;
-                  }
+                  if (e.touches.length !== 1) return;
+                  suppressTapRef.current = false;
+                  touchStartY.current = e.touches[0].clientY;
+                  touchStartX.current = e.touches[0].clientX;
+                  swipeDirRef.current = null;
                 }}
                 onTouchMove={(e) => {
-                  if (!isCurrentSlide || isZoomed || e.touches.length !== 1 || swipeTouchStartY.current === null) return;
-                  const dy = e.touches[0].clientY - swipeTouchStartY.current;
-                  const dx = e.touches[0].clientX - (swipeTouchStartX.current ?? e.touches[0].clientX);
-                  if (swipeDirRef.current === null) {
-                    if (Math.abs(dy) > 8 || Math.abs(dx) > 8) {
-                      swipeDirRef.current = Math.abs(dy) > Math.abs(dx) ? 'v' : 'h';
-                    }
-                  }
-                  if (swipeDirRef.current === 'v') {
-                    updateVerticalDrag(dy);
-                  }
+                  if (!isCurrent || isZoomed || e.touches.length !== 1 || touchStartY.current === null) return;
+                  const dy = e.touches[0].clientY - touchStartY.current;
+                  const dx = e.touches[0].clientX - (touchStartX.current ?? e.touches[0].clientX);
+                  if (!swipeDirRef.current && (Math.abs(dy) > 8 || Math.abs(dx) > 8))
+                    swipeDirRef.current = Math.abs(dy) > Math.abs(dx) ? 'v' : 'h';
+                  if (swipeDirRef.current === 'v') updateDrag(dy);
                 }}
-                onTouchEnd={() => { swipeDirRef.current = null; finishVerticalDrag(); }}
-                onTouchCancel={() => { swipeDirRef.current = null; finishVerticalDrag(); }}
-                onMouseDown={(e) => handleDesktopDragStart(e, isCurrentSlide)}
+                onTouchEnd={() => { swipeDirRef.current = null; finishDrag(); }}
+                onTouchCancel={() => { swipeDirRef.current = null; finishDrag(); }}
+                onMouseDown={(e) => handleMouseDown(e, isCurrent)}
               >
                 {media.type === 'video' ? (
                   <VideoSlide
-                    media={media}
-                    isActive={idx === currentIndex}
-                    showUI={showUI}
-                    footerHeight={footerHeight}
-                    footerOpen={footerOpen}
-                    hasFooter={hasFooter}
-                    toggleUI={toggleUI}
-                    onFooterOpen={openFooter}
+                    media={media} isActive={isCurrent} showUI={showUI}
+                    footerHeight={footerHeight} footerOpen={footerOpen} hasFooter={Boolean(meta)}
+                    toggleUI={toggleUI} onFooterOpen={() => setFooterOpen(true)}
                   />
                 ) : (
-                  <div
-                    onClick={toggleUI}
-                    style={styles.imageSlide}
-                  >
+                  <div onClick={toggleUI} style={styles.imageSlide}>
                     <Zoomable
                       onTap={(e) => { e.stopPropagation(); toggleUI(); }}
                       onZoomStart={() => setIsZoomed(true)}
                       onZoomEnd={() => setIsZoomed(false)}
                     >
                       <img
+                        // Захватываем ref только для текущего слайда
+                        ref={isCurrent ? currentImgRef : null}
                         src={media.url}
-                        alt={`Медиа ${idx + 1}`}
+                        alt=""
                         style={styles.image}
                         loading={idx === initialIndex ? 'eager' : 'lazy'}
                         decoding="async"
@@ -712,106 +479,56 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
           })}
         </div>
 
-        {/* ── Кнопки Prev/Next (desktop) ── */}
+        {/* Prev/Next */}
         {showUI && currentIndex > 0 && (
-          <button
-            style={{ ...styles.navBtn, left: 16 }}
-            onClick={() => scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' })}
-          >
+          <button style={{ ...styles.navBtn, left: 16 }} onClick={() => scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' })}>
             <ChevronLeft size={24} />
           </button>
         )}
         {showUI && currentIndex < items.length - 1 && (
-          <button
-            style={{ ...styles.navBtn, right: 16 }}
-            onClick={() => scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' })}
-          >
+          <button style={{ ...styles.navBtn, right: 16 }} onClick={() => scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' })}>
             <ChevronRight size={24} />
           </button>
         )}
 
-        {/* ── Индикаторы-точки ── */}
+        {/* Точки */}
         {items.length > 1 && (
           <div style={styles.indicators}>
-            {items.map((_, idx) => (
-              <div
-                key={idx}
-                style={{ ...styles.dot, opacity: idx === currentIndex ? 1 : 0.4 }}
-                onClick={() => {
-                  if (!scrollRef.current) return;
-                  scrollRef.current.scrollLeft = scrollRef.current.clientWidth * idx;
-                }}
-              />
+            {items.map((_, i) => (
+              <div key={i} style={{ ...styles.dot, opacity: i === currentIndex ? 1 : 0.4 }}
+                onClick={() => { if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.clientWidth * i; }} />
             ))}
           </div>
         )}
 
-        {/* ── Футер (если передан meta) ── */}
-        {hasFooter && (
-          <div
-            ref={footerRef}
-            style={{
-              ...styles.footer,
-              opacity: showUI ? 1 : 0,
-              transform: (showUI && footerOpen) ? 'translateY(0)' : 'translateY(100%)',
-            }}
-            {...footerSwipe}
-          >
-            {/* Шторка-индикатор для свайпа вниз */}
+        {/* Футер */}
+        {meta && (
+          <div ref={footerRef} style={{ ...styles.footer, opacity: showUI ? 1 : 0, transform: (showUI && footerOpen) ? 'translateY(0)' : 'translateY(100%)' }} {...footerSwipe}>
             <div style={styles.swipeHandle} />
-
-            {/* Автор */}
             {meta.author && (() => {
-              const authorSubtitle = [
-                meta.author.university,
-                meta.author.course ? `${meta.author.course}к` : null,
-              ].filter(Boolean).join(' · ');
+              const sub = [meta.author.university, meta.author.course ? `${meta.author.course}к` : null].filter(Boolean).join(' · ');
               return (
                 <div style={styles.authorRow}>
-                  <Avatar
-                    user={meta.author}
-                    size={44}
-                    showProfile={false}
-                  />
+                  <Avatar user={meta.author} size={44} showProfile={false} />
                   <div style={styles.authorInfo}>
-                    <span style={styles.authorName}>
-                      {meta.author.username || meta.author.name}
-                    </span>
-                    {authorSubtitle && (
-                      <span style={styles.authorMeta}>{authorSubtitle}</span>
-                    )}
+                    <span style={styles.authorName}>{meta.author.username || meta.author.name}</span>
+                    {sub && <span style={styles.authorMeta}>{sub}</span>}
                   </div>
                 </div>
               );
             })()}
-
-            {/* Описание */}
-            {meta.caption && (
-              <p style={styles.caption}>{meta.caption}</p>
-            )}
-
-            {/* Кнопки */}
+            {meta.caption && <p style={styles.caption}>{meta.caption}</p>}
             <div style={styles.footerButtons}>
-              <button style={styles.downloadButton} onClick={handleDownload}>
-                <Download size={16} />
-                Скачать
-              </button>
+              <button style={styles.downloadButton} onClick={handleDownload}><Download size={16} />Скачать</button>
               {!isSwipeOnlyDismiss && (
-                <button style={styles.closeButtonFooter} onClick={closeWithAnimation}>
-                  <X size={16} strokeWidth={3} />
-                  Закрыть
-                </button>
+                <button style={styles.closeButtonFooter} onClick={closeWithAnimation}><X size={16} strokeWidth={3} />Закрыть</button>
               )}
             </div>
           </div>
         )}
 
-        {/* ── Chevron для не-видео слайдов (видео имеет свой встроенный) ── */}
-        {hasFooter && showUI && !footerOpen && !isCurrentVideo && (
-          <button
-            style={styles.footerChevron}
-            onClick={openFooter}
-          >
+        {meta && showUI && !footerOpen && items[currentIndex]?.type !== 'video' && (
+          <button style={styles.footerChevron} onClick={() => setFooterOpen(true)}>
             <ChevronUp size={20} />
           </button>
         )}
@@ -821,271 +538,74 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
   );
 }
 
-// ─── Стили ───────────────────────────────────────────────────────────────────
 const styles = {
   overlay: {
-    position: 'fixed',
-    top: 0,
-    bottom: 0,
-    left: 'var(--app-fixed-left)',
-    width: 'var(--app-fixed-width)',
-    backgroundColor: 'rgba(0,0,0,0.95)',
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
-    zIndex: Z_PHOTO_VIEWER - 1,
-    animation: 'mv-fade-in 0.2s ease',
+    position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
+    backgroundColor: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+    zIndex: Z_PHOTO_VIEWER - 1, animation: 'mv-fade-in 0.2s ease',
   },
   container: {
-    position: 'fixed',
-    top: 0,
-    bottom: 0,
-    left: 'var(--app-fixed-left)',
-    width: 'var(--app-fixed-width)',
-    zIndex: Z_PHOTO_VIEWER,
-    display: 'flex',
-    flexDirection: 'column',
-    background: '#000',
-    animation: 'mv-fade-in-scale 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
+    position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
+    zIndex: Z_PHOTO_VIEWER, display: 'flex', flexDirection: 'column', background: '#000',
+    animation: 'mv-fade-in-scale 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
+    userSelect: 'none', WebkitUserSelect: 'none',
   },
   counter: {
-    background: theme.colors.premium.surfaceElevated,
-    padding: '6px 14px',
-    borderRadius: 16,
-    fontSize: 13,
-    fontWeight: 700,
-    color: '#fff',
-    letterSpacing: '0.5px',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: theme.colors.premium.surfaceElevated, padding: '6px 14px', borderRadius: 16,
+    fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: '0.5px', border: '1px solid rgba(255,255,255,0.1)',
   },
   closeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: '50%',
-    background: theme.colors.premium.surfaceElevated,
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    flexShrink: 0,
+    width: 44, height: 44, borderRadius: '50%', background: theme.colors.premium.surfaceElevated,
+    border: '1px solid rgba(255,255,255,0.1)', color: '#fff', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
   },
   swiper: {
-    flex: 1,
-    display: 'flex',
-    overflowX: 'auto',
-    scrollSnapType: 'x mandatory',
-    scrollBehavior: 'smooth',
-    width: '100%',
-    height: '100%',
-    msOverflowStyle: 'none',
-    scrollbarWidth: 'none',
-    WebkitOverflowScrolling: 'touch',
+    flex: 1, display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', scrollBehavior: 'smooth',
+    width: '100%', height: '100%', msOverflowStyle: 'none', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
   },
   slide: {
-    flex: '0 0 100%',
-    width: '100%',
-    height: '100%',
-    scrollSnapAlign: 'center',
-    position: 'relative',
-    overflow: 'hidden',
+    flex: '0 0 100%', width: '100%', height: '100%', scrollSnapAlign: 'center',
+    position: 'relative', overflow: 'hidden',
   },
-  imageSlide: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-  },
-  image: {
-    maxWidth: '100%',
-    maxHeight: '100%',
-    objectFit: 'contain',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
-    pointerEvents: 'none',
-  },
+  imageSlide: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  image: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' },
   navBtn: {
-    position: 'absolute',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    width: 40,
-    height: 40,
-    borderRadius: '50%',
-    background: theme.colors.premium.surfaceElevated,
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 10,
-    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
+    position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, borderRadius: '50%',
+    background: theme.colors.premium.surfaceElevated, border: '1px solid rgba(255,255,255,0.1)',
+    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+    zIndex: 10, transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
   },
-  indicators: {
-    position: 'absolute',
-    bottom: 12,
-    left: 0,
-    right: 0,
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 6,
-    zIndex: 10,
-    pointerEvents: 'none',
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: '50%',
-    backgroundColor: '#fff',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.5)',
-    transition: 'opacity 0.2s',
-    cursor: 'pointer',
-    pointerEvents: 'all',
-  },
+  indicators: { position: 'absolute', bottom: 12, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 6, zIndex: 10, pointerEvents: 'none' },
+  dot: { width: 6, height: 6, borderRadius: '50%', backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.5)', transition: 'opacity 0.2s', cursor: 'pointer', pointerEvents: 'all' },
   playButton: {
-    position: 'absolute',
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    background: theme.colors.premium.surfaceElevated,
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: '#D4FF00',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 5,
-    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
+    position: 'absolute', width: 72, height: 72, borderRadius: 36,
+    background: theme.colors.premium.surfaceElevated, border: '1px solid rgba(255,255,255,0.1)',
+    color: '#D4FF00', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer', zIndex: 5,
   },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    background: theme.colors.premium.surfaceElevated,
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-  },
+  iconButton: { width: 40, height: 40, borderRadius: 20, background: theme.colors.premium.surfaceElevated, border: '1px solid rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    padding: '16px 16px',
-    paddingBottom: 'max(16px, calc(env(safe-area-inset-bottom, 0px) + 16px))',
-    background: 'rgba(10,10,12,0.6)',
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
-    borderTop: '1px solid rgba(255,255,255,0.08)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
+    position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10,
+    padding: '16px 16px', paddingBottom: 'max(16px, calc(env(safe-area-inset-bottom, 0px) + 16px))',
+    background: 'rgba(10,10,12,0.6)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+    borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 16,
     transition: 'all 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
   },
-  swipeHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    background: 'rgba(255,255,255,0.25)',
-    alignSelf: 'center',
-    marginBottom: 4,
-    flexShrink: 0,
-  },
+  swipeHandle: { width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.25)', alignSelf: 'center', marginBottom: 4, flexShrink: 0 },
   footerChevron: {
-    position: 'absolute',
-    bottom: 'max(20px, calc(env(safe-area-inset-bottom, 0px) + 20px))',
-    right: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    background: theme.colors.premium.surfaceElevated,
-    border: '1px solid rgba(255,255,255,0.12)',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    zIndex: 15,
-    transition: 'opacity 0.3s ease, transform 0.3s ease',
+    position: 'absolute', bottom: 'max(20px, calc(env(safe-area-inset-bottom, 0px) + 20px))', right: 16,
+    width: 40, height: 40, borderRadius: 20, background: theme.colors.premium.surfaceElevated,
+    border: '1px solid rgba(255,255,255,0.12)', color: '#fff', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 15,
   },
-  authorRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-  },
-  authorInfo: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 1,
-  },
-  authorName: {
-    fontWeight: 700,
-    fontSize: 16,
-    color: '#fff',
-    lineHeight: 1.2,
-  },
-  authorMeta: {
-    color: '#8E8E93',
-    fontSize: 13,
-    marginTop: 2,
-    lineHeight: 1.2,
-  },
-  caption: {
-    margin: 0,
-    fontSize: 15,
-    color: '#EAEAEA',
-    lineHeight: 1.45,
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-  },
-  footerButtons: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'center',
-  },
-  downloadButton: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    height: 40,
-    padding: '0 16px',
-    borderRadius: 20,
-    background: 'rgba(44,44,46,1)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    color: '#fff',
-    fontWeight: 600,
-    fontSize: 14,
-    cursor: 'pointer',
-    flexShrink: 0,
-    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
-  },
-  closeButtonFooter: {
-    flex: 1,
-    height: 40,
-    borderRadius: 20,
-    background: '#D4FF00',
-    border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    color: '#000',
-    fontWeight: 800,
-    fontSize: 14,
-    cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(212,255,0,0.2)',
-    transition: 'transform 0.15s cubic-bezier(0.32,0.72,0,1), opacity 0.15s',
-  },
+  authorRow: { display: 'flex', alignItems: 'center', gap: 10 },
+  authorInfo: { display: 'flex', flexDirection: 'column', gap: 1 },
+  authorName: { fontWeight: 700, fontSize: 16, color: '#fff', lineHeight: 1.2 },
+  authorMeta: { color: '#8E8E93', fontSize: 13, marginTop: 2, lineHeight: 1.2 },
+  caption: { margin: 0, fontSize: 15, color: '#EAEAEA', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
+  footerButtons: { display: 'flex', gap: 8, alignItems: 'center' },
+  downloadButton: { display: 'flex', alignItems: 'center', gap: 6, height: 40, padding: '0 16px', borderRadius: 20, background: 'rgba(44,44,46,1)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', flexShrink: 0 },
+  closeButtonFooter: { flex: 1, height: 40, borderRadius: 20, background: '#D4FF00', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#000', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 4px 12px rgba(212,255,0,0.2)' },
 };
 
 export default MediaViewer;

@@ -693,7 +693,7 @@ const s = {
     background: theme.colors.premium.surfaceElevated,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: '85%',
+    height: '90%',
     display: 'flex',
     flexDirection: 'column',
     position: 'relative',

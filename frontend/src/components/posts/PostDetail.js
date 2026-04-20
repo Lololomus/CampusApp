@@ -83,7 +83,7 @@ const alignPostWithLocalLikeState = (postData, localLikeValue, isRegistered) => 
 };
 
 function PostDetail() {
-  const { viewPostId, setViewPostId, user, isRegistered, setUpdatedPost, likedPosts, setPostLiked, setEditingContent } = useStore();
+  const { viewPostId, setViewPostId, user, isRegistered, setUpdatedPost, likedPosts, setPostLiked, setEditingContent, updatePost } = useStore();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -113,6 +113,7 @@ function PostDetail() {
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [isResolved, setIsResolved] = useState(Boolean(post?.is_resolved));
   const [resolving, setResolving] = useState(false);
+  const [showResolveConfirm, setShowResolveConfirm] = useState(false);
   const [commentViewer, setCommentViewer] = useState({ isOpen: false, photos: [], index: 0 });
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
@@ -142,10 +143,12 @@ function PostDetail() {
 
   const handleResolve = async () => {
     if (resolving || isResolved || !post) return;
+    setShowResolveConfirm(false);
     setResolving(true);
     try {
       await resolvePost(post.id);
       setIsResolved(true);
+      updatePost(post.id, { is_resolved: true });
       hapticFeedback('success');
     } catch {
       hapticFeedback('error');
@@ -169,6 +172,10 @@ function PostDetail() {
       loadPost();
     }
   }, [viewPostId]);
+
+  useEffect(() => {
+    if (post) setIsResolved(Boolean(post.is_resolved));
+  }, [post?.id]);
 
   useEffect(() => {
     return () => {
@@ -750,10 +757,25 @@ function PostDetail() {
                 )}
 
                 {post.category === 'help' && isOwner && !isResolved && (
-                  <button onClick={handleResolve} disabled={resolving} className="pressable" style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0 4px', padding: '8px 16px', borderRadius: 10, border: '1px solid rgba(50,215,75,0.3)', background: 'rgba(50,215,75,0.08)', color: '#32D74B', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                    <CheckCircle size={14} strokeWidth={2} />
-                    {resolving ? 'Отмечаем...' : 'Вопрос решён'}
-                  </button>
+                  <>
+                    <button
+                      onClick={() => { hapticFeedback('selection'); setShowResolveConfirm(true); }}
+                      disabled={resolving}
+                      style={{ display: 'inline-flex', alignItems: 'center', margin: `6px ${theme.spacing.lg}px 2px`, padding: '4px 0', background: 'none', border: 'none', borderBottom: '1px dashed rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.3)', fontSize: 12, fontWeight: 400, cursor: 'pointer', letterSpacing: '0.1px' }}
+                    >
+                      {resolving ? 'Отмечаем...' : 'Вопрос решён?'}
+                    </button>
+                    <ConfirmationDialog
+                      isOpen={showResolveConfirm}
+                      title="Вопрос решён?"
+                      message="Отметить этот вопрос как решённый? Это действие нельзя отменить."
+                      confirmText="Да, решён"
+                      cancelText="Нет"
+                      confirmType="primary"
+                      onConfirm={handleResolve}
+                      onCancel={() => setShowResolveConfirm(false)}
+                    />
+                  </>
                 )}
 
                 {images.length > 0 && (
@@ -1258,13 +1280,12 @@ const styles = {
     fontSize: 12, color: theme.colors.textSecondary, fontWeight: theme.fontWeight.medium
   },
   imageContainer: {
-    width: 'calc(100% - 32px)',
+    width: '100%',
     position: 'relative',
     backgroundColor: theme.colors.bg,
-    margin: '0 16px 12px',
-    borderRadius: 16,
+    margin: '0 0 12px',
+    borderRadius: 0,
     overflow: 'hidden',
-    border: `1px solid ${theme.colors.premium.border}`,
   },
   image: {
     width: '100%', height: '100%', objectFit: 'cover',

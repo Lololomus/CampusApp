@@ -2118,7 +2118,7 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    height: '85%',
+    height: '90%',
     background: 'var(--create-surface)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -2173,7 +2173,7 @@ const styles = {
   postTextareaInput: {
     width: '100%', minHeight: 76, resize: 'none', overflow: 'hidden', border: 'none', background: 'transparent',
     color: '#fff', caretColor: '#fff',
-    fontSize: 16, fontWeight: 400, lineHeight: 1.4, padding: 0, outline: 'none', fontFamily: 'inherit',
+    fontSize: 18, fontWeight: 400, lineHeight: 1.4, padding: 0, outline: 'none', fontFamily: 'inherit',
   },
   reqTitleInput: {
     width: '100%',
@@ -2197,7 +2197,7 @@ const styles = {
     border: 'none',
     background: 'transparent',
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 400,
     lineHeight: 1.4,
     padding: 0,

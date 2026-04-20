@@ -3,7 +3,7 @@
 
 import MediaViewer from './MediaViewer';
 
-export default function PhotoViewer({ photos = [], initialIndex = 0, onClose, meta, dismissMode = 'default' }) {
+export default function PhotoViewer({ photos = [], initialIndex = 0, onClose, meta, dismissMode = 'default', sourceRect }) {
   const mediaList = photos.map(p => typeof p === 'string' ? { type: 'image', url: p } : p);
   return (
     <MediaViewer
@@ -12,6 +12,7 @@ export default function PhotoViewer({ photos = [], initialIndex = 0, onClose, me
       onClose={onClose}
       meta={meta}
       dismissMode={dismissMode}
+      sourceRect={sourceRect}
     />
   );
 }
