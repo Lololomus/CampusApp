@@ -9,7 +9,7 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import String, and_, cast, func, or_, select, update as sa_update
+from sqlalchemy import Float, String, and_, cast, func, or_, select, update as sa_update
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
@@ -164,10 +164,12 @@ async def get_posts(
 
     # Сортировка: resolved-посты всегда в конце, потом обычная сортировка
     if sort == 'popular':
+        hours_ago = func.extract('epoch', func.now() - models.Post.created_at) / 3600.0
+        trending_score = cast(models.Post.likes_count, Float) / func.power(hours_ago + 2, 1.5)
         query = query.order_by(
             models.Post.is_resolved.asc(),
             models.Post.is_important.desc(),
-            models.Post.likes_count.desc(),
+            trending_score.desc(),
             models.Post.created_at.desc()
         )
     elif sort == 'discussed':

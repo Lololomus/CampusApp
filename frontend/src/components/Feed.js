@@ -65,6 +65,7 @@ function Feed() {
     posts: storePosts,
     postsFilters,
     setPostsFilters,
+    clearPostsFilters,
     user,
   } = useStore();
 
@@ -262,6 +263,11 @@ function Feed() {
     loadPosts(true);
   };
 
+  const handleClearFiltersAndSearch = useCallback(() => {
+    clearPostsFilters();
+    setSearchQuery('');
+  }, [clearPostsFilters]);
+
   // Подмешивание рекламы: После 1-го поста, а потом каждые 5
   const postsWithAds = useMemo(() => {
     if (!feedAds.length) return posts;
@@ -415,9 +421,28 @@ function Feed() {
 
           {!loading && posts.length === 0 && (
             <div style={styles.empty}>
-              <div style={styles.emptyIcon}>📝</div>
-              <p style={styles.emptyTitle}>Пока нет постов</p>
-              <p style={styles.emptyHint}>Будь первым!</p>
+              {(countActiveFilters > 0 || searchQuery) ? (
+                <>
+                  <div style={styles.emptyIcon}>🔍</div>
+                  <p style={styles.emptyTitle}>Ничего не найдено</p>
+                  <p style={styles.emptyHint}>Попробуй изменить или сбросить фильтры</p>
+                  <button onClick={handleClearFiltersAndSearch} style={styles.emptyResetBtn}>
+                    Сбросить фильтры
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={styles.emptyIcon}>📝</div>
+                  <p style={styles.emptyTitle}>Пока нет постов</p>
+                  <p style={styles.emptyHint}>Будь первым!</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {posts.length > 0 && (
+            <div style={styles.resultsCount}>
+              {posts.length}{hasMorePosts ? '+' : ''} постов
             </div>
           )}
 
@@ -525,6 +550,24 @@ const styles = {
   emptyIcon: { fontSize: 64, marginBottom: 16, opacity: 0.5 },
   emptyTitle: { fontSize: 18, fontWeight: 600, color: theme.colors.text, marginBottom: 8 },
   emptyHint: { fontSize: 15, color: theme.colors.textDisabled, marginTop: 8 },
+  emptyResetBtn: {
+    marginTop: 20,
+    padding: '10px 24px',
+    borderRadius: 12,
+    background: 'rgba(212,255,0,0.1)',
+    border: '1px solid rgba(212,255,0,0.3)',
+    color: '#D4FF00',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  resultsCount: {
+    padding: '4px 16px 0',
+    fontSize: 12,
+    color: theme.colors.textTertiary,
+    fontWeight: 500,
+    letterSpacing: 0.2,
+  },
 };
 
 export default Feed;

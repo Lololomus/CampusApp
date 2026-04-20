@@ -63,7 +63,7 @@ const FiltersModal = ({ onClose, onApply }) => {
 
   const postsSortOptions = [
     { value: 'newest',    label: 'Новые',        icon: '🆕' },
-    { value: 'popular',   label: 'Популярные',   icon: '🔥' },
+    { value: 'popular',   label: 'В тренде',      icon: '🔥' },
     { value: 'discussed', label: 'Обсуждаемые',  icon: '💬' },
   ];
 
