@@ -363,6 +363,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
   const overlayTransition = swipeClosing || isHeroClosing
     ? 'opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
     : dragY > 0 ? 'none' : undefined;
+  const heroTransform = heroAnim
+    ? heroAnimActive
+      ? `translate3d(${heroAnim.to.x - heroAnim.from.x}px, ${heroAnim.to.y - heroAnim.from.y}px, 0) scale(${heroAnim.to.width / heroAnim.from.width}, ${heroAnim.to.height / heroAnim.from.height})`
+      : 'translate3d(0, 0, 0) scale(1, 1)'
+    : undefined;
 
   return createPortal(
     <>
@@ -387,13 +392,19 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
             zIndex: Z_PHOTO_VIEWER + 10,
             pointerEvents: 'none',
             overflow: 'hidden',
-            borderRadius: heroAnimActive ? 8 : 2,
-            left:   heroAnimActive ? heroAnim.to.x      : heroAnim.from.x,
-            top:    heroAnimActive ? heroAnim.to.y      : heroAnim.from.y,
-            width:  heroAnimActive ? heroAnim.to.width  : heroAnim.from.width,
-            height: heroAnimActive ? heroAnim.to.height : heroAnim.from.height,
+            borderRadius: 0,
+            left: heroAnim.from.x,
+            top: heroAnim.from.y,
+            width: heroAnim.from.width,
+            height: heroAnim.from.height,
+            transform: heroTransform,
+            transformOrigin: 'top left',
+            willChange: 'transform',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            contain: 'layout paint style',
             transition: heroAnimActive
-              ? 'left 0.34s cubic-bezier(0.32,0.72,0,1), top 0.34s cubic-bezier(0.32,0.72,0,1), width 0.34s cubic-bezier(0.32,0.72,0,1), height 0.34s cubic-bezier(0.32,0.72,0,1), border-radius 0.34s ease'
+              ? 'transform 0.34s cubic-bezier(0.32,0.72,0,1)'
               : 'none',
           }}
         >
@@ -413,6 +424,8 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
           animation: isClosing ? 'mv-slide-out 0.28s cubic-bezier(0.32,0.72,0,1) forwards' : styles.overlay.animation,
           opacity: overlayOpacity,
           transition: overlayTransition,
+          backdropFilter: swipeClosing || isHeroClosing ? 'none' : styles.overlay.backdropFilter,
+          WebkitBackdropFilter: swipeClosing || isHeroClosing ? 'none' : styles.overlay.WebkitBackdropFilter,
         }}
         onClick={isSwipeOnlyDismiss ? undefined : closeFromControl}
       />
@@ -428,7 +441,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
             : dragY > 0 ? `rgba(0,0,0,${Math.max(0.12, 1 - dragY / 280)})` : '#000',
           transition: isHeroClosing ? 'background 0.32s cubic-bezier(0.32,0.72,0,1)' : undefined,
           opacity: swipeClosing ? 0 : isHeroClosing ? 0 : 1,
-          ...(swipeClosing || isHeroClosing ? { transition: 'opacity 0.22s ease, background 0.32s cubic-bezier(0.32,0.72,0,1)' } : {}),
+          ...(swipeClosing
+            ? { transition: 'opacity 0.22s ease, background 0.32s cubic-bezier(0.32,0.72,0,1)' }
+            : isHeroClosing
+              ? { transition: 'background 0.18s cubic-bezier(0.32,0.72,0,1)' }
+              : {}),
         }}
         onClick={(e) => e.stopPropagation()}
       >
