@@ -495,12 +495,23 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   };
 
   const [viewerStartIndex, setViewerStartIndex] = useState(0);
+  const [viewerActiveIndex, setViewerActiveIndex] = useState(null);
   const [viewerSourceRect, setViewerSourceRect] = useState(null);
   const handleMediaItemClick = useCallback((index, rect) => {
     hapticFeedback('light');
     setViewerSourceRect(rect || null);
     setViewerStartIndex(index);
+    setViewerActiveIndex(index);
     setIsPhotoViewerOpen(true);
+  }, []);
+  const resolveViewerSourceRect = useCallback((index) => {
+    const sourceEl = cardRef.current?.querySelector(`[data-media-grid-index="${index}"]`);
+    return sourceEl?.getBoundingClientRect() || (index === viewerStartIndex ? viewerSourceRect : null);
+  }, [viewerStartIndex, viewerSourceRect]);
+  const handlePhotoViewerClose = useCallback(() => {
+    setIsPhotoViewerOpen(false);
+    setViewerActiveIndex(null);
+    setViewerSourceRect(null);
   }, []);
 
   const menuItems = isAd ? [
@@ -780,6 +791,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
                 mediaItems={images}
                 onItemClick={handleMediaItemClick}
                 containerStyle={{ borderRadius: 0, border: 'none' }}
+                hiddenIndex={isPhotoViewerOpen ? viewerActiveIndex : null}
               />
             </div>
           )
@@ -857,9 +869,11 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
           <PhotoViewer
             photos={images}
             initialIndex={viewerStartIndex}
-            onClose={() => setIsPhotoViewerOpen(false)}
+            onClose={handlePhotoViewerClose}
             meta={viewerMeta}
             sourceRect={viewerSourceRect}
+            sourceRectProvider={resolveViewerSourceRect}
+            onIndexChange={setViewerActiveIndex}
           />
         )}
       </div>

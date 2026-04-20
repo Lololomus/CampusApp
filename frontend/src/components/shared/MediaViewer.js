@@ -1,5 +1,5 @@
 // ===== FILE: MediaViewer.js =====
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, Play, Volume2, VolumeX, Download, ChevronUp } from 'lucide-react';
 import { useSwipe } from '../../hooks/useSwipe';
@@ -42,6 +42,16 @@ const normalizeItem = (item) => {
     duration: item.duration, w: item.w, h: item.h,
   };
   return { type: 'image', url: toAbsoluteUrl(item.url, 'images'), w: item.w, h: item.h };
+};
+
+const normalizeRect = (rect) => {
+  if (!rect) return null;
+  const x = Number.isFinite(rect.x) ? rect.x : rect.left;
+  const y = Number.isFinite(rect.y) ? rect.y : rect.top;
+  const width = rect.width;
+  const height = rect.height;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !width || !height) return null;
+  return { x, y, width, height };
 };
 
 // ─── Pinch-to-zoom ────────────────────────────────────────────────────────────
@@ -160,7 +170,7 @@ const VideoSlide = ({ media, isActive, showUI, footerHeight, footerOpen, hasFoot
 };
 
 // ─── Главный компонент ────────────────────────────────────────────────────────
-function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissMode = 'default', sourceRect }) {
+function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissMode = 'default', sourceRect, sourceRectProvider, onIndexChange }) {
   const items = mediaList.map(normalizeItem).filter(Boolean);
   const isSwipeOnlyDismiss = dismissMode === 'swipe';
 
@@ -191,6 +201,19 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
   // Ссылка на <img> текущего слайда — используется для захвата реальных bounds
   const currentImgRef = useRef(null);
 
+  const resolveSourceRect = useCallback((index = currentIndex) => {
+    if (typeof sourceRectProvider === 'function') {
+      return normalizeRect(sourceRectProvider(index));
+    }
+    if (typeof sourceRect === 'function') {
+      return normalizeRect(sourceRect(index));
+    }
+    if (Array.isArray(sourceRect)) {
+      return normalizeRect(sourceRect[index]);
+    }
+    return normalizeRect(sourceRect);
+  }, [currentIndex, sourceRect, sourceRectProvider]);
+
   // Запускаем CSS-переход плавающего изображения после первой отрисовки
   useEffect(() => {
     if (!heroAnim) return;
@@ -214,23 +237,24 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
   }, [isClosing, swipeClosing, heroAnim, onClose]);
 
   // Hero-закрытие: плавающий снимок летит от реальных bounds к ячейке
-  const closeViaHero = useCallback(() => {
+  const closeViaHero = useCallback((fallback = closeViaSwipe) => {
     if (isClosing || swipeClosing || heroAnim) return;
 
     const imgEl = currentImgRef.current;
     const currentItem = items[currentIndex];
+    const to = resolveSourceRect(currentIndex);
 
     // Для видео — fallback на свайп вниз
-    if (!imgEl || !sourceRect || currentItem?.type === 'video') {
-      closeViaSwipe();
+    if (!imgEl || !to || currentItem?.type === 'video') {
+      fallback();
       return;
     }
 
-    const from = imgEl.getBoundingClientRect();
+    const from = normalizeRect(imgEl.getBoundingClientRect());
 
     // Если изображение ещё не загружено (нулевые размеры) — fallback
-    if (!from.width || !from.height) {
-      closeViaSwipe();
+    if (!from) {
+      fallback();
       return;
     }
 
@@ -238,9 +262,13 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
     dragYRef.current = 0;
     setDragY(0);
 
-    setHeroAnim({ url: currentItem.url, from, to: sourceRect });
+    setHeroAnim({ url: currentItem.url, from, to });
     setTimeout(onClose, 360);
-  }, [isClosing, swipeClosing, heroAnim, onClose, items, currentIndex, sourceRect, closeViaSwipe]);
+  }, [isClosing, swipeClosing, heroAnim, onClose, items, currentIndex, resolveSourceRect, closeViaSwipe]);
+
+  const closeFromControl = useCallback(() => {
+    closeViaHero(closeWithAnimation);
+  }, [closeViaHero, closeWithAnimation]);
 
   const resetDrag = useCallback(() => {
     dragYRef.current = 0;
@@ -262,11 +290,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
     if (!isDraggingRef.current) { resetDrag(); return; }
     isDraggingRef.current = false;
     if (dragYRef.current > 80) {
-      sourceRect ? closeViaHero() : closeViaSwipe();
+      closeViaHero(closeViaSwipe);
     } else {
       resetDrag();
     }
-  }, [sourceRect, closeViaHero, closeViaSwipe, resetDrag]);
+  }, [closeViaHero, closeViaSwipe, resetDrag]);
 
   const cleanupMouseDrag = useCallback(() => {
     if (dragCleanupRef.current) { dragCleanupRef.current(); dragCleanupRef.current = null; }
@@ -284,17 +312,20 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
     setTimeout(() => { if (scrollRef.current) scrollRef.current.style.scrollBehavior = 'smooth'; }, 50);
   }, [initialIndex]);
   useEffect(() => {
+    onIndexChange?.(currentIndex);
+  }, [currentIndex, onIndexChange]);
+  useEffect(() => {
     if (footerRef.current) setFooterHeight(footerRef.current.offsetHeight);
   }, [currentIndex, showUI, meta]);
   useEffect(() => {
     const handleKey = (e) => {
-      if (e.key === 'Escape' && !isSwipeOnlyDismiss) closeWithAnimation();
+      if (e.key === 'Escape' && !isSwipeOnlyDismiss) closeFromControl();
       if (e.key === 'ArrowLeft') scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' });
       if (e.key === 'ArrowRight') scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' });
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [closeWithAnimation, isSwipeOnlyDismiss]);
+  }, [closeFromControl, isSwipeOnlyDismiss]);
 
   const toggleUI = useCallback(() => {
     if (suppressTapRef.current) { suppressTapRef.current = false; return; }
@@ -383,7 +414,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
           opacity: overlayOpacity,
           transition: overlayTransition,
         }}
-        onClick={isSwipeOnlyDismiss ? undefined : closeWithAnimation}
+        onClick={isSwipeOnlyDismiss ? undefined : closeFromControl}
       />
 
       {/* Контейнер */}
@@ -408,7 +439,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
           </div>
         )}
         {!meta && !isSwipeOnlyDismiss && (
-          <button style={{ ...styles.closeButton, position: 'absolute', top: 'max(16px, env(safe-area-inset-top, 16px))', right: 16, opacity: showUI ? 1 : 0, transform: showUI ? 'translateY(0)' : 'translateY(-100px)', transition: 'all 0.4s cubic-bezier(0.32,0.72,0,1)', zIndex: 10 }} onClick={closeWithAnimation}>
+          <button style={{ ...styles.closeButton, position: 'absolute', top: 'max(16px, env(safe-area-inset-top, 16px))', right: 16, opacity: showUI ? 1 : 0, transform: showUI ? 'translateY(0)' : 'translateY(-100px)', transition: 'all 0.4s cubic-bezier(0.32,0.72,0,1)', zIndex: 10 }} onClick={closeFromControl}>
             <X size={22} />
           </button>
         )}
@@ -521,7 +552,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, meta, dismissM
             <div style={styles.footerButtons}>
               <button style={styles.downloadButton} onClick={handleDownload}><Download size={16} />Скачать</button>
               {!isSwipeOnlyDismiss && (
-                <button style={styles.closeButtonFooter} onClick={closeWithAnimation}><X size={16} strokeWidth={3} />Закрыть</button>
+                <button style={styles.closeButtonFooter} onClick={closeFromControl}><X size={16} strokeWidth={3} />Закрыть</button>
               )}
             </div>
           </div>

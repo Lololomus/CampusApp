@@ -68,7 +68,7 @@ const cellStyles = {
 
 // Одна ячейка сетки
 const MediaCell = React.memo(function MediaCell({
-  item, index, total, maxVisible, onItemClick, isSingleItem, spanStyle,
+  item, index, total, maxVisible, onItemClick, isSingleItem, spanStyle, isHidden,
 }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -95,10 +95,10 @@ const MediaCell = React.memo(function MediaCell({
   };
 
   return (
-    <div style={wrapperStyle} onClick={handleClick}>
-      {!loaded && !failed && <div style={cellStyles.skeleton} />}
-      {failed && <div style={cellStyles.fallback}>Фото недоступно</div>}
-      {url && (
+    <div data-media-grid-index={index} style={wrapperStyle} onClick={handleClick}>
+      {!isHidden && !loaded && !failed && <div style={cellStyles.skeleton} />}
+      {!isHidden && failed && <div style={cellStyles.fallback}>Фото недоступно</div>}
+      {!isHidden && url && (
         <img
           src={url}
           alt=""
@@ -117,14 +117,14 @@ const MediaCell = React.memo(function MediaCell({
           onError={() => setFailed(true)}
         />
       )}
-      {isVideo && !failed && (
+      {!isHidden && isVideo && !failed && (
         <div style={cellStyles.playIcon}>
           <svg width={18} height={18} viewBox="0 0 18 18" fill="white">
             <polygon points="5,2 16,9 5,16" />
           </svg>
         </div>
       )}
-      {isOverflowCell && (
+      {!isHidden && isOverflowCell && (
         <div style={cellStyles.overflowOverlay}>
           <span style={cellStyles.overflowText}>+{overflowCount}</span>
         </div>
@@ -134,7 +134,7 @@ const MediaCell = React.memo(function MediaCell({
 });
 
 // Динамическая плитка медиа (1–4 элемента)
-const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVisible = 4, containerStyle }) {
+const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVisible = 4, containerStyle, hiddenIndex = null }) {
   const total = mediaItems.length;
   const count = Math.min(total, maxVisible);
   const isSingleItem = count === 1;
@@ -173,6 +173,7 @@ const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVi
           maxVisible={maxVisible}
           onItemClick={onItemClick}
           isSingleItem={isSingleItem}
+          isHidden={hiddenIndex === index}
           // При 3 элементах первый занимает оба столбца
           spanStyle={count === 3 && index === 0 ? { gridColumn: '1 / span 2' } : {}}
         />
