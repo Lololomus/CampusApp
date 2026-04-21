@@ -1,5 +1,5 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketFilters.js =====
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import SwipeableModal from '../shared/SwipeableModal';
@@ -27,7 +27,7 @@ const D = {
 };
 
 
-const MarketFilters = ({ onClose, onApply }) => {
+const MarketFilters = ({ onClose, onApply, resultsCount = null, fetchCount = null }) => {
   const { user, marketFilters, setMarketFilters, clearMarketFilters } = useStore();
 
   const [localFilters, setLocalFilters] = useState({ ...marketFilters });
@@ -161,6 +161,25 @@ const MarketFilters = ({ onClose, onApply }) => {
 
   const activeCount = activeFiltersCount();
 
+  const [liveCount, setLiveCount] = useState(resultsCount);
+  const debounceRef = useRef(null);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (!fetchCount) return;
+    setLiveCount(null);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      const count = await fetchCount(localFilters);
+      setLiveCount(count);
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [localFilters]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const marketActiveBadges = (() => {
     const badges = [];
     if (localFilters.location !== 'all') {
@@ -212,8 +231,20 @@ const MarketFilters = ({ onClose, onApply }) => {
       showHeaderDivider={false}
       title={
         <div style={styles.titleWrapper}>
-          <span>Фильтры</span>
-          {activeCount > 0 && <div style={styles.badge}>{activeCount}</div>}
+          {activeCount > 0 && (
+            <span style={styles.titleLeft}>
+              Фильтры: <span style={{ color: D.accent }}>{activeCount}</span>
+            </span>
+          )}
+          <span>Фильтры маркета</span>
+          {activeCount > 0 && (
+            <span style={styles.titleRight}>
+              {liveCount != null
+                ? <>Найдено: <span style={{ color: D.body }}>{liveCount}</span></>
+                : <>Найдено: <span style={styles.shimmer} /></>
+              }
+            </span>
+          )}
         </div>
       }
       footer={
@@ -227,6 +258,7 @@ const MarketFilters = ({ onClose, onApply }) => {
         </div>
       }
     >
+      <style>{`@keyframes filterShimmer{0%,100%{opacity:.25}50%{opacity:.6}}`}</style>
       <div style={styles.container}>
 
         {/* Active filters strip */}
@@ -589,21 +621,34 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: theme.spacing.sm,
     position: 'relative',
+    width: '100%',
   },
-  badge: {
-    background: D.accent,
-    color: D.accentText,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.bold,
-    padding: `0 ${theme.spacing.md}px`,
-    borderRadius: theme.radius.full,
-    minWidth: 28,
-    height: 28,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+  titleLeft: {
+    position: 'absolute',
+    left: 0,
+    fontSize: 12,
+    fontWeight: 500,
+    color: D.muted,
+    whiteSpace: 'nowrap',
+  },
+  titleRight: {
+    position: 'absolute',
+    right: 0,
+    fontSize: 12,
+    fontWeight: 500,
+    color: D.muted,
+    whiteSpace: 'nowrap',
+  },
+  shimmer: {
+    display: 'inline-block',
+    width: 30,
+    height: 13,
+    borderRadius: 6,
+    background: 'rgba(255,255,255,0.1)',
+    animation: 'filterShimmer 1.4s ease-in-out infinite',
+    verticalAlign: 'middle',
+    marginLeft: 2,
   },
   footer: {
     display: 'flex',

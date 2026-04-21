@@ -479,6 +479,7 @@ class PostsFeedResponse(BaseModel):
     """Лента постов"""
     items: List[PostResponse]
     total: int
+    total_count: int = 0
     has_more: bool
 
 # ===== COMMENT SCHEMAS =====

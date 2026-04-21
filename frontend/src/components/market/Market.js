@@ -55,6 +55,7 @@ const Market = () => {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showDetail, setShowDetail] = useState(null);
   const [showCreateItem, setShowCreateItem] = useState(false);
@@ -116,6 +117,7 @@ const Market = () => {
     loadingRef.current = true;
     setLoading(true);
     setError(null);
+    if (reset) setTotalCount(null);
 
     try {
       const currentPage = reset ? 0 : pageRef.current;
@@ -133,6 +135,7 @@ const Market = () => {
       
       if (reset) {
         setMarketItems(result.items);
+        setTotalCount(result.total ?? null);
         pageRef.current = 1;
         setPage(1);
       } else {
@@ -245,10 +248,25 @@ const Market = () => {
     setShowFilters(true); 
   }, []); // ✅ useCallback
 
-  const handleApplyFilters = useCallback(() => { 
+  const handleApplyFilters = useCallback(() => {
     setPage(0);
     setAnimationKey(prev => prev + 1); // ✅ АНИМАЦИЯ
   }, []); // ✅ useCallback
+
+  const fetchMarketCount = useCallback(async (localFilters) => {
+    try {
+      const result = await getMarketItems({
+        ...localFilters,
+        category: localFilters.category !== 'all' ? localFilters.category : undefined,
+        skip: 0,
+        limit: 1,
+        search: searchQuery || undefined,
+      });
+      return result.total ?? null;
+    } catch {
+      return null;
+    }
+  }, [searchQuery]);
 
   const handleOpenFavorites = useCallback(() => {
     haptic('medium');
@@ -393,7 +411,7 @@ const Market = () => {
 
       {/* MODALS */}
       {showFilters && (
-        <MarketFilters onClose={() => setShowFilters(false)} onApply={handleApplyFilters} />
+        <MarketFilters onClose={() => setShowFilters(false)} onApply={handleApplyFilters} resultsCount={totalCount} fetchCount={fetchMarketCount} />
       )}
 
       {showCreateItem && (

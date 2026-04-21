@@ -44,6 +44,7 @@ function PostFeed() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [totalCount, setTotalCount] = useState(null);
   const [feedAds, setFeedAds] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,6 +129,7 @@ function PostFeed() {
         postsOffsetRef.current = 0;
         hasMorePostsRef.current = true;
         setHasMorePosts(true);
+        setTotalCount(null);
       }
 
       const nextOffset = reset ? 0 : postsOffsetRef.current;
@@ -179,6 +181,7 @@ function PostFeed() {
       postsOffsetRef.current = nextOffset + postsWithImages.length;
       hasMorePostsRef.current = Boolean(data.has_more);
       setHasMorePosts(hasMorePostsRef.current);
+      if (data.total_count != null) setTotalCount(data.total_count);
 
       if (reset) {
         getAdsForFeed(3)
@@ -260,13 +263,38 @@ function PostFeed() {
   };
 
   const handleFiltersApply = () => {
-    loadPosts(true);
+    // Reload triggered automatically by useEffect when postsFilters updates in store
   };
 
   const handleClearFiltersAndSearch = useCallback(() => {
     clearPostsFilters();
     setSearchQuery('');
   }, [clearPostsFilters]);
+
+  const fetchPostsCount = useCallback(async (localFilters) => {
+    try {
+      const params = {
+        category: localFilters.category === 'all' ? null : localFilters.category,
+        skip: 0,
+        limit: 1,
+        search: searchQuery || undefined,
+      };
+      const loc = localFilters.location;
+      if (loc === 'my_university' || loc === 'my_institute') {
+        params.university = localFilters.university;
+        params.viewer_city = user?.city || undefined;
+      }
+      if (loc === 'my_institute') params.institute = localFilters.institute;
+      if (loc === 'my_campus') params.campus_id = localFilters.campus_id;
+      if (loc === 'my_city') params.city = localFilters.city;
+      if (localFilters.dateRange !== 'all') params.dateRange = localFilters.dateRange;
+      if (localFilters.sort !== 'newest') params.sort = localFilters.sort;
+      const data = await getPosts(params);
+      return data.total_count ?? null;
+    } catch {
+      return null;
+    }
+  }, [searchQuery, user?.city]);
 
   // Подмешивание рекламы: После 1-го поста, а потом каждые 5
   const postsWithAds = useMemo(() => {
@@ -440,12 +468,6 @@ function PostFeed() {
             </div>
           )}
 
-          {posts.length > 0 && (
-            <div style={styles.resultsCount}>
-              {posts.length}{hasMorePosts ? '+' : ''} постов
-            </div>
-          )}
-
           {posts.length > 0 && postsWithDividers.map((row, rowIndex) => (
             row.type === 'divider' ? (
               <FeedDateDivider
@@ -487,6 +509,8 @@ function PostFeed() {
         <PostFiltersModal
           onClose={() => setShowFiltersModal(false)}
           onApply={handleFiltersApply}
+          resultsCount={totalCount}
+          fetchCount={fetchPostsCount}
         />
       )}
     </div>
@@ -560,13 +584,6 @@ const styles = {
     fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
-  },
-  resultsCount: {
-    padding: '4px 16px 0',
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    fontWeight: 500,
-    letterSpacing: 0.2,
   },
 };
 

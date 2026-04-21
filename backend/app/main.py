@@ -531,10 +531,10 @@ async def get_posts_feed(
         )
 
     # Pass all filter params into CRUD
-    posts = await crud.get_posts(
-        db, 
-        skip=skip, 
-        limit=limit, 
+    posts_data = await crud.get_posts(
+        db,
+        skip=skip,
+        limit=limit,
         category=category,
         university=university,
         institute=institute,
@@ -549,7 +549,7 @@ async def get_posts_feed(
     )
 
     result = []
-    for post in posts:
+    for post in posts_data["items"]:
         tags = post.tags or []
         is_liked = await crud.is_post_liked_by_user(db, post.id, user.id) if user else False
         images = get_image_urls(post.images) if post.images else []
@@ -603,7 +603,8 @@ async def get_posts_feed(
     return normalize_datetime_payload({
         "items": result,
         "total": len(result),
-        "has_more": len(posts) == limit
+        "total_count": posts_data["total_count"],
+        "has_more": posts_data["has_more"],
     })
 
 @app.post("/posts/create", response_model=schemas.PostResponse)

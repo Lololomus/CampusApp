@@ -162,6 +162,10 @@ async def get_posts(
             start_date = now - timedelta(days=30)
             query = query.where(models.Post.created_at >= start_date)
 
+    # Считаем total до добавления ORDER BY и LIMIT
+    count_subq = query.with_only_columns(models.Post.id).subquery()
+    total_count = await db.scalar(select(func.count()).select_from(count_subq)) or 0
+
     # Сортировка: resolved-посты всегда в конце, потом обычная сортировка
     if sort == 'popular':
         hours_ago = func.extract('epoch', func.now() - models.Post.created_at) / 3600.0
@@ -187,7 +191,12 @@ async def get_posts(
         )
 
     result = await db.execute(query.offset(skip).limit(limit))
-    return result.scalars().all()
+    items = result.scalars().all()
+    return {
+        "items": items,
+        "total_count": total_count,
+        "has_more": skip + limit < total_count,
+    }
 
 
 async def get_post(db: AsyncSession, post_id: int) -> Optional[models.Post]:
