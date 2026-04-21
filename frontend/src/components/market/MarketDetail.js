@@ -1,6 +1,6 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketDetail.js =====
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info, MapPin, Link, Share2, Edit2, Flag } from 'lucide-react';
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem, getSellerRating, contactMarketSeller } from '../../api';
@@ -20,7 +20,6 @@ import OverflowMenuButton from '../shared/OverflowMenuButton';
 import Avatar from '../user/Avatar';
 import ProfileMiniCard from '../user/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
-import DrilldownHeader from '../shared/DrilldownHeader';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate } from '../../utils/datetime';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
@@ -67,6 +66,21 @@ const hasSentMarketRequest = (item) => Boolean(
   )
 );
 
+const getMarketGallerySourceRect = (element) => {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  if (!rect?.width || !rect?.height) return null;
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    objectFit: 'cover',
+    objectPosition: 'top center',
+    borderRadius: 0,
+  };
+};
+
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 
     user, 
@@ -99,8 +113,10 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const [sellerRating, setSellerRating] = useState({ avg: null, count: 0 });
   const [contactSubmitting, setContactSubmitting] = useState(false);
   const [requestSent, setRequestSent] = useState(() => hasSentMarketRequest(item));
+  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   
   const menuRef = useRef(null);
+  const galleryRef = useRef(null);
   const sellerAvatarRef = useRef(null);
   const currentItemRequestSent = hasSentMarketRequest(currentItem);
 
@@ -336,8 +352,21 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     }
   };
 
-  const handleImageClick = (index) => {
+  const resolvePhotoViewerSourceRect = useCallback((index) => {
+    const sourceImg = galleryRef.current?.querySelector(`[data-market-gallery-image-index="${index}"]`);
+    const sourceSlide = galleryRef.current?.querySelector(`[data-market-gallery-index="${index}"]`);
+    return getMarketGallerySourceRect(sourceImg || sourceSlide)
+      || (index === currentImageIndex ? photoViewerSourceRect : null);
+  }, [currentImageIndex, photoViewerSourceRect]);
+
+  const handlePhotoViewerClose = useCallback(() => {
+    setShowPhotoViewer(false);
+    setPhotoViewerSourceRect(null);
+  }, []);
+
+  const handleImageClick = (index, sourceElement) => {
     hapticFeedback('light');
+    setPhotoViewerSourceRect(getMarketGallerySourceRect(sourceElement));
     setCurrentImageIndex(index);
     setShowPhotoViewer(true);
   };
@@ -477,7 +506,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   return (
     <>
       <EdgeSwipeBack
-        onBack={() => onClose?.()}
+        onBack={closeDetail}
         disabled={isExiting || showPhotoViewer || showEditModal}
         zIndex={Z_MARKET_DETAIL}
       >
@@ -488,15 +517,19 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
             : 'slideInRight 0.38s cubic-bezier(0.32, 0.72, 0, 1) forwards',
           pointerEvents: isExiting ? 'none' : 'auto',
         }}>
+        <button
+          type="button"
+          className="market-detail-back-btn"
+          style={styles.marketBackButton}
+          onClick={() => {
+            hapticFeedback('light');
+            closeDetail();
+          }}
+          aria-label="Назад"
+        >
+          <ChevronLeft size={22} />
+        </button>
         <div style={styles.content}>
-          <DrilldownHeader
-            title=""
-            onBack={closeDetail}
-            showTitle={false}
-            sticky={false}
-            showDivider={false}
-            background="#000000"
-          />
           {images.length > 0 && (
             <div
               data-no-edge-swipe="true"
@@ -505,19 +538,22 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
-              <div style={styles.gradientTop} />
-
-              <div style={styles.galleryTrack}>
+              <div ref={galleryRef} style={styles.galleryTrack}>
                 {images.map((img, index) => {
                   const imageUrl = img.url || img;
                   return (
                     <div
                       key={index}
+                      data-market-gallery-index={index}
                       style={{
                         ...styles.gallerySlide,
                         transform: `translateX(-${currentImageIndex * 100}%)`,
+                        transition: showPhotoViewer ? 'none' : styles.gallerySlide.transition,
                       }}
-                      onClick={() => handleImageClick(index)}
+                      onClick={(e) => {
+                        const sourceImg = e.currentTarget.querySelector('img');
+                        handleImageClick(index, sourceImg || e.currentTarget);
+                      }}
                     >
                       {imagesLoading[index] !== false && (
                         <div style={styles.imagePlaceholder}>
@@ -525,6 +561,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                         </div>
                       )}
                       <img
+                        data-market-gallery-image-index={index}
                         src={imageUrl}
                         alt={`Фото ${index + 1}`}
                         style={styles.galleryImage}
@@ -713,8 +750,11 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
         <PhotoViewer
           photos={images}
           initialIndex={currentImageIndex}
-          onClose={() => setShowPhotoViewer(false)}
+          onClose={handlePhotoViewerClose}
           meta={{ author: currentItem.seller, caption: currentItem.title }}
+          sourceRect={photoViewerSourceRect}
+          sourceRectProvider={resolvePhotoViewerSourceRect}
+          onIndexChange={setCurrentImageIndex}
         />
       )}
 
@@ -785,15 +825,24 @@ const styles = {
     background: theme.colors.bgSecondary,
   },
 
-  gradientTop: {
+  marketBackButton: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '80px',
-    background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, transparent 100%)',
-    zIndex: 1,
-    pointerEvents: 'none',
+    top: 'calc(var(--screen-top-offset) + 8px)',
+    left: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    border: '1px solid rgba(255,255,255,0.16)',
+    background: 'rgba(0,0,0,0.38)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    color: '#fff',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    zIndex: 20,
+    transition: 'transform 0.15s ease, opacity 0.15s ease, background-color 0.15s ease',
   },
 
   galleryTrack: {

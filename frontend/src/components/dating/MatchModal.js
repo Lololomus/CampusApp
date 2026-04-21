@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { MessageCircle, Flame } from 'lucide-react';
 import { useStore } from '../../store';
 import theme from '../../theme';
@@ -119,8 +119,7 @@ function MatchModal() {
   }
 
   return (
-    <AnimatePresence>
-      <motion.div
+    <motion.div
         {...modalBoundaryProps}
         {...modalTouchBoundaryHandlers}
         style={styles.overlay}
@@ -305,7 +304,6 @@ function MatchModal() {
         <div style={styles.glowTop} />
         <div style={styles.glowBottom} />
       </motion.div>
-    </AnimatePresence>
   );
 }
 
@@ -322,6 +320,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '20px',
+    boxSizing: 'border-box',
     overflow: 'hidden',
   },
   content: {
@@ -438,6 +437,7 @@ const styles = {
   },
   buttonsContainer: {
     width: '100%',
+    boxSizing: 'border-box',
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
@@ -446,6 +446,8 @@ const styles = {
   primaryButton: {
     width: '100%',
     height: 56,
+    boxSizing: 'border-box',
+    padding: '0 18px',
     background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
     border: 'none',
     borderRadius: 18,
@@ -463,6 +465,8 @@ const styles = {
   secondaryButton: {
     width: '100%',
     height: 50,
+    boxSizing: 'border-box',
+    padding: '0 18px',
     background: 'rgba(255, 255, 255, 0.08)',
     backdropFilter: 'blur(10px)',
     border: '1.5px solid rgba(255, 255, 255, 0.15)',

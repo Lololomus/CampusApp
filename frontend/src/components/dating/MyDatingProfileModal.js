@@ -787,7 +787,7 @@ function MyDatingProfileModal({ onClose }) {
           {tempPhotos.map((photo, idx) => (
             <div key={`ex-${idx}`} style={styles.photoSlot}>
               <img src={getPhotoUrl(photo)} alt="" style={styles.photoSlotImg} />
-              {idx === 0 && tempNewFiles.length === 0 && (
+              {idx === 0 && (
                 <div style={styles.mainBadge}>MAIN</div>
               )}
               <button

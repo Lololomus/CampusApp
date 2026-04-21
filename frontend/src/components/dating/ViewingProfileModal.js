@@ -1,7 +1,7 @@
 // ===== FILE: src/components/dating/ViewingProfileModal.js =====
 // Полноэкранный просмотр профиля из вкладки "Симпатии" — slide-in from right
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GraduationCap, ChevronLeft, ChevronRight, Heart, MessageCircle } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import { hapticFeedback } from '../../utils/telegram';
@@ -20,6 +20,9 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isLiking, setIsLiking] = useState(false);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => { isMountedRef.current = false; }, []);
 
   const photos = profile?.photos || [];
   const hasPhotos = photos.length > 0;
@@ -50,7 +53,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
     try {
       if (onLike) await onLike();
     } finally {
-      setIsLiking(false);
+      if (isMountedRef.current) setIsLiking(false);
     }
   };
 

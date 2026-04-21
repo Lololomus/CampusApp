@@ -413,7 +413,7 @@ function Profile() {
 
       {showPhotoViewer && user.avatar && (
         <PhotoViewer
-          images={[user.avatar]}
+          photos={[user.avatar]}
           initialIndex={0}
           onClose={() => setShowPhotoViewer(false)}
         />

@@ -206,15 +206,6 @@ function DatingFeed() {
     finally { setLoadingMatches(false); }
   };
 
-  // === Prefetch ===
-  useEffect(() => {
-    if (!checkingProfile && !currentProfile && hasMoreProfiles) loadProfiles(true);
-    if (!checkingProfile && !isGuestMode) {
-      if (USE_MOCK_DATA) updateDatingStats({ likes_count: MOCK_LIKES.length });
-      else getDatingStats().then(updateDatingStats).catch(console.error);
-    }
-  }, [checkingProfile, isRegistered]);
-
   useEffect(() => {
     if (checkingProfile || !pendingDatingOnboardingOpen) return;
 
@@ -355,6 +346,8 @@ function DatingFeed() {
     if (!targetId || (isAnimating && !profileId)) return { is_match: false };
     hapticFeedback('medium');
 
+    const savedProfile = !profileId ? currentProfile : null;
+
     if (!profileId) {
       setIsAnimating(true);
       // Анимируем карточку вправо за экран, потом убираем
@@ -421,17 +414,14 @@ function DatingFeed() {
     } catch (e) {
       console.error('Like error:', e);
       toast.error(e?.message || 'Не удалось поставить лайк');
-      if (!profileId) {
-        setIsAnimating(false);
+      if (!profileId && savedProfile) {
+        setCurrentProfile(savedProfile);
       }
       return { is_match: false };
     }
   };
 
   const handleMatch = (user) => {
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-    }
     setShowMatchModal(true, user);
   };
 
@@ -655,7 +645,10 @@ function DatingFeed() {
             onMessage={(user) => {
               hapticFeedback('medium');
             }}
-            onEmptyAction={() => setShowMyProfile(true)}
+            onEmptyAction={() => {
+              setActiveTab('profiles');
+              setViewingProfile(null);
+            }}
           />
         )}
 
@@ -715,7 +708,9 @@ function DatingFeed() {
         </div>
       </SwipeableModal>
 
-      {showMatchModal && <MatchModal />}
+      <AnimatePresence>
+        {showMatchModal && <MatchModal key="match-modal" />}
+      </AnimatePresence>
     </div>
   );
 }
