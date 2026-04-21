@@ -16,9 +16,9 @@ import {
   Plus,
   Loader2,
   Users,
-  VenetianMask,
   X,
 } from 'lucide-react';
+import IncognitoIcon from '../icons/IncognitoIcon';
 import { compressImage } from '../../utils/media';
 import { useSwipe } from '../../hooks/useSwipe';
 import { DragHandle } from '../shared/SwipeableModal';
@@ -772,7 +772,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
               color: '#fff',
             }}>
               <span>{categoryItem?.icon || '📌'} {categoryItem?.label || (isPost ? 'Пост' : 'Запрос')}</span>
-              <span style={{ marginLeft: 'auto', color: 'var(--create-text-muted)', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Lock size={12} /> категория зафиксирована</span>
+              <span style={{ marginLeft: 'auto', color: 'var(--create-text-muted)', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Lock size={12} /> не редактируется</span>
             </div>
 
             {!isPost && (
@@ -882,49 +882,42 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
             )}
 
             {isPost && postCategory === 'lost_found' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button type="button" className="create-spring-btn" style={lfType === 'lost' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => setLfType('lost')} disabled={isSubmitting}>Потерял</button>
-                  <button type="button" className="create-spring-btn" style={lfType === 'found' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => setLfType('found')} disabled={isSubmitting}>Нашёл</button>
+              <div style={styles.smartWrap}>
+                <div style={styles.lfRow}>
+                  <button type="button" className="create-spring-btn" style={lfType === 'lost' ? { ...styles.lfBtn, ...styles.lfBtnLost } : styles.lfBtn} onClick={() => setLfType('lost')} disabled={isSubmitting}>😢 Потерял</button>
+                  <button type="button" className="create-spring-btn" style={lfType === 'found' ? { ...styles.lfBtn, ...styles.lfBtnFound } : styles.lfBtn} onClick={() => setLfType('found')} disabled={isSubmitting}>🎉 Нашёл</button>
                 </div>
                 <div style={styles.smartInputWrap}>
-                  <MapPin size={16} color="var(--create-text-muted)" />
+                  <MapPin size={18} color="var(--create-text-muted)" />
                   <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Где это было?" style={styles.smartInput} disabled={isSubmitting} />
                 </div>
               </div>
             ) : null}
 
             {isPost && postCategory === 'events' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button type="button" className="create-spring-btn" style={eventDateMode === 'today' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => { setEventDateMode('today'); closePicker(); }} disabled={isSubmitting}>Сегодня</button>
-                  <button type="button" className="create-spring-btn" style={eventDateMode === 'tomorrow' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => { setEventDateMode('tomorrow'); closePicker(); }} disabled={isSubmitting}>Завтра</button>
-                  <button type="button" className="create-spring-btn" style={eventDateMode === 'custom' ? { ...styles.switchBtn, ...styles.switchBtnActive } : styles.switchBtn} onClick={() => { setEventDateMode('custom'); openPicker('event'); setShowTagTool(false); }} disabled={isSubmitting}>
+              <div style={styles.smartWrap}>
+                <div style={styles.eventRow}>
+                  <button type="button" className="create-spring-btn" style={eventDateMode === 'today' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} onClick={() => { setEventDateMode('today'); closePicker(); }} disabled={isSubmitting}>Сегодня</button>
+                  <button type="button" className="create-spring-btn" style={eventDateMode === 'tomorrow' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} onClick={() => { setEventDateMode('tomorrow'); closePicker(); }} disabled={isSubmitting}>Завтра</button>
+                  <button type="button" className="create-spring-btn" style={eventDateMode === 'custom' ? { ...styles.eventBtn, ...styles.eventBtnActive } : styles.eventBtn} onClick={() => { setEventDateMode('custom'); openPicker('event'); setShowTagTool(false); }} disabled={isSubmitting}>
                     {eventDateMode === 'custom' ? formatCustomDate(customDate) : 'Своя дата'}
                   </button>
                 </div>
                 <div style={styles.smartInputWrap}>
-                  <MapPin size={16} color="var(--create-text-muted)" />
+                  <MapPin size={18} color="var(--create-text-muted)" />
                   <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Место проведения" style={styles.smartInput} disabled={isSubmitting} />
                 </div>
               </div>
             ) : null}
 
-            {isPost && postCategory === 'confessions' ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                borderRadius: 14,
-                border: '1px solid rgba(212,255,0,0.2)',
-                background: 'rgba(212,255,0,0.06)',
-                padding: '10px 12px',
-                marginBottom: 12,
-              }}>
-                <VenetianMask size={18} color="var(--create-primary)" />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--create-primary)' }}>Полная анонимность</div>
-                  <div style={{ fontSize: 12, color: 'var(--create-text-muted)' }}>Авторство скрыто автоматически</div>
+            {isPost && (isAnonymous || postCategory === 'confessions') ? (
+              <div style={styles.anonBlock}>
+                <div style={styles.anonRow}>
+                  <IncognitoIcon size={24} showCircle={false} shapeColor="var(--create-primary)" style={{ flexShrink: 0 }} />
+                  <div style={styles.anonInfo}>
+                    <div style={styles.anonTitle}>{postCategory === 'confessions' ? 'Полная анонимность' : 'Анонимный пост'}</div>
+                    <div style={styles.anonSubtitle}>Авторство будет скрыто</div>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -933,7 +926,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
               <div style={{ ...styles.pollCard, ...(poll ? { border: 'none' } : {}) }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <span style={{ fontSize: 12, color: 'var(--create-text-muted)', fontWeight: 700 }}>ОПРОС</span>
-                  <span style={{ fontSize: 11, color: 'var(--create-text-muted)', display: 'inline-flex', gap: 4, alignItems: 'center' }}><Lock size={12} /> структура фиксирована</span>
+                  <span style={{ fontSize: 11, color: 'var(--create-text-muted)', display: 'inline-flex', gap: 4, alignItems: 'center' }}><Lock size={12} /> не редактируется</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {pollOptions.map((option, index) => (
@@ -963,7 +956,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
                 }}>
                   <span style={styles.pollFlag}><HelpCircle size={12} /> {pollType === 'quiz' ? 'Викторина' : 'Опрос'}</span>
                   <span style={styles.pollFlag}><Users size={12} /> {pollMulti ? 'Мультивыбор' : 'Один выбор'}</span>
-                  <span style={styles.pollFlag}><VenetianMask size={12} /> {pollAnon ? 'Анонимный' : 'Публичный'}</span>
+                  <span style={styles.pollFlag}><IncognitoIcon size={12} showCircle={false} shapeColor="currentColor" /> {pollAnon ? 'Анонимный' : 'Публичный'}</span>
                 </div>
               </div>
             ) : null}
@@ -1066,7 +1059,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
                   <Hash size={TOOL_ICON_SIZE} />
                 </button>
                 {isPost ? (
-                  <button type="button" className="create-spring-btn" style={(postCategory === 'polls' || poll) ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} disabled={isSubmitting || !(postCategory === 'polls' || poll)}>
+                  <button type="button" style={{ ...styles.toolBtn, opacity: 0.35, cursor: 'default' }} disabled>
                     <BarChart2 size={TOOL_ICON_SIZE} />
                   </button>
                 ) : (
@@ -1075,8 +1068,8 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
                   </button>
                 )}
                 {isPost ? (
-                  <button type="button" className="create-spring-btn" style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => setIsAnonymous((prev) => !prev)} disabled={isSubmitting || postCategory === 'confessions'}>
-                    <VenetianMask size={TOOL_ICON_SIZE} />
+                  <button type="button" style={{ ...styles.toolBtn, ...(isAnonymous ? styles.toolBtnActive : {}), opacity: 0.35, cursor: 'default' }} disabled>
+                    <IncognitoIcon size={TOOL_ICON_SIZE} showCircle={false} shapeColor="currentColor" />
                   </button>
                 ) : (
                   <button type="button" className="create-spring-btn" style={showReqDeadline ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => { setShowReqDeadline((prev) => !prev); setShowReqReward(false); setShowTagTool(false); }} disabled={isSubmitting}>
@@ -1262,6 +1255,11 @@ const styles = {
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
     flexShrink: 0,
   },
+  anonBlock: { borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16, overflow: 'hidden' },
+  anonRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' },
+  anonInfo: { flex: 1 },
+  anonTitle: { fontSize: 14, fontWeight: 700, color: 'var(--create-primary)' },
+  anonSubtitle: { fontSize: 12, color: 'var(--create-text-muted)', marginTop: 1 },
   switchBtn: {
     flex: 1,
     border: '1px solid var(--create-border)',
@@ -1281,21 +1279,28 @@ const styles = {
   smartInputWrap: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 12,
-    border: '1px solid var(--create-border)',
     background: 'var(--create-surface-elevated)',
-    padding: '0 10px',
+    border: '1px solid var(--create-border)',
+    borderRadius: 12,
+    padding: '0 12px',
   },
   smartInput: {
     flex: 1,
     border: 'none',
     background: 'transparent',
     color: '#fff',
-    fontSize: 14,
-    padding: '12px 0',
+    padding: '12px 8px',
+    fontSize: 15,
     outline: 'none',
   },
+  smartWrap: { display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 },
+  lfRow: { display: 'flex', background: 'var(--create-surface-elevated)', borderRadius: 12, padding: 4 },
+  lfBtn: { flex: 1, borderRadius: 10, border: '1px solid transparent', background: 'transparent', color: 'var(--create-text-muted)', fontWeight: 600, fontSize: 14, padding: 10, cursor: 'pointer' },
+  lfBtnLost: { color: '#FF453A', background: 'rgba(255,69,58,0.15)', border: '1px solid rgba(255,69,58,0.3)' },
+  lfBtnFound: { color: '#32D74B', background: 'rgba(50,215,75,0.15)', border: '1px solid rgba(50,215,75,0.3)' },
+  eventRow: { display: 'flex', gap: 8 },
+  eventBtn: { flex: 1, border: 'none', borderRadius: 12, background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', padding: '10px 4px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  eventBtnActive: { background: 'var(--create-primary)', color: '#000' },
   pollCard: {
     borderRadius: 14,
     border: '1px solid var(--create-border)',
@@ -1330,12 +1335,12 @@ const styles = {
     right: 0,
     bottom: '100%',
     zIndex: 10,
-    padding: 14,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    padding: '16px',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTop: '1px solid rgba(255,255,255,0.1)',
-    background: theme.colors.premium.surfaceElevated,
-    boxShadow: '0 -8px 30px rgba(0,0,0,0.45)',
+    background: 'var(--create-surface)',
+    boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
   },
   suggestionBtn: {
     borderRadius: 14,
@@ -1397,12 +1402,13 @@ const styles = {
     fontWeight: 600,
   },
   toolbar: {
-    padding: '10px 14px',
-    borderTop: '1px solid var(--create-border)',
+    padding: '10px 16px',
     background: 'var(--create-surface)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    position: 'relative',
+    zIndex: 20,
   },
   toolBtn: {
     width: 40,
@@ -1417,7 +1423,7 @@ const styles = {
     cursor: 'pointer',
   },
   toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
-  publishBtnWrap: { padding: '8px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', background: 'var(--create-surface)' },
+  publishBtnWrap: { padding: '8px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', background: 'var(--create-surface)', position: 'relative', zIndex: 20 },
   publishBtn: { position: 'relative', width: '100%', height: 52, borderRadius: 26, border: 'none', background: 'var(--create-surface-elevated)', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.35)' },
   publishFill: { position: 'absolute', left: 0, top: 0, bottom: 0, background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.35s ease', borderRadius: 26 },
   pickerOverlay: {

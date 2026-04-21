@@ -73,6 +73,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const sheetRef      = useRef(null);
   const dragHandleRef = useRef(null);
   const skipItemTypeResetRef = useRef(false);
+  const hasCheckedInitialDraftRef = useRef(false);
   const mediaProcessingTasksRef = useRef(new Set());
   const photosRef = useRef(photos);
   const videoFileRef = useRef(videoFile);
@@ -175,6 +176,9 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   }, [videoFile]);
 
   useEffect(() => {
+    if (hasCheckedInitialDraftRef.current) return;
+    hasCheckedInitialDraftRef.current = true;
+
     if (hasCreateMarketDraftData(createMarketDraft)) {
       setShowRestoreDialog(true);
     }

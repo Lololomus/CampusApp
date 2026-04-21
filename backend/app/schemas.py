@@ -457,6 +457,9 @@ class PostResponse(BaseModel):
     is_deleted: bool = False
     deleted_reason: Optional[str] = None
     
+    # Флаг авторства (true даже для анонимных постов, когда смотрит автор)
+    is_author: bool = False
+
     # Статистика
     likes_count: int = 0
     comments_count: int = 0

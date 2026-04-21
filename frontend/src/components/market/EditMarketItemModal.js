@@ -386,9 +386,52 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
             <div style={s.categoryLocked}>
               <span>{catInfo.icon} {catInfo.label}</span>
               <span style={{ marginLeft: 'auto', color: theme.colors.premium.textMuted, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Lock size={12} /> категория зафиксирована
+                <Lock size={12} /> не редактируется
               </span>
             </div>
+
+            {/* Видео превью */}
+            {videoFile && (
+              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: images.length > 0 ? 8 : 16, background: '#111' }}>
+                {videoThumb ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
+                  </div>
+                </div>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
+                  <button style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0, transition: 'opacity 0.15s' }} onClick={() => { setVideoFile(null); setVideoThumb(null); }}><X size={13} /></button>
+                </div>
+              </div>
+            )}
+
+            {/* Фото-миниатюры */}
+            {(images.length > 0 || processingImages.length > 0) && (
+              <div style={s.photosRow}>
+                {images.map((img, i) => (
+                  <div key={i} style={s.photoThumb}>
+                    <img src={img.url} alt="" style={s.photoImg} />
+                    {!isSubmitting && (
+                      <button
+                        style={{ ...s.photoRemove, transition: 'opacity 0.15s' }}
+                        onClick={() => removeImage(i)}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {processingImages.map(proc => (
+                  <div key={proc.id} style={s.photoThumb}>
+                    <div style={{ width: '100%', aspectRatio: '1', borderRadius: 12, background: '#222', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <div style={s.spinner} />
+                      <span style={{ fontSize: 10, color: theme.colors.premium.textMuted }}>{Math.round(proc.progress)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Цена */}
             <div style={s.priceRow}>
@@ -428,59 +471,13 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
             >
               <textarea
                 ref={descRef}
-                placeholder="Опишите состояние, комплектацию и причины продажи..."
+                placeholder={item?.item_type === 'service' ? 'Опишите услугу, опыт и условия работы...' : 'Опишите состояние, комплектацию и причины продажи...'}
                 value={description}
                 onChange={handleDescChange}
                 style={s.descTextarea}
                 disabled={isSubmitting}
               />
             </div>
-
-            {/* Фото-миниатюры */}
-            {(images.length > 0 || processingImages.length > 0) && (
-              <div style={s.photosRow}>
-                {images.map((img, i) => (
-                  <div key={i} style={s.photoThumb}>
-                    <div style={{ position: 'relative', width: '100%' }}>
-                      <img src={img.url} alt="" style={s.photoImg} />
-                      {i === 0 && <div style={s.coverBadge}>Обложка</div>}
-                    </div>
-                    {!isSubmitting && (
-                      <button
-                        style={{ ...s.photoRemove, transition: 'opacity 0.15s' }}
-                        onClick={() => removeImage(i)}
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                {processingImages.map(proc => (
-                  <div key={proc.id} style={s.photoThumb}>
-                    <div style={{ width: '100%', aspectRatio: '1', borderRadius: 12, background: '#222', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                      <div style={s.spinner} />
-                      <span style={{ fontSize: 10, color: theme.colors.premium.textMuted }}>{Math.round(proc.progress)}%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Видео превью */}
-            {videoFile && (
-              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: images.length > 0 ? 8 : 16, background: '#111' }}>
-                {videoThumb ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />}
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
-                  </div>
-                </div>
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.72))', padding: '24px 10px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                  <span style={{ color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '0.2px' }}>Видео · {(videoFile.size / 1024 / 1024).toFixed(1)} МБ</span>
-                  <button style={{ width: 24, height: 24, borderRadius: 12, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0, transition: 'opacity 0.15s' }} onClick={() => { setVideoFile(null); setVideoThumb(null); }}><X size={13} /></button>
-                </div>
-              </div>
-            )}
 
             {/* Чипы метаданных */}
             <div style={s.metaChips}>
@@ -845,29 +842,6 @@ const s = {
     padding: 0,
     flexShrink: 0,
   },
-  coverBadge: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    right: 4,
-    background: 'rgba(212,255,0,0.85)',
-    color: '#000',
-    fontSize: 9,
-    fontWeight: 700,
-    borderRadius: 4,
-    textAlign: 'center',
-    padding: '1px 2px',
-  },
-  photoLoading: {
-    position: 'absolute',
-    inset: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    borderRadius: 12,
-  },
 
   // Чипы
   metaChips: {
@@ -918,6 +892,7 @@ const s = {
     height: 40,
     borderRadius: 20,
     background: theme.colors.premium.surfaceHover,
+    color: theme.colors.premium.textMuted,
     border: 'none',
     display: 'flex',
     alignItems: 'center',

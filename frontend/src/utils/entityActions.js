@@ -27,6 +27,7 @@ export function getEntityOwnerId(entityType, entity) {
 
 export function isEntityOwner(entityType, entity, currentUser) {
   if (entityType === 'request' && entity?.is_author === true) return true;
+  if (entityType === 'post' && entity?.is_author === true) return true;
 
   const ownerId = getEntityOwnerId(entityType, entity);
   const currentUserId = getCurrentUserId(currentUser);
