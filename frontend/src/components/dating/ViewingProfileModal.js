@@ -328,13 +328,13 @@ const styles = {
     position: 'relative',
     width: '100%',
     aspectRatio: '4 / 5',
-    backgroundColor: d.surface,
+    backgroundColor: '#000',
     cursor: 'pointer',
   },
   photo: {
     position: 'absolute',
     top: 0, left: 0, width: '100%', height: '100%',
-    objectFit: 'cover',
+    objectFit: 'contain',
     transition: 'opacity 0.3s ease',
   },
   photoPlaceholder: {

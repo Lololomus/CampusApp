@@ -56,6 +56,36 @@ const getImageUrl = (img) => {
   return resolveImageUrl(filename, 'images');
 };
 
+const toPositiveNumber = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+};
+
+const getMediaAspectRatio = (item) => {
+  if (!item || typeof item !== 'object') return null;
+
+  const candidates = item.type === 'video'
+    ? [
+        [item.thumbnail_w, item.thumbnail_h],
+        [item.w, item.h],
+      ]
+    : [[item.w, item.h]];
+
+  for (const [rawW, rawH] of candidates) {
+    const w = toPositiveNumber(rawW);
+    const h = toPositiveNumber(rawH);
+    if (w && h) return w / h;
+  }
+
+  return null;
+};
+
+const getMediaFit = (item) => {
+  const ar = getMediaAspectRatio(item);
+  if (item?.type === 'video') return !ar || ar < 1 ? 'contain' : 'cover';
+  return ar && ar < IMAGE_ASPECT_RATIO_MIN ? 'contain' : 'cover';
+};
+
 const formatPostDateForDetail = (value, nowValue = new Date()) => {
   const date = parseApiDate(value);
   const now = parseApiDate(nowValue) || new Date();
@@ -256,6 +286,9 @@ function PostDetail() {
     if (!post || !post.images) return [];
     return post.images;
   }, [post]);
+  const currentMedia = images[currentImageIndex] || images[0] || null;
+  const currentMediaFit = useMemo(() => getMediaFit(currentMedia), [currentMedia]);
+  const currentMediaUrl = useMemo(() => getImageUrl(currentMedia), [currentMedia]);
 
   const viewerMeta = useMemo(() => ({
     author: post?.is_anonymous ? null : post?.author,
@@ -263,11 +296,9 @@ function PostDetail() {
   }), [post?.is_anonymous, post?.author, post?.title, post?.body]);
 
   const safeRatio = useMemo(() => {
-    const firstImage = images.length > 0 ? images[0] : null;
-    const meta = (typeof firstImage === 'object' && firstImage !== null) ? firstImage : null;
-    const rawRatio = (meta?.w && meta?.h) ? meta.w / meta.h : 1;
+    const rawRatio = getMediaAspectRatio(currentMedia) || 1;
     return Math.max(IMAGE_ASPECT_RATIO_MIN, Math.min(rawRatio, IMAGE_ASPECT_RATIO_MAX));
-  }, [images]);
+  }, [currentMedia]);
 
   const { dateText, isEdited } = useMemo(() => {
     if (!post) return { dateText: '', isEdited: false };
@@ -779,11 +810,18 @@ function PostDetail() {
                 )}
 
                 {images.length > 0 && (
-                  <div style={{...styles.imageContainer, aspectRatio: `${safeRatio}`}} onClick={() => { hapticFeedback('light'); setIsPhotoViewerOpen(true); }}>
+                  <div
+                    style={{
+                      ...styles.imageContainer,
+                      aspectRatio: `${safeRatio}`,
+                      backgroundColor: currentMediaFit === 'contain' ? '#000' : styles.imageContainer.backgroundColor,
+                    }}
+                    onClick={() => { hapticFeedback('light'); setIsPhotoViewerOpen(true); }}
+                  >
                     <img
-                      src={getImageUrl(images[currentImageIndex])}
+                      src={currentMediaUrl}
                       alt=""
-                      style={styles.image}
+                      style={{ ...styles.image, objectFit: currentMediaFit }}
                     />
                     {images.length > 1 && (
                       <>

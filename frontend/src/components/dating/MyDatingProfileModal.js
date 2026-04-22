@@ -898,14 +898,14 @@ const styles = {
     borderRadius: 24,
     position: 'relative',
     overflow: 'hidden',
-    background: SURFACE,
+    background: '#000',
     cursor: 'pointer',
     marginBottom: 16,
   },
   heroImg: {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
+    objectFit: 'contain',
     display: 'block',
   },
   heroEmpty: {
@@ -1288,12 +1288,12 @@ const styles = {
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
-    background: SURFACE_EL,
+    background: '#000',
   },
   photoSlotImg: {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
+    objectFit: 'contain',
   },
   mainBadge: {
     position: 'absolute',

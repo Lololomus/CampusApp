@@ -395,14 +395,14 @@ const styles = {
     position: 'relative',
     width: '100%',
     aspectRatio: '4 / 5',
-    backgroundColor: d.surfaceHover,
+    backgroundColor: '#000',
     overflow: 'hidden',
     flexShrink: 0,
   },
   cardImage: {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
+    objectFit: 'contain',
   },
   cardPlaceholder: {
     width: '100%',

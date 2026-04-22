@@ -9,6 +9,21 @@ let _isRestoringScroll = false;
 let _restoreFrameId = null;
 let _restoreTimeoutId = null;
 
+const BODY_SCROLL_STATE_EVENT = 'campus:body-scroll-state';
+const RESTORE_GUARD_MS = 360;
+
+function getBodyScrollState() {
+  return {
+    locked: _lockCount > 0,
+    restoring: _isRestoringScroll,
+  };
+}
+
+function emitBodyScrollState() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(BODY_SCROLL_STATE_EVENT, { detail: getBodyScrollState() }));
+}
+
 function clearRestoreMarkers() {
   if (_restoreFrameId) {
     window.cancelAnimationFrame(_restoreFrameId);
@@ -29,16 +44,30 @@ function markRestoringScroll() {
     _isRestoringScroll = false;
     delete document.documentElement.dataset.bodyScrollRestoring;
     clearRestoreMarkers();
+    emitBodyScrollState();
   };
 
-  _restoreFrameId = window.requestAnimationFrame(() => {
-    _restoreFrameId = window.requestAnimationFrame(finish);
-  });
-  _restoreTimeoutId = window.setTimeout(finish, 120);
+  _restoreTimeoutId = window.setTimeout(finish, RESTORE_GUARD_MS);
+  emitBodyScrollState();
 }
 
 export function isBodyScrollRestoring() {
   return _isRestoringScroll;
+}
+
+export function isBodyScrollLocked() {
+  return _lockCount > 0;
+}
+
+export function subscribeBodyScrollState(listener) {
+  const handleStateChange = (event) => {
+    listener(event.detail || getBodyScrollState());
+  };
+
+  window.addEventListener(BODY_SCROLL_STATE_EVENT, handleStateChange);
+  listener(getBodyScrollState());
+
+  return () => window.removeEventListener(BODY_SCROLL_STATE_EVENT, handleStateChange);
 }
 
 export function lockBodyScroll() {
@@ -68,8 +97,10 @@ export function lockBodyScroll() {
     body.style.left = '0';
     body.style.right = '0';
     body.style.width = '100%';
+    document.documentElement.dataset.bodyScrollLocked = 'true';
   }
   _lockCount++;
+  if (_lockCount === 1) emitBodyScrollState();
 }
 
 export function unlockBodyScroll() {
@@ -105,6 +136,7 @@ export function unlockBodyScroll() {
 
     _savedBodyStyle = null;
     _savedHtmlOverflow = '';
+    delete document.documentElement.dataset.bodyScrollLocked;
     window.scrollTo(0, restoreScrollY);
     html.style.scrollBehavior = previousHtmlScrollBehavior;
     body.style.scrollBehavior = previousBodyScrollBehavior;

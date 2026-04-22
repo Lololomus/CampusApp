@@ -1,5 +1,5 @@
 // ===== FILE: frontend/src/components/media/MediaViewer.js =====
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Play, Volume2, VolumeX } from 'lucide-react';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
@@ -340,7 +340,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     mouseDragStartYRef.current = null;
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     lockBodyScroll();
     return () => {
       cleanupMouseDrag();
@@ -703,18 +703,18 @@ const styles = {
     cursor: 'pointer',
   },
   zoomable: {
-    display: 'inline-flex',
+    display: 'flex',
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     transition: 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
     transformOrigin: 'center center',
-    maxWidth: '100%',
-    maxHeight: '100%',
     cursor: 'pointer',
   },
   image: {
-    maxWidth: '100%',
-    maxHeight: '100%',
+    width: '100%',
+    height: '100%',
     objectFit: 'contain',
     userSelect: 'none',
     WebkitUserSelect: 'none',

@@ -393,7 +393,7 @@ const styles = {
     position: 'relative',
     width: '100%',
     height: '100%',
-    backgroundColor: theme.colors.bgSecondary,
+    backgroundColor: '#000',
     cursor: 'grab',
     overflow: 'hidden',
     flex: 1,
@@ -406,7 +406,7 @@ const styles = {
   avatarImage: {
     position: 'absolute',
     top: 0, left: 0, width: '100%', height: '100%',
-    objectFit: 'cover',
+    objectFit: 'contain',
     pointerEvents: 'none',
     userSelect: 'none',
     // Только opacity transition для смены фото, без transform/filter transitions

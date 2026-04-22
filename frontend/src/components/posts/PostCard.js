@@ -506,7 +506,19 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   }, []);
   const resolveViewerSourceRect = useCallback((index) => {
     const sourceEl = cardRef.current?.querySelector(`[data-media-grid-index="${index}"]`);
-    return sourceEl?.getBoundingClientRect() || (index === viewerStartIndex ? viewerSourceRect : null);
+    if (!sourceEl) return index === viewerStartIndex ? viewerSourceRect : null;
+
+    const rect = sourceEl.getBoundingClientRect();
+    return {
+      x: rect.x,
+      y: rect.y,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      objectFit: sourceEl.dataset.mediaFit || viewerSourceRect?.objectFit,
+      objectPosition: 'center center',
+    };
   }, [viewerStartIndex, viewerSourceRect]);
   const handlePhotoViewerClose = useCallback(() => {
     setIsPhotoViewerOpen(false);
@@ -786,7 +798,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
               />
             </div>
           ) : (
-            <div style={{ margin: '0 -20px 12px', overflow: 'hidden' }}>
+            <div style={styles.mediaBleed}>
               <MediaGrid
                 mediaItems={images}
                 onItemClick={handleMediaItemClick}
@@ -1052,6 +1064,12 @@ const styles = {
   content: {
     marginBottom: 12,
   },
+  mediaBleed: {
+    margin: '0 -20px 12px',
+    width: 'calc(100% + 40px)',
+    maxWidth: 'calc(100% + 40px)',
+    overflow: 'hidden',
+  },
   title: {
     fontSize: 17,
     fontWeight: theme.fontWeight.bold,
@@ -1079,7 +1097,7 @@ const styles = {
     right: 0,
     bottom: 0,
     height: 30,
-    background: `linear-gradient(to bottom, rgba(14,14,15,0), #0E0E0F 82%)`,
+    background: `linear-gradient(to bottom, rgba(17,17,19,0), ${theme.colors.premium.graphite} 82%)`,
     pointerEvents: 'none',
   },
   expandButton: {
@@ -1116,10 +1134,10 @@ const styles = {
     borderRadius: 16,
     overflow: 'hidden',
     border: `1px solid ${theme.colors.border}`,
-    background: theme.colors.surfaceElevated,
+    background: '#000',
     minHeight: 160,
   },
-  adImage: { width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'cover' },
+  adImage: { width: '100%', height: 'auto', display: 'block', maxHeight: 500, objectFit: 'contain' },
   imageSkeleton: {
     position: 'absolute',
     inset: 0,

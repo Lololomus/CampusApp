@@ -5,7 +5,9 @@ import { hapticFeedback } from '../../utils/telegram';
 import { useStore } from '../../store';
 import { triggerRegistrationPrompt } from '../../api';
 import { BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS } from '../../constants/layoutConstants';
-import { isBodyScrollRestoring } from '../../utils/bodyScrollLock';
+import { isBodyScrollLocked, isBodyScrollRestoring, subscribeBodyScrollState } from '../../utils/bodyScrollLock';
+
+const SCROLL_DIRECTION_THRESHOLD = 8;
 
 const AppHeader = ({
   title = '',
@@ -35,11 +37,13 @@ const AppHeader = ({
   const [compactTitleWidth, setCompactTitleWidth] = useState(0);
   const [dimensions, setDimensions] = useState({ sticky: 56, collapsible: 0 });
   const [premiumMorphReady, setPremiumMorphReady] = useState(false);
+  const [bodyScrollFrozen, setBodyScrollFrozen] = useState(() => isBodyScrollLocked() || isBodyScrollRestoring());
 
   const lastScrollYRef = useRef(0);
   const collapsibleVisibleRef = useRef(true);
   const isScrolledRef = useRef(false);
   const isManualExpandedRef = useRef(false);
+  const bodyScrollFrozenRef = useRef(bodyScrollFrozen);
   const scrollRafRef = useRef(null);
   const compactTitleWidthRef = useRef(0);
   const premiumSearchRef = useRef(null);
@@ -77,6 +81,15 @@ const AppHeader = ({
     selectedCategory === categoryId && !(activeFiltersCount > 0 && categoryId === 'all')
   );
 
+  useEffect(() => subscribeBodyScrollState(({ locked, restoring }) => {
+    const frozen = Boolean(locked || restoring);
+    bodyScrollFrozenRef.current = frozen;
+    setBodyScrollFrozen(frozen);
+
+    const currentScrollY = window.scrollY || window.pageYOffset || 0;
+    lastScrollYRef.current = currentScrollY;
+  }), []);
+
   useLayoutEffect(() => {
     const updateDimensions = () => {
       const sticky = stickyRef.current ? stickyRef.current.offsetHeight : 56;
@@ -110,7 +123,7 @@ const AppHeader = ({
   }, [isManualExpanded]);
 
   useLayoutEffect(() => {
-    if (isModalOpen || document.body.style.position === 'fixed' || isBodyScrollRestoring()) return;
+    if (isModalOpen || bodyScrollFrozenRef.current || document.body.style.position === 'fixed' || isBodyScrollRestoring()) return;
 
     const currentScrollY = window.scrollY || window.pageYOffset || 0;
     const nextCollapsibleVisible = currentScrollY < 10;
@@ -179,14 +192,15 @@ const AppHeader = ({
       if (scrollRafRef.current) return;
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null;
-        if (isModalOpen || document.body.style.position === 'fixed' || isBodyScrollRestoring()) return;
+        if (isModalOpen || bodyScrollFrozenRef.current || document.body.style.position === 'fixed' || isBodyScrollRestoring()) return;
 
         const currentScrollY = window.scrollY;
+        const scrollDelta = currentScrollY - lastScrollYRef.current;
         let nextCollapsibleVisible = collapsibleVisibleRef.current;
 
         if (currentScrollY < 10) nextCollapsibleVisible = true;
-        else if (currentScrollY > lastScrollYRef.current) nextCollapsibleVisible = false;
-        else if (currentScrollY < lastScrollYRef.current) nextCollapsibleVisible = true;
+        else if (scrollDelta > SCROLL_DIRECTION_THRESHOLD) nextCollapsibleVisible = false;
+        else if (scrollDelta < -SCROLL_DIRECTION_THRESHOLD) nextCollapsibleVisible = true;
 
         if (nextCollapsibleVisible !== collapsibleVisibleRef.current) {
           collapsibleVisibleRef.current = nextCollapsibleVisible;
@@ -375,18 +389,19 @@ const AppHeader = ({
       const tagsWidth = tagsLeftPx > 0 ? `calc(100% - ${tagsLeftPx}px)` : '100%';
       const tagsOpacity = categories && !isCompact ? 1 : 0;
       const tagsPointer = categories && !isCompact ? 'auto' : 'none';
-      const overlayActive = isScrolled && isManualExpanded && !isModalOpen;
+      const overlayActive = isScrolled && isManualExpanded && !isModalOpen && !bodyScrollFrozen;
       const overlayTop = `calc(var(--screen-top-offset, 0px) + 4px + ${containerHeight}px)`;
       const swipeThreshold = 16;
-      const morphHeightTransition = premiumMorphReady ? `height 0.45s ${springSmooth}` : 'none';
-      const morphOpacityTransition = premiumMorphReady ? `opacity 0.5s ${springMorph}, transform 0.5s ${springMorph}` : 'none';
-      const morphButtonTransition = premiumMorphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.45s ${springMorph}, height 0.45s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}, color 0.3s ${springSmooth}, opacity 0.3s ease, transform 0.2s ${springSmooth}, filter 0.2s ${springSmooth}` : 'none';
-      const morphSearchTransition = premiumMorphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.5s ${springMorph}, height 0.5s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}` : 'none';
-      const morphIconTransition = premiumMorphReady ? `left 0.5s ${springMorph}, top 0.5s ${springMorph}, color 0.3s ${springSmooth}` : 'none';
-      const morphInputTransition = premiumMorphReady ? 'opacity 0.28s ease' : 'none';
-      const morphClearTransition = premiumMorphReady ? `opacity 0.28s ${springSmooth}, transform 0.28s ${springMorph}` : 'none';
-      const morphTitleTransition = premiumMorphReady ? `top 0.5s ${springMorph}, font-size 0.5s ${springMorph}, letter-spacing 0.5s ${springSmooth}, color 0.3s ${springSmooth}` : 'none';
-      const morphTagsTransition = premiumMorphReady ? `opacity 0.4s ${springSmooth}, transform 0.45s ${springMorph}` : 'none';
+      const morphReady = premiumMorphReady && !bodyScrollFrozen;
+      const morphHeightTransition = morphReady ? `height 0.45s ${springSmooth}` : 'none';
+      const morphOpacityTransition = morphReady ? `opacity 0.5s ${springMorph}, transform 0.5s ${springMorph}` : 'none';
+      const morphButtonTransition = morphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.45s ${springMorph}, height 0.45s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}, color 0.3s ${springSmooth}, opacity 0.3s ease, transform 0.2s ${springSmooth}, filter 0.2s ${springSmooth}` : 'none';
+      const morphSearchTransition = morphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.5s ${springMorph}, height 0.5s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}` : 'none';
+      const morphIconTransition = morphReady ? `left 0.5s ${springMorph}, top 0.5s ${springMorph}, color 0.3s ${springSmooth}` : 'none';
+      const morphInputTransition = morphReady ? 'opacity 0.28s ease' : 'none';
+      const morphClearTransition = morphReady ? `opacity 0.28s ${springSmooth}, transform 0.28s ${springMorph}` : 'none';
+      const morphTitleTransition = morphReady ? `top 0.5s ${springMorph}, font-size 0.5s ${springMorph}, letter-spacing 0.5s ${springSmooth}, color 0.3s ${springSmooth}` : 'none';
+      const morphTagsTransition = morphReady ? `opacity 0.4s ${springSmooth}, transform 0.45s ${springMorph}` : 'none';
       const resetCompactGesture = () => {
         compactGestureRef.current = { startY: 0, lastY: 0, collapsed: false };
       };

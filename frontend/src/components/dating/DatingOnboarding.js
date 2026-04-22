@@ -1040,7 +1040,7 @@ const styles = {
   },
   photoSlot: {
     aspectRatio: '3/4',
-    background: SURFACE_ELEVATED,
+    background: '#000',
     borderRadius: 12,
     position: 'relative',
     overflow: 'hidden',
@@ -1052,7 +1052,7 @@ const styles = {
   photoImg: {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
+    objectFit: 'contain',
   },
   photoRemoveBtn: {
     position: 'absolute',
