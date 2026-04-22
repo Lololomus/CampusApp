@@ -24,6 +24,25 @@ import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { composeSingleTextFromTitleBody } from '../../utils/contentTextParser';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { sharePostViaTelegram } from '../../utils/telegramShare';
+import { Z_HEADER } from '../../constants/zIndex';
+
+const FEED_HERO_RETURN_Z_INDEX = Z_HEADER - 2;
+
+function getMediaHeroReturnZIndex(sourceEl) {
+  if (!sourceEl || typeof window === 'undefined') return FEED_HERO_RETURN_Z_INDEX;
+
+  let maxAncestorZIndex = null;
+  let node = sourceEl.parentElement;
+  while (node && node !== document.body) {
+    const zIndex = Number.parseInt(window.getComputedStyle(node).zIndex, 10);
+    if (Number.isFinite(zIndex) && zIndex >= Z_HEADER) {
+      maxAncestorZIndex = Math.max(maxAncestorZIndex ?? zIndex, zIndex);
+    }
+    node = node.parentElement;
+  }
+
+  return maxAncestorZIndex ? maxAncestorZIndex + 1 : FEED_HERO_RETURN_Z_INDEX;
+}
 
 function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPostResolved, skipReveal }) {
   const { likedPosts, setPostLiked, user, setEditingContent, isRegistered, updatePost } = useStore();
@@ -518,6 +537,8 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
       height: rect.height,
       objectFit: sourceEl.dataset.mediaFit || viewerSourceRect?.objectFit,
       objectPosition: 'center center',
+      hasContainFill: sourceEl.dataset.mediaFit === 'contain',
+      zIndex: getMediaHeroReturnZIndex(sourceEl),
     };
   }, [viewerStartIndex, viewerSourceRect]);
   const handlePhotoViewerClose = useCallback(() => {

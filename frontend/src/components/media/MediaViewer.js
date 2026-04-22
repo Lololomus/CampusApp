@@ -55,8 +55,13 @@ const normalizeRect = (rect) => {
   if (rect.objectFit) normalized.objectFit = rect.objectFit;
   if (rect.objectPosition) normalized.objectPosition = rect.objectPosition;
   if (rect.borderRadius !== undefined) normalized.borderRadius = rect.borderRadius;
+  if (Number.isFinite(rect.zIndex)) normalized.zIndex = rect.zIndex;
+  if (rect.hasContainFill !== undefined) normalized.hasContainFill = Boolean(rect.hasContainFill);
   return normalized;
 };
+
+const SWIPE_DIRECTION_THRESHOLD = 10;
+const SWIPE_AXIS_LOCK_RATIO = 1.15;
 
 const Zoomable = ({ children, onTap, onZoomStart, onZoomEnd }) => {
   const [scale, setScale] = useState(1);
@@ -234,8 +239,16 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const scrollRef = useRef(null);
   const touchStartY = useRef(null);
   const touchStartX = useRef(null);
+  const touchStartScrollLeftRef = useRef(0);
   const swipeDirRef = useRef(null);
   const currentImgRef = useRef(null);
+  const bodyScrollLockedRef = useRef(false);
+
+  const releaseBodyScroll = useCallback(() => {
+    if (!bodyScrollLockedRef.current) return;
+    bodyScrollLockedRef.current = false;
+    unlockBodyScroll();
+  }, []);
 
   const resolveSourceRect = useCallback((index = currentIndex) => {
     if (typeof sourceRectProvider === 'function') {
@@ -270,8 +283,9 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     setIsClosing(true);
     setDragY(window.innerHeight);
     setSwipeClosing(true);
+    releaseBodyScroll();
     setTimeout(() => onClose?.(), 300);
-  }, [isClosing, swipeClosing, heroAnim, onClose]);
+  }, [isClosing, swipeClosing, heroAnim, releaseBodyScroll, onClose]);
 
   const closeViaHero = useCallback((fallback = closeViaSwipe) => {
     if (isClosing || swipeClosing || heroAnim) return;
@@ -295,6 +309,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     dragYRef.current = 0;
     setDragY(0);
     setIsClosing(true);
+    releaseBodyScroll();
     setHeroAnim({
       url: currentItem.url,
       from,
@@ -302,9 +317,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       objectFit: to.objectFit || 'cover',
       objectPosition: to.objectPosition || 'center center',
       borderRadius: to.borderRadius ?? 0,
+      zIndex: to.zIndex ?? Z_PHOTO_VIEWER + 10,
+      hasContainFill: Boolean(to.hasContainFill || to.objectFit === 'contain'),
     });
     setTimeout(() => onClose?.(), 360);
-  }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, onClose]);
+  }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, releaseBodyScroll, onClose]);
 
   const updateDrag = useCallback((dy) => {
     if (dy <= 0) {
@@ -342,11 +359,12 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
 
   useLayoutEffect(() => {
     lockBodyScroll();
+    bodyScrollLockedRef.current = true;
     return () => {
       cleanupMouseDrag();
-      unlockBodyScroll();
+      releaseBodyScroll();
     };
-  }, [cleanupMouseDrag]);
+  }, [cleanupMouseDrag, releaseBodyScroll]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -405,6 +423,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   if (!items.length) return null;
 
   const isHeroClosing = Boolean(heroAnim);
+  const closingPassthrough = swipeClosing || isHeroClosing;
   const overlayOpacity = swipeClosing || isHeroClosing
     ? 0
     : dragY > 0 ? Math.max(0.04, 1 - dragY / 280) : undefined;
@@ -433,7 +452,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
         <div
           style={{
             position: 'fixed',
-            zIndex: Z_PHOTO_VIEWER + 10,
+            zIndex: heroAnim.zIndex,
             pointerEvents: 'none',
             overflow: 'hidden',
             borderRadius: heroAnim.borderRadius,
@@ -450,6 +469,25 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
               : 'none',
           }}
         >
+          {heroAnim.hasContainFill && (
+            <img
+              src={heroAnim.url}
+              alt=""
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: heroAnim.objectPosition,
+                transform: 'scale(1.08)',
+                filter: 'blur(14px)',
+                opacity: 0.42,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
           <img
             src={heroAnim.url}
             alt=""
@@ -458,6 +496,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
               height: '100%',
               objectFit: heroAnim.objectFit,
               objectPosition: heroAnim.objectPosition,
+              position: 'relative',
               display: 'block',
             }}
           />
@@ -471,6 +510,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
           ...styles.overlay,
           opacity: overlayOpacity,
           transition: overlayTransition,
+          pointerEvents: closingPassthrough ? 'none' : styles.overlay.pointerEvents,
           backdropFilter: swipeClosing || isHeroClosing ? 'none' : styles.overlay.backdropFilter,
           WebkitBackdropFilter: swipeClosing || isHeroClosing ? 'none' : styles.overlay.WebkitBackdropFilter,
         }}
@@ -485,6 +525,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             ? 'transparent'
             : dragY > 0 ? `rgba(0,0,0,${Math.max(0.12, 1 - dragY / 280)})` : '#000',
           opacity: swipeClosing || isHeroClosing ? 0 : 1,
+          pointerEvents: closingPassthrough ? 'none' : styles.container.pointerEvents,
           transition: swipeClosing
             ? 'opacity 0.22s ease, background 0.32s cubic-bezier(0.32,0.72,0,1)'
             : isHeroClosing ? 'background 0.18s cubic-bezier(0.32,0.72,0,1)' : undefined,
@@ -526,24 +567,53 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
                   suppressTapRef.current = false;
                   touchStartY.current = e.touches[0].clientY;
                   touchStartX.current = e.touches[0].clientX;
+                  touchStartScrollLeftRef.current = scrollRef.current?.scrollLeft || 0;
                   swipeDirRef.current = null;
                 }}
                 onTouchMove={(e) => {
                   if (!isCurrent || isZoomed || e.touches.length !== 1 || touchStartY.current === null) return;
                   const dy = e.touches[0].clientY - touchStartY.current;
                   const dx = e.touches[0].clientX - (touchStartX.current ?? e.touches[0].clientX);
-                  if (!swipeDirRef.current && (Math.abs(dy) > 8 || Math.abs(dx) > 8)) {
-                    swipeDirRef.current = Math.abs(dy) > Math.abs(dx) ? 'v' : 'h';
+                  const absX = Math.abs(dx);
+                  const absY = Math.abs(dy);
+
+                  if (!swipeDirRef.current) {
+                    if (Math.max(absX, absY) < SWIPE_DIRECTION_THRESHOLD) return;
+                    if (absY > absX * SWIPE_AXIS_LOCK_RATIO) {
+                      swipeDirRef.current = 'v';
+                    } else if (absX > absY * SWIPE_AXIS_LOCK_RATIO) {
+                      swipeDirRef.current = 'h';
+                      resetDrag();
+                      return;
+                    } else {
+                      return;
+                    }
                   }
-                  if (swipeDirRef.current === 'v') updateDrag(dy);
+
+                  if (swipeDirRef.current === 'v') {
+                    if (e.cancelable) e.preventDefault();
+                    e.stopPropagation();
+                    if (scrollRef.current) scrollRef.current.scrollLeft = touchStartScrollLeftRef.current;
+                    updateDrag(dy);
+                  } else if (swipeDirRef.current === 'h') {
+                    resetDrag();
+                  }
                 }}
                 onTouchEnd={() => {
+                  const wasVerticalSwipe = swipeDirRef.current === 'v';
                   swipeDirRef.current = null;
-                  finishDrag();
+                  touchStartY.current = null;
+                  touchStartX.current = null;
+                  touchStartScrollLeftRef.current = 0;
+                  if (wasVerticalSwipe) finishDrag();
+                  else resetDrag();
                 }}
                 onTouchCancel={() => {
                   swipeDirRef.current = null;
-                  finishDrag();
+                  touchStartY.current = null;
+                  touchStartX.current = null;
+                  touchStartScrollLeftRef.current = 0;
+                  resetDrag();
                 }}
                 onMouseDown={(e) => handleMouseDown(e, isCurrent)}
               >

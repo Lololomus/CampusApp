@@ -86,6 +86,10 @@ const getMediaFit = (item) => {
   return ar && ar < IMAGE_ASPECT_RATIO_MIN ? 'contain' : 'cover';
 };
 
+const DETAIL_MEDIA_SWIPE_THRESHOLD = 42;
+const DETAIL_MEDIA_DIRECTION_THRESHOLD = 10;
+const DETAIL_MEDIA_AXIS_LOCK_RATIO = 1.2;
+
 const formatPostDateForDetail = (value, nowValue = new Date()) => {
   const date = parseApiDate(value);
   const now = parseApiDate(nowValue) || new Date();
@@ -153,6 +157,9 @@ function PostDetail() {
   const closeTimeoutRef = useRef(null);
   const scrollContentRef = useRef(null);
   const commentsSectionRef = useRef(null);
+  const mediaSwipeStartRef = useRef(null);
+  const mediaSwipeDirectionRef = useRef(null);
+  const suppressMediaOpenRef = useRef(false);
   const lockedViewportHeightRef = useRef(
     typeof window !== 'undefined' ? Math.round(window.innerHeight || 0) : 0
   );
@@ -299,6 +306,91 @@ function PostDetail() {
     const rawRatio = getMediaAspectRatio(currentMedia) || 1;
     return Math.max(IMAGE_ASPECT_RATIO_MIN, Math.min(rawRatio, IMAGE_ASPECT_RATIO_MAX));
   }, [currentMedia]);
+
+  const showPreviousImage = useCallback(() => {
+    if (images.length <= 1) return;
+    setCurrentImageIndex(prev => prev === 0 ? images.length - 1 : prev - 1);
+  }, [images.length]);
+
+  const showNextImage = useCallback(() => {
+    if (images.length <= 1) return;
+    setCurrentImageIndex(prev => prev === images.length - 1 ? 0 : prev + 1);
+  }, [images.length]);
+
+  const handleMediaTouchStart = useCallback((e) => {
+    if (images.length <= 1 || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    mediaSwipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+    mediaSwipeDirectionRef.current = null;
+    suppressMediaOpenRef.current = false;
+  }, [images.length]);
+
+  const handleMediaTouchMove = useCallback((e) => {
+    const start = mediaSwipeStartRef.current;
+    if (!start || images.length <= 1 || e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (!mediaSwipeDirectionRef.current) {
+      if (Math.max(absX, absY) < DETAIL_MEDIA_DIRECTION_THRESHOLD) return;
+      if (absX > absY * DETAIL_MEDIA_AXIS_LOCK_RATIO) {
+        mediaSwipeDirectionRef.current = 'h';
+      } else if (absY > absX * DETAIL_MEDIA_AXIS_LOCK_RATIO) {
+        mediaSwipeDirectionRef.current = 'v';
+      } else {
+        return;
+      }
+    }
+
+    if (mediaSwipeDirectionRef.current === 'h') {
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+    }
+  }, [images.length]);
+
+  const handleMediaTouchEnd = useCallback((e) => {
+    const start = mediaSwipeStartRef.current;
+    const direction = mediaSwipeDirectionRef.current;
+    mediaSwipeStartRef.current = null;
+    mediaSwipeDirectionRef.current = null;
+
+    const touch = e.changedTouches?.[0];
+    if (!start || !touch || images.length <= 1) return;
+
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    const isHorizontalSwipe = direction === 'h' || absX > absY * DETAIL_MEDIA_AXIS_LOCK_RATIO;
+
+    if (isHorizontalSwipe && absX >= DETAIL_MEDIA_SWIPE_THRESHOLD) {
+      suppressMediaOpenRef.current = true;
+      window.setTimeout(() => {
+        suppressMediaOpenRef.current = false;
+      }, 350);
+      hapticFeedback('light');
+      if (dx > 0) showPreviousImage();
+      else showNextImage();
+    }
+  }, [images.length, showNextImage, showPreviousImage]);
+
+  const handleMediaTouchCancel = useCallback(() => {
+    mediaSwipeStartRef.current = null;
+    mediaSwipeDirectionRef.current = null;
+  }, []);
+
+  const handleMediaClick = useCallback(() => {
+    if (suppressMediaOpenRef.current) {
+      suppressMediaOpenRef.current = false;
+      return;
+    }
+    hapticFeedback('light');
+    setIsPhotoViewerOpen(true);
+  }, []);
 
   const { dateText, isEdited } = useMemo(() => {
     if (!post) return { dateText: '', isEdited: false };
@@ -815,8 +907,13 @@ function PostDetail() {
                       ...styles.imageContainer,
                       aspectRatio: `${safeRatio}`,
                       backgroundColor: currentMediaFit === 'contain' ? '#000' : styles.imageContainer.backgroundColor,
+                      touchAction: images.length > 1 ? 'pan-y' : undefined,
                     }}
-                    onClick={() => { hapticFeedback('light'); setIsPhotoViewerOpen(true); }}
+                    onClick={handleMediaClick}
+                    onTouchStart={handleMediaTouchStart}
+                    onTouchMove={handleMediaTouchMove}
+                    onTouchEnd={handleMediaTouchEnd}
+                    onTouchCancel={handleMediaTouchCancel}
                   >
                     <img
                       src={currentMediaUrl}
@@ -826,10 +923,10 @@ function PostDetail() {
                     {images.length > 1 && (
                       <>
                         <div style={styles.imageCounter}>{currentImageIndex + 1}/{images.length}</div>
-                        <button onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(prev => prev === 0 ? images.length - 1 : prev - 1); }} style={{...styles.navBtn, left: 10}}>
+                        <button onClick={(e) => { e.stopPropagation(); showPreviousImage(); }} style={{...styles.navBtn, left: 10}}>
                           <ChevronLeft size={20}/>
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(prev => prev === images.length - 1 ? 0 : prev + 1); }} style={{...styles.navBtn, right: 10}}>
+                        <button onClick={(e) => { e.stopPropagation(); showNextImage(); }} style={{...styles.navBtn, right: 10}}>
                           <ChevronRight size={20}/>
                         </button>
                         <div style={styles.dots}>
@@ -954,6 +1051,7 @@ function PostDetail() {
             initialIndex={currentImageIndex}
             onClose={() => setIsPhotoViewerOpen(false)}
             meta={viewerMeta}
+            onIndexChange={setCurrentImageIndex}
           />
         )}
 

@@ -141,6 +141,7 @@ function getSourceRect(target, objectFit = 'cover') {
     height: rect.height,
     objectFit,
     objectPosition: 'center center',
+    hasContainFill: objectFit === 'contain',
   };
 }
 
@@ -342,7 +343,7 @@ const MediaCell = React.memo(function MediaCell({ item, index, total, maxVisible
       }}
       onClick={handleClick}
     >
-      {mediaFit === 'contain' && loaded && !failed && (
+      {mediaFit === 'contain' && !failed && (
         <ContainFillBackground url={url} hidden={isHidden} />
       )}
       {!isHidden && !loaded && !failed && <div style={shimmerStyle} />}
@@ -610,7 +611,7 @@ function SingleCell({ item, total, maxVisible, measuredAr, onNaturalAspectRatio,
 
   return (
     <>
-      {mediaFit === 'contain' && loaded && !failed && (
+      {mediaFit === 'contain' && !failed && (
         <ContainFillBackground url={url} hidden={isHidden} />
       )}
       {!isHidden && !loaded && !failed && <div style={shimmerStyle} />}
