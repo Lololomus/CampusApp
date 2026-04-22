@@ -1,5 +1,5 @@
 // ===== FILE: frontend/src/components/media/MediaViewer.js =====
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Play, Volume2, VolumeX } from 'lucide-react';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
@@ -60,15 +60,35 @@ const normalizeRect = (rect) => {
   return normalized;
 };
 
-const getHeroReturnTransform = (from, to, active) => {
-  if (!from || !to || active) return 'translate3d(0, 0, 0) scale3d(1, 1, 1)';
-  const scaleX = Number.isFinite(from.width / to.width) ? from.width / to.width : 1;
-  const scaleY = Number.isFinite(from.height / to.height) ? from.height / to.height : 1;
-  const dx = from.x - to.x;
-  const dy = from.y - to.y;
-  return `translate3d(${dx}px, ${dy}px, 0) scale3d(${scaleX}, ${scaleY}, 1)`;
+const getRenderedImageRect = (imgEl) => {
+  const box = normalizeRect(imgEl?.getBoundingClientRect?.());
+  if (!box) return null;
+
+  const naturalWidth = imgEl.naturalWidth;
+  const naturalHeight = imgEl.naturalHeight;
+  if (!Number.isFinite(naturalWidth) || !Number.isFinite(naturalHeight) || naturalWidth <= 0 || naturalHeight <= 0) {
+    return box;
+  }
+
+  const mediaRatio = naturalWidth / naturalHeight;
+  const boxRatio = box.width / box.height;
+  let width = box.width;
+  let height = box.height;
+
+  if (mediaRatio > boxRatio) {
+    height = box.width / mediaRatio;
+  } else {
+    width = box.height * mediaRatio;
+  }
+
+  const x = box.x + (box.width - width) / 2;
+  const y = box.y + (box.height - height) / 2;
+  return { x, y, width, height };
 };
 
+const HERO_CLOSE_MS = 340;
+const SWIPE_CLOSE_MS = 300;
+const HERO_EASING = 'cubic-bezier(0.32,0.72,0,1)';
 const SWIPE_DIRECTION_THRESHOLD = 10;
 const SWIPE_AXIS_LOCK_RATIO = 1.15;
 
@@ -229,7 +249,7 @@ const VideoSlide = ({ media, isActive, showUI, toggleUI }) => {
 };
 
 function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, sourceRectProvider, onIndexChange }) {
-  const items = mediaList.map(normalizeItem).filter(Boolean);
+  const items = useMemo(() => mediaList.map(normalizeItem).filter(Boolean), [mediaList]);
 
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showUI, setShowUI] = useState(true);
@@ -252,12 +272,30 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const swipeDirRef = useRef(null);
   const currentImgRef = useRef(null);
   const bodyScrollLockedRef = useRef(false);
+  const closeTimeoutRef = useRef(null);
+  const closeReleaseFrameRef = useRef(null);
 
   const releaseBodyScroll = useCallback(() => {
     if (!bodyScrollLockedRef.current) return;
     bodyScrollLockedRef.current = false;
     unlockBodyScroll();
   }, []);
+
+  const scheduleClose = useCallback((delay) => {
+    if (closeTimeoutRef.current) window.clearTimeout(closeTimeoutRef.current);
+    if (closeReleaseFrameRef.current) {
+      window.cancelAnimationFrame(closeReleaseFrameRef.current);
+      closeReleaseFrameRef.current = null;
+    }
+    closeTimeoutRef.current = window.setTimeout(() => {
+      closeTimeoutRef.current = null;
+      onClose?.();
+      closeReleaseFrameRef.current = window.requestAnimationFrame(() => {
+        closeReleaseFrameRef.current = null;
+        releaseBodyScroll();
+      });
+    }, delay);
+  }, [onClose, releaseBodyScroll]);
 
   const resolveSourceRect = useCallback((index = currentIndex) => {
     if (typeof sourceRectProvider === 'function') {
@@ -292,9 +330,8 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     setIsClosing(true);
     setDragY(window.innerHeight);
     setSwipeClosing(true);
-    releaseBodyScroll();
-    setTimeout(() => onClose?.(), 300);
-  }, [isClosing, swipeClosing, heroAnim, releaseBodyScroll, onClose]);
+    scheduleClose(SWIPE_CLOSE_MS);
+  }, [isClosing, swipeClosing, heroAnim, scheduleClose]);
 
   const closeViaHero = useCallback((fallback = closeViaSwipe) => {
     if (isClosing || swipeClosing || heroAnim) return;
@@ -308,7 +345,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       return;
     }
 
-    const from = normalizeRect(imgEl.getBoundingClientRect());
+    const from = getRenderedImageRect(imgEl);
     if (!from) {
       fallback();
       return;
@@ -318,7 +355,6 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     dragYRef.current = 0;
     setDragY(0);
     setIsClosing(true);
-    releaseBodyScroll();
     setHeroAnim({
       url: currentItem.url,
       from,
@@ -329,8 +365,8 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       zIndex: to.zIndex ?? Z_PHOTO_VIEWER + 10,
       hasContainFill: Boolean(to.hasContainFill || to.objectFit === 'contain'),
     });
-    setTimeout(() => onClose?.(), 360);
-  }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, releaseBodyScroll, onClose]);
+    scheduleClose(HERO_CLOSE_MS);
+  }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, scheduleClose]);
 
   const updateDrag = useCallback((dy) => {
     if (dy <= 0) {
@@ -370,6 +406,14 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     lockBodyScroll();
     bodyScrollLockedRef.current = true;
     return () => {
+      if (closeTimeoutRef.current) {
+        window.clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+      if (closeReleaseFrameRef.current) {
+        window.cancelAnimationFrame(closeReleaseFrameRef.current);
+        closeReleaseFrameRef.current = null;
+      }
       cleanupMouseDrag();
       releaseBodyScroll();
     };
@@ -439,10 +483,9 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const overlayTransition = swipeClosing || isHeroClosing
     ? 'opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
     : dragY > 0 ? 'none' : undefined;
-  const heroFrame = heroAnim?.to || null;
-  const heroTransform = heroAnim
-    ? getHeroReturnTransform(heroAnim.from, heroAnim.to, heroAnimActive)
-    : undefined;
+  const heroFrame = heroAnim
+    ? heroAnimActive ? heroAnim.to : heroAnim.from
+    : null;
 
   return createPortal(
     <>
@@ -470,15 +513,14 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             top: heroFrame.y,
             width: heroFrame.width,
             height: heroFrame.height,
-            transform: heroTransform,
-            transformOrigin: 'top left',
-            willChange: 'transform',
+            willChange: 'left, top, width, height',
             backfaceVisibility: 'hidden',
             WebkitBackfaceVisibility: 'hidden',
-            contain: 'paint style',
+            contain: 'layout paint style',
             isolation: 'isolate',
+            backgroundColor: heroAnim.hasContainFill ? '#000' : 'transparent',
             transition: heroAnimActive
-              ? 'transform 0.34s cubic-bezier(0.32,0.72,0,1)'
+              ? `left ${HERO_CLOSE_MS}ms ${HERO_EASING}, top ${HERO_CLOSE_MS}ms ${HERO_EASING}, width ${HERO_CLOSE_MS}ms ${HERO_EASING}, height ${HERO_CLOSE_MS}ms ${HERO_EASING}`
               : 'none',
           }}
         >
