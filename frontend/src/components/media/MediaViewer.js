@@ -369,15 +369,13 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, scheduleClose]);
 
   const updateDrag = useCallback((dy) => {
-    if (dy <= 0) {
-      resetDrag();
-      return;
-    }
-    if (dy > 6) suppressTapRef.current = true;
+    const nextY = Math.max(0, dy);
+    if (nextY > 6) suppressTapRef.current = true;
     isDraggingRef.current = true;
-    dragYRef.current = dy;
-    setDragY(dy);
-  }, [resetDrag]);
+    if (Math.abs(dragYRef.current - nextY) < 0.5) return;
+    dragYRef.current = nextY;
+    setDragY(nextY);
+  }, []);
 
   const finishDrag = useCallback(() => {
     mouseDragStartYRef.current = null;
@@ -478,7 +476,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const isHeroClosing = Boolean(heroAnim);
   const closingPassthrough = swipeClosing || isHeroClosing;
   const overlayOpacity = swipeClosing || isHeroClosing
-    ? 0
+    ? 1
     : dragY > 0 ? Math.max(0.04, 1 - dragY / 280) : undefined;
   const overlayTransition = swipeClosing || isHeroClosing
     ? 'opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
@@ -572,6 +570,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       />
 
       <div
+        aria-hidden="true"
+        style={styles.bottomScrim}
+      />
+
+      <div
         {...modalBoundaryProps}
         {...modalTouchBoundaryHandlers}
         style={{
@@ -634,11 +637,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
 
                   if (!swipeDirRef.current) {
                     if (Math.max(absX, absY) < SWIPE_DIRECTION_THRESHOLD) return;
-                    if (absY > absX * SWIPE_AXIS_LOCK_RATIO) {
+                    if (dy > 0 && absY > absX * SWIPE_AXIS_LOCK_RATIO) {
                       swipeDirRef.current = 'v';
                     } else if (absX > absY * SWIPE_AXIS_LOCK_RATIO) {
                       swipeDirRef.current = 'h';
-                      resetDrag();
+                      if (dragYRef.current !== 0) resetDrag();
                       return;
                     } else {
                       return;
@@ -651,7 +654,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
                     if (scrollRef.current) scrollRef.current.scrollLeft = touchStartScrollLeftRef.current;
                     updateDrag(dy);
                   } else if (swipeDirRef.current === 'h') {
-                    resetDrag();
+                    if (dragYRef.current !== 0) resetDrag();
                   }
                 }}
                 onTouchEnd={() => {
@@ -768,6 +771,19 @@ const styles = {
     WebkitBackdropFilter: 'blur(8px)',
     zIndex: Z_PHOTO_VIEWER - 1,
     animation: 'mv-fade-in 0.2s ease',
+  },
+  bottomScrim: {
+    position: 'fixed',
+    left: 'var(--app-fixed-left, 0px)',
+    width: 'var(--app-fixed-width, 100%)',
+    bottom: 0,
+    height: 'calc(132px + max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-bottom, 0px), var(--tg-content-safe-area-bottom, 0px)))',
+    zIndex: Z_PHOTO_VIEWER - 1,
+    pointerEvents: 'none',
+    background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.42) 42%, transparent 100%)',
+    transform: 'translateZ(0)',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
   },
   container: {
     position: 'fixed',
