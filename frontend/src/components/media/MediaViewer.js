@@ -60,6 +60,15 @@ const normalizeRect = (rect) => {
   return normalized;
 };
 
+const getHeroReturnTransform = (from, to, active) => {
+  if (!from || !to || active) return 'translate3d(0, 0, 0) scale3d(1, 1, 1)';
+  const scaleX = Number.isFinite(from.width / to.width) ? from.width / to.width : 1;
+  const scaleY = Number.isFinite(from.height / to.height) ? from.height / to.height : 1;
+  const dx = from.x - to.x;
+  const dy = from.y - to.y;
+  return `translate3d(${dx}px, ${dy}px, 0) scale3d(${scaleX}, ${scaleY}, 1)`;
+};
+
 const SWIPE_DIRECTION_THRESHOLD = 10;
 const SWIPE_AXIS_LOCK_RATIO = 1.15;
 
@@ -430,9 +439,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const overlayTransition = swipeClosing || isHeroClosing
     ? 'opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
     : dragY > 0 ? 'none' : undefined;
-  const heroFrame = heroAnim
-    ? heroAnimActive ? heroAnim.to : heroAnim.from
-    : null;
+  const heroFrame = heroAnim?.to || null;
+  const heroTransform = heroAnim
+    ? getHeroReturnTransform(heroAnim.from, heroAnim.to, heroAnimActive)
+    : undefined;
 
   return createPortal(
     <>
@@ -460,12 +470,15 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             top: heroFrame.y,
             width: heroFrame.width,
             height: heroFrame.height,
-            willChange: 'left, top, width, height',
+            transform: heroTransform,
+            transformOrigin: 'top left',
+            willChange: 'transform',
             backfaceVisibility: 'hidden',
             WebkitBackfaceVisibility: 'hidden',
-            contain: 'layout paint style',
+            contain: 'paint style',
+            isolation: 'isolate',
             transition: heroAnimActive
-              ? 'left 0.34s cubic-bezier(0.32,0.72,0,1), top 0.34s cubic-bezier(0.32,0.72,0,1), width 0.34s cubic-bezier(0.32,0.72,0,1), height 0.34s cubic-bezier(0.32,0.72,0,1)'
+              ? 'transform 0.34s cubic-bezier(0.32,0.72,0,1)'
               : 'none',
           }}
         >
