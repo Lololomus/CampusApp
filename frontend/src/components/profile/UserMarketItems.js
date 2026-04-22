@@ -67,7 +67,7 @@ function UserMarketItems() {
 
   useTelegramScreen({
     id: 'user-market-items-screen',
-    title: 'Мои товары',
+    title: 'Мои объявления',
     priority: 40,
     back: { visible: true, onClick: handleClose },
   });
@@ -96,7 +96,7 @@ function UserMarketItems() {
       setOffset(prev => prev + newItems.length);
     } catch (error) {
       console.error('Error loading items:', error);
-      toast.error('Не удалось загрузить товары');
+      toast.error('Не удалось загрузить объявления');
     } finally {
       setLoading(false);
     }
@@ -112,7 +112,7 @@ function UserMarketItems() {
     try {
       await deleteMarketItem(itemToDelete);
       setItems(prev => prev.filter(i => i.id !== itemToDelete));
-      toast.success('Товар удалён');
+      toast.success('Объявление удалено');
       hapticFeedback('success');
     } catch (error) {
       console.error('Delete error:', error);
@@ -147,7 +147,7 @@ function UserMarketItems() {
   const FILTERS = [
     { key: 'all', label: 'Все', count: counts.all },
     { key: 'active', label: 'Активные', count: counts.active },
-    { key: 'sold', label: 'Проданные', count: counts.sold },
+    { key: 'sold', label: 'Закрытые', count: counts.sold },
   ];
 
   const renderModals = () => createPortal(
@@ -172,7 +172,7 @@ function UserMarketItems() {
       )}
       <ConfirmationDialog
         isOpen={!!itemToDelete}
-        title="Удалить товар?"
+        title="Удалить объявление?"
         message="Это действие нельзя отменить."
         confirmText="Удалить"
         confirmType="danger"
@@ -204,7 +204,7 @@ function UserMarketItems() {
     >
     <div style={containerStyle} onScroll={handleScroll}>
       <DrilldownHeader
-        title={`Мои товары (${counts.all})`}
+        title={`Мои объявления (${counts.all})`}
         onBack={handleClose}
         background="#000000"
         showDivider={false}
@@ -249,11 +249,11 @@ function UserMarketItems() {
         ) : !loading ? (
           <div style={styles.empty}>
             <ShoppingBag size={36} color={C.textTertiary} strokeWidth={1.5} />
-            <div style={styles.emptyTitle}>Нет товаров</div>
+            <div style={styles.emptyTitle}>Нет объявлений</div>
             <div style={styles.emptySub}>
               {filter === 'all' && 'Создайте первое объявление'}
-              {filter === 'active' && 'Все товары проданы'}
-              {filter === 'sold' && 'Пока ничего не продано'}
+              {filter === 'active' && 'Нет активных объявлений'}
+              {filter === 'sold' && 'Нет закрытых объявлений'}
             </div>
           </div>
         ) : null}
@@ -269,7 +269,7 @@ function UserMarketItems() {
         {!hasMore && items.length > 0 && (
           <div style={styles.endMsg}>
             <CheckCircle size={20} color={C.textTertiary} strokeWidth={1.5} />
-            <span>Все товары загружены</span>
+            <span>Все объявления загружены</span>
           </div>
         )}
       </div>

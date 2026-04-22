@@ -12,22 +12,19 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import {
-  getUserPosts, getMyRequests, getMyMarketItems,
-  getMyDatingProfile, getUserStats, deleteMarketItem, deleteRequest, getRequestById
+  getUserPosts, getMyMarketItems,
+  getMyDatingProfile, getUserStats, deleteMarketItem
 } from '../../api';
 import { toast } from '../shared/Toast';
 import { getCampusDisplayName } from '../../constants/universityData';
 
 import PostCard from '../posts/PostCard';
-import RequestCard from '../requests/RequestCard';
 import MyMarketCard from './MyMarketCard';
 import PhotoViewer from '../media/PhotoViewer';
 import SettingsModal from './SettingsModal';
 import theme from '../../theme';
-import EditPostModal from '../posts/EditPostModal';
 import EditMarketItemModal from '../market/EditMarketItemModal';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
-import RequestDetailModal from '../requests/RequestDetailModal';
 import MarketDetail from '../market/MarketDetail';
 import EdgeBlur from '../shared/EdgeBlur';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
@@ -38,9 +35,9 @@ const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 function Profile() {
   const {
     user, datingProfile, setDatingProfile, setShowEditModal,
-    setShowUserPosts, setShowUserRequests, setShowUserMarketItems,
+    setShowUserPosts, setShowUserMarketItems,
     moderationRole, setActiveTab: setNavigationTab,
-    setShowSettingsModal, setViewPostId, setCurrentRequest,
+    setShowSettingsModal, setViewPostId,
     updatedPostId, updatedPostData, clearUpdatedPost,
     setShowNotificationsScreen, unreadNotificationsCount,
   } = useStore();
@@ -50,10 +47,6 @@ function Profile() {
 
   const [posts, setPosts] = useState([]);
   const [marketItems, setMarketItems] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [editingRequest, setEditingRequest] = useState(null);
-  const [requestToDelete, setRequestToDelete] = useState(null);
-  const [showRequestDetail, setShowRequestDetail] = useState(false);
   const [editingMarketItem, setEditingMarketItem] = useState(null);
   const [marketItemToDelete, setMarketItemToDelete] = useState(null);
   const [selectedMarketItem, setSelectedMarketItem] = useState(null);
@@ -68,13 +61,11 @@ function Profile() {
       try {
         const postsData = await getUserPosts(user.id, 3);
         const marketData = await getMyMarketItems(10);
-        const requestsData = await getMyRequests();
         const datingData = !datingProfile ? await getMyDatingProfile() : datingProfile;
         const userStats = await getUserStats(user.id);
 
         setPosts(postsData);
         setMarketItems(marketData);
-        setRequests(requestsData);
         setStats(userStats);
         if (datingData) setDatingProfile(datingData);
 
@@ -107,19 +98,16 @@ function Profile() {
   }, [updatedPostId, updatedPostData, clearUpdatedPost]);
 
   const tabs = [
-    { id: 'posts', label: 'Посты', icon: <Grid size={16} /> },
-    { id: 'requests', label: 'Запросы', icon: <FileText size={16} /> },
-    { id: 'market', label: 'Товары', icon: <ShoppingBag size={16} /> },
+    { id: 'posts', label: 'Мои посты' },
+    { id: 'market', label: 'Мои объявления' },
   ];
 
   const activeTabIndex = tabs.findIndex(t => t.id === activeTab);
 
   const previewPosts = posts.slice(0, 3);
-  const previewRequests = requests.slice(0, 3);
   const previewMarket = marketItems.slice(0, 4);
 
   const handleOpenMyPosts = () => { hapticFeedback('medium'); setShowUserPosts(true); };
-  const handleOpenMyRequests = () => { hapticFeedback('medium'); setShowUserRequests(true); };
   const handleOpenMyMarketItems = () => { hapticFeedback('medium'); setShowUserMarketItems(true); };
 
   const handleEditMarketItem = (item) => { hapticFeedback('light'); setEditingMarketItem(item); };
@@ -130,41 +118,13 @@ function Profile() {
     try {
       await deleteMarketItem(marketItemToDelete);
       setMarketItems(prev => prev.filter(i => i.id !== marketItemToDelete));
-      toast.success('Товар удалён');
+      toast.success('Объявление удалено');
       hapticFeedback('success');
     } catch (error) {
       console.error('Delete error:', error);
       toast.error('Ошибка при удалении');
     } finally {
       setMarketItemToDelete(null);
-    }
-  };
-
-  const handleEditRequest = async (request) => {
-    hapticFeedback('light');
-    try {
-      const fullRequest = await getRequestById(request.id);
-      setEditingRequest(fullRequest);
-    } catch (error) {
-      console.error('Request load error before edit:', error);
-      toast.error('Не удалось загрузить запрос для редактирования');
-    }
-  };
-
-  const handleDeleteRequest = (request) => { hapticFeedback('medium'); setRequestToDelete(request); };
-
-  const confirmDeleteRequest = async () => {
-    if (!requestToDelete?.id) return;
-    try {
-      await deleteRequest(requestToDelete.id);
-      setRequests(prev => prev.filter(r => r.id !== requestToDelete.id));
-      toast.success('Запрос удалён');
-      hapticFeedback('success');
-    } catch (error) {
-      console.error('Delete request error:', error);
-      toast.error('Ошибка при удалении запроса');
-    } finally {
-      setRequestToDelete(null);
     }
   };
 
@@ -189,12 +149,6 @@ function Profile() {
   };
 
   const handlePostClick = (postId) => { hapticFeedback('light'); setViewPostId(postId); };
-
-  const handleRequestClick = (request) => {
-    hapticFeedback('light');
-    setCurrentRequest(request);
-    setShowRequestDetail(true);
-  };
 
   const handleMarketItemOpen = (item) => { hapticFeedback('light'); setSelectedMarketItem(item); };
 
@@ -333,7 +287,7 @@ function Profile() {
             <div className="tab-enter">
               <ActionCard
                 icon={<FileText size={20} color="#fff" />}
-                title="Мои публикации"
+                title="Мои посты"
                 subtitle={`${stats.posts_count} постов`}
                 onClick={handleOpenMyPosts}
               />
@@ -354,38 +308,11 @@ function Profile() {
             </div>
           )}
 
-          {activeTab === 'requests' && (
-            <div className="tab-enter">
-              <ActionCard
-                icon={<Zap size={20} color="#fff" />}
-                title="Мои запросы"
-                subtitle={`${requests.length} активных`}
-                onClick={handleOpenMyRequests}
-              />
-              {previewRequests.length > 0 ? (
-                <div style={styles.listGap}>
-                  {previewRequests.map((request) => (
-                    <RequestCard
-                      key={request.id}
-                      request={request}
-                      currentUserId={user?.id}
-                      onClick={handleRequestClick}
-                      onEdit={handleEditRequest}
-                      onDelete={handleDeleteRequest}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState text="Нет активных запросов" icon={<Zap size={36} />} />
-              )}
-            </div>
-          )}
-
           {activeTab === 'market' && (
             <div className="tab-enter">
               <ActionCard
                 icon={<ShoppingBag size={20} color="#fff" />}
-                title="Мои товары"
+                title="Мои объявления"
                 subtitle={`${marketItems.length} объявлений`}
                 onClick={handleOpenMyMarketItems}
               />
@@ -402,7 +329,7 @@ function Profile() {
                   ))}
                 </div>
               ) : (
-                <EmptyState text="Пока нет товаров" icon={<ShoppingBag size={36} />} />
+                <EmptyState text="Пока нет объявлений" icon={<ShoppingBag size={36} />} />
               )}
             </div>
           )}
@@ -421,18 +348,6 @@ function Profile() {
 
       <SettingsModal />
 
-      {editingRequest && (
-        <EditPostModal
-          contentType="request"
-          initialData={editingRequest}
-          onClose={() => setEditingRequest(null)}
-          onSuccess={(updatedRequest) => {
-            setRequests(prev => prev.map(r => (r.id === updatedRequest.id ? updatedRequest : r)));
-            setEditingRequest(null);
-          }}
-        />
-      )}
-
       {editingMarketItem && (
         <EditMarketItemModal
           item={editingMarketItem}
@@ -440,22 +355,6 @@ function Profile() {
           onSuccess={(updatedItem) => {
             setMarketItems(prev => prev.map(i => (i.id === updatedItem.id ? updatedItem : i)));
             setEditingMarketItem(null);
-          }}
-        />
-      )}
-
-      {showRequestDetail && (
-        <RequestDetailModal
-          onClose={() => { setShowRequestDetail(false); setCurrentRequest(null); }}
-          onEdit={(request) => {
-            setShowRequestDetail(false);
-            setCurrentRequest(null);
-            handleEditRequest(request);
-          }}
-          onDelete={(request) => {
-            setShowRequestDetail(false);
-            setCurrentRequest(null);
-            handleDeleteRequest(request);
           }}
         />
       )}
@@ -479,18 +378,8 @@ function Profile() {
       )}
 
       <ConfirmationDialog
-        isOpen={!!requestToDelete}
-        title="Удалить запрос?"
-        message="Это действие нельзя отменить."
-        confirmText="Удалить"
-        confirmType="danger"
-        onConfirm={confirmDeleteRequest}
-        onCancel={() => setRequestToDelete(null)}
-      />
-
-      <ConfirmationDialog
         isOpen={!!marketItemToDelete}
-        title="Удалить товар?"
+        title="Удалить объявление?"
         message="Это действие нельзя отменить."
         confirmText="Удалить"
         confirmType="danger"
@@ -1063,7 +952,7 @@ const styles = {
   activeIndicator: {
     position: 'absolute',
     top: 0, bottom: 0, left: 0,
-    width: 'calc(100% / 3)',
+    width: 'calc(100% / 2)',
     background: '#D4FF00',
     borderRadius: 14,
     boxShadow: '0 2px 10px rgba(212,255,0,0.2)',

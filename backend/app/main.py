@@ -1896,6 +1896,7 @@ async def get_my_market_items_endpoint(
             show_profile=user.show_profile,
             show_telegram_id=user.show_telegram_id
         )
+        is_favorited = await crud.is_item_favorited(db, item.id, user.id)
         
         item_dict = {
             "id": item.id,
@@ -1919,7 +1920,7 @@ async def get_my_market_items_endpoint(
             "created_at": item.created_at,
             "updated_at": item.updated_at,
             "is_seller": True,
-            "is_favorited": False,
+            "is_favorited": is_favorited,
             "has_requested": False
         }
         result.append(item_dict)
@@ -1943,6 +1944,15 @@ async def get_market_item_endpoint(
             )
         )
         if not can_view_archived:
+            raise HTTPException(status_code=404, detail="Item not found")
+    if item.status == 'paused' and item.pause_reason == 'manual':
+        can_view_hidden = bool(
+            user and (
+                user.id == item.seller_id or
+                user.role in ('ambassador', 'admin', 'superadmin')
+            )
+        )
+        if not can_view_hidden:
             raise HTTPException(status_code=404, detail="Item not found")
 
     if user:

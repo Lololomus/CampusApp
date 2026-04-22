@@ -428,19 +428,16 @@ async def update_market_item(
         update_data['images'] = final_images
 
     future_item_type = update_data.get('item_type', db_item.item_type)
+    future_status = update_data.get('status', db_item.status)
     if future_item_type == 'product':
         update_data['capacity'] = 1
-        update_data['pause_reason'] = None
-        if update_data.get('status') == 'paused':
-            raise ValueError('Product cannot be paused')
-
-    if update_data.get('status') == 'paused' and future_item_type != 'service':
-        raise ValueError('Only services can be paused')
+        if future_status == 'paused' and not update_data.get('pause_reason'):
+            update_data['pause_reason'] = 'manual'
 
     if future_item_type == 'service' and update_data.get('status') in {'reserved', 'sold'}:
         raise ValueError('Service status cannot be reserved or sold')
 
-    if update_data.get('status') == 'paused' and future_item_type == 'service':
+    if future_status == 'paused' and future_item_type == 'service':
         if not update_data.get('pause_reason'):
             update_data['pause_reason'] = 'manual'
 
@@ -685,7 +682,10 @@ async def get_user_favorites(db: AsyncSession, user_id: int, limit: int = 20, of
 async def get_user_market_items(db: AsyncSession, user_id: int, limit: int = 20, offset: int = 0) -> List[models.MarketItem]:
     result = await db.execute(
         select(models.MarketItem)
-        .where(models.MarketItem.seller_id == user_id)
+        .where(
+            models.MarketItem.seller_id == user_id,
+            models.MarketItem.is_deleted == False,
+        )
         .order_by(models.MarketItem.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -738,8 +738,8 @@ async def create_market_interest(
         raise ValueError('Cannot contact your own item')
     if item.status in ('sold', 'archived'):
         raise ValueError('Item is no longer available')
-    if item.item_type == 'service' and item.status == 'paused' and item.pause_reason == 'manual':
-        raise ValueError('Service is temporarily unavailable')
+    if item.status == 'paused' and item.pause_reason == 'manual':
+        raise ValueError('Item is temporarily unavailable')
 
     expired_for_item = await _expire_overdue_deals_for_item(db, item.id)
     if expired_for_item:
@@ -864,6 +864,8 @@ async def select_market_buyer(
 
     if item.status in ('sold', 'archived'):
         raise ValueError('Item is not available')
+    if item.status == 'paused' and item.pause_reason == 'manual':
+        raise ValueError('Item is manually paused')
     if buyer_id == seller_id:
         raise ValueError('Buyer must be different from seller')
 
@@ -898,9 +900,6 @@ async def select_market_buyer(
         if other_active.scalar_one_or_none():
             raise ValueError('Product already has an active deal')
     else:
-        if item.status == 'paused' and item.pause_reason == 'manual':
-            raise ValueError('Service is manually paused')
-
         active_count = await _count_active_item_deals(db, item.id)
         if active_count >= max(int(item.capacity or 1), 1):
             raise ValueError('Service capacity is full')

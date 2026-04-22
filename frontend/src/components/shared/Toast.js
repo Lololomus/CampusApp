@@ -214,6 +214,9 @@ const styles = {
   },
 
   toast: {
+    width: '100%',
+    minWidth: 'min(320px, calc(100vw - 32px))',
+    boxSizing: 'border-box',
     display: 'flex',
     alignItems: 'center',
     gap: '12px',

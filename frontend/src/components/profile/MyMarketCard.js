@@ -49,6 +49,11 @@ function MyMarketCard({ item, onEdit, onDelete, onOpen }) {
 
   const getStatusConfig = (status) => {
     switch (status) {
+      case 'paused':
+        if (item.pause_reason === 'manual') {
+          return { label: 'Скрыто', color: C.textMuted, bg: 'rgba(142, 142, 147, 0.14)' };
+        }
+        return { label: 'Пауза', color: C.warning, bg: 'rgba(255, 159, 10, 0.1)' };
       case 'sold':
         return { label: 'Продано', color: C.textMuted, bg: 'rgba(142, 142, 147, 0.1)' };
       case 'reserved':
@@ -146,8 +151,9 @@ const styles = {
   },
 
   imageContainer: {
-    width: 96,
-    height: 96,
+    width: 112,
+    height: 112,
+    aspectRatio: '1 / 1',
     borderRadius: 14,
     overflow: 'hidden',
     flexShrink: 0,

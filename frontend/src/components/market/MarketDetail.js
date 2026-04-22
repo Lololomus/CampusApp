@@ -1,9 +1,9 @@
 // ===== 📄 ФАЙЛ: frontend/src/components/market/MarketDetail.js =====
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info, MapPin, Link, Share2, Edit2, Flag } from 'lucide-react';
+import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info, MapPin, Link, Share2, Edit2, Flag, Eye, EyeOff } from 'lucide-react';
 import { useStore } from '../../store';
-import { toggleMarketFavorite, deleteMarketItem, getSellerRating, contactMarketSeller } from '../../api';
+import { toggleMarketFavorite, deleteMarketItem, getSellerRating, contactMarketSeller, updateMarketItem as updateMarketItemApi } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
 import PhotoViewer from '../media/PhotoViewer';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
@@ -113,6 +113,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const [sellerRating, setSellerRating] = useState({ avg: null, count: 0 });
   const [contactSubmitting, setContactSubmitting] = useState(false);
   const [requestSent, setRequestSent] = useState(() => hasSentMarketRequest(item));
+  const [visibilityUpdating, setVisibilityUpdating] = useState(false);
   const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   
   const menuRef = useRef(null);
@@ -139,6 +140,8 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   }, [currentItem?.seller_id, currentItem?.seller?.id]);
 
   const isOwner = useMemo(() => isEntityOwner('market_item', currentItem, user), [currentItem, user]);
+  const isManuallyHidden = currentItem.status === 'paused' && currentItem.pause_reason === 'manual';
+  const canToggleVisibility = isOwner && (currentItem.status === 'active' || isManuallyHidden);
   const actionSet = useMemo(
     () => getEntityActionSet('market_item', isOwner, { shareEnabled: true }),
     [isOwner]
@@ -210,31 +213,46 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     setLikeAnimating(true);
     setTimeout(() => setLikeAnimating(false), 400);
     
+    const previousItem = currentItem;
     const newState = !currentItem.is_favorited;
-    const applyLocalFavoriteState = (isFavorited) => {
-      setLocalItem((prev) => {
-        if (!prev || prev.id !== currentItem.id) return prev;
-        const countDelta = Boolean(prev.is_favorited) === isFavorited ? 0 : (isFavorited ? 1 : -1);
-        return {
-          ...prev,
-          is_favorited: isFavorited,
-          favorites_count: Math.max(0, (Number(prev.favorites_count) || 0) + countDelta),
-        };
-      });
+    const buildFavoriteItem = (sourceItem, isFavorited, favoritesCount) => {
+      const serverCount = Number(favoritesCount);
+      const hasServerCount = Number.isFinite(serverCount);
+      const countDelta = Boolean(sourceItem.is_favorited) === isFavorited ? 0 : (isFavorited ? 1 : -1);
+
+      return {
+        ...sourceItem,
+        is_favorited: isFavorited,
+        favorites_count: hasServerCount
+          ? Math.max(0, serverCount)
+          : Math.max(0, (Number(sourceItem.favorites_count) || 0) + countDelta),
+      };
+    };
+    const applyFavoriteItem = (updatedItem) => {
+      setLocalItem((prev) => (
+        prev?.id === updatedItem.id ? { ...prev, ...updatedItem } : prev
+      ));
+      updateInStore?.(updatedItem);
+      onUpdate?.(updatedItem);
     };
 
+    const optimisticItem = buildFavoriteItem(currentItem, newState);
     toggleMarketFavoriteOptimistic(currentItem.id, newState, currentItem);
-    applyLocalFavoriteState(newState);
+    applyFavoriteItem(optimisticItem);
 
     try {
-      await toggleMarketFavorite(currentItem.id);
-      if (newState) {
-        toast.success('Добавлено в избранное');
-      }
+      const result = await toggleMarketFavorite(currentItem.id);
+      const confirmedState = typeof result?.is_favorited === 'boolean'
+        ? result.is_favorited
+        : newState;
+      const confirmedItem = buildFavoriteItem(optimisticItem, confirmedState, result?.favorites_count);
+
+      applyFavoriteItem(confirmedItem);
+      toast.success(confirmedState ? 'Добавлено в избранное' : 'Удалено из избранного');
     } catch (error) {
       console.error('Ошибка toggle избранного:', error);
-      toggleMarketFavoriteOptimistic(currentItem.id, !newState, currentItem);
-      applyLocalFavoriteState(!newState);
+      toggleMarketFavoriteOptimistic(currentItem.id, !newState, previousItem);
+      applyFavoriteItem(previousItem);
       toast.error('Не удалось обновить избранное');
     }
   };
@@ -246,12 +264,12 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     try {
       await deleteMarketItem(currentItem.id);
       deleteFromStore(currentItem.id);
-      toast.success('Товар удалён');
+      toast.success('Объявление удалено');
       closeDetail();
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Ошибка удаления:', error);
-      toast.error('Не удалось удалить товар');
+      toast.error('Не удалось удалить объявление');
     } finally {
       setDeleting(false);
     }
@@ -349,6 +367,41 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     
     if (onUpdate) {
       onUpdate(updatedItem);
+    }
+  };
+
+  const getKeepImagePayload = () => (
+    (currentItem.images || [])
+      .filter((img) => !(typeof img === 'object' && img?.type === 'video'))
+      .map((img) => (typeof img === 'string' ? img : img?.url))
+      .filter(Boolean)
+  );
+
+  const handleVisibilityToggle = async () => {
+    if (!canToggleVisibility || visibilityUpdating) return;
+
+    hapticFeedback('medium');
+    setVisibilityUpdating(true);
+
+    const nextHidden = !isManuallyHidden;
+    const formData = new FormData();
+    formData.append('status', nextHidden ? 'paused' : 'active');
+    if (nextHidden) formData.append('pause_reason', 'manual');
+    formData.append('keep_images', JSON.stringify(getKeepImagePayload()));
+
+    try {
+      const updatedItem = await updateMarketItemApi(currentItem.id, formData);
+      setLocalItem(updatedItem);
+      updateInStore?.(updatedItem);
+      onUpdate?.(updatedItem);
+      hapticFeedback('success');
+      toast.success(nextHidden ? 'Объявление скрыто' : 'Объявление открыто');
+    } catch (error) {
+      console.error('Market visibility update error:', error);
+      hapticFeedback('error');
+      toast.error(error?.response?.data?.detail || 'Не удалось обновить видимость');
+    } finally {
+      setVisibilityUpdating(false);
     }
   };
 
@@ -706,6 +759,27 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
         <div style={styles.footer}>
           {isOwner ? (
             <div style={styles.ownerActions}>
+              {canToggleVisibility && (
+                <button
+                  style={{
+                    ...styles.visibilityButton,
+                    ...(isManuallyHidden ? styles.visibilityButtonHidden : {}),
+                    ...(visibilityUpdating ? styles.visibilityButtonDisabled : {}),
+                  }}
+                  onClick={handleVisibilityToggle}
+                  disabled={visibilityUpdating}
+                  aria-label={isManuallyHidden ? 'Показать объявление' : 'Скрыть объявление'}
+                  title={isManuallyHidden ? 'Показать объявление' : 'Скрыть объявление'}
+                >
+                  {visibilityUpdating ? (
+                    <div style={styles.visibilitySpinner} />
+                  ) : isManuallyHidden ? (
+                    <EyeOff size={21} />
+                  ) : (
+                    <Eye size={21} />
+                  )}
+                </button>
+              )}
               <button
                 style={styles.editButton}
                 onClick={() => { setShowEditModal(true); hapticFeedback('light'); }}
@@ -1180,6 +1254,41 @@ const styles = {
     display: 'flex',
     gap: theme.spacing.md,
     pointerEvents: 'auto',
+  },
+
+  visibilityButton: {
+    width: 56,
+    height: 56,
+    background: 'rgba(212,255,0,0.16)',
+    color: theme.colors.premium.primary,
+    borderRadius: 16,
+    border: '1px solid rgba(212,255,0,0.24)',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  visibilityButtonHidden: {
+    background: 'rgba(142,142,147,0.16)',
+    color: theme.colors.premium.textMuted,
+    border: '1px solid rgba(255,255,255,0.08)',
+  },
+
+  visibilityButtonDisabled: {
+    opacity: 0.72,
+    cursor: 'default',
+  },
+
+  visibilitySpinner: {
+    width: 18,
+    height: 18,
+    border: `2px solid ${theme.colors.premium.primary}40`,
+    borderTopColor: theme.colors.premium.primary,
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
   },
 
   editButton: {
