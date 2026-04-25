@@ -6,6 +6,7 @@ import { useStore } from '../../store';
 import { triggerRegistrationPrompt } from '../../api';
 import { BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS } from '../../constants/layoutConstants';
 import { isBodyScrollLocked, isBodyScrollRestoring, subscribeBodyScrollState } from '../../utils/bodyScrollLock';
+import { isAppScrollRestoring, subscribeAppScrollRestoreState } from '../../utils/scrollRestoreState';
 
 const SCROLL_DIRECTION_THRESHOLD = 8;
 
@@ -38,12 +39,14 @@ const AppHeader = ({
   const [dimensions, setDimensions] = useState({ sticky: 56, collapsible: 0 });
   const [premiumMorphReady, setPremiumMorphReady] = useState(false);
   const [bodyScrollFrozen, setBodyScrollFrozen] = useState(() => isBodyScrollLocked() || isBodyScrollRestoring());
+  const [appScrollRestoring, setAppScrollRestoring] = useState(() => isAppScrollRestoring());
 
   const lastScrollYRef = useRef(0);
   const collapsibleVisibleRef = useRef(true);
   const isScrolledRef = useRef(false);
   const isManualExpandedRef = useRef(false);
   const bodyScrollFrozenRef = useRef(bodyScrollFrozen);
+  const appScrollRestoringRef = useRef(appScrollRestoring);
   const scrollRafRef = useRef(null);
   const compactTitleWidthRef = useRef(0);
   const premiumSearchRef = useRef(null);
@@ -90,6 +93,15 @@ const AppHeader = ({
     lastScrollYRef.current = currentScrollY;
   }), []);
 
+  useEffect(() => subscribeAppScrollRestoreState(({ restoring }) => {
+    const active = Boolean(restoring);
+    appScrollRestoringRef.current = active;
+    setAppScrollRestoring(active);
+
+    const currentScrollY = window.scrollY || window.pageYOffset || 0;
+    lastScrollYRef.current = currentScrollY;
+  }), []);
+
   useLayoutEffect(() => {
     const updateDimensions = () => {
       const sticky = stickyRef.current ? stickyRef.current.offsetHeight : 56;
@@ -122,8 +134,21 @@ const AppHeader = ({
     isManualExpandedRef.current = isManualExpanded;
   }, [isManualExpanded]);
 
+  useEffect(() => {
+    appScrollRestoringRef.current = appScrollRestoring;
+  }, [appScrollRestoring]);
+
   useLayoutEffect(() => {
-    if (isModalOpen || bodyScrollFrozenRef.current || document.body.style.position === 'fixed' || isBodyScrollRestoring()) return;
+    if (
+      isModalOpen
+      || bodyScrollFrozenRef.current
+      || appScrollRestoringRef.current
+      || document.body.style.position === 'fixed'
+      || isBodyScrollRestoring()
+      || isAppScrollRestoring()
+    ) {
+      return;
+    }
 
     const currentScrollY = window.scrollY || window.pageYOffset || 0;
     const nextCollapsibleVisible = currentScrollY < 10;
@@ -140,7 +165,7 @@ const AppHeader = ({
       isManualExpandedRef.current = false;
       setIsManualExpanded(false);
     }
-  }, [isModalOpen]);
+  }, [isModalOpen, bodyScrollFrozen, appScrollRestoring]);
 
   useLayoutEffect(() => {
     if (!useCollapsedToolbarPremium) return undefined;
@@ -192,7 +217,16 @@ const AppHeader = ({
       if (scrollRafRef.current) return;
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null;
-        if (isModalOpen || bodyScrollFrozenRef.current || document.body.style.position === 'fixed' || isBodyScrollRestoring()) return;
+        if (
+          isModalOpen
+          || bodyScrollFrozenRef.current
+          || appScrollRestoringRef.current
+          || document.body.style.position === 'fixed'
+          || isBodyScrollRestoring()
+          || isAppScrollRestoring()
+        ) {
+          return;
+        }
 
         const currentScrollY = window.scrollY;
         const scrollDelta = currentScrollY - lastScrollYRef.current;

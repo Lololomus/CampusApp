@@ -414,7 +414,9 @@ function PostFeed() {
     };
   }, [feedSubTab, hasMorePosts, loading, loadPosts, lastVisiblePostId]);
 
-  const postCardWrapperStyle = useMemo(() => ({ marginBottom: 0 }), []);
+  const postCardWrapperStyle = useMemo(() => ({
+    marginBottom: 0,
+  }), []);
 
   return (
     <div style={styles.container}>

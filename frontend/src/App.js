@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { useStore } from './store';
 import { getTelegramWebApp, initTelegramApp, setClosingConfirmation } from './utils/telegram';
 import { isBodyScrollRestoring } from './utils/bodyScrollLock';
+import { setAppScrollRestoring } from './utils/scrollRestoreState';
 import {
   deepLinkNeedsModerationRole,
   executeDeepLink,
@@ -309,11 +310,13 @@ function App() {
 
     html.style.scrollBehavior = 'auto';
     body.style.scrollBehavior = 'auto';
+    setAppScrollRestoring(true);
 
     const finishRestore = () => {
       html.style.scrollBehavior = previousHtmlScrollBehavior;
       body.style.scrollBehavior = previousBodyScrollBehavior;
       restoreFrameRef.current = null;
+      setAppScrollRestoring(false);
     };
 
     const restoreScroll = () => {
@@ -356,6 +359,7 @@ function App() {
       }
       html.style.scrollBehavior = previousHtmlScrollBehavior;
       body.style.scrollBehavior = previousBodyScrollBehavior;
+      setAppScrollRestoring(false);
     };
   }, [activeTab]);
 
