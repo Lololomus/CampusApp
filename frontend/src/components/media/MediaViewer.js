@@ -551,12 +551,14 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
         }}
       />
 
-      {!closingPassthrough && (
-        <div
-          aria-hidden="true"
-          style={styles.bottomScrim}
-        />
-      )}
+      <div
+        aria-hidden="true"
+        style={{
+          ...styles.bottomScrim,
+          opacity: closingPassthrough ? 0 : dragY > 0 ? Math.max(0, 1 - dragY / 280) : 1,
+          transition: closingPassthrough ? 'opacity 0.12s ease' : dragY > 0 ? 'none' : undefined,
+        }}
+      />
 
       <div
         {...modalBoundaryProps}
