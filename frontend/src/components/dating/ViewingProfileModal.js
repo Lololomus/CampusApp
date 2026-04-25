@@ -9,7 +9,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import PhotoViewer from '../media/PhotoViewer';
 import DrilldownHeader from '../shared/DrilldownHeader';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useModalAnimation, SCREEN_EXIT_MS } from '../../hooks/useModalAnimation';
 import { Z_MODAL_LIKES_LIST } from '../../constants/zIndex';
 import theme from '../../theme';
@@ -32,10 +32,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
 
   const { isMounted, isVisible, handleClose } = useModalAnimation(onClose, SCREEN_EXIT_MS);
 
-  useEffect(() => {
-    lockBodyScroll();
-    return () => unlockBodyScroll();
-  }, []);
+  useBodyScrollLock(isVisible);
 
   // Скрываем Telegram MainButton — кнопка теперь in-app
   useTelegramScreen({
@@ -91,7 +88,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
   if (!isMounted) return null;
 
   return (
-    <EdgeSwipeBack onBack={handleClose} disabled={showPhotoViewer} zIndex={zIndex}>
+    <EdgeSwipeBack onBack={handleClose} disabled={showPhotoViewer} passThrough={!isVisible} zIndex={zIndex}>
       <div style={{
         ...styles.overlay,
         transform: isVisible ? 'translateX(0)' : 'translateX(100%)',

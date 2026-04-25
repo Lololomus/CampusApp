@@ -85,6 +85,8 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
   // Скролл-фриз страницы при открытии
   useEffect(() => {
+    if (!isVisible) return undefined;
+
     const body = document.body;
     const root = document.getElementById('root');
     const html = document.documentElement;
@@ -135,7 +137,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       if (root) root.style.overflow = prevRootOverflow;
       if (shouldRestoreScroll) restoreScrollPosition();
     };
-  }, []);
+  }, [isVisible]);
 
   const registerMediaTask = (taskPromise) => {
     mediaProcessingTasksRef.current.add(taskPromise);
@@ -557,7 +559,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
     <div
       {...modalBoundaryProps}
       {...modalTouchBoundaryHandlers}
-      style={{ ...s.backdrop, opacity: isVisible ? 1 : 0 }}
+      style={{ ...s.backdrop, opacity: isVisible ? 1 : 0, pointerEvents: isVisible ? 'auto' : 'none' }}
       onClick={handleClose}
     >
       <div

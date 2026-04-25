@@ -16,7 +16,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { toast } from '../shared/Toast';
 import { Z_MODAL_NOTIFICATIONS_SCREEN } from '../../constants/zIndex';
 import ReviewModal from '../market/ReviewModal';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { normalizeTelegramUsername } from '../../utils/telegramUsername';
 
 // ========== КОНСТАНТЫ ==========
@@ -746,11 +746,7 @@ function NotificationsScreen() {
     setTimeout(() => setShowNotificationsScreen(false), 340);
   }, [isExiting, setShowNotificationsScreen]);
 
-  // Блокировка скролла страницы пока экран уведомлений открыт
-  useEffect(() => {
-    lockBodyScroll();
-    return () => unlockBodyScroll();
-  }, []);
+  useBodyScrollLock(!isExiting);
 
   useTelegramScreen({
     id: 'notifications-screen',
@@ -804,11 +800,12 @@ function NotificationsScreen() {
   const hasUnread = notifications.some(n => !n.is_read);
 
   return (
-    <EdgeSwipeBack
-      onBack={() => setShowNotificationsScreen(false)}
-      disabled={isExiting}
-      zIndex={Z_MODAL_NOTIFICATIONS_SCREEN}
-    >
+      <EdgeSwipeBack
+        onBack={() => setShowNotificationsScreen(false)}
+        disabled={isExiting}
+        passThrough={isExiting}
+        zIndex={Z_MODAL_NOTIFICATIONS_SCREEN}
+      >
     <div style={{
       position: 'fixed', top: 0, bottom: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)',
       zIndex: Z_MODAL_NOTIFICATIONS_SCREEN,

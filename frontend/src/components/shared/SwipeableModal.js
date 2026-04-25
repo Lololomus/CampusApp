@@ -145,7 +145,8 @@ const SwipeableModal = ({
         transition: 'opacity 0.3s ease',
         zIndex,
         willChange: isEdgeDragging ? 'transform' : undefined,
-        touchAction: 'none',
+        pointerEvents: isOpen ? 'auto' : 'none',
+        touchAction: isOpen ? 'none' : 'auto',
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();

@@ -21,7 +21,7 @@ import {
   searchCampuses,
   getCampusById, ONBOARDING_LIMITS,
 } from '../../constants/universityData';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const normalizeText = (value) => String(value ?? '').trim();
 const normalizeUsername = (value) => normalizeText(value).replace(/^@/, '');
@@ -157,11 +157,7 @@ function EditProfile() {
   const eduCooldownDays = user?.edu_cooldown_days ?? 0;
   const hasUsedFreeChange = Boolean(user?.last_profile_edit);
 
-  // Блокировка скролла страницы пока экран редактирования открыт
-  useEffect(() => {
-    lockBodyScroll();
-    return () => unlockBodyScroll();
-  }, []);
+  useBodyScrollLock(!isExiting);
 
   // Инициализация из user
   useEffect(() => {
@@ -381,6 +377,7 @@ function EditProfile() {
       onBack={handleCloseImmediate}
       onInterceptBack={handleEdgeSwipeIntercept}
       disabled={isExiting || showEduLockedSheet}
+      passThrough={isExiting}
       zIndex={Z_EDIT_PROFILE}
     >
     <div style={slideStyle}>

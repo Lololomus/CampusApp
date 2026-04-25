@@ -436,8 +436,9 @@ function PostFeed() {
 
       <div style={{
         ...styles.content,
-        transform: `translateY(${pullY}px)`,
+        transform: pullY !== 0 ? `translate3d(0, ${pullY}px, 0)` : 'none',
         transition: snapping ? 'transform 0.42s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+        willChange: pullY !== 0 || snapping ? 'transform' : 'auto',
       }}>
         <>
           {loading && posts.length === 0 && (

@@ -275,7 +275,6 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const bodyScrollLockedRef = useRef(false);
   const closeTimeoutRef = useRef(null);
   const closeReleaseFrameRef = useRef(null);
-  const heroTargetRafRef = useRef(null);
 
   const releaseBodyScroll = useCallback(() => {
     if (!bodyScrollLockedRef.current) return;
@@ -317,43 +316,14 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
 
     setHeroAnimActive(false);
     setHeroTargetFrame(heroAnim.to);
-    const id = requestAnimationFrame(() => setHeroAnimActive(true));
-
-    const updateHeroTarget = () => {
-      heroTargetRafRef.current = null;
-      const nextTarget = resolveSourceRect(currentIndex);
-      if (!nextTarget) return;
-
-      setHeroTargetFrame((prev) => {
-        if (
-          prev
-          && Math.abs(prev.x - nextTarget.x) < 0.5
-          && Math.abs(prev.y - nextTarget.y) < 0.5
-          && Math.abs(prev.width - nextTarget.width) < 0.5
-          && Math.abs(prev.height - nextTarget.height) < 0.5
-        ) {
-          return prev;
-        }
-        return nextTarget;
-      });
-    };
-
-    const requestHeroTargetUpdate = () => {
-      if (heroTargetRafRef.current) return;
-      heroTargetRafRef.current = requestAnimationFrame(updateHeroTarget);
-    };
-
-    window.addEventListener('scroll', requestHeroTargetUpdate, { passive: true, capture: true });
-    window.addEventListener('resize', requestHeroTargetUpdate);
+    const id = requestAnimationFrame(() => {
+      const latestTarget = resolveSourceRect(currentIndex);
+      if (latestTarget) setHeroTargetFrame(latestTarget);
+      setHeroAnimActive(true);
+    });
 
     return () => {
       cancelAnimationFrame(id);
-      if (heroTargetRafRef.current) {
-        cancelAnimationFrame(heroTargetRafRef.current);
-        heroTargetRafRef.current = null;
-      }
-      window.removeEventListener('scroll', requestHeroTargetUpdate, true);
-      window.removeEventListener('resize', requestHeroTargetUpdate);
     };
   }, [currentIndex, heroAnim, resolveSourceRect]);
 
@@ -451,10 +421,6 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       if (closeReleaseFrameRef.current) {
         window.cancelAnimationFrame(closeReleaseFrameRef.current);
         closeReleaseFrameRef.current = null;
-      }
-      if (heroTargetRafRef.current) {
-        window.cancelAnimationFrame(heroTargetRafRef.current);
-        heroTargetRafRef.current = null;
       }
       cleanupMouseDrag();
       releaseBodyScroll();

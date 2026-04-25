@@ -4,7 +4,7 @@ import theme from '../../theme';
 const BASE_MARGIN = 8;
 
 function getCompensatedMargin(spacing) {
-  return BASE_MARGIN - (typeof spacing === 'number' ? spacing : 0);
+  return Math.max(0, BASE_MARGIN - (typeof spacing === 'number' ? spacing : 0));
 }
 
 function FeedDateDivider({ label, spacingBefore = 0, spacingAfter = 0 }) {
@@ -24,6 +24,11 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 18,
+    contain: 'layout paint style',
+    isolation: 'isolate',
+    transform: 'translateZ(0)',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
   },
   label: {
     fontSize: 13,
@@ -31,7 +36,10 @@ const styles = {
     fontWeight: 700,
     lineHeight: 1.25,
     whiteSpace: 'nowrap',
+    transform: 'translateZ(0)',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
   },
 };
 
-export default FeedDateDivider;
+export default React.memo(FeedDateDivider);

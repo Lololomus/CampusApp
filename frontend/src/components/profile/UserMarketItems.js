@@ -17,7 +17,7 @@ import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const C = {
   bg: '#000000',
@@ -72,10 +72,10 @@ function UserMarketItems() {
     back: { visible: true, onClick: handleClose },
   });
 
+  useBodyScrollLock(!isExiting);
+
   useEffect(() => {
-    lockBodyScroll();
     loadItems();
-    return () => unlockBodyScroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -200,6 +200,7 @@ function UserMarketItems() {
     <EdgeSwipeBack
       onBack={closeImmediately}
       disabled={Boolean(selectedItem) || isExiting}
+      passThrough={isExiting}
       zIndex={Z_USER_MARKET_ITEMS}
     >
     <div style={containerStyle} onScroll={handleScroll}>

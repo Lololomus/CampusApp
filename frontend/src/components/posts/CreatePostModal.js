@@ -338,6 +338,8 @@ function CreatePostModal({ onClose }) {
   }, []);
 
   useEffect(() => {
+    if (!isVisible) return undefined;
+
     const body = document.body;
     const root = document.getElementById('root');
     const html = document.documentElement;
@@ -388,7 +390,7 @@ function CreatePostModal({ onClose }) {
       if (root) root.style.overflow = prevRootOverflow;
       if (shouldRestoreScroll) restoreScrollPosition();
     };
-  }, []);
+  }, [isVisible]);
 
   useEffect(() => {
     if (window.innerWidth < 768 || isSubmitting) return;
@@ -1271,7 +1273,11 @@ function CreatePostModal({ onClose }) {
       <div
         {...modalBoundaryProps}
         {...modalTouchBoundaryHandlers}
-        style={{ ...styles.overlay, opacity: isVisible ? 1 : 0, pointerEvents: (showConfirmation || showRestoreDialog) ? 'none' : 'auto' }}
+        style={{
+          ...styles.overlay,
+          opacity: isVisible ? 1 : 0,
+          pointerEvents: isVisible && !(showConfirmation || showRestoreDialog) ? 'auto' : 'none',
+        }}
       >
         <div style={{ ...styles.backdrop, opacity: isVisible ? 1 : 0 }} onClick={handleClose} />
         <div

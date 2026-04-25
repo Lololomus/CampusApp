@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Heart, MessageCircle, MapPin, Calendar,
   ChevronLeft, ChevronRight,
@@ -29,7 +29,7 @@ import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { composeSingleTextFromTitleBody } from '../../utils/contentTextParser';
 import { IMAGE_ASPECT_RATIO_MIN, IMAGE_ASPECT_RATIO_MAX } from '../../constants/layoutConstants';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { sharePostViaTelegram } from '../../utils/telegramShare';
 
@@ -222,11 +222,7 @@ function PostDetail() {
     };
   }, []);
 
-  // Блокировка скролла страницы пока PostDetail открыт
-  useLayoutEffect(() => {
-    lockBodyScroll();
-    return () => unlockBodyScroll();
-  }, []);
+  useBodyScrollLock(!isExiting);
 
   useEffect(() => {
     setLocalLikesCount(Number(post?.likes_count || 0));
@@ -769,6 +765,7 @@ function PostDetail() {
       <EdgeSwipeBack
         onBack={() => setViewPostId(null)}
         disabled={isExiting || isPhotoViewerOpen}
+        passThrough={isExiting}
         zIndex={Z_MODAL_POST_DETAIL}
       >
       <div style={containerStyle}>

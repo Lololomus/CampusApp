@@ -416,6 +416,8 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
   }, []);
 
   useEffect(() => {
+    if (!isVisible) return undefined;
+
     const body = document.body;
     const html = document.documentElement;
     const root = document.getElementById('root');
@@ -466,7 +468,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
       if (root) root.style.overflow = prevRootOverflow;
       if (shouldRestoreScroll) restoreScrollPosition();
     };
-  }, []);
+  }, [isVisible]);
 
   useEffect(() => {
     if (postCategory === 'confessions') setIsAnonymous(true);
@@ -742,7 +744,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
       <div
         {...modalBoundaryProps}
         {...modalTouchBoundaryHandlers}
-        style={{ ...styles.overlay, opacity: isVisible ? 1 : 0 }}
+        style={{ ...styles.overlay, opacity: isVisible ? 1 : 0, pointerEvents: isVisible ? 'auto' : 'none' }}
       >
         <div style={styles.backdrop} onClick={handleClose} />
         <div ref={sheetRef} style={{ ...styles.sheet, transform: isVisible ? 'translateY(0)' : 'translateY(100%)' }} onClick={(e) => e.stopPropagation()}>

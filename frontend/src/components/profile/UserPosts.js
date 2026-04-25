@@ -14,7 +14,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 // Premium palette (единый источник, без legacy theme)
 const C = {
@@ -69,10 +69,10 @@ function UserPosts() {
     back: { visible: true, onClick: handleClose },
   });
 
+  useBodyScrollLock(!isExiting);
+
   useEffect(() => {
-    lockBodyScroll();
     loadPosts();
-    return () => unlockBodyScroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -186,6 +186,7 @@ function UserPosts() {
     <EdgeSwipeBack
       onBack={closeImmediately}
       disabled={Boolean(viewPostId) || isExiting}
+      passThrough={isExiting}
       zIndex={Z_USER_POSTS}
     >
     <div style={containerStyle} onScroll={handleScroll}>

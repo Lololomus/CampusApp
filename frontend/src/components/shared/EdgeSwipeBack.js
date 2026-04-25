@@ -13,7 +13,7 @@ import { useEdgeSwipeBack } from '../../hooks/useEdgeSwipeBack';
  * @param {number}   zIndex    — z-index обёртки (передаётся от экрана)
  * @param {ReactNode} children — содержимое экрана
  */
-function EdgeSwipeBack({ onBack, onInterceptBack, disabled = false, allowModalBoundary = false, zIndex, children }) {
+function EdgeSwipeBack({ onBack, onInterceptBack, disabled = false, allowModalBoundary = false, passThrough = false, zIndex, children }) {
   const { wrapperRef, isDragging } = useEdgeSwipeBack({ onBack, onInterceptBack, disabled, allowModalBoundary });
 
   return (
@@ -28,6 +28,7 @@ function EdgeSwipeBack({ onBack, onInterceptBack, disabled = false, allowModalBo
         width: 'var(--app-fixed-width)',
         zIndex,
         willChange: isDragging ? 'transform' : undefined,
+        pointerEvents: passThrough ? 'none' : 'auto',
       }}
     >
       {children}

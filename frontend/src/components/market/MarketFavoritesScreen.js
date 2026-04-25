@@ -10,7 +10,7 @@ import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { toast } from '../shared/Toast';
 import { buildFeedSections } from '../../utils/feedDateSections';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { MARKET_PAGE_SIZE } from '../../constants/layoutConstants';
 import { Z_MARKET_FAVORITES } from '../../constants/zIndex';
 import MarketCard from './MarketCard';
@@ -110,12 +110,12 @@ function MarketFavoritesScreen({ onClose }) {
     }
   }, [setMarketFavorites]);
 
+  useBodyScrollLock(!isExiting);
+
   useEffect(() => {
-    lockBodyScroll();
     loadFavorites(true);
 
     return () => {
-      unlockBodyScroll();
       if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
     };
   }, [loadFavorites]);
@@ -170,6 +170,7 @@ function MarketFavoritesScreen({ onClose }) {
       <EdgeSwipeBack
         onBack={closeImmediately}
         disabled={Boolean(selectedItem) || isExiting}
+        passThrough={isExiting}
         zIndex={Z_MARKET_FAVORITES}
       >
         <div style={containerStyle} onScroll={handleScroll}>

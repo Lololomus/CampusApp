@@ -120,6 +120,8 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
 
   // Скролл-фриз страницы при открытии
   useEffect(() => {
+    if (!isVisible) return undefined;
+
     const body = document.body;
     const root = document.getElementById('root');
     const html = document.documentElement;
@@ -170,7 +172,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
       if (root) root.style.overflow = prevRootOverflow;
       if (shouldRestoreScroll) restoreScrollPosition();
     };
-  }, []);
+  }, [isVisible]);
 
   const swipeHandlers = useSwipe({
     elementRef: sheetRef,
@@ -354,7 +356,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
         style={{
           ...s.overlay,
           opacity: isVisible ? 1 : 0,
-          pointerEvents: showConfirmation ? 'none' : 'auto',
+          pointerEvents: isVisible && !showConfirmation ? 'auto' : 'none',
         }}
         onClick={handleClose}
       >

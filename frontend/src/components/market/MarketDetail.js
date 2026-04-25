@@ -22,7 +22,7 @@ import ProfileMiniCard from '../user/ProfileMiniCard';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { isEntityOwner, getEntityActionSet } from '../../utils/entityActions';
 import { parseApiDate } from '../../utils/datetime';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { shareMarketItemViaTelegram } from '../../utils/telegramShare';
 import { normalizeTelegramUsername } from '../../utils/telegramUsername';
@@ -121,11 +121,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const sellerAvatarRef = useRef(null);
   const currentItemRequestSent = hasSentMarketRequest(currentItem);
 
-  // Блокировка скролла страницы пока MarketDetail открыт
-  useEffect(() => {
-    lockBodyScroll();
-    return () => unlockBodyScroll();
-  }, []);
+  useBodyScrollLock(!isExiting);
 
   useEffect(() => {
     setContactSubmitting(false);
@@ -561,6 +557,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       <EdgeSwipeBack
         onBack={closeDetail}
         disabled={isExiting || showPhotoViewer || showEditModal}
+        passThrough={isExiting}
         zIndex={Z_MARKET_DETAIL}
       >
         <div style={{

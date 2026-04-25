@@ -17,7 +17,7 @@ import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
 import { parseApiDate } from '../../utils/datetime';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const C = {
   bg: '#000000',
@@ -73,10 +73,10 @@ function UserRequests() {
     back: { visible: true, onClick: handleClose },
   });
 
+  useBodyScrollLock(!isExiting);
+
   useEffect(() => {
-    lockBodyScroll();
     loadRequests();
-    return () => unlockBodyScroll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -180,6 +180,7 @@ function UserRequests() {
     <EdgeSwipeBack
       onBack={closeImmediately}
       disabled={showRequestDetail || isExiting}
+      passThrough={isExiting}
       zIndex={Z_MODAL_REQUEST_DETAIL}
     >
     <div style={containerStyle} onScroll={handleScroll}>
