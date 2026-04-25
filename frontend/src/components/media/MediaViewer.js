@@ -6,6 +6,8 @@ import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 import theme from '../../theme';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
+import { isTelegramSDKAvailable } from '../../utils/telegram';
+import { isAndroid, isIOS } from '../../utils/platform';
 
 const DATA_OR_BLOB_PREFIX = /^(data:|blob:)/i;
 const HTTP_PREFIX = /^https?:\/\//i;
@@ -91,6 +93,7 @@ const SWIPE_CLOSE_MS = 300;
 const HERO_EASING = 'cubic-bezier(0.32,0.72,0,1)';
 const SWIPE_DIRECTION_THRESHOLD = 10;
 const SWIPE_AXIS_LOCK_RATIO = 1.15;
+const IS_MOBILE_TELEGRAM_WEBVIEW = isTelegramSDKAvailable() && (isIOS() || isAndroid());
 
 const Zoomable = ({ children, onTap, onZoomStart, onZoomEnd }) => {
   const [scale, setScale] = useState(1);
@@ -341,6 +344,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const closeViaHero = useCallback((fallback = closeViaSwipe) => {
     if (isClosing || swipeClosing || heroAnim) return;
 
+    if (IS_MOBILE_TELEGRAM_WEBVIEW) {
+      fallback();
+      return;
+    }
+
     const imgEl = currentImgRef.current;
     const currentItem = items[currentIndex];
     const to = resolveSourceRect(currentIndex);
@@ -569,12 +577,17 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
           opacity: overlayOpacity,
           transition: overlayTransition,
           pointerEvents: closingPassthrough ? 'none' : styles.overlay.pointerEvents,
-          backdropFilter: swipeClosing || isHeroClosing ? 'none' : styles.overlay.backdropFilter,
-          WebkitBackdropFilter: swipeClosing || isHeroClosing ? 'none' : styles.overlay.WebkitBackdropFilter,
+          backgroundColor: swipeClosing || isHeroClosing
+            ? styles.overlay.backgroundColor
+            : IS_MOBILE_TELEGRAM_WEBVIEW
+              ? styles.overlay.backgroundColorWebView
+              : styles.overlay.backgroundColor,
+          backdropFilter: (swipeClosing || isHeroClosing || IS_MOBILE_TELEGRAM_WEBVIEW) ? 'none' : styles.overlay.backdropFilter,
+          WebkitBackdropFilter: (swipeClosing || isHeroClosing || IS_MOBILE_TELEGRAM_WEBVIEW) ? 'none' : styles.overlay.WebkitBackdropFilter,
         }}
       />
 
-      {!closingPassthrough && (
+      {!closingPassthrough && !IS_MOBILE_TELEGRAM_WEBVIEW && (
         <div
           aria-hidden="true"
           style={styles.bottomScrim}
@@ -591,6 +604,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             : dragY > 0 ? `rgba(0,0,0,${Math.max(0.12, 1 - dragY / 280)})` : '#000',
           opacity: swipeClosing || isHeroClosing ? 0 : 1,
           pointerEvents: closingPassthrough ? 'none' : styles.container.pointerEvents,
+          animation: IS_MOBILE_TELEGRAM_WEBVIEW ? styles.container.animationWebView : styles.container.animation,
           transition: swipeClosing
             ? 'opacity 0.22s ease, background 0.32s cubic-bezier(0.32,0.72,0,1)'
             : isHeroClosing ? 'background 0.18s cubic-bezier(0.32,0.72,0,1)' : undefined,
@@ -774,6 +788,7 @@ const styles = {
     bottom: 0,
     left: 0,
     backgroundColor: 'rgba(0,0,0,0.95)',
+    backgroundColorWebView: 'rgba(0,0,0,0.96)',
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
     zIndex: Z_PHOTO_VIEWER - 1,
@@ -803,6 +818,7 @@ const styles = {
     flexDirection: 'column',
     background: '#000',
     animation: 'mv-fade-in-scale 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
+    animationWebView: 'mv-fade-in 0.18s ease',
     userSelect: 'none',
     WebkitUserSelect: 'none',
   },

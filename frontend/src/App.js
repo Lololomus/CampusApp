@@ -3,8 +3,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from './store';
 import { getTelegramWebApp, initTelegramApp, setClosingConfirmation } from './utils/telegram';
-import { isBodyScrollRestoring } from './utils/bodyScrollLock';
-import { setAppScrollRestoring } from './utils/scrollRestoreState';
 import {
   deepLinkNeedsModerationRole,
   executeDeepLink,
@@ -64,16 +62,6 @@ function App() {
   const [splashVariant, setSplashVariant] = useState('auto');
   const [splashInstanceKey, setSplashInstanceKey] = useState(0);
   const deepLinkExecutionRef = useRef(false);
-  const prevActiveTabRef = useRef(null);
-  const tabScrollMemoryRef = useRef({
-    feed: 0,
-    market: 0,
-    people: 0,
-    profile: 0,
-    ambassador: 0,
-    admin: 0,
-  });
-  const restoreFrameRef = useRef(null);
   const appBackgroundedAtRef = useRef(null);
   const forceFeedTopOnNextVisibleRef = useRef(false);
 
@@ -138,7 +126,6 @@ function App() {
     if (!lastBackgroundAt || now - lastBackgroundAt < FEED_SCROLL_STALE_MS) return;
 
     appBackgroundedAtRef.current = now;
-    tabScrollMemoryRef.current.feed = 0;
     forceFeedTopOnNextVisibleRef.current = true;
 
     if (activeTab === 'feed' && !viewPostId) {
@@ -151,7 +138,6 @@ function App() {
     if (!forceFeedTopOnNextVisibleRef.current) return;
     if (activeTab !== 'feed' || viewPostId) return;
 
-    tabScrollMemoryRef.current.feed = 0;
     window.scrollTo(0, 0);
     forceFeedTopOnNextVisibleRef.current = false;
   }, [activeTab, viewPostId]);
@@ -275,91 +261,6 @@ function App() {
     return () => {
       html.classList.remove('custom-scroll');
       body.classList.remove('custom-scroll');
-    };
-  }, [activeTab]);
-
-  useEffect(() => {
-    const updateActiveTabScrollMemory = () => {
-      if (viewPostId || isBodyScrollRestoring()) return;
-      tabScrollMemoryRef.current[activeTab] = window.scrollY || window.pageYOffset || 0;
-    };
-
-    updateActiveTabScrollMemory();
-    window.addEventListener('scroll', updateActiveTabScrollMemory, { passive: true });
-
-    return () => {
-      window.removeEventListener('scroll', updateActiveTabScrollMemory);
-    };
-  }, [activeTab, viewPostId]);
-
-  useLayoutEffect(() => {
-    if (restoreFrameRef.current) {
-      window.cancelAnimationFrame(restoreFrameRef.current);
-      restoreFrameRef.current = null;
-    }
-
-    const html = document.documentElement;
-    const body = document.body;
-    const previousHtmlScrollBehavior = html.style.scrollBehavior;
-    const previousBodyScrollBehavior = body.style.scrollBehavior;
-
-    const targetY = tabScrollMemoryRef.current[activeTab] ?? 0;
-    const maxRestoreAttempts = targetY <= 1 ? 1 : 90;
-    let attempts = 0;
-    let cancelled = false;
-
-    html.style.scrollBehavior = 'auto';
-    body.style.scrollBehavior = 'auto';
-    setAppScrollRestoring(true);
-
-    const finishRestore = () => {
-      html.style.scrollBehavior = previousHtmlScrollBehavior;
-      body.style.scrollBehavior = previousBodyScrollBehavior;
-      restoreFrameRef.current = null;
-      setAppScrollRestoring(false);
-    };
-
-    const restoreScroll = () => {
-      if (cancelled) return;
-
-      const maxScrollable = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      const clampedTargetY = Math.min(targetY, maxScrollable);
-      const nextScrollY = window.scrollY || window.pageYOffset || 0;
-
-      if (Math.abs(nextScrollY - clampedTargetY) > 1) {
-        window.scrollTo(0, clampedTargetY);
-      }
-
-      attempts += 1;
-      const updatedScrollY = window.scrollY || window.pageYOffset || 0;
-      const updatedMaxScrollable = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      const finalTargetY = Math.min(targetY, updatedMaxScrollable);
-      const targetIsReachable = updatedMaxScrollable >= (targetY - 1);
-      const targetAligned = Math.abs(updatedScrollY - finalTargetY) <= 1;
-
-      if ((targetIsReachable && targetAligned) || attempts >= maxRestoreAttempts) {
-        if (!targetAligned) {
-          window.scrollTo(0, finalTargetY);
-        }
-        finishRestore();
-        return;
-      }
-
-      restoreFrameRef.current = window.requestAnimationFrame(restoreScroll);
-    };
-
-    restoreScroll();
-    prevActiveTabRef.current = activeTab;
-
-    return () => {
-      cancelled = true;
-      if (restoreFrameRef.current) {
-        window.cancelAnimationFrame(restoreFrameRef.current);
-        restoreFrameRef.current = null;
-      }
-      html.style.scrollBehavior = previousHtmlScrollBehavior;
-      body.style.scrollBehavior = previousBodyScrollBehavior;
-      setAppScrollRestoring(false);
     };
   }, [activeTab]);
 

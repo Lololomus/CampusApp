@@ -74,7 +74,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
 
   // Scroll-reveal: карточка вплывает при входе в viewport
   const [isRevealed, setIsRevealed] = useState(false);
-  const isRevealAnimating = !isRevealed;
   useEffect(() => {
     if (skipReveal) { setIsRevealed(true); return; }
     const card = cardRef.current;
@@ -649,7 +648,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
           ...styles.card,
           opacity: isRevealed ? 1 : 0,
           transform: isRevealed ? 'none' : 'translateY(24px) scale(0.97)',
-          willChange: isRevealAnimating ? 'opacity, transform' : 'auto',
         }}
         onClick={handleCardClick}
       >
@@ -977,6 +975,7 @@ const styles = {
     border: `1px solid ${theme.colors.premium.border}`,
     WebkitTapHighlightColor: 'transparent',
     transition: 'opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+    willChange: 'opacity, transform',
   },
   header: {
     display: 'flex',
