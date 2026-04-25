@@ -160,6 +160,8 @@ function PostDetail() {
   const mediaSwipeStartRef = useRef(null);
   const mediaSwipeDirectionRef = useRef(null);
   const suppressMediaOpenRef = useRef(false);
+  const [mediaDragX, setMediaDragX] = useState(0);
+  const [isMediaDragging, setIsMediaDragging] = useState(false);
   const lockedViewportHeightRef = useRef(
     typeof window !== 'undefined' ? Math.round(window.innerHeight || 0) : 0
   );
@@ -293,9 +295,16 @@ function PostDetail() {
     if (!post || !post.images) return [];
     return post.images;
   }, [post]);
+  const mediaSlides = useMemo(
+    () => images.map((item) => ({
+      item,
+      url: getImageUrl(item),
+      fit: getMediaFit(item),
+    })),
+    [images]
+  );
   const currentMedia = images[currentImageIndex] || images[0] || null;
   const currentMediaFit = useMemo(() => getMediaFit(currentMedia), [currentMedia]);
-  const currentMediaUrl = useMemo(() => getImageUrl(currentMedia), [currentMedia]);
 
   const viewerMeta = useMemo(() => ({
     author: post?.is_anonymous ? null : post?.author,
@@ -306,6 +315,11 @@ function PostDetail() {
     const rawRatio = getMediaAspectRatio(currentMedia) || 1;
     return Math.max(IMAGE_ASPECT_RATIO_MIN, Math.min(rawRatio, IMAGE_ASPECT_RATIO_MAX));
   }, [currentMedia]);
+
+  useEffect(() => {
+    if (currentImageIndex < images.length) return;
+    setCurrentImageIndex(Math.max(0, images.length - 1));
+  }, [currentImageIndex, images.length]);
 
   const showPreviousImage = useCallback(() => {
     if (images.length <= 1) return;
@@ -323,6 +337,8 @@ function PostDetail() {
     mediaSwipeStartRef.current = { x: touch.clientX, y: touch.clientY };
     mediaSwipeDirectionRef.current = null;
     suppressMediaOpenRef.current = false;
+    setIsMediaDragging(true);
+    setMediaDragX(0);
   }, [images.length]);
 
   const handleMediaTouchMove = useCallback((e) => {
@@ -349,6 +365,8 @@ function PostDetail() {
     if (mediaSwipeDirectionRef.current === 'h') {
       if (e.cancelable) e.preventDefault();
       e.stopPropagation();
+      suppressMediaOpenRef.current = true;
+      setMediaDragX(dx);
     }
   }, [images.length]);
 
@@ -367,11 +385,17 @@ function PostDetail() {
     const absY = Math.abs(dy);
     const isHorizontalSwipe = direction === 'h' || absX > absY * DETAIL_MEDIA_AXIS_LOCK_RATIO;
 
-    if (isHorizontalSwipe && absX >= DETAIL_MEDIA_SWIPE_THRESHOLD) {
+    setIsMediaDragging(false);
+    setMediaDragX(0);
+
+    if (isHorizontalSwipe) {
       suppressMediaOpenRef.current = true;
       window.setTimeout(() => {
         suppressMediaOpenRef.current = false;
       }, 350);
+    }
+
+    if (isHorizontalSwipe && absX >= DETAIL_MEDIA_SWIPE_THRESHOLD) {
       hapticFeedback('light');
       if (dx > 0) showPreviousImage();
       else showNextImage();
@@ -381,6 +405,8 @@ function PostDetail() {
   const handleMediaTouchCancel = useCallback(() => {
     mediaSwipeStartRef.current = null;
     mediaSwipeDirectionRef.current = null;
+    setIsMediaDragging(false);
+    setMediaDragX(0);
   }, []);
 
   const handleMediaClick = useCallback(() => {
@@ -915,11 +941,32 @@ function PostDetail() {
                     onTouchEnd={handleMediaTouchEnd}
                     onTouchCancel={handleMediaTouchCancel}
                   >
-                    <img
-                      src={currentMediaUrl}
-                      alt=""
-                      style={{ ...styles.image, objectFit: currentMediaFit }}
-                    />
+                    <div
+                      style={{
+                        ...styles.mediaTrack,
+                        width: `${mediaSlides.length * 100}%`,
+                        transform: `translateX(calc(${-currentImageIndex * (100 / mediaSlides.length)}% + ${mediaDragX}px))`,
+                        transition: isMediaDragging ? 'none' : styles.mediaTrack.transition,
+                      }}
+                    >
+                      {mediaSlides.map((slide, index) => (
+                        <div
+                          key={`${index}-${slide.url}`}
+                          style={{
+                            ...styles.mediaSlide,
+                            width: `${100 / mediaSlides.length}%`,
+                            backgroundColor: slide.fit === 'contain' ? '#000' : styles.imageContainer.backgroundColor,
+                          }}
+                        >
+                          <img
+                            src={slide.url}
+                            alt=""
+                            style={{ ...styles.image, objectFit: slide.fit }}
+                            draggable={false}
+                          />
+                        </div>
+                      ))}
+                    </div>
                     {images.length > 1 && (
                       <>
                         <div style={styles.imageCounter}>{currentImageIndex + 1}/{images.length}</div>
@@ -1423,8 +1470,19 @@ const styles = {
     borderRadius: 0,
     overflow: 'hidden',
   },
+  mediaTrack: {
+    height: '100%',
+    display: 'flex',
+    willChange: 'transform',
+    transition: 'transform 0.34s cubic-bezier(0.32, 0.72, 0, 1)',
+  },
+  mediaSlide: {
+    height: '100%',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
   image: {
-    width: '100%', height: '100%', objectFit: 'cover',
+    width: '100%', height: '100%', objectFit: 'cover', display: 'block', userSelect: 'none', WebkitUserSelect: 'none',
   },
   imageCounter: {
     position: 'absolute', top: theme.spacing.md, right: theme.spacing.md,

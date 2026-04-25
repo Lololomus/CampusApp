@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Heart, ShoppingBag, MessageCircle, LifeBuoy, Flame, Check, X, Star, BarChart3, ChevronDown, ChevronUp
+  Heart, ShoppingBag, MessageCircle, LifeBuoy, Flame, Check, X, Star, BarChart3,
+  ChevronDown, ChevronUp, Bell, AlertTriangle
 } from 'lucide-react';
 
 import DrilldownHeader from '../shared/DrilldownHeader';
@@ -38,11 +39,11 @@ const COLORS = {
 };
 
 const FILTERS = [
-  { key: 'all', label: 'Все' },
-  { key: 'match', label: '🔥 Матчи' },
-  { key: 'comment', label: '💬 Комменты' },
-  { key: 'market', label: '🛒 Маркет' },
-  { key: 'request', label: '🆘 Запросы' },
+  { key: 'all', label: 'Все', icon: Bell },
+  { key: 'match', label: 'Матчи', icon: Heart },
+  { key: 'comment', label: 'Комменты', icon: MessageCircle },
+  { key: 'market', label: 'Маркет', icon: ShoppingBag },
+  { key: 'request', label: 'Запросы', icon: LifeBuoy },
 ];
 
 const TYPE_TO_FILTER = {
@@ -88,9 +89,9 @@ function parseNotification(notif) {
     case 'dating_like':
       return {
         userName: null,
-        userLetter: '❤️',
+        userLetter: null,
         userColor: null,
-        text: 'Кто-то оценил твою анкету 👀',
+        text: 'Кто-то оценил твою анкету',
         thumbnailUrl: null,
         hasActions: false,
         isDatingLikeAnon: true,
@@ -155,8 +156,9 @@ function parseNotification(notif) {
       const username = normalizeTelegramUsername(p.owner_username);
       return {
         userName: p.owner_name,
-        userLetter: accepted ? '✓' : '↩',
-        userColor: accepted ? COLORS.success : COLORS.muted,
+        userLetter: null,
+        userIcon: accepted ? Check : X,
+        userColor: accepted ? COLORS.success : COLORS.error,
         text: accepted
           ? `открыл(а) контакт по ${sourceLabel}${title}`
           : `отклонил(а) заявку по ${sourceLabel}${title}`,
@@ -199,7 +201,8 @@ function parseNotification(notif) {
     case 'admin_report':
       return {
         userName: null,
-        userLetter: '⚠️',
+        userLetter: null,
+        userIcon: AlertTriangle,
         userColor: '#FF9F0A',
         text: `Новая жалоба на ${p.target_type || 'контент'}: ${p.reason || ''}`,
         thumbnailUrl: null,
@@ -209,7 +212,8 @@ function parseNotification(notif) {
     default:
       return {
         userName: null,
-        userLetter: '?',
+        userLetter: null,
+        userIcon: Bell,
         userColor: COLORS.muted,
         text: 'Новое уведомление',
         thumbnailUrl: null,
@@ -283,11 +287,11 @@ function pluralizeVotes(count) {
 }
 
 function getMilestoneTitle(milestone) {
-  if (milestone >= 1000) return 'Легенда! 🏆';
-  if (milestone >= 500) return 'Вирусный пост! 🚀';
-  if (milestone >= 100) return 'Топ контент! ⭐️';
-  if (milestone >= 50) return 'Уфф, горячо! 🔥';
-  return 'Первые 10 лайков! 💥';
+  if (milestone >= 1000) return 'Легенда!';
+  if (milestone >= 500) return 'Вирусный пост!';
+  if (milestone >= 100) return 'Топ контент!';
+  if (milestone >= 50) return 'Уфф, горячо!';
+  return 'Первые 10 лайков!';
 }
 
 function formatTime(isoString) {
@@ -342,7 +346,7 @@ function openTelegramUsername(username) {
 
 // ========== КОМПОНЕНТЫ ==========
 
-const FilterChip = ({ label, active, onClick }) => (
+const FilterChip = ({ label, icon: Icon, active, onClick }) => (
   <button
     onClick={onClick}
     style={{
@@ -358,8 +362,12 @@ const FilterChip = ({ label, active, onClick }) => (
       boxShadow: active ? '0 4px 12px rgba(212,255,0,0.2)' : 'none',
       transition: 'all 0.2s ease',
       WebkitTapHighlightColor: 'transparent',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 7,
     }}
   >
+    {Icon && <Icon size={15} strokeWidth={2.5} />}
     {label}
   </button>
 );
@@ -374,10 +382,12 @@ const NotificationItem = React.memo(({ notif }) => {
   const [reviewModal, setReviewModal] = useState(null);
   const [isPollExpanded, setIsPollExpanded] = useState(false);
   const badge = BADGE_CONFIG[notif.type];
+  const AvatarIcon = display.userIcon;
   const isMilestone = display.isMilestone;
   const isDatingLikeAnon = display.isDatingLikeAnon;
   const isPollVote = display.isPollVote;
   const isContactActionNotification = notif.type === 'market_contact';
+  const showMicroBadge = badge && !isMilestone && !isDatingLikeAnon && !isPollVote && !AvatarIcon;
 
   useEffect(() => {
     setResolved(display.contactStatus && display.contactStatus !== 'pending' ? display.contactStatus : false);
@@ -450,12 +460,12 @@ const NotificationItem = React.memo(({ notif }) => {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 20, fontWeight: 800, color: '#FFF',
           }}>
-            {display.userLetter}
+            {AvatarIcon ? <AvatarIcon size={22} color="#FFF" strokeWidth={3} /> : display.userLetter}
           </div>
         )}
 
         {/* Micro-badge */}
-        {badge && !isMilestone && !isDatingLikeAnon && !isPollVote && (
+        {showMicroBadge && (
           <div style={{
             position: 'absolute', bottom: -4, right: -4,
             width: 20, height: 20, borderRadius: 8,
@@ -850,6 +860,7 @@ function NotificationsScreen() {
               <FilterChip
                 key={f.key}
                 label={f.label}
+                icon={f.icon}
                 active={activeFilter === f.key}
                 onClick={() => { hapticFeedback('selection'); setActiveFilter(f.key); }}
               />
@@ -863,7 +874,9 @@ function NotificationsScreen() {
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: '80px 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🔔</div>
+            <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
+              <Bell size={48} color={COLORS.muted} strokeWidth={1.8} />
+            </div>
             <div style={{ fontSize: 15, color: COLORS.muted, fontWeight: 600 }}>
               {activeFilter === 'all' ? 'Уведомлений пока нет' : 'Нет уведомлений этого типа'}
             </div>
@@ -893,7 +906,7 @@ function NotificationsScreen() {
               textAlign: 'center', padding: '32px 16px',
               color: COLORS.muted, fontSize: 13, fontWeight: 600,
             }}>
-              Ты просмотрел(а) все уведомления 👀
+              Ты просмотрел(а) все уведомления
             </div>
           </>
         )}

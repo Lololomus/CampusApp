@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/App.js =====
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from './store';
 import { getTelegramWebApp, initTelegramApp, setClosingConfirmation } from './utils/telegram';
 import { isBodyScrollRestoring } from './utils/bodyScrollLock';
@@ -41,6 +41,9 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 
 import './App.css';
 
+const FEED_SCROLL_STALE_MS = 30 * 60 * 1000;
+const FEED_LAST_BACKGROUND_AT_KEY = 'campus:last-background-at';
+
 // Вычисляем точный left-offset для fixed-элементов (без учёта скроллбара)
 function updateFixedLayout() {
   const clientWidth = document.documentElement.clientWidth;
@@ -70,6 +73,8 @@ function App() {
     admin: 0,
   });
   const restoreFrameRef = useRef(null);
+  const appBackgroundedAtRef = useRef(null);
+  const forceFeedTopOnNextVisibleRef = useRef(false);
 
   useEffect(() => {
     updateFixedLayout();
@@ -118,10 +123,76 @@ function App() {
     clearPublicProfilePreview,
   } = useStore();
 
+  const resetFeedScrollAfterStaleResume = useCallback((now = Date.now()) => {
+    let lastBackgroundAt = appBackgroundedAtRef.current;
+
+    try {
+      const stored = window.localStorage.getItem(FEED_LAST_BACKGROUND_AT_KEY);
+      const parsed = Number(stored);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        lastBackgroundAt = Math.max(lastBackgroundAt || 0, parsed);
+      }
+    } catch {}
+
+    if (!lastBackgroundAt || now - lastBackgroundAt < FEED_SCROLL_STALE_MS) return;
+
+    appBackgroundedAtRef.current = now;
+    tabScrollMemoryRef.current.feed = 0;
+    forceFeedTopOnNextVisibleRef.current = true;
+
+    if (activeTab === 'feed' && !viewPostId) {
+      window.scrollTo(0, 0);
+      forceFeedTopOnNextVisibleRef.current = false;
+    }
+  }, [activeTab, viewPostId]);
+
+  useLayoutEffect(() => {
+    if (!forceFeedTopOnNextVisibleRef.current) return;
+    if (activeTab !== 'feed' || viewPostId) return;
+
+    tabScrollMemoryRef.current.feed = 0;
+    window.scrollTo(0, 0);
+    forceFeedTopOnNextVisibleRef.current = false;
+  }, [activeTab, viewPostId]);
+
   useEffect(() => {
     initTelegramApp();
     bootstrapAuth();
   }, [bootstrapAuth]);
+
+  useEffect(() => {
+    resetFeedScrollAfterStaleResume();
+
+    const rememberBackgroundTime = () => {
+      const now = Date.now();
+      appBackgroundedAtRef.current = now;
+      try {
+        window.localStorage.setItem(FEED_LAST_BACKGROUND_AT_KEY, String(now));
+      } catch {}
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        rememberBackgroundTime();
+        return;
+      }
+      resetFeedScrollAfterStaleResume();
+    };
+
+    const handleResume = () => resetFeedScrollAfterStaleResume();
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', rememberBackgroundTime);
+    window.addEventListener('pageshow', handleResume);
+    window.addEventListener('focus', handleResume);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', rememberBackgroundTime);
+      window.removeEventListener('pageshow', handleResume);
+      window.removeEventListener('focus', handleResume);
+    };
+  }, [resetFeedScrollAfterStaleResume]);
 
   useEffect(() => {
     const startParam = getTelegramWebApp()?.initDataUnsafe?.start_param;

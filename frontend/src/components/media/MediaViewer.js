@@ -259,6 +259,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const [swipeClosing, setSwipeClosing] = useState(false);
   const [heroAnim, setHeroAnim] = useState(null);
   const [heroAnimActive, setHeroAnimActive] = useState(false);
+  const [heroTargetFrame, setHeroTargetFrame] = useState(null);
 
   const dragYRef = useRef(0);
   const isDraggingRef = useRef(false);
@@ -274,6 +275,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const bodyScrollLockedRef = useRef(false);
   const closeTimeoutRef = useRef(null);
   const closeReleaseFrameRef = useRef(null);
+  const heroTargetRafRef = useRef(null);
 
   const releaseBodyScroll = useCallback(() => {
     if (!bodyScrollLockedRef.current) return;
@@ -287,13 +289,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       window.cancelAnimationFrame(closeReleaseFrameRef.current);
       closeReleaseFrameRef.current = null;
     }
+    releaseBodyScroll();
     closeTimeoutRef.current = window.setTimeout(() => {
       closeTimeoutRef.current = null;
       onClose?.();
-      closeReleaseFrameRef.current = window.requestAnimationFrame(() => {
-        closeReleaseFrameRef.current = null;
-        releaseBodyScroll();
-      });
     }, delay);
   }, [onClose, releaseBodyScroll]);
 
@@ -311,11 +310,52 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   }, [currentIndex, sourceRect, sourceRectProvider]);
 
   useEffect(() => {
-    if (!heroAnim) return undefined;
+    if (!heroAnim) {
+      setHeroTargetFrame(null);
+      return undefined;
+    }
+
     setHeroAnimActive(false);
+    setHeroTargetFrame(heroAnim.to);
     const id = requestAnimationFrame(() => setHeroAnimActive(true));
-    return () => cancelAnimationFrame(id);
-  }, [heroAnim]);
+
+    const updateHeroTarget = () => {
+      heroTargetRafRef.current = null;
+      const nextTarget = resolveSourceRect(currentIndex);
+      if (!nextTarget) return;
+
+      setHeroTargetFrame((prev) => {
+        if (
+          prev
+          && Math.abs(prev.x - nextTarget.x) < 0.5
+          && Math.abs(prev.y - nextTarget.y) < 0.5
+          && Math.abs(prev.width - nextTarget.width) < 0.5
+          && Math.abs(prev.height - nextTarget.height) < 0.5
+        ) {
+          return prev;
+        }
+        return nextTarget;
+      });
+    };
+
+    const requestHeroTargetUpdate = () => {
+      if (heroTargetRafRef.current) return;
+      heroTargetRafRef.current = requestAnimationFrame(updateHeroTarget);
+    };
+
+    window.addEventListener('scroll', requestHeroTargetUpdate, { passive: true, capture: true });
+    window.addEventListener('resize', requestHeroTargetUpdate);
+
+    return () => {
+      cancelAnimationFrame(id);
+      if (heroTargetRafRef.current) {
+        cancelAnimationFrame(heroTargetRafRef.current);
+        heroTargetRafRef.current = null;
+      }
+      window.removeEventListener('scroll', requestHeroTargetUpdate, true);
+      window.removeEventListener('resize', requestHeroTargetUpdate);
+    };
+  }, [currentIndex, heroAnim, resolveSourceRect]);
 
   const resetDrag = useCallback(() => {
     dragYRef.current = 0;
@@ -412,6 +452,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
         window.cancelAnimationFrame(closeReleaseFrameRef.current);
         closeReleaseFrameRef.current = null;
       }
+      if (heroTargetRafRef.current) {
+        window.cancelAnimationFrame(heroTargetRafRef.current);
+        heroTargetRafRef.current = null;
+      }
       cleanupMouseDrag();
       releaseBodyScroll();
     };
@@ -476,13 +520,13 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const isHeroClosing = Boolean(heroAnim);
   const closingPassthrough = swipeClosing || isHeroClosing;
   const overlayOpacity = swipeClosing || isHeroClosing
-    ? 1
+    ? 0
     : dragY > 0 ? Math.max(0.04, 1 - dragY / 280) : undefined;
   const overlayTransition = swipeClosing || isHeroClosing
-    ? 'opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
+    ? 'opacity 0.12s ease'
     : dragY > 0 ? 'none' : undefined;
   const heroFrame = heroAnim
-    ? heroAnimActive ? heroAnim.to : heroAnim.from
+    ? heroAnimActive ? (heroTargetFrame || heroAnim.to) : heroAnim.from
     : null;
 
   return createPortal(
@@ -569,10 +613,12 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
         }}
       />
 
-      <div
-        aria-hidden="true"
-        style={styles.bottomScrim}
-      />
+      {!closingPassthrough && (
+        <div
+          aria-hidden="true"
+          style={styles.bottomScrim}
+        />
+      )}
 
       <div
         {...modalBoundaryProps}

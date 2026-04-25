@@ -53,6 +53,7 @@ export function buildFeedSections(items, getDateValue, options = {}) {
 
   const result = [];
   let lastSectionKey = null;
+  const sectionCounts = new Map();
 
   items.forEach((item, index) => {
     const rawDate = getDateValue(item, index, items);
@@ -63,9 +64,11 @@ export function buildFeedSections(items, getDateValue, options = {}) {
       : unknownLabel;
 
     if (sectionKey !== lastSectionKey) {
+      const sectionCount = sectionCounts.get(sectionKey) || 0;
+      sectionCounts.set(sectionKey, sectionCount + 1);
       result.push({
         type: 'divider',
-        key: `divider-${sectionKey}-${index}`,
+        key: `divider-${sectionKey}-${sectionCount}`,
         sectionKey,
         label: sectionLabel,
       });
