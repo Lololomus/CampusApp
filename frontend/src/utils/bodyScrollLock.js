@@ -103,7 +103,8 @@ export function lockBodyScroll() {
   if (_lockCount === 1) emitBodyScrollState();
 }
 
-export function unlockBodyScroll() {
+export function unlockBodyScroll(options = {}) {
+  const { restoreGuard = true } = options;
   if (_lockCount <= 0) return;
   _lockCount--;
   if (_lockCount === 0) {
@@ -113,7 +114,13 @@ export function unlockBodyScroll() {
     const previousHtmlScrollBehavior = html.style.scrollBehavior;
     const previousBodyScrollBehavior = body.style.scrollBehavior;
 
-    markRestoringScroll();
+    if (restoreGuard) {
+      markRestoringScroll();
+    } else {
+      clearRestoreMarkers();
+      _isRestoringScroll = false;
+      delete document.documentElement.dataset.bodyScrollRestoring;
+    }
     html.style.scrollBehavior = 'auto';
     body.style.scrollBehavior = 'auto';
     html.style.overflow = _savedHtmlOverflow;
@@ -140,5 +147,6 @@ export function unlockBodyScroll() {
     window.scrollTo(0, restoreScrollY);
     html.style.scrollBehavior = previousHtmlScrollBehavior;
     body.style.scrollBehavior = previousBodyScrollBehavior;
+    if (!restoreGuard) emitBodyScrollState();
   }
 }

@@ -85,8 +85,6 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
   // Скролл-фриз страницы при открытии
   useEffect(() => {
-    if (!isVisible) return undefined;
-
     const body = document.body;
     const root = document.getElementById('root');
     const html = document.documentElement;
@@ -137,7 +135,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       if (root) root.style.overflow = prevRootOverflow;
       if (shouldRestoreScroll) restoreScrollPosition();
     };
-  }, [isVisible]);
+  }, []);
 
   const registerMediaTask = (taskPromise) => {
     mediaProcessingTasksRef.current.add(taskPromise);

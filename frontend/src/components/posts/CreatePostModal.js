@@ -338,8 +338,6 @@ function CreatePostModal({ onClose }) {
   }, []);
 
   useEffect(() => {
-    if (!isVisible) return undefined;
-
     const body = document.body;
     const root = document.getElementById('root');
     const html = document.documentElement;
@@ -390,7 +388,7 @@ function CreatePostModal({ onClose }) {
       if (root) root.style.overflow = prevRootOverflow;
       if (shouldRestoreScroll) restoreScrollPosition();
     };
-  }, [isVisible]);
+  }, []);
 
   useEffect(() => {
     if (window.innerWidth < 768 || isSubmitting) return;

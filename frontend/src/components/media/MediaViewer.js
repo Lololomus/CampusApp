@@ -259,7 +259,6 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const [swipeClosing, setSwipeClosing] = useState(false);
   const [heroAnim, setHeroAnim] = useState(null);
   const [heroAnimActive, setHeroAnimActive] = useState(false);
-  const [heroTargetFrame, setHeroTargetFrame] = useState(null);
 
   const dragYRef = useRef(0);
   const isDraggingRef = useRef(false);
@@ -279,7 +278,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const releaseBodyScroll = useCallback(() => {
     if (!bodyScrollLockedRef.current) return;
     bodyScrollLockedRef.current = false;
-    unlockBodyScroll();
+    unlockBodyScroll({ restoreGuard: false });
   }, []);
 
   const scheduleClose = useCallback((delay) => {
@@ -309,23 +308,14 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   }, [currentIndex, sourceRect, sourceRectProvider]);
 
   useEffect(() => {
-    if (!heroAnim) {
-      setHeroTargetFrame(null);
-      return undefined;
-    }
-
+    if (!heroAnim) return undefined;
     setHeroAnimActive(false);
-    setHeroTargetFrame(heroAnim.to);
-    const id = requestAnimationFrame(() => {
-      const latestTarget = resolveSourceRect(currentIndex);
-      if (latestTarget) setHeroTargetFrame(latestTarget);
-      setHeroAnimActive(true);
-    });
+    const id = requestAnimationFrame(() => setHeroAnimActive(true));
 
     return () => {
       cancelAnimationFrame(id);
     };
-  }, [currentIndex, heroAnim, resolveSourceRect]);
+  }, [heroAnim]);
 
   const resetDrag = useCallback(() => {
     dragYRef.current = 0;
@@ -492,7 +482,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     ? 'opacity 0.12s ease'
     : dragY > 0 ? 'none' : undefined;
   const heroFrame = heroAnim
-    ? heroAnimActive ? (heroTargetFrame || heroAnim.to) : heroAnim.from
+    ? heroAnimActive ? heroAnim.to : heroAnim.from
     : null;
 
   return createPortal(

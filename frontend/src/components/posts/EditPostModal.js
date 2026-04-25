@@ -416,8 +416,6 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
   }, []);
 
   useEffect(() => {
-    if (!isVisible) return undefined;
-
     const body = document.body;
     const html = document.documentElement;
     const root = document.getElementById('root');
@@ -468,7 +466,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
       if (root) root.style.overflow = prevRootOverflow;
       if (shouldRestoreScroll) restoreScrollPosition();
     };
-  }, [isVisible]);
+  }, []);
 
   useEffect(() => {
     if (postCategory === 'confessions') setIsAnonymous(true);
