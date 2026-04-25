@@ -281,15 +281,20 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     unlockBodyScroll({ restoreGuard: false });
   }, []);
 
-  const scheduleClose = useCallback((delay) => {
+  const scheduleClose = useCallback((delay, { releaseAtStart = true } = {}) => {
     if (closeTimeoutRef.current) window.clearTimeout(closeTimeoutRef.current);
     if (closeReleaseFrameRef.current) {
       window.cancelAnimationFrame(closeReleaseFrameRef.current);
       closeReleaseFrameRef.current = null;
     }
-    releaseBodyScroll();
+    if (releaseAtStart) {
+      releaseBodyScroll();
+    }
     closeTimeoutRef.current = window.setTimeout(() => {
       closeTimeoutRef.current = null;
+      if (!releaseAtStart) {
+        releaseBodyScroll();
+      }
       onClose?.();
     }, delay);
   }, [onClose, releaseBodyScroll]);
@@ -365,7 +370,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       zIndex: to.zIndex ?? Z_PHOTO_VIEWER + 10,
       hasContainFill: Boolean(to.hasContainFill || to.objectFit === 'contain'),
     });
-    scheduleClose(HERO_CLOSE_MS);
+    scheduleClose(HERO_CLOSE_MS, { releaseAtStart: false });
   }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, scheduleClose]);
 
   const updateDrag = useCallback((dy) => {
