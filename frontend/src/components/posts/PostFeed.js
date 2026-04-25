@@ -21,7 +21,6 @@ import {
 } from '../../constants/layoutConstants';
 import { CREATE_CONTENT_POST_CATEGORIES } from '../../constants/createContentUiConfig';
 
-const IS_DEV = import.meta.env.DEV;
 const postCategories = [
   { id: 'all', label: 'Все', emoji: '' },
   ...CREATE_CONTENT_POST_CATEGORIES
@@ -54,6 +53,8 @@ function PostFeed() {
   const hasMorePostsRef = useRef(true);
   const lastPostCardRef = useRef(null);
   const postsObserverRef = useRef(null);
+  const revealObserverRef = useRef(null);
+  const revealCallbacksRef = useRef(new Map());
   
   const {
     feedSubTab,
@@ -241,13 +242,46 @@ function PostFeed() {
     loading,
   });
 
-  const handlePostClick = (postId) => {
+  const handlePostClick = useCallback((postId) => {
     if (!isRegistered) {
       triggerRegistrationPrompt('open_post');
       return;
     }
     setViewPostId(postId);
-  };
+  }, [isRegistered, setViewPostId]);
+
+  const handleAdHidden = useCallback((adId) => {
+    setFeedAds(prev => prev.filter(a => a.id !== adId && a.ad_id !== adId));
+  }, []);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const cb = revealCallbacksRef.current.get(entry.target);
+          if (cb) {
+            cb();
+            observer.unobserve(entry.target);
+            revealCallbacksRef.current.delete(entry.target);
+          }
+        });
+      },
+      { threshold: 0, rootMargin: '50px' }
+    );
+    revealObserverRef.current = observer;
+    return () => observer.disconnect();
+  }, []);
+
+  const registerReveal = useCallback((element, onReveal) => {
+    if (!element || !revealObserverRef.current) return () => {};
+    revealCallbacksRef.current.set(element, onReveal);
+    revealObserverRef.current.observe(element);
+    return () => {
+      revealObserverRef.current?.unobserve(element);
+      revealCallbacksRef.current.delete(element);
+    };
+  }, []);
 
   const handleCategoryChange = (category) => {
     setActiveCategory(category);
@@ -395,7 +429,6 @@ function PostFeed() {
         background: 'linear-gradient(to bottom, rgba(8,8,8,0.88) 0%, rgba(8,8,8,0.45) 55%, transparent 100%)',
         pointerEvents: 'none',
         zIndex: 99,
-        transition: 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
       }} />
 
       {/* Нижний градиент — затемнение без блюра */}
@@ -487,14 +520,8 @@ function PostFeed() {
                   onClick={row.item._isAd ? undefined : handlePostClick}
                   onLikeUpdate={row.item._isAd ? undefined : handleLikeUpdate}
                   onPostDeleted={row.item._isAd ? undefined : handlePostDeleted}
-                  onAdHidden={
-                    row.item._isAd
-                      ? (adId) => {
-                          if (IS_DEV) return;
-                          setFeedAds(prev => prev.filter(a => a.id !== adId && a.ad_id !== adId));
-                        }
-                      : undefined
-                  }
+                  onAdHidden={row.item._isAd ? handleAdHidden : undefined}
+                  registerReveal={registerReveal}
                 />
               </div>
             )

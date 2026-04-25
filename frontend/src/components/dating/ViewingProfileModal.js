@@ -32,7 +32,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
 
   const { isMounted, isVisible, handleClose } = useModalAnimation(onClose, SCREEN_EXIT_MS);
 
-  useBodyScrollLock(isVisible);
+  useBodyScrollLock(isMounted);
 
   // Скрываем Telegram MainButton — кнопка теперь in-app
   useTelegramScreen({
@@ -88,7 +88,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
   if (!isMounted) return null;
 
   return (
-    <EdgeSwipeBack onBack={handleClose} disabled={showPhotoViewer} passThrough={!isVisible} zIndex={zIndex}>
+    <EdgeSwipeBack onBack={handleClose} disabled={showPhotoViewer} zIndex={zIndex}>
       <div style={{
         ...styles.overlay,
         transform: isVisible ? 'translateX(0)' : 'translateX(100%)',

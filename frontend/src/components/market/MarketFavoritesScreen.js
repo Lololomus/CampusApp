@@ -110,7 +110,7 @@ function MarketFavoritesScreen({ onClose }) {
     }
   }, [setMarketFavorites]);
 
-  useBodyScrollLock(!isExiting);
+  useBodyScrollLock();
 
   useEffect(() => {
     loadFavorites(true);
@@ -170,7 +170,6 @@ function MarketFavoritesScreen({ onClose }) {
       <EdgeSwipeBack
         onBack={closeImmediately}
         disabled={Boolean(selectedItem) || isExiting}
-        passThrough={isExiting}
         zIndex={Z_MARKET_FAVORITES}
       >
         <div style={containerStyle} onScroll={handleScroll}>

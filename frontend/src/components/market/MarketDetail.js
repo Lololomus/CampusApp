@@ -121,7 +121,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const sellerAvatarRef = useRef(null);
   const currentItemRequestSent = hasSentMarketRequest(currentItem);
 
-  useBodyScrollLock(!isExiting);
+  useBodyScrollLock();
 
   useEffect(() => {
     setContactSubmitting(false);
@@ -557,7 +557,6 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       <EdgeSwipeBack
         onBack={closeDetail}
         disabled={isExiting || showPhotoViewer || showEditModal}
-        passThrough={isExiting}
         zIndex={Z_MARKET_DETAIL}
       >
         <div style={{

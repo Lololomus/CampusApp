@@ -363,7 +363,6 @@ function MyDatingProfileModal({ onClose }) {
     <EdgeSwipeBack
       onBack={handleClose}
       disabled={showPhotoViewer || Boolean(activeSheet)}
-      passThrough={!isVisible}
       zIndex={Z_MODAL}
     >
       <>

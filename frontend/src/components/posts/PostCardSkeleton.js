@@ -127,14 +127,4 @@ const styles = {
   },
 };
 
-// CSS анимация
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-  @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-  }
-`;
-document.head.appendChild(styleSheet);
-
 export default PostCardSkeleton;

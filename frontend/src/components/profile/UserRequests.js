@@ -73,7 +73,7 @@ function UserRequests() {
     back: { visible: true, onClick: handleClose },
   });
 
-  useBodyScrollLock(!isExiting);
+  useBodyScrollLock();
 
   useEffect(() => {
     loadRequests();
@@ -180,7 +180,6 @@ function UserRequests() {
     <EdgeSwipeBack
       onBack={closeImmediately}
       disabled={showRequestDetail || isExiting}
-      passThrough={isExiting}
       zIndex={Z_MODAL_REQUEST_DETAIL}
     >
     <div style={containerStyle} onScroll={handleScroll}>

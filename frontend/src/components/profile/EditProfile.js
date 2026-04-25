@@ -157,7 +157,7 @@ function EditProfile() {
   const eduCooldownDays = user?.edu_cooldown_days ?? 0;
   const hasUsedFreeChange = Boolean(user?.last_profile_edit);
 
-  useBodyScrollLock(!isExiting);
+  useBodyScrollLock();
 
   // Инициализация из user
   useEffect(() => {
@@ -377,7 +377,6 @@ function EditProfile() {
       onBack={handleCloseImmediate}
       onInterceptBack={handleEdgeSwipeIntercept}
       disabled={isExiting || showEduLockedSheet}
-      passThrough={isExiting}
       zIndex={Z_EDIT_PROFILE}
     >
     <div style={slideStyle}>

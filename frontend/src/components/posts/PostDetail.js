@@ -222,7 +222,7 @@ function PostDetail() {
     };
   }, []);
 
-  useBodyScrollLock(!isExiting);
+  useBodyScrollLock();
 
   useEffect(() => {
     setLocalLikesCount(Number(post?.likes_count || 0));
@@ -765,7 +765,6 @@ function PostDetail() {
       <EdgeSwipeBack
         onBack={() => setViewPostId(null)}
         disabled={isExiting || isPhotoViewerOpen}
-        passThrough={isExiting}
         zIndex={Z_MODAL_POST_DETAIL}
       >
       <div style={containerStyle}>

@@ -69,7 +69,7 @@ function UserPosts() {
     back: { visible: true, onClick: handleClose },
   });
 
-  useBodyScrollLock(!isExiting);
+  useBodyScrollLock();
 
   useEffect(() => {
     loadPosts();
@@ -186,7 +186,6 @@ function UserPosts() {
     <EdgeSwipeBack
       onBack={closeImmediately}
       disabled={Boolean(viewPostId) || isExiting}
-      passThrough={isExiting}
       zIndex={Z_USER_POSTS}
     >
     <div style={containerStyle} onScroll={handleScroll}>

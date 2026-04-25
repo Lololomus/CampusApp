@@ -746,7 +746,7 @@ function NotificationsScreen() {
     setTimeout(() => setShowNotificationsScreen(false), 340);
   }, [isExiting, setShowNotificationsScreen]);
 
-  useBodyScrollLock(!isExiting);
+  useBodyScrollLock();
 
   useTelegramScreen({
     id: 'notifications-screen',
@@ -803,7 +803,6 @@ function NotificationsScreen() {
       <EdgeSwipeBack
         onBack={() => setShowNotificationsScreen(false)}
         disabled={isExiting}
-        passThrough={isExiting}
         zIndex={Z_MODAL_NOTIFICATIONS_SCREEN}
       >
     <div style={{

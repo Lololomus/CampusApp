@@ -72,7 +72,7 @@ function UserMarketItems() {
     back: { visible: true, onClick: handleClose },
   });
 
-  useBodyScrollLock(!isExiting);
+  useBodyScrollLock();
 
   useEffect(() => {
     loadItems();
@@ -200,7 +200,6 @@ function UserMarketItems() {
     <EdgeSwipeBack
       onBack={closeImmediately}
       disabled={Boolean(selectedItem) || isExiting}
-      passThrough={isExiting}
       zIndex={Z_USER_MARKET_ITEMS}
     >
     <div style={containerStyle} onScroll={handleScroll}>

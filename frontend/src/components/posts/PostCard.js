@@ -44,7 +44,7 @@ function getMediaHeroReturnZIndex(sourceEl) {
   return maxAncestorZIndex ? maxAncestorZIndex + 1 : FEED_HERO_RETURN_Z_INDEX;
 }
 
-function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPostResolved, skipReveal }) {
+function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPostResolved, skipReveal, registerReveal }) {
   const { likedPosts, setPostLiked, user, setEditingContent, isRegistered, updatePost } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -78,13 +78,19 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
     if (skipReveal) { setIsRevealed(true); return; }
     const card = cardRef.current;
     if (!card) return;
+
+    if (registerReveal) {
+      return registerReveal(card, () => setIsRevealed(true));
+    }
+
+    // Fallback для PostDetail и других контекстов без shared observer
     const observer = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) { setIsRevealed(true); observer.unobserve(card); } },
       { threshold: 0, rootMargin: '50px' }
     );
     observer.observe(card);
     return () => observer.disconnect();
-  }, [skipReveal]);
+  }, [skipReveal, registerReveal]);
 
   // Синхронизируем локальный счетчик, когда пост обновился извне (например, лайк в PostDetail).
   useEffect(() => {
@@ -1239,5 +1245,5 @@ const styles = {
   },
 };
 
-export default PostCard;
+export default React.memo(PostCard);
 
