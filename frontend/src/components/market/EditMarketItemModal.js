@@ -123,52 +123,20 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
     const body = document.body;
     const root = document.getElementById('root');
     const html = document.documentElement;
-    const scrollY = window.scrollY || window.pageYOffset || 0;
-
     const prevBodyStyle = {
       overflow: body.style.overflow,
-      position: body.style.position,
-      top: body.style.top,
-      left: body.style.left,
-      right: body.style.right,
-      width: body.style.width,
     };
     const prevRootOverflow = root?.style.overflow || '';
     const prevHtmlOverflow = html.style.overflow;
-    const shouldRestoreScroll = prevBodyStyle.position !== 'fixed';
 
     body.style.overflow = 'hidden';
-    body.style.position = 'fixed';
-    body.style.top = `-${scrollY}px`;
-    body.style.left = '0';
-    body.style.right = '0';
-    body.style.width = '100%';
     html.style.overflow = 'hidden';
     if (root) root.style.overflow = 'hidden';
 
-    const restoreScrollPosition = () => {
-      const prevScrollBehavior = html.style.scrollBehavior;
-      html.style.scrollBehavior = 'auto';
-      window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
-        setTimeout(() => {
-          window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
-          html.style.scrollBehavior = prevScrollBehavior;
-        }, 0);
-      });
-    };
-
     return () => {
       body.style.overflow = prevBodyStyle.overflow;
-      body.style.position = prevBodyStyle.position;
-      body.style.top = prevBodyStyle.top;
-      body.style.left = prevBodyStyle.left;
-      body.style.right = prevBodyStyle.right;
-      body.style.width = prevBodyStyle.width;
       html.style.overflow = prevHtmlOverflow;
       if (root) root.style.overflow = prevRootOverflow;
-      if (shouldRestoreScroll) restoreScrollPosition();
     };
   }, []);
 

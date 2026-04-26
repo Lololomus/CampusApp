@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Heart, ShoppingBag, MessageCircle, LifeBuoy, Flame, Check, X, Star, BarChart3,
+  Heart, ShoppingBag, MessageCircle, Flame, Check, X, Star, BarChart3,
   ChevronDown, ChevronUp, Bell, AlertTriangle
 } from 'lucide-react';
 
@@ -43,7 +43,6 @@ const FILTERS = [
   { key: 'match', label: 'Матчи', icon: Heart },
   { key: 'comment', label: 'Комменты', icon: MessageCircle },
   { key: 'market', label: 'Маркет', icon: ShoppingBag },
-  { key: 'request', label: 'Запросы', icon: LifeBuoy },
 ];
 
 const TYPE_TO_FILTER = {
@@ -54,7 +53,6 @@ const TYPE_TO_FILTER = {
   poll_vote: 'comment',
   market_contact: 'market',
   review_request: 'market',
-  request_response: 'request',
   contact_request_decision: 'market',
 };
 

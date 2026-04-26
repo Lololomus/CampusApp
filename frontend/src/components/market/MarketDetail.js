@@ -75,8 +75,9 @@ const getMarketGallerySourceRect = (element) => {
     y: rect.y,
     width: rect.width,
     height: rect.height,
-    objectFit: 'cover',
-    objectPosition: 'top center',
+    objectFit: 'contain',
+    objectPosition: 'center center',
+    hasContainFill: true,
     borderRadius: 0,
   };
 };
@@ -566,18 +567,20 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
             : 'slideInRight 0.38s cubic-bezier(0.32, 0.72, 0, 1) forwards',
           pointerEvents: isExiting ? 'none' : 'auto',
         }}>
-        <button
-          type="button"
-          className="market-detail-back-btn"
-          style={styles.marketBackButton}
-          onClick={() => {
-            hapticFeedback('light');
-            closeDetail();
-          }}
-          aria-label="Назад"
-        >
-          <ChevronLeft size={22} />
-        </button>
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            className="market-detail-back-btn"
+            style={styles.marketBackButton}
+            onClick={() => {
+              hapticFeedback('light');
+              closeDetail();
+            }}
+            aria-label="Назад"
+          >
+            <ChevronLeft size={22} />
+          </button>
+        )}
         <div style={styles.content}>
           {images.length > 0 && (
             <div
@@ -600,7 +603,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                         transition: showPhotoViewer ? 'none' : styles.gallerySlide.transition,
                       }}
                       onClick={(e) => {
-                        const sourceImg = e.currentTarget.querySelector('img');
+                        const sourceImg = e.currentTarget.querySelector('img[data-market-gallery-image-index]');
                         handleImageClick(index, sourceImg || e.currentTarget);
                       }}
                     >
@@ -609,6 +612,12 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                           <div style={styles.spinner} />
                         </div>
                       )}
+                      <img
+                        src={imageUrl}
+                        alt=""
+                        aria-hidden="true"
+                        style={styles.galleryImageBlur}
+                      />
                       <img
                         data-market-gallery-image-index={index}
                         src={imageUrl}
@@ -935,8 +944,24 @@ const styles = {
   galleryImage: {
     width: '100%',
     height: '100%',
+    objectFit: 'contain',
+    objectPosition: 'center center',
+    position: 'relative',
+    zIndex: 1,
+  },
+
+  galleryImageBlur: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
     objectFit: 'cover',
-    objectPosition: 'top center',
+    objectPosition: 'center center',
+    transform: 'scale(1.08)',
+    filter: 'blur(14px)',
+    opacity: 0.42,
+    zIndex: 0,
+    pointerEvents: 'none',
   },
 
   imagePlaceholder: {
@@ -947,6 +972,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     background: theme.colors.bgSecondary,
+    zIndex: 2,
   },
 
   spinner: {
