@@ -64,7 +64,7 @@ const BADGE_CONFIG = {
   poll_vote: { icon: BarChart3, color: COLORS.badgePoll },
   market_contact: { icon: ShoppingBag, color: COLORS.badgeMarket },
   review_request: { icon: Star, color: COLORS.badgeMarket },
-  request_response: { icon: LifeBuoy, color: COLORS.badgeRequest },
+  request_response: { icon: Bell, color: COLORS.badgeRequest },
   contact_request_decision: { icon: Check, color: COLORS.success },
 };
 
