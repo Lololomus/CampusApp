@@ -189,6 +189,16 @@ const ProfileCard = memo(function ProfileCard({
         <div style={styles.imageContainer}>
           {photos.length > 0 ? (
             <div style={styles.photosStack}>
+              <img
+                src={photos[photoIndex]?.url || photos[photoIndex]}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                style={{
+                  ...styles.avatarImageBackdrop,
+                  opacity: imageLoaded ? 1 : 0,
+                }}
+              />
               {photos.map((photo, idx) => (
                 <img
                   key={idx}
@@ -410,6 +420,21 @@ const styles = {
     pointerEvents: 'none',
     userSelect: 'none',
     // Только opacity transition для смены фото, без transform/filter transitions
+    transition: 'opacity 0.25s ease',
+  },
+  avatarImageBackdrop: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    objectPosition: 'center center',
+    transform: 'scale(1.08)',
+    filter: 'blur(14px)',
+    opacity: 0.42,
+    pointerEvents: 'none',
+    userSelect: 'none',
+    zIndex: 0,
     transition: 'opacity 0.25s ease',
   },
   imageSkeleton: {

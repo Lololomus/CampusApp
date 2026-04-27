@@ -439,10 +439,6 @@ function DatingFeed() {
 
   // === RENDER: Loading / Onboarding gates ===
 
-  if (checkingProfile) {
-    return <div style={styles.centerContainer}><div style={styles.spinner} /></div>;
-  }
-
   if (showOnboarding) {
     return (
       <DatingOnboarding 
@@ -463,28 +459,33 @@ function DatingFeed() {
 
   // === RENDER: Main ===
   const blockProfileCardInteraction = showMyProfile || showProfileSheet || showMatchModal || Boolean(guestActionGate);
+  const showProfileLoading = checkingProfile || loading;
 
   return (
     <div style={styles.container}>
       <AppHeader
             title="Знакомства"
             premiumTrailing={
-              <button
-                style={styles.avatarButton}
-                onClick={() => {
-                  hapticFeedback('medium');
-                  if (isGuestMode) triggerOnboarding('profile');
-                  else setShowMyProfile(true);
-                }}
-              >
-                {myDatingAvatar ? (
-                  <img src={myDatingAvatar} alt="" style={styles.avatarImg} />
-                ) : (
-                  <div style={styles.avatarFallback}>
-                    {user?.name?.[0] || '?'}
-                  </div>
-                )}
-              </button>
+              checkingProfile ? (
+                <div style={styles.avatarSkeleton} className="skeleton-pulse" />
+              ) : (
+                <button
+                  style={styles.avatarButton}
+                  onClick={() => {
+                    hapticFeedback('medium');
+                    if (isGuestMode) triggerOnboarding('profile');
+                    else setShowMyProfile(true);
+                  }}
+                >
+                  {myDatingAvatar ? (
+                    <img src={myDatingAvatar} alt="" style={styles.avatarImg} />
+                  ) : (
+                    <div style={styles.avatarFallback}>
+                      {user?.name?.[0] || '?'}
+                    </div>
+                  )}
+                </button>
+              )
             }
           >
             <div style={styles.tabsRail}>
@@ -537,7 +538,7 @@ function DatingFeed() {
                 pointerEvents: blockProfileCardInteraction ? 'none' : 'auto',
               }}
             >
-              {loading ? (
+              {showProfileLoading ? (
                 <FeedCardSkeleton />
               ) : !currentProfile ? (
                 /* Обновлённый empty state */
@@ -725,14 +726,6 @@ const styles = {
     minHeight: '100vh', maxHeight: '100vh',
     position: 'relative', overflow: 'hidden',
   },
-  centerContainer: {
-    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh',
-  },
-  spinner: {
-    width: 40, height: 40, border: '3px solid rgba(255,255,255,0.1)',
-    borderTopColor: theme.colors.dating.primary || '#ff3b5c',
-    borderRadius: '50%', animation: 'spin 0.8s linear infinite',
-  },
   tabsRail: {
     position: 'relative',
     display: 'flex',
@@ -787,6 +780,14 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarSkeleton: {
+    width: 50,
+    height: 50,
+    borderRadius: '50%',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    border: '2px solid rgba(255, 255, 255, 0.08)',
+    flexShrink: 0,
+  },
   avatarImg: {
     width: '100%',
     height: '100%',
@@ -808,11 +809,11 @@ const styles = {
   content: {
     display: 'flex', flexDirection: 'column', flex: 1,
     paddingTop: 'calc(var(--header-padding, 96px) + 8px)',
-    paddingBottom: 80, overflow: 'hidden', maxHeight: '100vh',
+    paddingBottom: 'calc(max(16px, env(safe-area-inset-bottom, 0px)) + 72px)', overflow: 'hidden', maxHeight: '100vh',
   },
   cardWrapper: {
-    position: 'relative', padding: '0 8px',
-    flex: 1, overflow: 'hidden',
+    position: 'relative', padding: '2px 8px',
+    flex: 1, overflow: 'visible',
     transition: 'opacity 240ms ease',
     willChange: 'opacity',
   },
@@ -917,12 +918,5 @@ const styles = {
     cursor: 'pointer',
   },
 };
-
-// Inject keyframes
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
-  document.head.appendChild(styleSheet);
-}
 
 export default DatingFeed;
