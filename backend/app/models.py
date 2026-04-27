@@ -50,7 +50,7 @@ class User(Base):
     
     # Privacy настройки
     show_profile = Column(Boolean, default=True)  # Показывать профиль при клике на аватар/имя
-    show_telegram_id = Column(Boolean, default=False)  # Показывать @username в профиле
+    show_telegram_id = Column(Boolean, default=True)  # Показывать @username в профиле
     
     # Dating поля
     show_in_dating = Column(Boolean, default=True)

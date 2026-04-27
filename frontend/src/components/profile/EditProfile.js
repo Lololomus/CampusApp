@@ -4,15 +4,15 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   X, Plus, User, AtSign, Search,
-  Hash, GraduationCap, ChevronLeft, Info, Lock,
+  Hash, GraduationCap, ChevronLeft, Info, Lock, MessageCircle, ArrowLeft,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { updateUserProfile, uploadUserAvatar } from '../../api';
+import { normalizeTelegramUsername } from '../../utils/telegramUsername';
 import { compressImage } from '../../utils/media';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
-import DrilldownHeader from '../shared/DrilldownHeader';
 import SwipeableModal from '../shared/SwipeableModal';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import theme from '../../theme';
@@ -144,6 +144,9 @@ function EditProfile() {
   const [course, setCourse] = useState(null);
   const [group, setGroup] = useState('');
 
+  // === Приватность ===
+  const [showTelegramId, setShowTelegramId] = useState(false);
+
   // === UI ===
   const [showCampusPicker, setShowCampusPicker] = useState(false);
   const [showEduLockedSheet, setShowEduLockedSheet] = useState(false);
@@ -157,6 +160,10 @@ function EditProfile() {
   const eduCooldownDays = user?.edu_cooldown_days ?? 0;
   const hasUsedFreeChange = Boolean(user?.last_profile_edit);
 
+  const isDev = import.meta.env.DEV;
+  const isDesktop = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
+  const showLocalBack = isDev || isDesktop;
+
   useBodyScrollLock();
 
   // Инициализация из user
@@ -165,6 +172,7 @@ function EditProfile() {
     setName(user.name || '');
     setUsername(user.username || '');
     setAvatarPreview(user.avatar);
+    setShowTelegramId(Boolean(user.show_telegram_id));
     // Нормализуем курс в строку для корректного сравнения с chip-значениями
     setCourse(user.course != null ? String(user.course) : null);
     setGroup(user.group || '');
@@ -197,7 +205,7 @@ function EditProfile() {
   const filteredCampuses = useMemo(() => searchCampuses(searchQuery), [searchQuery]);
 
   const initialProfileState = useMemo(() => {
-    if (!user) return { name: '', username: '', campusId: null, isCustom: false, customUni: '', customCity: '', course: null, group: '' };
+    if (!user) return { name: '', username: '', campusId: null, isCustom: false, customUni: '', customCity: '', course: null, group: '', showTelegramId: false };
     const hasCampus = Boolean(user.campus_id);
     const isCustomUniversity = !hasCampus && Boolean(user.custom_university || user.university);
     return {
@@ -210,6 +218,7 @@ function EditProfile() {
       // Нормализуем в строку — иначе 2 !== '2' → hasUnsavedChanges всегда true
       course: user.course != null ? String(user.course) : null,
       group: normalizeText(user.group),
+      showTelegramId: Boolean(user.show_telegram_id),
     };
   }, [user]);
 
@@ -222,7 +231,8 @@ function EditProfile() {
     customCity: isCustom ? normalizeText(customCity) : '',
     course: course || null,
     group: normalizeText(group),
-  }), [campusId, course, customCity, customUni, group, isCustom, name, username]);
+    showTelegramId,
+  }), [campusId, course, customCity, customUni, group, isCustom, name, showTelegramId, username]);
 
   const hasUnsavedChanges = useMemo(
     () => JSON.stringify(initialProfileState) !== JSON.stringify(currentProfileState),
@@ -314,6 +324,7 @@ function EditProfile() {
         username: cleanUsername,
         course: courseNum,
         group: group.trim() || null,
+        show_telegram_id: showTelegramId,
         // TODO: institute временно убран — вернуть перед релизом
       };
 
@@ -356,7 +367,7 @@ function EditProfile() {
     priority: 120,
     back: { visible: true, onClick: handleBack },
     main: {
-      visible: !showCampusPicker && hasUnsavedChanges,
+      visible: false,
       text: 'Сохранить изменения',
       onClick: handleSave,
       enabled: canSave,
@@ -382,12 +393,18 @@ function EditProfile() {
     <div style={slideStyle}>
       <style>{slideCSS}</style>
       <div style={styles.container}>
-        <DrilldownHeader
-          title={showCampusPicker ? 'Выбор ВУЗа' : 'Редактирование'}
-          onBack={handleBack}
-          background="#000000"
-          showDivider={false}
-        />
+
+        {/* Back button — только в DEV/desktop, в Telegram не нужен */}
+        {showLocalBack && (
+          <button
+            type="button"
+            onClick={handleBack}
+            style={styles.devBackButton}
+            aria-label="Назад"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
 
         {/* Sliding track: панель 1 = форма, панель 2 = пикер ВУЗа */}
         <div style={styles.trackWrapper}>
@@ -448,6 +465,36 @@ function EditProfile() {
                       maxLength={ONBOARDING_LIMITS.USERNAME_MAX}
                     />
                   </div>
+                </div>
+
+                {/* ПРИВАТНОСТЬ */}
+                <div style={styles.sectionTitle}>ПРИВАТНОСТЬ</div>
+                <div style={styles.card}>
+                  <div style={privacyStyles.row}>
+                    <div style={privacyStyles.iconWrap}>
+                      <MessageCircle size={18} color="#8E8E93" />
+                    </div>
+                    <div style={privacyStyles.textBlock}>
+                      <div style={privacyStyles.label}>Показывать контакт в Telegram</div>
+                      <div style={privacyStyles.desc}>Другие смогут написать вам напрямую в маркете и дейтинге</div>
+                    </div>
+                    <button
+                      type="button"
+                      style={{ ...privacyStyles.toggle, ...(showTelegramId ? privacyStyles.toggleOn : {}) }}
+                      onClick={() => { hapticFeedback('selection'); setShowTelegramId(v => !v); }}
+                    >
+                      <div style={{ ...privacyStyles.thumb, ...(showTelegramId ? privacyStyles.thumbOn : {}) }} />
+                    </button>
+                  </div>
+                  {showTelegramId && !normalizeTelegramUsername(user?.telegram_username) && (
+                    <>
+                      <div style={styles.divider} />
+                      <div style={privacyStyles.warning}>
+                        <Info size={15} color="#FF9F0A" style={{ flexShrink: 0 }} />
+                        <span>У вас нет @username в Telegram — даже с включённым контактом написать вам не получится. Добавьте username в настройках Telegram.</span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* УЧЁБА */}
@@ -588,7 +635,7 @@ function EditProfile() {
                   </div>
                 </div>
 
-                <div style={{ height: 8 }} />
+                <div style={styles.bottomSpacer} />
               </div>
             </div>
 
@@ -656,6 +703,23 @@ function EditProfile() {
 
           </div>
         </div>
+
+        {/* Летающая кнопка сохранения */}
+        {!showCampusPicker && (
+          <div style={{
+            ...styles.floatingFooter,
+            opacity: canSave ? 1 : 0,
+            pointerEvents: canSave ? 'auto' : 'none',
+          }}>
+            <button
+              style={styles.saveButton}
+              onClick={handleSave}
+              disabled={!canSave}
+            >
+              {loading ? <div style={styles.saveSpinner} /> : 'Сохранить'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Шторка заморозки — position:fixed, не зависит от трека */}
@@ -705,7 +769,66 @@ const styles = {
   },
   scrollContent: {
     padding: `${theme.spacing.xl}px`,
-    paddingBottom: `calc(${theme.spacing.xl}px + var(--screen-bottom-offset))`,
+    paddingTop: `calc(var(--screen-top-offset) + ${theme.spacing.xl}px)`,
+    paddingBottom: `${theme.spacing.xl}px`,
+  },
+
+  bottomSpacer: {
+    height: 96,
+  },
+
+  devBackButton: {
+    position: 'absolute',
+    top: 'calc(var(--screen-top-offset) + 8px)',
+    left: 12,
+    zIndex: 200,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: '#000000',
+    color: '#ffffff',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  floatingFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: `16px ${theme.spacing.xl}px calc(16px + var(--screen-bottom-offset))`,
+    background: 'linear-gradient(to top, #000000 60%, transparent)',
+    pointerEvents: 'none',
+    transition: 'opacity 0.2s',
+  },
+
+  saveButton: {
+    width: '100%',
+    minHeight: 56,
+    background: PRIMARY,
+    color: '#000',
+    fontSize: 16,
+    fontWeight: 800,
+    border: 'none',
+    borderRadius: 16,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'auto',
+    boxShadow: '0 8px 24px rgba(212,255,0,0.25)',
+  },
+
+  saveSpinner: {
+    width: 20,
+    height: 20,
+    border: '2px solid rgba(0,0,0,0.2)',
+    borderTopColor: '#000',
+    borderRadius: '50%',
+    animation: 'epSpin 0.7s linear infinite',
   },
 
   // Аватар
@@ -876,9 +999,58 @@ const styles = {
   },
 };
 
+const privacyStyles = {
+  row: {
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '14px 16px',
+  },
+  iconWrap: {
+    width: 32, height: 32, borderRadius: 10,
+    background: '#2C2C2E',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  textBlock: {
+    flex: 1, minWidth: 0,
+  },
+  label: {
+    fontSize: 15, fontWeight: 600, color: '#fff',
+  },
+  desc: {
+    fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.4,
+  },
+  toggle: {
+    width: 51, height: 31, borderRadius: 16,
+    background: '#3A3A3C',
+    border: 'none', padding: 2,
+    display: 'flex', alignItems: 'center',
+    cursor: 'pointer', flexShrink: 0,
+    transition: 'background 0.2s',
+  },
+  toggleOn: {
+    background: PRIMARY,
+  },
+  thumb: {
+    width: 27, height: 27, borderRadius: '50%',
+    background: '#fff',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+    transition: 'transform 0.2s',
+    transform: 'translateX(0)',
+  },
+  thumbOn: {
+    transform: 'translateX(20px)',
+  },
+  warning: {
+    display: 'flex', alignItems: 'flex-start', gap: 8,
+    padding: '12px 16px',
+    fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.45,
+  },
+};
+
 const slideCSS = `
   @keyframes epSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
   @keyframes epSlideOut { from { transform: translateX(0); } to { transform: translateX(100%); } }
+  @keyframes epSpin { to { transform: rotate(360deg); } }
   input { -webkit-tap-highlight-color: transparent; }
   input::placeholder { color: #555; }
 `;

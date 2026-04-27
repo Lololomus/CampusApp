@@ -136,7 +136,7 @@ class UserResponse(BaseModel):
     show_in_dating: bool = True
     hide_course_group: bool = False
     show_profile: bool = True
-    show_telegram_id: bool = False
+    show_telegram_id: bool = True
     role: str = 'user'
     is_shadow_banned_posts: bool = False
     is_shadow_banned_comments: bool = False
@@ -185,8 +185,8 @@ class UserShort(BaseModel):
     city: Optional[str] = None
     role: str = 'user'
     show_profile: bool = True
-    show_telegram_id: bool = False
-    
+    show_telegram_id: bool = True
+
     model_config = ConfigDict(from_attributes=True)
 
 class UserPublic(BaseModel):
