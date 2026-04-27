@@ -25,6 +25,7 @@ from app.video_utils import process_uploaded_video
 from app.auth_service import decode_authorization_header, require_user, optional_user
 from app.config import get_settings
 from app.rate_limiter import check_rate_limit, close_redis
+from app.serialization import public_user_short
 from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
 import re
@@ -405,7 +406,7 @@ async def get_user_posts_endpoint(
         if post.is_anonymous:
             author_data = {"name": "Аноним"}
         else:
-            author_data = schemas.UserShort.from_orm(target_user)
+            author_data = public_user_short(target_user, viewer_id=user.id if user else None)
 
         poll_response = await _build_poll_response(db, post.poll, user.id if user else None)
         
@@ -493,7 +494,7 @@ async def get_user_public_profile(user_id: int, db: AsyncSession = Depends(get_d
     user = await crud.get_user_by_id(db, user_id)
     if not user or user.show_profile is not True:
         raise HTTPException(status_code=404, detail="User not found")
-    return schemas.UserShort.from_orm(user)
+    return public_user_short(user)
 
 # ===== POST ENDPOINTS + POLLS =====
 @app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
@@ -559,7 +560,7 @@ async def get_posts_feed(
             author_data = {"name": "Аноним"}
             author_id_data = None
         else:
-            author_data = schemas.UserShort.from_orm(post.author) if post.author else None
+            author_data = public_user_short(post.author, viewer_id=user.id if user else None)
 
         poll_response = await _build_poll_response(db, post.poll, user.id if user else None)
 
@@ -796,10 +797,10 @@ async def get_post_endpoint(
         author_data = {"name": "Аноним"}
         author_id_data = None
     else:
-        author_data = schemas.UserShort.from_orm(post.author) if post.author else None
-    
+        author_data = public_user_short(post.author, viewer_id=user.id if user else None)
+
     poll_response = await _build_poll_response(db, post.poll, user.id if user else None)
-    
+
     return normalize_datetime_payload({
         "id": post.id,
         "author_id": author_id_data,
@@ -852,7 +853,7 @@ async def resolve_post_endpoint(
     return normalize_datetime_payload({
         "id": post.id,
         "author_id": post.author_id,
-        "author": schemas.UserShort.from_orm(post.author) if post.author else None,
+        "author": public_user_short(post.author, viewer_id=user.id),
         "is_author": True,
         "category": post.category,
         "title": post.title,
@@ -1051,10 +1052,12 @@ async def get_post_comments_endpoint(
             author_id_data = comment.author_id
         else:
             if comment.author:
-                author_data = schemas.UserShort.from_orm(comment.author).dict()
-                author_data['id'] = comment.author.id
-                author_data['telegram_id'] = comment.author.telegram_id
-        
+                short = public_user_short(
+                    comment.author,
+                    viewer_id=user.id if user else None,
+                )
+                author_data = short.model_dump() if short else None
+
         comment_dict = {
             "id": comment.id,
             "post_id": comment.post_id,
@@ -1153,8 +1156,8 @@ async def create_comment_endpoint(
             author_name = f"Аноним #{comment.anonymous_index}"
         author_data = {"name": author_name}
     else:
-        author_data = schemas.UserShort.from_orm(user)
-    
+        author_data = public_user_short(user, viewer_id=user.id)
+
     return normalize_datetime_payload({
         "id": comment.id,
         "post_id": comment.post_id,
@@ -1199,8 +1202,8 @@ async def update_comment_endpoint(
             author_name = f"Аноним #{comment.anonymous_index}"
         author_data = {"name": author_name}
     else:
-        author_data = schemas.UserShort.from_orm(comment.author) if comment.author else None
-    
+        author_data = public_user_short(comment.author, viewer_id=user.id)
+
     return normalize_datetime_payload({
         "id": comment.id,
         "post_id": comment.post_id,
@@ -1283,20 +1286,11 @@ async def create_request_endpoint(
         entity_id=request.id,
         properties_json={"category": category},
     )
-    
+
     images_urls = get_image_urls(request.images) if request.images else []
-    
-    author_data = schemas.UserShort(
-        id=user.id,
-        name=user.name,
-        course=user.course,
-        university=user.university,
-        institute=user.institute,
-        username=user.username,
-        telegram_username=user.telegram_username,
-        avatar=user.avatar
-    )
-    
+
+    author_data = public_user_short(user, viewer_id=user.id)
+
     return schemas.RequestResponse(
         id=request.id,
         category=request.category,
@@ -1359,15 +1353,9 @@ async def get_requests_feed_endpoint(
 
     items = []
     for req_dict in feed_data['items']:
-        author_data = schemas.UserShort(
-            id=req_dict['author'].id,
-            name=req_dict['author'].name,
-            course=req_dict['author'].course,
-            university=req_dict['author'].university,
-            institute=req_dict['author'].institute,
-            username=req_dict['author'].username,
-            telegram_username=req_dict['author'].telegram_username,
-            avatar=req_dict['author'].avatar
+        author_data = public_user_short(
+            req_dict['author'],
+            viewer_id=user.id if user else None,
         )
 
         items.append(schemas.RequestResponse(
@@ -1410,17 +1398,8 @@ async def get_my_requests_endpoint(
         tags = req.tags or []
         images = get_image_urls(req.images) if req.images else []
         
-        author_data = schemas.UserShort(
-            id=user.id,
-            name=user.name,
-            course=user.course,
-            university=user.university,
-            institute=user.institute,
-            username=user.username,
-            telegram_username=user.telegram_username,
-            avatar=user.avatar
-        )
-        
+        author_data = public_user_short(user, viewer_id=user.id)
+
         req_dict = {
             "id": req.id,
             "category": req.category,
@@ -1464,17 +1443,9 @@ async def get_request_endpoint(
             entity_id=request_id,
         )
     
-    author_data = schemas.UserShort(
-        id=request_dict['author'].id,
-        name=request_dict['author'].name,
-        course=request_dict['author'].course,
-        university=request_dict['author'].university,
-        institute=request_dict['author'].institute,
-        username=request_dict['author'].username,
-        telegram_username=request_dict['author'].telegram_username,
-        avatar=request_dict['author'].avatar,
-        show_profile=request_dict['author'].show_profile,
-        show_telegram_id=request_dict['author'].show_telegram_id,
+    author_data = public_user_short(
+        request_dict['author'],
+        viewer_id=user.id if user else None,
     )
     
     return schemas.RequestResponse(
@@ -1507,20 +1478,11 @@ async def update_request_endpoint(
         request = await crud.update_request(db, request_id, user.id, data)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
-    
+
     images_urls = get_image_urls(request.images) if request.images else []
-    
-    author_data = schemas.UserShort(
-        id=user.id,
-        name=user.name,
-        course=user.course,
-        university=user.university,
-        institute=user.institute,
-        username=user.username,
-        telegram_username=user.telegram_username,
-        avatar=user.avatar
-    )
-    
+
+    author_data = public_user_short(user, viewer_id=user.id)
+
     return schemas.RequestResponse(
         id=request.id,
         category=request.category,
@@ -1575,13 +1537,8 @@ async def create_response_endpoint(
         properties_json={"response_id": response.id},
     )
     
-    author_data = schemas.UserShort(
-        id=user.id,
-        name=user.name,
-        username=user.username,
-        telegram_username=user.telegram_username,
-    )
-    
+    author_data = public_user_short(user, viewer_id=user.id)
+
     return schemas.ResponseItem(
         id=response.id,
         message=response.message,
@@ -1603,12 +1560,7 @@ async def get_responses_endpoint(
     
     result = []
     for resp in responses:
-        author_data = schemas.UserShort(
-            id=resp.author.id,
-            name=resp.author.name,
-            username=resp.author.username,
-            telegram_username=resp.author.telegram_username,
-        )
+        author_data = public_user_short(resp.author, viewer_id=user.id)
         result.append(schemas.ResponseItem(
             id=resp.id,
             message=resp.message,
@@ -1761,18 +1713,10 @@ async def get_market_feed_endpoint(
     items = []
     for item in feed_data['items']:
         images = get_image_urls(item.images) if item.images else []
-        
-        seller_data = schemas.UserShort(
-            id=item.seller.id,
-            name=item.seller.name,
-            username=item.seller.username,
-            telegram_username=item.seller.telegram_username,
-            university=item.seller.university,
-            institute=item.seller.institute,
-            course=item.seller.course,
-            avatar=item.seller.avatar, 
-            show_profile=item.seller.show_profile, 
-            show_telegram_id=item.seller.show_telegram_id
+
+        seller_data = public_user_short(
+            item.seller,
+            viewer_id=user.id if user else None,
         )
 
         is_seller = bool(user and item.seller_id == user.id)
@@ -1824,20 +1768,9 @@ async def get_market_favorites_endpoint(
     result = []
     for item in items:
         images = get_image_urls(item.images) if item.images else []
-        
-        seller_data = schemas.UserShort(
-            id=item.seller.id,
-            name=item.seller.name,
-            username=item.seller.username,
-            telegram_username=item.seller.telegram_username,
-            university=item.seller.university,
-            institute=item.seller.institute,
-            course=item.seller.course,
-            avatar=item.seller.avatar,
-            show_profile=item.seller.show_profile,
-            show_telegram_id=item.seller.show_telegram_id
-        )
-        
+
+        seller_data = public_user_short(item.seller, viewer_id=user.id)
+
         is_seller = item.seller_id == user.id
         has_requested = await crud.has_active_market_interest(db, item.id, user.id) if not is_seller else False
         
@@ -1884,18 +1817,7 @@ async def get_my_market_items_endpoint(
     for item in items:
         images = get_image_urls(item.images) if item.images else []
         
-        seller_data = schemas.UserShort(
-            id=user.id,
-            name=user.name,
-            username=user.username,
-            telegram_username=user.telegram_username,
-            university=user.university,
-            institute=user.institute,
-            course=user.course,
-            avatar=user.avatar, 
-            show_profile=user.show_profile,
-            show_telegram_id=user.show_telegram_id
-        )
+        seller_data = public_user_short(user, viewer_id=user.id)
         is_favorited = await crud.is_item_favorited(db, item.id, user.id)
         
         item_dict = {
@@ -1965,20 +1887,12 @@ async def get_market_item_endpoint(
         )
     
     images = get_image_urls(item.images) if item.images else []
-    
-    seller_data = schemas.UserShort(
-        id=item.seller.id,
-        name=item.seller.name,
-        username=item.seller.username,
-        telegram_username=item.seller.telegram_username,
-        university=item.seller.university,
-        institute=item.seller.institute,
-        course=item.seller.course,
-        avatar=item.seller.avatar,
-        show_profile=item.seller.show_profile,
-        show_telegram_id=item.seller.show_telegram_id
+
+    seller_data = public_user_short(
+        item.seller,
+        viewer_id=user.id if user else None,
     )
-    
+
     is_favorited = await crud.is_item_favorited(db, item.id, user.id) if user else False
     is_seller = bool(user and item.seller_id == user.id)
     has_requested = await crud.has_active_market_interest(db, item.id, user.id) if user and not is_seller else False
@@ -2101,7 +2015,7 @@ async def create_market_interest_endpoint(
     return normalize_datetime_payload({
         "id": lead.id,
         "item_id": lead.item_id,
-        "buyer": schemas.UserShort.from_orm(user),
+        "buyer": public_user_short(user, viewer_id=user.id),
         "status": lead.status,
         "is_waitlist": is_waitlist,
         "created_at": lead.created_at,
@@ -2145,7 +2059,7 @@ async def get_market_waitlist_endpoint(
         payload.append({
             "id": lead.id,
             "item_id": lead.item_id,
-            "buyer": schemas.UserShort.from_orm(lead.buyer),
+            "buyer": public_user_short(lead.buyer, viewer_id=user.id),
             "status": lead.status,
             "is_waitlist": True,
             "created_at": lead.created_at,
@@ -2361,19 +2275,8 @@ async def create_market_item_endpoint(
     
     images_urls = get_image_urls(item.images) if item.images else []
     
-    seller_data = schemas.UserShort(
-        id=user.id,
-        name=user.name,
-        username=user.username,
-        telegram_username=user.telegram_username,
-        university=user.university,
-        institute=user.institute,
-        course=user.course,
-        avatar=user.avatar,
-        show_profile=user.show_profile,
-        show_telegram_id=user.show_telegram_id
-    )
-    
+    seller_data = public_user_short(user, viewer_id=user.id)
+
     return normalize_datetime_payload({
         "id": item.id,
         "seller_id": item.seller_id,
@@ -2463,19 +2366,8 @@ async def update_market_item_endpoint(
     
     images_urls = get_image_urls(updated_item.images) if updated_item.images else []
     
-    seller_data = schemas.UserShort(
-        id=user.id,
-        name=user.name,
-        username=user.username,
-        telegram_username=user.telegram_username,
-        university=user.university,
-        institute=user.institute,
-        course=user.course,
-        avatar=user.avatar,
-        show_profile=user.show_profile,
-        show_telegram_id=user.show_telegram_id
-    )
-    
+    seller_data = public_user_short(user, viewer_id=user.id)
+
     is_favorited = await crud.is_item_favorited(db, updated_item.id, user.id)
     
     return normalize_datetime_payload({

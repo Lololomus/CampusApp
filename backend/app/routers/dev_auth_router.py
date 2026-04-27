@@ -129,7 +129,7 @@ async def dev_login_as(
         httponly=True,
         secure=settings.cookie_secure or settings.is_prod,
         samesite=settings.cookie_samesite,
-        path="/auth",
+        path="/api/auth",
         max_age=settings.refresh_ttl_days * 24 * 60 * 60,
     )
     return schemas.AuthLoginResponse(

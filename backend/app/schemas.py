@@ -1181,46 +1181,81 @@ class DatingProfileResponse(BaseModel):
 AD_SCOPES = ['university', 'city', 'all']
 AD_STATUSES = ['draft', 'pending_review', 'approved', 'active', 'paused', 'completed', 'rejected']
 
+# Безопасные схемы для CTA-ссылок рекламы. Только http(s), tg:// и t.me/.
+# Блокирует javascript:, data:, file:, intent: и прочие XSS-векторы.
+_ALLOWED_CTA_SCHEMES = {"https", "http", "tg"}
+
+
+def _validate_cta_url(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if len(raw) > 500:
+        raise ValueError("cta_url must be ≤ 500 characters")
+    from urllib.parse import urlparse
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in _ALLOWED_CTA_SCHEMES:
+        raise ValueError("cta_url scheme must be https, http or tg")
+    if scheme in {"http", "https"} and not parsed.netloc:
+        raise ValueError("cta_url must contain a hostname")
+    if scheme == "tg" and not (parsed.netloc or parsed.path):
+        raise ValueError("invalid tg:// URL")
+    return raw
+
+
 class AdPostCreate(BaseModel):
     """Создание рекламного поста"""
     title: str = Field(..., min_length=3, max_length=200)
     body: str = Field(..., min_length=10, max_length=2000)
     images: List[str] = Field(default=[], max_length=3)
-    
+
     advertiser_name: str = Field(..., min_length=2, max_length=200)
     advertiser_logo: Optional[str] = None
     scope: str = Field(default='university', pattern='^(university|city|all)$')
     target_university: Optional[str] = None
     target_city: Optional[str] = None
-    
+
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
     impression_limit: Optional[int] = Field(None, ge=100, le=1000000)
     daily_impression_cap: Optional[int] = Field(None, ge=10, le=100000)
-    
+
     cta_text: Optional[str] = Field(None, max_length=100)
     cta_url: Optional[str] = Field(None, max_length=500)
     priority: int = Field(default=5, ge=1, le=10)
+
+    @field_validator('cta_url', mode='before')
+    @classmethod
+    def _validate_cta_url(cls, v):
+        return _validate_cta_url(v)
 
 class AdPostUpdate(BaseModel):
     """Обновление рекламного поста"""
     title: Optional[str] = Field(None, min_length=3, max_length=200)
     body: Optional[str] = Field(None, min_length=10, max_length=2000)
-    
+
     advertiser_name: Optional[str] = None
     advertiser_logo: Optional[str] = None
     scope: Optional[str] = Field(None, pattern='^(university|city|all)$')
     target_university: Optional[str] = None
     target_city: Optional[str] = None
-    
+
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
     impression_limit: Optional[int] = None
     daily_impression_cap: Optional[int] = None
-    
+
     cta_text: Optional[str] = None
     cta_url: Optional[str] = None
     priority: Optional[int] = Field(None, ge=1, le=10)
+
+    @field_validator('cta_url', mode='before')
+    @classmethod
+    def _validate_cta_url(cls, v):
+        return _validate_cta_url(v)
 
 class AdPostResponse(BaseModel):
     """Рекламный пост"""

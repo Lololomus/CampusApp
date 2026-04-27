@@ -57,14 +57,12 @@ async def check_rate_limit(
         limit: максимум запросов в окне
         window_sec: размер окна в секундах
     """
-    # X-Real-IP или первый адрес из X-Forwarded-For (за nginx/caddy)
-    # Если за прокси — всегда request.client.host == 127.0.0.1, rate limit бесполезен
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    real_ip = request.headers.get("X-Real-IP")
+    # nginx ставит X-Real-IP = $remote_addr и перезаписывает клиентский header.
+    # X-Forwarded-For клиент-управляемый (proxy_add_x_forwarded_for только append-ит
+    # к тому, что прислал клиент), поэтому ему не доверяем.
+    real_ip = (request.headers.get("X-Real-IP") or "").strip()
     if real_ip:
-        ip = real_ip.strip()
-    elif forwarded_for:
-        ip = forwarded_for.split(",")[0].strip()
+        ip = real_ip
     else:
         ip = request.client.host if request.client else "unknown"
     bucket_key = f"rate:{key}:{ip}"

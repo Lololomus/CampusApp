@@ -18,6 +18,7 @@ import { toast } from '../shared/Toast';
 import theme from '../../theme';
 import SmartDatePicker from '../shared/SmartDatePicker';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
+import { isSafeCtaUrl } from '../../utils/safeUrl';
 
 const AD_IMAGE_SETTINGS = {
   ALLOWED_FORMATS: ['image/jpeg', 'image/png', 'image/webp'],
@@ -345,7 +346,7 @@ function CreateAdForm({ isAdmin = false, onCreated, onCancel }) {
   const bodyOk = form.body.trim().length >= 10;
   const advertiserOk = form.advertiser_name.trim().length >= 2;
   const ctaTextOk = form.cta_text.trim().length > 0;
-  const ctaUrlOk = form.cta_url.trim().length > 0;
+  const ctaUrlOk = isSafeCtaUrl(form.cta_url);
   const impressionLimitRaw = form.impression_limit.trim();
   const impressionLimitNum = Number(impressionLimitRaw);
   const impressionLimitOk =

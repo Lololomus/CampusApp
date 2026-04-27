@@ -16,6 +16,7 @@ import re
 from app.database import get_db
 from app import models, schemas, crud
 from app.auth_service import require_user
+from app.serialization import public_user_short
 from app.services.analytics_service import record_server_event
 from app.utils import (
     delete_images,
@@ -307,7 +308,7 @@ async def like_user(
             entity_id=result.get("match_id"),
             properties_json={"matched_user_id": target_user_id},
         )
-        response["matched_user"] = schemas.UserShort.from_orm(result["matched_user"])
+        response["matched_user"] = public_user_short(result["matched_user"], viewer_id=user.id, force_reveal_contact=True)
 
     return response
 
@@ -392,7 +393,6 @@ async def get_likes_received(
 
         result.append({
             "id": u.id,
-            "telegram_id": u.telegram_id,
             "name": u.name,
             "age": u.age,
             "bio": dp.bio if dp else u.bio,
@@ -428,7 +428,7 @@ async def get_my_matches(
             "user_a_id": 0,
             "user_b_id": 0,
             "matched_at": m["matched_at"],
-            "matched_user": schemas.UserShort.from_orm(m["matched_user"])
+            "matched_user": public_user_short(m["matched_user"], viewer_id=user.id, force_reveal_contact=True)
         })
 
     return result
@@ -549,6 +549,7 @@ async def get_active_matches(
             if dp.prompts:
                 prompts_dict = dp.prompts if isinstance(dp.prompts, dict) else None
 
+            contact = public_user_short(other_user, viewer_id=user.id, force_reveal_contact=True)
             result.append({
                 "id": dp.id,
                 "user_id": other_user_id,
@@ -565,6 +566,8 @@ async def get_active_matches(
                 "common_goals": common_goals,
                 "match_reason": match_reason,
                 "prompts": prompts_dict,
+                "telegram_id": contact.telegram_id if contact else None,
+                "telegram_username": contact.telegram_username if contact else None,
                 "matched_at": match.matched_at.isoformat(),
                 "expires_at": expires_at.isoformat(),
                 "hours_left": hours_left,

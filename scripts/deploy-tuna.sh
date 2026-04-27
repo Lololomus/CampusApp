@@ -120,8 +120,6 @@ wait_for_service postgres 60 true
 wait_for_service redis 60 true
 wait_for_service backend 120 true
 wait_for_service frontend 120 true
-wait_for_service bot 120 false
-
 echo "==> Verifying local loopback ingress"
 curl --fail --silent --show-error http://127.0.0.1/health >/dev/null
 curl --fail --silent --show-error http://127.0.0.1/api/health >/dev/null

@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from app.database import get_db
 from app.auth_service import require_user
 from app import models, schemas
+from app.serialization import public_user_short
 from app.services import notification_service as notif
 from app.services.analytics_service import record_server_event
 from app.utils import delete_images
@@ -572,7 +573,7 @@ async def get_reports(
         items.append({
             "id": r.id,
             "reporter_id": r.reporter_id,
-            "reporter": schemas.UserShort.model_validate(r.reporter) if r.reporter else None,
+            "reporter": public_user_short(r.reporter, force_reveal_contact=True),
             "target_type": r.target_type,
             "target_id": r.target_id,
             "reason": r.reason,
@@ -706,7 +707,7 @@ async def get_appeals(
         items.append({
             "id": a.id,
             "user_id": a.user_id,
-            "user": schemas.UserShort.model_validate(a.user) if a.user else None,
+            "user": public_user_short(a.user, force_reveal_contact=True),
             "moderation_log_id": a.moderation_log_id,
             "message": a.message,
             "status": a.status,
@@ -976,11 +977,11 @@ async def get_moderation_logs(
     for log in logs:
         items.append({
             "id": log.id,
-            "moderator": schemas.UserShort.model_validate(log.moderator) if log.moderator else None,
+            "moderator": public_user_short(log.moderator, force_reveal_contact=True),
             "action": log.action,
             "target_type": log.target_type,
             "target_id": log.target_id,
-            "target_user": schemas.UserShort.model_validate(log.target_user) if log.target_user else None,
+            "target_user": public_user_short(log.target_user, force_reveal_contact=True),
             "reason": log.reason,
             "university": log.university,
             "created_at": log.created_at,

@@ -157,7 +157,6 @@ async def get_dating_feed(
 
         candidate_data = {
             "id": user.id,
-            "telegram_id": user.telegram_id,
             "name": user.name,
             "age": user.age,
             "bio": profile.bio or user.bio,

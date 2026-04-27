@@ -24,6 +24,7 @@ import { parseApiDate, formatRelativeRu } from '../../utils/datetime';
 import { composeSingleTextFromTitleBody } from '../../utils/contentTextParser';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { sharePostViaTelegram } from '../../utils/telegramShare';
+import { isSafeCtaUrl, isTelegramDeepLink } from '../../utils/safeUrl';
 import { Z_HEADER } from '../../constants/zIndex';
 
 const FEED_HERO_RETURN_Z_INDEX = Z_HEADER - 2;
@@ -386,11 +387,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
 
   const handleCtaClick = (e) => {
     e.stopPropagation();
-    if (isAd && post.cta_url) {
-      hapticFeedback('light');
-      if (post.ad_id) trackAdClick(post.ad_id);
-      window.open(post.cta_url, '_blank');
+    if (!isAd || !post.cta_url || !isSafeCtaUrl(post.cta_url)) return;
+    hapticFeedback('light');
+    if (post.ad_id) trackAdClick(post.ad_id);
+    if (isTelegramDeepLink(post.cta_url)) {
+      const tgWebApp = window.Telegram?.WebApp;
+      if (tgWebApp?.openTelegramLink) {
+        tgWebApp.openTelegramLink(post.cta_url);
+        return;
+      }
     }
+    window.open(post.cta_url, '_blank', 'noopener,noreferrer');
   };
 
   const handleHideAd = async () => {
