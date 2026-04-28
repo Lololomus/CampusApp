@@ -92,7 +92,7 @@ if IS_PROD and not MINIAPP_URL.startswith("https://"):
 
 SUPPORT_USERNAME = (os.getenv("SUPPORT_USERNAME") or "nikochan1").lstrip("@").strip()
 WELCOME_PHOTO_PATH = Path(
-    os.getenv("WELCOME_PHOTO_PATH", ROOT_DIR / "frontend" / "public" / "photo_campus_640x360.jpg")
+    os.getenv("WELCOME_PHOTO_PATH", BASE_DIR / "assets" / "welcome.jpg")
 )
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
