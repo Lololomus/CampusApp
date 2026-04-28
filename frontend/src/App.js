@@ -24,10 +24,15 @@ import './App.css';
 const FEED_SCROLL_STALE_MS = 30 * 60 * 1000;
 const FEED_LAST_BACKGROUND_AT_KEY = 'campus:last-background-at';
 
-const PostFeed = lazy(() => import('./components/posts/PostFeed'));
-const Market = lazy(() => import('./components/market/Market'));
-const Profile = lazy(() => import('./components/profile/Profile'));
-const DatingFeed = lazy(() => import('./components/dating/DatingFeed'));
+const loadPostFeed = () => import('./components/posts/PostFeed');
+const loadMarket = () => import('./components/market/Market');
+const loadProfile = () => import('./components/profile/Profile');
+const loadDatingFeed = () => import('./components/dating/DatingFeed');
+
+const PostFeed = lazy(loadPostFeed);
+const Market = lazy(loadMarket);
+const Profile = lazy(loadProfile);
+const DatingFeed = lazy(loadDatingFeed);
 const CreatePostModal = lazy(() => import('./components/posts/CreatePostModal'));
 const EditPostModal = lazy(() => import('./components/posts/EditPostModal'));
 const CreateMarketItem = lazy(() => import('./components/market/CreateMarketItem'));
@@ -199,6 +204,41 @@ function App() {
   }, [authStatus]);
 
   useEffect(() => {
+    if (authStatus === 'loading' || onboardingStep > 0 || showSplash) return undefined;
+
+    let cancelled = false;
+    let idleId = null;
+    let delayedHeavyPreloadId = null;
+    const runPreload = () => {
+      if (cancelled) return;
+      loadPostFeed();
+      loadMarket();
+      loadProfile();
+      delayedHeavyPreloadId = window.setTimeout(() => {
+        if (!cancelled) loadDatingFeed();
+      }, 900);
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(runPreload, { timeout: 1800 });
+    } else {
+      idleId = window.setTimeout(runPreload, 800);
+    }
+
+    return () => {
+      cancelled = true;
+      if (delayedHeavyPreloadId !== null) window.clearTimeout(delayedHeavyPreloadId);
+      if (idleId !== null) {
+        if (typeof window.cancelIdleCallback === 'function') {
+          window.cancelIdleCallback(idleId);
+        } else {
+          window.clearTimeout(idleId);
+        }
+      }
+    };
+  }, [authStatus, onboardingStep, showSplash]);
+
+  useEffect(() => {
     if (!pendingDeepLink || deepLinkExecutionRef.current) return;
     if (authStatus === 'loading' || onboardingStep > 0 || showSplash) return;
     if (deepLinkNeedsModerationRole(pendingDeepLink) && isRegistered && moderationRole == null) return;
@@ -305,7 +345,9 @@ function App() {
   } else {
     appContent = (
       <div style={styles.app}>
-        {renderContent()}
+        <Suspense fallback={<TabFallback />}>
+          {renderContent()}
+        </Suspense>
 
         {!hideNavigation && <Navigation />}
         {viewPostId && <PostDetail />}
@@ -415,7 +457,15 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
   },
+  tabFallback: {
+    minHeight: 'calc(var(--tg-app-viewport-stable-height, 100vh) - 96px - var(--screen-bottom-offset))',
+    backgroundColor: '#000000',
+  },
 };
+
+const TabFallback = () => (
+  <div style={styles.tabFallback} aria-label="Загрузка" />
+);
 
 const ScreenFallback = () => (
   <div style={styles.loading}>Загрузка...</div>
