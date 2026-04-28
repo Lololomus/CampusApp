@@ -121,9 +121,11 @@ html {
   -webkit-touch-callout: none;
 }
 
-button {
+button,
+[role="button"] {
   -webkit-user-select: none;
   user-select: none;
+  touch-action: manipulation;
 }
 
 /* Запрет браузерного пинч-зума и pull-to-refresh браузера */

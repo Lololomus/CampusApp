@@ -23,7 +23,7 @@ function MatchCard({ match, onClick, onMessage }) {
       {/* Фото секция */}
       <div style={styles.photoSection}>
         {photo ? (
-          <img src={photo} alt={match.name} style={styles.photo} />
+          <img src={photo} alt={match.name} style={styles.photo} loading="lazy" decoding="async" />
         ) : (
           <div style={styles.photoPlaceholder}>
             {match.name?.charAt(0)?.toUpperCase() || '?'}

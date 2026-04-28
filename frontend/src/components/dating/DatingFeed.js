@@ -608,6 +608,7 @@ function DatingFeed() {
                             isBlurred={isGuestMode}
                             onRegisterTrigger={() => triggerOnboarding('photo')}
                             isInteractive={isActive && !blockProfileCardInteraction}
+                            eagerFirstPhoto={index < 2}
                             onExpandProfile={() => setShowProfileSheet(true)}
                             onLike={handleLike}
                             onSkip={handleSkip}

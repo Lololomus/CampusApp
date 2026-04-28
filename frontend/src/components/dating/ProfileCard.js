@@ -20,6 +20,7 @@ const ProfileCard = memo(function ProfileCard({
   onExpandProfile,
   onLike,
   onSkip,
+  eagerFirstPhoto = false,
 }) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -33,6 +34,10 @@ const ProfileCard = memo(function ProfileCard({
 
   const photos = getDatingPhotoList(profile);
   const commonGoals = profile?.common_goals || [];
+  const getPhotoSrc = (photo) => photo?.url || photo;
+  const activePhotoSrc = getPhotoSrc(photos[photoIndex]);
+  const shouldLoadPhoto = (idx) => idx === photoIndex || (eagerFirstPhoto && idx === 0);
+  const getPhotoLoading = (idx) => (idx === 0 && eagerFirstPhoto ? 'eager' : 'lazy');
 
   useEffect(() => {
     setImageLoaded(false);
@@ -190,10 +195,12 @@ const ProfileCard = memo(function ProfileCard({
           {photos.length > 0 ? (
             <div style={styles.photosStack}>
               <img
-                src={photos[photoIndex]?.url || photos[photoIndex]}
+                src={activePhotoSrc}
                 alt=""
                 aria-hidden="true"
                 draggable={false}
+                loading={getPhotoLoading(photoIndex)}
+                decoding="async"
                 style={{
                   ...styles.avatarImageBackdrop,
                   opacity: imageLoaded ? 1 : 0,
@@ -202,9 +209,11 @@ const ProfileCard = memo(function ProfileCard({
               {photos.map((photo, idx) => (
                 <img
                   key={idx}
-                  src={photo?.url || photo}
+                  src={shouldLoadPhoto(idx) ? getPhotoSrc(photo) : undefined}
                   alt={`${profile.name} - фото ${idx + 1}`}
                   draggable={false}
+                  loading={getPhotoLoading(idx)}
+                  decoding="async"
                   onLoad={() => {
                     if (idx === 0) setImageLoaded(true);
                   }}
