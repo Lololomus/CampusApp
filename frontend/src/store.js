@@ -9,6 +9,8 @@ import {
   logoutUser,
   setAccessToken,
 } from './api';
+import { getTelegramUser } from './utils/telegram';
+import { normalizeTelegramUsername } from './utils/telegramUsername';
 
 export const useStore = create(
   persist(
@@ -663,8 +665,25 @@ export const useStore = create(
 
         const loadCurrentUserAfterToken = async () => {
           try {
-            const me = await getCurrentUser();
+            let me = await getCurrentUser();
             if (me) {
+              const telegramUser = getTelegramUser();
+              const telegramUsername = normalizeTelegramUsername(telegramUser?.username);
+              const storedTelegramUsername = normalizeTelegramUsername(me.telegram_username);
+
+              if (telegramUser && telegramUsername !== storedTelegramUsername) {
+                try {
+                  const loginData = await loginWithTelegram();
+                  if (loginData.user) {
+                    me = loginData.user;
+                  } else {
+                    me = await getCurrentUser();
+                  }
+                } catch {
+                  // Keep the refreshed session if Telegram initData is unavailable or expired.
+                }
+              }
+
               setRegisteredState(me);
               loadUnreadCount();
             } else {
@@ -685,7 +704,7 @@ export const useStore = create(
           await refreshToken();
           await loadCurrentUserAfterToken();
           return;
-        } catch (refreshError) {
+        } catch (_refreshError) {
           try {
             const loginData = await loginWithTelegram();
             setAccessToken(loginData.access_token);
@@ -696,7 +715,7 @@ export const useStore = create(
             } else {
               setUnregisteredState();
             }
-          } catch (loginError) {
+          } catch (_loginError) {
             setAccessToken(null);
             set({
               user: {},
