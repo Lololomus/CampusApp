@@ -405,6 +405,12 @@ const styles = {
   },
   loading: {
     minHeight: 'var(--tg-app-viewport-stable-height, 100vh)',
+    backgroundColor: '#000000',
+    color: '#fff',
+    maxWidth: 'var(--app-max-width)',
+    marginLeft: 'auto',
+    marginRight: 'auto',
+    width: '100%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

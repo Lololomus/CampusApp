@@ -119,9 +119,68 @@ const getRenderedMediaRect = (mediaEl, mediaType) => {
   return normalizeRect(mediaEl.getBoundingClientRect?.());
 };
 
+const getMediaAspectRatio = (mediaEl, mediaType, item) => {
+  const itemWidth = Number(item?.w);
+  const itemHeight = Number(item?.h);
+  if (Number.isFinite(itemWidth) && Number.isFinite(itemHeight) && itemWidth > 0 && itemHeight > 0) {
+    return itemWidth / itemHeight;
+  }
+
+  if (mediaType === 'video') {
+    const videoWidth = mediaEl?.videoWidth;
+    const videoHeight = mediaEl?.videoHeight;
+    if (Number.isFinite(videoWidth) && Number.isFinite(videoHeight) && videoWidth > 0 && videoHeight > 0) {
+      return videoWidth / videoHeight;
+    }
+  }
+
+  const naturalWidth = mediaEl?.naturalWidth;
+  const naturalHeight = mediaEl?.naturalHeight;
+  if (Number.isFinite(naturalWidth) && Number.isFinite(naturalHeight) && naturalWidth > 0 && naturalHeight > 0) {
+    return naturalWidth / naturalHeight;
+  }
+
+  return null;
+};
+
+const getContainedRect = (containerRect, mediaAspectRatio) => {
+  const box = normalizeRect(containerRect);
+  if (!box || !Number.isFinite(mediaAspectRatio) || mediaAspectRatio <= 0) return box;
+
+  const boxRatio = box.width / box.height;
+  let width = box.width;
+  let height = box.height;
+
+  if (mediaAspectRatio > boxRatio) {
+    height = box.width / mediaAspectRatio;
+  } else {
+    width = box.height * mediaAspectRatio;
+  }
+
+  return {
+    ...box,
+    x: box.x + (box.width - width) / 2,
+    y: box.y + (box.height - height) / 2,
+    width,
+    height,
+  };
+};
+
 const getHeroMediaUrl = (item) => {
   if (!item) return '';
   return item.type === 'video' ? item.thumbnail_url : item.url;
+};
+
+const getHeroCloseTransform = (heroAnim, isActive) => {
+  if (!heroAnim || !isActive) return 'translate3d(0, 0, 0) scale(1, 1)';
+
+  const { from, to } = heroAnim;
+  const scaleX = from.width ? to.width / from.width : 1;
+  const scaleY = from.height ? to.height / from.height : 1;
+  const translateX = to.x - from.x;
+  const translateY = to.y - from.y;
+
+  return `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleX}, ${scaleY})`;
 };
 
 const HERO_CLOSE_MS = 340;
@@ -396,10 +455,14 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     dragYRef.current = 0;
     setDragY(0);
     setIsClosing(true);
+    const targetRect = to.objectFit === 'contain'
+      ? getContainedRect(to, getMediaAspectRatio(mediaEl, currentItem?.type, currentItem))
+      : to;
+
     setHeroAnim({
       url: heroUrl,
       from,
-      to,
+      to: targetRect,
       objectFit: to.objectFit || 'cover',
       objectPosition: to.objectPosition || 'center center',
       borderRadius: to.borderRadius ?? 0,
@@ -524,12 +587,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     ? 0
     : dragY > 0 ? Math.max(0.04, 1 - dragY / 280) : undefined;
   const overlayTransition = swipeClosing || isHeroClosing
-    ? 'opacity 0.18s ease, backdrop-filter 0.18s ease, -webkit-backdrop-filter 0.18s ease'
+    ? 'opacity 0.18s ease'
     : dragY > 0 ? 'none' : undefined;
-  const overlayBackdropFilter = closingPassthrough ? 'blur(0px)' : styles.overlay.backdropFilter;
-  const heroFrame = heroAnim
-    ? heroAnimActive ? heroAnim.to : heroAnim.from
-    : null;
+  const overlayBackdropFilter = closingPassthrough ? 'none' : styles.overlay.backdropFilter;
+  const heroTransform = getHeroCloseTransform(heroAnim, heroAnimActive);
 
   return createPortal(
     <>
@@ -553,22 +614,24 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             pointerEvents: 'none',
             overflow: 'hidden',
             borderRadius: heroAnim.borderRadius,
-            left: heroFrame.x,
-            top: heroFrame.y,
-            width: heroFrame.width,
-            height: heroFrame.height,
-            willChange: 'left, top, width, height',
+            left: heroAnim.from.x,
+            top: heroAnim.from.y,
+            width: heroAnim.from.width,
+            height: heroAnim.from.height,
+            transform: heroTransform,
+            transformOrigin: 'top left',
+            willChange: 'transform',
             backfaceVisibility: 'hidden',
             WebkitBackfaceVisibility: 'hidden',
             contain: 'layout paint style',
             isolation: 'isolate',
             backgroundColor: heroAnim.hasContainFill ? '#000' : 'transparent',
             transition: heroAnimActive
-              ? `left ${HERO_CLOSE_MS}ms ${HERO_EASING}, top ${HERO_CLOSE_MS}ms ${HERO_EASING}, width ${HERO_CLOSE_MS}ms ${HERO_EASING}, height ${HERO_CLOSE_MS}ms ${HERO_EASING}`
+              ? `transform ${HERO_CLOSE_MS}ms ${HERO_EASING}`
               : 'none',
           }}
           onTransitionEnd={(e) => {
-            if (e.currentTarget === e.target) finishHeroClose();
+            if (e.currentTarget === e.target && e.propertyName === 'transform') finishHeroClose();
           }}
         >
           {heroAnim.hasContainFill && (
