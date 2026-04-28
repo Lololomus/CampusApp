@@ -440,7 +440,7 @@ function PostFeed() {
         height: 120,
         background: 'linear-gradient(to top, rgba(8,8,8,0.80) 0%, transparent 100%)',
         pointerEvents: 'none',
-        zIndex: 50,
+        zIndex: 99,
       }} />
 
       <PullToRefreshIndicator
