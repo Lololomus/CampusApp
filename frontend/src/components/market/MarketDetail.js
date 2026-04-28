@@ -26,6 +26,7 @@ import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { shareMarketItemViaTelegram } from '../../utils/telegramShare';
 import { normalizeTelegramUsername } from '../../utils/telegramUsername';
+import { captureSourceRect } from '../../utils/mediaRect';
 
 const EMPTY_OPTIONAL_VALUES = new Set(['none', 'null', 'undefined']);
 
@@ -66,21 +67,11 @@ const hasSentMarketRequest = (item) => Boolean(
   )
 );
 
-const getMarketGallerySourceRect = (element) => {
-  if (!element) return null;
-  const rect = element.getBoundingClientRect();
-  if (!rect?.width || !rect?.height) return null;
-  return {
-    x: rect.x,
-    y: rect.y,
-    width: rect.width,
-    height: rect.height,
-    objectFit: 'contain',
-    objectPosition: 'center center',
-    hasContainFill: true,
-    borderRadius: 0,
-  };
-};
+const getMarketGallerySourceRect = (element) => captureSourceRect(element, {
+  objectFit: 'contain',
+  borderRadius: 0,
+  hasContainFill: true,
+});
 
 const MarketDetail = ({ item, onClose, onUpdate }) => {
   const { 

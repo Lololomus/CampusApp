@@ -3,6 +3,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import theme from '../../theme';
 import { IMAGE_ASPECT_RATIO_MIN } from '../../constants/layoutConstants';
 import { resolveImageUrl } from '../../utils/mediaUrl';
+import { captureSourceRect } from '../../utils/mediaRect';
 
 function getItemThumbnailUrl(item) {
   if (!item) return '';
@@ -131,18 +132,10 @@ function getMultiMediaFit(item, measuredAr, cellAr) {
 }
 
 function getSourceRect(target, objectFit = 'cover') {
-  const rect = target.getBoundingClientRect();
-  return {
-    x: rect.x,
-    y: rect.y,
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height,
+  return captureSourceRect(target, {
     objectFit,
-    objectPosition: 'center center',
     hasContainFill: objectFit === 'contain',
-  };
+  });
 }
 
 const shimmerStyle = {

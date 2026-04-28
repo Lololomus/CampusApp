@@ -612,7 +612,7 @@ async def get_posts_feed(
 async def create_post_endpoint(
     request: Request,
     category: str = Form(...),
-    body: str = Form(...),
+    body: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
     is_anonymous: Optional[bool] = Form(False),

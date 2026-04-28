@@ -86,6 +86,44 @@ const getRenderedImageRect = (imgEl) => {
   return { x, y, width, height };
 };
 
+const getRenderedVideoRect = (videoEl) => {
+  const box = normalizeRect(videoEl?.getBoundingClientRect?.());
+  if (!box) return null;
+
+  const videoWidth = videoEl.videoWidth;
+  const videoHeight = videoEl.videoHeight;
+  if (!Number.isFinite(videoWidth) || !Number.isFinite(videoHeight) || videoWidth <= 0 || videoHeight <= 0) {
+    return box;
+  }
+
+  const mediaRatio = videoWidth / videoHeight;
+  const boxRatio = box.width / box.height;
+  let width = box.width;
+  let height = box.height;
+
+  if (mediaRatio > boxRatio) {
+    height = box.width / mediaRatio;
+  } else {
+    width = box.height * mediaRatio;
+  }
+
+  const x = box.x + (box.width - width) / 2;
+  const y = box.y + (box.height - height) / 2;
+  return { x, y, width, height };
+};
+
+const getRenderedMediaRect = (mediaEl, mediaType) => {
+  if (!mediaEl) return null;
+  if (mediaType === 'image') return getRenderedImageRect(mediaEl);
+  if (mediaType === 'video') return getRenderedVideoRect(mediaEl);
+  return normalizeRect(mediaEl.getBoundingClientRect?.());
+};
+
+const getHeroMediaUrl = (item) => {
+  if (!item) return '';
+  return item.type === 'video' ? item.thumbnail_url : item.url;
+};
+
 const HERO_CLOSE_MS = 340;
 const SWIPE_CLOSE_MS = 300;
 const HERO_EASING = 'cubic-bezier(0.32,0.72,0,1)';
@@ -138,24 +176,30 @@ const Zoomable = ({ children, onTap, onZoomStart, onZoomEnd }) => {
   );
 };
 
-const VideoSlide = ({ media, isActive, showUI, toggleUI }) => {
+const VideoSlide = ({ media, isActive, isClosing, showUI, toggleUI, mediaRef }) => {
   const videoRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
+  const setVideoNode = useCallback((node) => {
+    videoRef.current = node;
+    if (mediaRef) mediaRef.current = node;
+  }, [mediaRef]);
+
   useEffect(() => {
-    if (!isActive && videoRef.current) {
+    if ((!isActive || isClosing) && videoRef.current) {
       videoRef.current.pause();
-      videoRef.current.currentTime = 0;
+      if (!isClosing) videoRef.current.currentTime = 0;
       setIsPlaying(false);
-      setProgress(0);
+      if (!isClosing) setProgress(0);
     }
-  }, [isActive]);
+  }, [isActive, isClosing]);
 
   const togglePlay = (e) => {
     e.stopPropagation();
+    if (isClosing) return;
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
@@ -169,6 +213,7 @@ const VideoSlide = ({ media, isActive, showUI, toggleUI }) => {
 
   const toggleMute = (e) => {
     e.stopPropagation();
+    if (isClosing) return;
     const video = videoRef.current;
     if (!video) return;
     video.muted = !video.muted;
@@ -178,12 +223,12 @@ const VideoSlide = ({ media, isActive, showUI, toggleUI }) => {
   return (
     <div onClick={toggleUI} style={styles.videoSlide}>
       <video
-        ref={videoRef}
+        ref={setVideoNode}
         src={media.url}
         poster={media.thumbnail_url || undefined}
         onTimeUpdate={() => {
           const video = videoRef.current;
-          if (!video || isDragging) return;
+          if (!video || isDragging || isClosing) return;
           setProgress(video.duration ? (video.currentTime / video.duration) * 100 : 0);
         }}
         onEnded={() => {
@@ -196,7 +241,7 @@ const VideoSlide = ({ media, isActive, showUI, toggleUI }) => {
         preload="metadata"
         style={styles.video}
       />
-      {!isPlaying && (
+      {!isPlaying && !isClosing && (
         <button type="button" onClick={togglePlay} style={styles.playButton} className="mv-play-btn">
           <Play size={32} fill="#D4FF00" style={{ marginLeft: 4 }} />
         </button>
@@ -208,8 +253,8 @@ const VideoSlide = ({ media, isActive, showUI, toggleUI }) => {
         onTouchMove={(e) => e.stopPropagation()}
         style={{
           ...styles.videoControls,
-          opacity: showUI ? 1 : 0.35,
-          pointerEvents: showUI ? 'auto' : 'none',
+          opacity: isClosing ? 0 : showUI ? 1 : 0.35,
+          pointerEvents: isClosing ? 'none' : showUI ? 'auto' : 'none',
         }}
       >
         <div style={styles.videoProgressWrap}>
@@ -270,8 +315,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const touchStartX = useRef(null);
   const touchStartScrollLeftRef = useRef(0);
   const swipeDirRef = useRef(null);
-  const currentImgRef = useRef(null);
+  const currentMediaRef = useRef(null);
   const closeTimeoutRef = useRef(null);
+  const heroCloseDoneRef = useRef(false);
+  const didNotifyIndexChangeRef = useRef(false);
 
   const resolveSourceRect = useCallback((index = currentIndex) => {
     if (typeof sourceRectProvider === 'function') {
@@ -316,19 +363,30 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     }, SWIPE_CLOSE_MS);
   }, [isClosing, swipeClosing, heroAnim, onClose]);
 
+  const finishHeroClose = useCallback(() => {
+    if (heroCloseDoneRef.current) return;
+    heroCloseDoneRef.current = true;
+    if (closeTimeoutRef.current) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    onClose?.();
+  }, [onClose]);
+
   const closeViaHero = useCallback((fallback = closeViaSwipe) => {
     if (isClosing || swipeClosing || heroAnim) return;
 
-    const imgEl = currentImgRef.current;
+    const mediaEl = currentMediaRef.current;
     const currentItem = items[currentIndex];
     const to = resolveSourceRect(currentIndex);
+    const heroUrl = getHeroMediaUrl(currentItem);
 
-    if (!imgEl || !to || currentItem?.type === 'video') {
+    if (!mediaEl || !to || !heroUrl) {
       fallback();
       return;
     }
 
-    const from = getRenderedImageRect(imgEl);
+    const from = getRenderedMediaRect(mediaEl, currentItem?.type);
     if (!from) {
       fallback();
       return;
@@ -339,7 +397,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     setDragY(0);
     setIsClosing(true);
     setHeroAnim({
-      url: currentItem.url,
+      url: heroUrl,
       from,
       to,
       objectFit: to.objectFit || 'cover',
@@ -348,12 +406,13 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       zIndex: to.zIndex ?? Z_PHOTO_VIEWER + 10,
       hasContainFill: Boolean(to.hasContainFill || to.objectFit === 'contain'),
     });
+    heroCloseDoneRef.current = false;
     if (closeTimeoutRef.current) window.clearTimeout(closeTimeoutRef.current);
     closeTimeoutRef.current = window.setTimeout(() => {
       closeTimeoutRef.current = null;
-      onClose?.();
-    }, HERO_CLOSE_MS);
-  }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, onClose]);
+      finishHeroClose();
+    }, HERO_CLOSE_MS + 80);
+  }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, finishHeroClose]);
 
   const updateDrag = useCallback((dy) => {
     const nextY = Math.max(0, dy);
@@ -409,6 +468,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   }, [initialIndex]);
 
   useEffect(() => {
+    if (!didNotifyIndexChangeRef.current) {
+      didNotifyIndexChangeRef.current = true;
+      return;
+    }
     onIndexChange?.(currentIndex);
   }, [currentIndex, onIndexChange]);
 
@@ -461,8 +524,9 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     ? 0
     : dragY > 0 ? Math.max(0.04, 1 - dragY / 280) : undefined;
   const overlayTransition = swipeClosing || isHeroClosing
-    ? 'opacity 0.12s ease'
+    ? 'opacity 0.18s ease, backdrop-filter 0.18s ease, -webkit-backdrop-filter 0.18s ease'
     : dragY > 0 ? 'none' : undefined;
+  const overlayBackdropFilter = closingPassthrough ? 'blur(0px)' : styles.overlay.backdropFilter;
   const heroFrame = heroAnim
     ? heroAnimActive ? heroAnim.to : heroAnim.from
     : null;
@@ -502,6 +566,9 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             transition: heroAnimActive
               ? `left ${HERO_CLOSE_MS}ms ${HERO_EASING}, top ${HERO_CLOSE_MS}ms ${HERO_EASING}, width ${HERO_CLOSE_MS}ms ${HERO_EASING}, height ${HERO_CLOSE_MS}ms ${HERO_EASING}`
               : 'none',
+          }}
+          onTransitionEnd={(e) => {
+            if (e.currentTarget === e.target) finishHeroClose();
           }}
         >
           {heroAnim.hasContainFill && (
@@ -546,8 +613,8 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
           opacity: overlayOpacity,
           transition: overlayTransition,
           pointerEvents: closingPassthrough ? 'none' : styles.overlay.pointerEvents,
-          backdropFilter: swipeClosing || isHeroClosing ? 'none' : styles.overlay.backdropFilter,
-          WebkitBackdropFilter: swipeClosing || isHeroClosing ? 'none' : styles.overlay.WebkitBackdropFilter,
+          backdropFilter: overlayBackdropFilter,
+          WebkitBackdropFilter: overlayBackdropFilter,
         }}
       />
 
@@ -556,7 +623,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
         style={{
           ...styles.bottomScrim,
           opacity: closingPassthrough ? 0 : dragY > 0 ? Math.max(0, 1 - dragY / 280) : 1,
-          transition: closingPassthrough ? 'opacity 0.12s ease' : dragY > 0 ? 'none' : undefined,
+          transition: closingPassthrough ? 'opacity 0.18s ease' : dragY > 0 ? 'none' : undefined,
         }}
       />
 
@@ -666,8 +733,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
                   <VideoSlide
                     media={media}
                     isActive={isCurrent}
+                    isClosing={closingPassthrough}
                     showUI={showUI}
                     toggleUI={toggleUI}
+                    mediaRef={isCurrent ? currentMediaRef : null}
                   />
                 ) : (
                   <div onClick={toggleUI} style={styles.imageSlide}>
@@ -680,7 +749,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
                       onZoomEnd={() => setIsZoomed(false)}
                     >
                       <img
-                        ref={isCurrent ? currentImgRef : null}
+                        ref={isCurrent ? currentMediaRef : null}
                         src={media.url}
                         alt=""
                         style={styles.image}

@@ -1,6 +1,6 @@
 // ===== FILE: MyDatingProfileModal.js =====
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { GraduationCap, SlidersHorizontal, Camera, Edit3, Heart, ChevronRight, ChevronLeft, EyeOff, Plus, X } from 'lucide-react';
 import { useStore } from '../../store';
 import { updateDatingProfile, updateDatingSettings } from '../../api';
@@ -13,6 +13,7 @@ import SwipeableModal from '../shared/SwipeableModal';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
+import { captureSourceRect } from '../../utils/mediaRect';
 import {
   PROMPT_OPTIONS,
   PROMPTS_BY_CATEGORY,
@@ -31,6 +32,12 @@ import {
 const Z_MODAL = 2500;
 const PROFILE_MODAL_TRANSITION_MS = 420;
 const d = theme.colors.dating;
+
+const getHeroPhotoSourceRect = (element) => captureSourceRect(element, {
+  objectFit: 'contain',
+  borderRadius: 24,
+  hasContainFill: true,
+});
 
 // Цвета из CSS-переменных мока
 const PINK = d.pink;          // #FF2D55 — var(--dating)
@@ -95,6 +102,8 @@ function MyDatingProfileModal({ onClose }) {
   // Навигация по фото в hero
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
+  const heroPhotoRef = useRef(null);
 
   // Активный bottom sheet
   const [activeSheet, setActiveSheet] = useState(null);
@@ -139,6 +148,12 @@ function MyDatingProfileModal({ onClose }) {
     priority: 110,
     back: { visible: true, onClick: handleClose },
   });
+
+  const resolvePhotoViewerSourceRect = useCallback((index) => (
+    index === currentPhotoIndex
+      ? getHeroPhotoSourceRect(heroPhotoRef.current) || photoViewerSourceRect
+      : null
+  ), [currentPhotoIndex, photoViewerSourceRect]);
 
   if (!isMounted || !datingProfile) return null;
 
@@ -392,10 +407,18 @@ function MyDatingProfileModal({ onClose }) {
           <div style={styles.heroContainer} onClick={handleHeroTap}>
             {hasPhotos ? (
               <img
+                ref={heroPhotoRef}
                 src={getPhotoUrl(photos[currentPhotoIndex])}
                 alt=""
-                style={styles.heroImg}
-                onClick={(e) => { e.stopPropagation(); setShowPhotoViewer(true); }}
+                style={{
+                  ...styles.heroImg,
+                  visibility: showPhotoViewer ? 'hidden' : 'visible',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPhotoViewerSourceRect(getHeroPhotoSourceRect(heroPhotoRef.current));
+                  setShowPhotoViewer(true);
+                }}
               />
             ) : (
               <div style={styles.heroEmpty}>
@@ -522,8 +545,14 @@ function MyDatingProfileModal({ onClose }) {
         <PhotoViewer
           photos={photos}
           initialIndex={currentPhotoIndex}
-          onClose={() => setShowPhotoViewer(false)}
+          onClose={() => {
+            setShowPhotoViewer(false);
+            setPhotoViewerSourceRect(null);
+          }}
           dismissMode="swipe"
+          sourceRect={photoViewerSourceRect}
+          sourceRectProvider={resolvePhotoViewerSourceRect}
+          onIndexChange={setCurrentPhotoIndex}
         />
       )}
 

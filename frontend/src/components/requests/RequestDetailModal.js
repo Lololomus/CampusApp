@@ -1,5 +1,5 @@
 // ===== [LEGACY] RequestDetailModal — таб запросов убран. Компонент отключён, не удалять. =====
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   Clock,
@@ -42,6 +42,7 @@ import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import LinkText from '../shared/LinkText';
 import SwipeableModal from '../shared/SwipeableModal';
+import { captureSourceRect } from '../../utils/mediaRect';
 
 const CATEGORY_CONFIG = {
   study: {
@@ -61,6 +62,8 @@ const CATEGORY_CONFIG = {
   },
 };
 
+const getRequestDetailImageSourceRect = (element) => captureSourceRect(element, { objectFit: 'cover' });
+
 function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const {
     currentRequest,
@@ -77,6 +80,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
+  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const [isDropdownJustClosed, setIsDropdownJustClosed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -90,6 +94,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const menuButtonRef = useRef(null);
   const authorAvatarRef = useRef(null);
   const descriptionRef = useRef(null);
+  const imagesGridRef = useRef(null);
 
   const safeRequest = request || currentRequest;
   const categoryConfig = CATEGORY_CONFIG[safeRequest?.category] || CATEGORY_CONFIG.study;
@@ -297,9 +302,23 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const handleImageClick = (e, index) => {
     e.stopPropagation();
     hapticFeedback('light');
+    setPhotoViewerSourceRect(getRequestDetailImageSourceRect(e.currentTarget));
     setCurrentImageIndex(index);
     setIsPhotoViewerOpen(true);
   };
+
+  const resolvePhotoViewerSourceRect = useCallback((index) => {
+    const sourceEl = imagesGridRef.current?.querySelector(`[data-request-detail-image-index="${index}"]`);
+    return getRequestDetailImageSourceRect(sourceEl)
+      || (index === currentImageIndex ? photoViewerSourceRect : null);
+  }, [currentImageIndex, photoViewerSourceRect]);
+
+  const handlePhotoViewerClose = useCallback(() => {
+    setIsPhotoViewerOpen(false);
+    setPhotoViewerSourceRect(null);
+    setIsPhotoViewerJustClosed(true);
+    setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
+  }, []);
 
   const handleRespond = async () => {
     if (!safeRequest || isOwner || safeRequest.has_responded || datesInfo?.isExpired || safeRequest.status !== 'active') {
@@ -599,12 +618,16 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
         {images.length > 0 && (
           <div style={styles.section}>
             <h4 style={styles.sectionTitle}>ФОТО ({images.length})</h4>
-            <div style={{ ...styles.imagesGrid, gridTemplateColumns: `repeat(${photoGridColumns}, 1fr)` }}>
+            <div ref={imagesGridRef} style={{ ...styles.imagesGrid, gridTemplateColumns: `repeat(${photoGridColumns}, 1fr)` }}>
               {images.map((img, index) => (
                 <button
                   key={`${safeRequest.id}-image-${index}`}
                   type="button"
-                  style={styles.imageButton}
+                  data-request-detail-image-index={index}
+                  style={{
+                    ...styles.imageButton,
+                    visibility: isPhotoViewerOpen && currentImageIndex === index ? 'hidden' : 'visible',
+                  }}
                   onClick={(e) => handleImageClick(e, index)}
                 >
                   <img src={getImageUrl(img)} alt="" style={styles.image} loading="lazy" />
@@ -696,11 +719,10 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
           mediaList={viewerMedia}
           initialIndex={currentImageIndex}
           meta={viewerMeta}
-          onClose={() => {
-            setIsPhotoViewerOpen(false);
-            setIsPhotoViewerJustClosed(true);
-            setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
-          }}
+          onClose={handlePhotoViewerClose}
+          sourceRect={photoViewerSourceRect}
+          sourceRectProvider={resolvePhotoViewerSourceRect}
+          onIndexChange={setCurrentImageIndex}
         />
       )}
 

@@ -1,7 +1,7 @@
 // ===== FILE: src/components/dating/ViewingProfileModal.js =====
 // Полноэкранный просмотр профиля из вкладки "Симпатии" — slide-in from right
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { GraduationCap, ChevronLeft, ChevronRight, Heart, MessageCircle } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import { hapticFeedback } from '../../utils/telegram';
@@ -13,14 +13,23 @@ import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useModalAnimation, SCREEN_EXIT_MS } from '../../hooks/useModalAnimation';
 import { Z_MODAL_LIKES_LIST } from '../../constants/zIndex';
 import theme from '../../theme';
+import { captureSourceRect } from '../../utils/mediaRect';
 
 const d = theme.colors.dating;
+
+const getProfilePhotoSourceRect = (element) => captureSourceRect(element, {
+  objectFit: 'contain',
+  borderRadius: 0,
+  hasContainFill: true,
+});
 
 function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage, zIndex = Z_MODAL_LIKES_LIST }) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isLiking, setIsLiking] = useState(false);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const isMountedRef = useRef(true);
+  const photoSectionRef = useRef(null);
 
   useEffect(() => () => { isMountedRef.current = false; }, []);
 
@@ -62,6 +71,8 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
   // Навигация по фото через тап-зоны
   const openPhotoViewer = () => {
     if (!hasPhotos) return;
+    const sourceEl = photoSectionRef.current?.querySelector(`[data-viewing-profile-photo-index="${currentPhotoIndex}"]`);
+    setPhotoViewerSourceRect(getProfilePhotoSourceRect(sourceEl));
     setShowPhotoViewer(true);
   };
 
@@ -85,6 +96,11 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
       ? { question: 'Ледокол', answer: profile.icebreaker }
       : null;
 
+  const resolvePhotoViewerSourceRect = useCallback((index) => (
+    getProfilePhotoSourceRect(photoSectionRef.current?.querySelector(`[data-viewing-profile-photo-index="${index}"]`))
+    || (index === currentPhotoIndex ? photoViewerSourceRect : null)
+  ), [currentPhotoIndex, photoViewerSourceRect]);
+
   if (!isMounted) return null;
 
   return (
@@ -107,18 +123,20 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
 
         <div style={styles.scrollContent}>
           {/* Фото 4:5 с градиентом и overlaid инфо */}
-          <div style={styles.photoSection} onClick={openPhotoViewer}>
+          <div ref={photoSectionRef} style={styles.photoSection} onClick={openPhotoViewer}>
             {hasPhotos ? (
               <>
                 {photos.map((photo, idx) => (
                   <img
                     key={idx}
+                    data-viewing-profile-photo-index={idx}
                     src={photo?.url || photo}
                     alt={profile.name}
                     style={{
                       ...styles.photo,
                       opacity: idx === currentPhotoIndex ? 1 : 0,
                       zIndex: idx === currentPhotoIndex ? 1 : 0,
+                      visibility: showPhotoViewer && idx === currentPhotoIndex ? 'hidden' : 'visible',
                     }}
                   />
                 ))}
@@ -259,8 +277,14 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
           <PhotoViewer
             photos={photos}
             initialIndex={currentPhotoIndex}
-            onClose={() => setShowPhotoViewer(false)}
+            onClose={() => {
+              setShowPhotoViewer(false);
+              setPhotoViewerSourceRect(null);
+            }}
             dismissMode="swipe"
+            sourceRect={photoViewerSourceRect}
+            sourceRectProvider={resolvePhotoViewerSourceRect}
+            onIndexChange={setCurrentPhotoIndex}
           />
         )}
       </div>

@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/components/user/ProfileMiniCard.js =====
 
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Camera, Flag, MessageCircle } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
@@ -12,6 +12,12 @@ import { getAvatarColor } from '../../utils/avatarColors';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { AVATAR_BORDER_RADIUS } from './Avatar';
 import { normalizeTelegramUsername } from '../../utils/telegramUsername';
+import { captureSourceRect } from '../../utils/mediaRect';
+
+const getMiniAvatarSourceRect = (element) => captureSourceRect(element, {
+  objectFit: 'cover',
+  borderRadius: AVATAR_BORDER_RADIUS,
+});
 
 function ProfileMiniCard({
   isOpen,
@@ -24,6 +30,12 @@ function ProfileMiniCard({
 }) {
   const { user: currentUser } = useStore();
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
+  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
+  const avatarImageRef = useRef(null);
+
+  const resolveAvatarSourceRect = useCallback(() => (
+    getMiniAvatarSourceRect(avatarImageRef.current) || photoViewerSourceRect
+  ), [photoViewerSourceRect]);
 
   if (!user) return null;
 
@@ -56,6 +68,7 @@ function ProfileMiniCard({
 
   const handleViewPhoto = () => {
     hapticFeedback('light');
+    setPhotoViewerSourceRect(getMiniAvatarSourceRect(avatarImageRef.current));
     setIsPhotoViewerOpen(true);
   };
 
@@ -100,7 +113,17 @@ function ProfileMiniCard({
     <div style={styles.headerContainer}>
       <div style={styles.headerTop}>
         {avatarUrl ? (
-          <img src={avatarUrl} alt="" style={styles.headerAvatarImage} loading="lazy" decoding="async" />
+          <img
+            ref={avatarImageRef}
+            src={avatarUrl}
+            alt=""
+            style={{
+              ...styles.headerAvatarImage,
+              visibility: isPhotoViewerOpen ? 'hidden' : 'visible',
+            }}
+            loading="lazy"
+            decoding="async"
+          />
         ) : (
           <div style={{ ...styles.headerAvatarFallback, background: fallbackAvatarColor }}>{initial}</div>
         )}
@@ -127,7 +150,12 @@ function ProfileMiniCard({
         <PhotoViewer
           photos={[avatarUrl]}
           initialIndex={0}
-          onClose={() => setIsPhotoViewerOpen(false)}
+          onClose={() => {
+            setIsPhotoViewerOpen(false);
+            setPhotoViewerSourceRect(null);
+          }}
+          sourceRect={photoViewerSourceRect}
+          sourceRectProvider={resolveAvatarSourceRect}
         />
       )}
     </>

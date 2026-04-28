@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/components/profile/Profile.js =====
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Grid, ShoppingBag, FileText, Share2, Heart,
   MessageCircle, MapPin, ChevronRight,
@@ -29,6 +29,12 @@ import MarketDetail from '../market/MarketDetail';
 import EdgeBlur from '../shared/EdgeBlur';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { normalizeTelegramUsername } from '../../utils/telegramUsername';
+import { captureSourceRect } from '../../utils/mediaRect';
+
+const getAvatarSourceRect = (element) => captureSourceRect(element, {
+  objectFit: 'cover',
+  borderRadius: 28,
+});
 
 const getInitials = (name) => name ? name.charAt(0).toUpperCase() : 'S';
 
@@ -44,6 +50,8 @@ function Profile() {
 
   const [activeTab, setActiveTab] = useState('posts');
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
+  const avatarSourceRef = useRef(null);
 
   const [posts, setPosts] = useState([]);
   const [marketItems, setMarketItems] = useState([]);
@@ -144,6 +152,7 @@ function Profile() {
   const handleAvatarClick = () => {
     if (user.avatar) {
       hapticFeedback('light');
+      setPhotoViewerSourceRect(getAvatarSourceRect(avatarSourceRef.current));
       setShowPhotoViewer(true);
     }
   };
@@ -151,6 +160,10 @@ function Profile() {
   const handlePostClick = (postId) => { hapticFeedback('light'); setViewPostId(postId); };
 
   const handleMarketItemOpen = (item) => { hapticFeedback('light'); setSelectedMarketItem(item); };
+
+  const resolveAvatarSourceRect = useCallback(() => (
+    getAvatarSourceRect(avatarSourceRef.current) || photoViewerSourceRect
+  ), [photoViewerSourceRect]);
 
   return (
     <div style={styles.container}>
@@ -167,6 +180,8 @@ function Profile() {
             key={user.avatar}
             user={user}
             onAvatarClick={handleAvatarClick}
+            avatarRef={avatarSourceRef}
+            isPhotoViewerOpen={showPhotoViewer}
           />
         </div>
 
@@ -342,7 +357,12 @@ function Profile() {
         <PhotoViewer
           photos={[user.avatar]}
           initialIndex={0}
-          onClose={() => setShowPhotoViewer(false)}
+          onClose={() => {
+            setShowPhotoViewer(false);
+            setPhotoViewerSourceRect(null);
+          }}
+          sourceRect={photoViewerSourceRect}
+          sourceRectProvider={resolveAvatarSourceRect}
         />
       )}
 
@@ -396,7 +416,7 @@ function Profile() {
 }
 
 // ===== CAMPUS ID CARD =====
-const CampusIDCard = ({ user, onAvatarClick }) => {
+const CampusIDCard = ({ user, onAvatarClick, avatarRef, isPhotoViewerOpen }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [copiedUsername, setCopiedUsername] = useState(false);
 
@@ -450,11 +470,19 @@ const CampusIDCard = ({ user, onAvatarClick }) => {
           {/* Тело: аватар + инфо */}
           <div style={cardStyles.cardBody}>
             <div
+              ref={avatarRef}
               style={cardStyles.avatarWrap}
               onClick={(e) => { e.stopPropagation(); onAvatarClick(); }}
             >
               {user.avatar ? (
-                <img src={user.avatar} style={cardStyles.avatarImg} alt="avatar" />
+                <img
+                  src={user.avatar}
+                  style={{
+                    ...cardStyles.avatarImg,
+                    visibility: isPhotoViewerOpen ? 'hidden' : 'visible',
+                  }}
+                  alt="avatar"
+                />
               ) : (
                 <div style={cardStyles.avatarPlaceholder}>
                   {getInitials(user.name)}

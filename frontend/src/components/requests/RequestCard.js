@@ -1,5 +1,5 @@
 // ===== [LEGACY] RequestCard — таб запросов убран. Компонент отключён, не удалять. =====
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ChevronRight,
   Clock,
@@ -31,6 +31,7 @@ import { resolveImageUrl } from '../../utils/mediaUrl';
 import { parseApiDate } from '../../utils/datetime';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { shareRequestViaTelegram } from '../../utils/telegramShare';
+import { captureSourceRect } from '../../utils/mediaRect';
 
 const CATEGORY_CONFIG = {
   study: {
@@ -50,6 +51,8 @@ const CATEGORY_CONFIG = {
   },
 };
 
+const getRequestImageSourceRect = (element) => captureSourceRect(element, { objectFit: 'cover' });
+
 function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compactTop = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
@@ -57,6 +60,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
   const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
   const [isMenuPressing, setIsMenuPressing] = useState(false);
   const [isImagePressing, setIsImagePressing] = useState(false);
+  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -65,6 +69,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
 
   const menuButtonRef = useRef(null);
   const avatarRef = useRef(null);
+  const cardRef = useRef(null);
 
   const categoryConfig = CATEGORY_CONFIG[request.category] || CATEGORY_CONFIG.study;
 
@@ -277,9 +282,25 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
   const handleImageClick = (e, index) => {
     e.stopPropagation();
     hapticFeedback('light');
+    setPhotoViewerSourceRect(getRequestImageSourceRect(e.currentTarget));
     setCurrentImageIndex(index);
     setIsPhotoViewerOpen(true);
   };
+
+  const resolvePhotoViewerSourceRect = useCallback((index) => {
+    const sourceEl = cardRef.current?.querySelector(`[data-request-image-index="${index}"]`)
+      || (index >= 3 ? cardRef.current?.querySelector('[data-request-image-index="3"]') : null);
+    return getRequestImageSourceRect(sourceEl)
+      || (index === currentImageIndex ? photoViewerSourceRect : null);
+  }, [currentImageIndex, photoViewerSourceRect]);
+
+  const handlePhotoViewerClose = useCallback(() => {
+    setIsPhotoViewerOpen(false);
+    setIsImagePressing(false);
+    setPhotoViewerSourceRect(null);
+    setIsPhotoViewerJustClosed(true);
+    setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
+  }, []);
 
   const handleImagePressStart = (e) => {
     e.stopPropagation();
@@ -380,6 +401,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
       <style>{keyframesStyles}</style>
 
       <div
+        ref={cardRef}
         style={cardStyle}
         onClick={handleCardClick}
         className={`request-card-spring${(isMenuPressing || isImagePressing) ? ' request-card-no-active' : ''}`}
@@ -490,12 +512,16 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
                     <button
                       key={`${request.id}-img-${index}`}
                       type="button"
+                      data-request-image-index={index}
                       onClick={(e) => handleImageClick(e, index)}
                       onPointerDown={handleImagePressStart}
                       onPointerUp={handleImagePressEnd}
                       onPointerCancel={handleImagePressEnd}
                       onPointerLeave={handleImagePressEnd}
-                      style={styles.imageButton}
+                      style={{
+                        ...styles.imageButton,
+                        visibility: isPhotoViewerOpen && currentImageIndex === index ? 'hidden' : 'visible',
+                      }}
                     >
                       {!isLoaded && !isFailed && <div style={styles.imageSkeleton} />}
                       {isFailed && <div style={styles.imageFallback}>Нет фото</div>}
@@ -520,12 +546,16 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
               {remainingImages > 0 && (
                 <button
                   type="button"
+                  data-request-image-index={3}
                   onClick={(e) => handleImageClick(e, 3)}
                   onPointerDown={handleImagePressStart}
                   onPointerUp={handleImagePressEnd}
                   onPointerCancel={handleImagePressEnd}
                   onPointerLeave={handleImagePressEnd}
-                  style={styles.imageButton}
+                  style={{
+                    ...styles.imageButton,
+                    visibility: isPhotoViewerOpen && currentImageIndex >= 3 ? 'hidden' : 'visible',
+                  }}
                 >
                   <div style={styles.imageOverlay}>
                     <ImageIcon size={16} />
@@ -555,12 +585,10 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
           mediaList={viewerMedia}
           initialIndex={currentImageIndex}
           meta={viewerMeta}
-          onClose={() => {
-            setIsPhotoViewerOpen(false);
-            setIsImagePressing(false);
-            setIsPhotoViewerJustClosed(true);
-            setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
-          }}
+          onClose={handlePhotoViewerClose}
+          sourceRect={photoViewerSourceRect}
+          sourceRectProvider={resolvePhotoViewerSourceRect}
+          onIndexChange={setCurrentImageIndex}
         />
       )}
 
