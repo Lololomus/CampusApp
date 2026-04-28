@@ -257,7 +257,7 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
       <div 
         style={{
           ...styles.card,
-          animationDelay: `${index * 0.05}s`,
+          animationDelay: `${Math.min(index, 6) * 0.03}s`,
         }}
         onClick={onClick}
         className="market-card-touch"
@@ -555,8 +555,10 @@ const styles = {
   },
 };
 
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
+if (typeof document !== 'undefined' && !document.getElementById('market-card-animations')) {
+  const styleSheet = document.createElement('style');
+  styleSheet.id = 'market-card-animations';
+  styleSheet.textContent = `
   @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -575,6 +577,7 @@ styleSheet.textContent = `
   }
 `;
 
-document.head.appendChild(styleSheet);
+  document.head.appendChild(styleSheet);
+}
 
 export default MarketCard;

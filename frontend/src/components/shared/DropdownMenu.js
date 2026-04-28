@@ -552,8 +552,10 @@ const DROPDOWN_VARIANTS = {
 };
 
 
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
+if (typeof document !== 'undefined' && !document.getElementById('dropdown-menu-animations')) {
+  const styleSheet = document.createElement('style');
+  styleSheet.id = 'dropdown-menu-animations';
+  styleSheet.textContent = `
   @keyframes ripple {
     to {
       transform: scale(2.5);
@@ -561,7 +563,8 @@ styleSheet.textContent = `
     }
   }
 `;
-document.head.appendChild(styleSheet);
+  document.head.appendChild(styleSheet);
+}
 
 
 export default DropdownMenu;

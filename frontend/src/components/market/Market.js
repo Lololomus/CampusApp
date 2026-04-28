@@ -1,7 +1,7 @@
 // ===== 📄 ФАЙЛ: src/components/market/Market.js =====
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Heart } from 'lucide-react';
+import { Heart, RotateCcw } from 'lucide-react';
 import { useStore } from '../../store';
 import { getMarketItem, getMarketItems, triggerRegistrationPrompt } from '../../api';
 import AppHeader from '../shared/AppHeader';
@@ -40,6 +40,7 @@ const Market = () => {
     setMarketItems, 
     marketFilters, 
     setMarketFilters,
+    clearMarketFilters,
     isRegistered,
     user,
     editingMarketItem,
@@ -253,6 +254,16 @@ const Market = () => {
     setAnimationKey(prev => prev + 1); // ✅ АНИМАЦИЯ
   }, []); // ✅ useCallback
 
+  const handleResetFiltersAndSearch = useCallback(() => {
+    hapticFeedback('light');
+    clearMarketFilters();
+    setSearchQuery('');
+    setSelectedCategory('all');
+    pageRef.current = 0;
+    setPage(0);
+    setAnimationKey(prev => prev + 1);
+  }, [clearMarketFilters]);
+
   const fetchMarketCount = useCallback(async (localFilters) => {
     try {
       const result = await getMarketItems({
@@ -278,6 +289,14 @@ const Market = () => {
   }, [isRegistered]);
 
   const filterActions = useMemo(() => ([
+    ...((activeFiltersCount > 0 || searchQuery) ? [{
+      key: 'reset',
+      label: 'Сбросить',
+      ariaLabel: 'Сбросить поиск и фильтры',
+      icon: <RotateCcw size={16} strokeWidth={2.25} />,
+      onClick: handleResetFiltersAndSearch,
+      active: true,
+    }] : []),
     {
       key: 'favorites',
       label: 'Избранное',
@@ -285,7 +304,7 @@ const Market = () => {
       icon: <Heart size={16} strokeWidth={2.25} />,
       onClick: handleOpenFavorites,
     },
-  ]), [handleOpenFavorites]);
+  ]), [activeFiltersCount, searchQuery, handleOpenFavorites, handleResetFiltersAndSearch]);
 
   const handleCardClick = useCallback((item) => { 
     haptic('medium'); 
@@ -369,6 +388,11 @@ const Market = () => {
             <div style={styles.emptyIcon}>📦</div>
             <div style={styles.emptyTitle}>Ничего не найдено</div>
             <div style={styles.emptyText}>Попробуйте изменить фильтры</div>
+            {(activeFiltersCount > 0 || searchQuery) && (
+              <button style={styles.retryButton} onClick={handleResetFiltersAndSearch}>
+                Сбросить поиск и фильтры
+              </button>
+            )}
           </div>
         )}
 

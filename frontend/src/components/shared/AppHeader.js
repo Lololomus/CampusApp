@@ -247,6 +247,13 @@ const AppHeader = ({
   }, [searchValue]);
 
   const handleSearchFocus = () => {
+    if (!isRegistered) {
+      triggerRegistrationPrompt('search');
+      setSearchFocused(false);
+      window.requestAnimationFrame(() => premiumSearchRef.current?.blur());
+      return;
+    }
+
     setSearchFocused(true);
     if (freezeBottomChromeOnSearchFocus) {
       document.body.classList.add(BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS);
@@ -264,6 +271,7 @@ const AppHeader = ({
     const nextValue = e.target.value;
     if (!isRegistered && nextValue.trim().length > 0) {
       triggerRegistrationPrompt('search');
+      premiumSearchRef.current?.blur();
       return;
     }
     setLocalSearchValue(nextValue);
@@ -320,6 +328,10 @@ const AppHeader = ({
     const springSmooth = 'cubic-bezier(0.32, 0.72, 0, 1)';
     const handlePremiumSearchToggle = () => {
       hapticFeedback('light');
+      if (!isRegistered && showSearch) {
+        triggerRegistrationPrompt('search');
+        return;
+      }
       if (isManualExpanded) {
         collapsePremiumDrawer();
         return;
@@ -678,6 +690,7 @@ const AppHeader = ({
                     onChange={handleSearchInputChange}
                     onFocus={handleSearchFocus}
                     onBlur={handleSearchBlur}
+                    readOnly={!isRegistered}
                     placeholder={searchPlaceholder}
                     style={{
                       position: 'absolute',
@@ -893,7 +906,7 @@ const AppHeader = ({
                 {showSearch && (
                   <div style={{ display: 'flex', alignItems: 'center', height: 44, padding: '0 14px', background: p.surfaceElevated, borderRadius: 22, border: `1px solid ${p.border}` }}>
                     <Search size={18} style={{ color: p.textMuted, marginRight: 10, flexShrink: 0 }} />
-                    <input ref={premiumSearchRef} value={localSearchValue} onChange={handleSearchInputChange} onFocus={handleSearchFocus} onBlur={handleSearchBlur} placeholder={searchPlaceholder} style={{ flex: 1, height: '100%', background: 'transparent', border: 'none', color: '#FFF', fontSize: 16, outline: 'none' }} />
+                    <input ref={premiumSearchRef} value={localSearchValue} onChange={handleSearchInputChange} onFocus={handleSearchFocus} onBlur={handleSearchBlur} readOnly={!isRegistered} placeholder={searchPlaceholder} style={{ flex: 1, height: '100%', background: 'transparent', border: 'none', color: '#FFF', fontSize: 16, outline: 'none' }} />
                     {localSearchValue && (
                       <button
                         onMouseDown={(e) => e.preventDefault()}

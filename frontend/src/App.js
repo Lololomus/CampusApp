@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/App.js =====
 
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from './store';
 import { getTelegramWebApp, initTelegramApp, setClosingConfirmation } from './utils/telegram';
 import {
@@ -10,30 +10,11 @@ import {
 } from './utils/deepLinks';
 
 import Navigation from './components/Navigation';
-import PostFeed from './components/posts/PostFeed';
-import Market from './components/market/Market';
-import Profile from './components/profile/Profile';
-import DatingFeed from './components/dating/DatingFeed';
-
-import CreatePostModal from './components/posts/CreatePostModal';
-import EditPostModal from './components/posts/EditPostModal';
-import CreateMarketItem from './components/market/CreateMarketItem';
 import AuthModal from './components/AuthModal';
-import EditProfile from './components/profile/EditProfile';
 import DevAuthPanel from './components/dev/DevAuthPanel';
 
-import Onboarding from './components/Onboarding';
 import SplashScreen from './components/SplashScreen';
-import UserPosts from './components/profile/UserPosts';
-import UserRequests from './components/profile/UserRequests';
-import UserMarketItems from './components/profile/UserMarketItems';
-import PostDetail from './components/posts/PostDetail';
 import ToastContainer from './components/shared/Toast';
-import PublicProfileSheet from './components/user/PublicProfileSheet';
-
-import AmbassadorPanel from './components/moderation/AmbassadorPanel';
-import AdminPanel from './components/moderation/AdminPanel';
-import NotificationsScreen from './components/notifications/NotificationsScreen';
 import { TelegramScreenProvider } from './components/shared/telegram/TelegramScreenProvider';
 
 import ErrorBoundary from './components/shared/ErrorBoundary';
@@ -42,6 +23,24 @@ import './App.css';
 
 const FEED_SCROLL_STALE_MS = 30 * 60 * 1000;
 const FEED_LAST_BACKGROUND_AT_KEY = 'campus:last-background-at';
+
+const PostFeed = lazy(() => import('./components/posts/PostFeed'));
+const Market = lazy(() => import('./components/market/Market'));
+const Profile = lazy(() => import('./components/profile/Profile'));
+const DatingFeed = lazy(() => import('./components/dating/DatingFeed'));
+const CreatePostModal = lazy(() => import('./components/posts/CreatePostModal'));
+const EditPostModal = lazy(() => import('./components/posts/EditPostModal'));
+const CreateMarketItem = lazy(() => import('./components/market/CreateMarketItem'));
+const EditProfile = lazy(() => import('./components/profile/EditProfile'));
+const Onboarding = lazy(() => import('./components/Onboarding'));
+const UserPosts = lazy(() => import('./components/profile/UserPosts'));
+const UserRequests = lazy(() => import('./components/profile/UserRequests'));
+const UserMarketItems = lazy(() => import('./components/profile/UserMarketItems'));
+const PostDetail = lazy(() => import('./components/posts/PostDetail'));
+const PublicProfileSheet = lazy(() => import('./components/user/PublicProfileSheet'));
+const AmbassadorPanel = lazy(() => import('./components/moderation/AmbassadorPanel'));
+const AdminPanel = lazy(() => import('./components/moderation/AdminPanel'));
+const NotificationsScreen = lazy(() => import('./components/notifications/NotificationsScreen'));
 
 // Вычисляем точный left-offset для fixed-элементов (без учёта скроллбара)
 function updateFixedLayout() {
@@ -121,7 +120,9 @@ function App() {
       if (Number.isFinite(parsed) && parsed > 0) {
         lastBackgroundAt = Math.max(lastBackgroundAt || 0, parsed);
       }
-    } catch {}
+    } catch {
+      // localStorage can be unavailable in restricted webviews.
+    }
 
     if (!lastBackgroundAt || now - lastBackgroundAt < FEED_SCROLL_STALE_MS) return;
 
@@ -155,7 +156,9 @@ function App() {
       appBackgroundedAtRef.current = now;
       try {
         window.localStorage.setItem(FEED_LAST_BACKGROUND_AT_KEY, String(now));
-      } catch {}
+      } catch {
+        // localStorage can be unavailable in restricted webviews.
+      }
     };
 
     const handleVisibilityChange = () => {
@@ -368,7 +371,9 @@ function App() {
   return (
     <ErrorBoundary>
       <TelegramScreenProvider>
-        {appContent}
+        <Suspense fallback={<ScreenFallback />}>
+          {appContent}
+        </Suspense>
         {showSplash && (
           <SplashScreen
             key={splashInstanceKey}
@@ -405,5 +410,9 @@ const styles = {
     justifyContent: 'center',
   },
 };
+
+const ScreenFallback = () => (
+  <div style={styles.loading}>Загрузка...</div>
+);
 
 export default App;
