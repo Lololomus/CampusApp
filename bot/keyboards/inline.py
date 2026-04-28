@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from config import MINIAPP_URL
+from config import MINIAPP_URL, SUPPORT_USERNAME
 
 
 def _miniapp_startapp_url(start_param: str) -> str:
@@ -163,13 +163,19 @@ def review_text_skip_kb(review_id: int) -> InlineKeyboardMarkup:
 
 
 def welcome_kb() -> InlineKeyboardMarkup:
-    """Кнопка в welcome-сообщении."""
+    """Кнопки в welcome-сообщении."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🚀 Запустить приложение",
+                    text="🚀 Запустить Кампус",
                     web_app=WebAppInfo(url=MINIAPP_URL),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Обратная связь",
+                    url=f"https://t.me/{SUPPORT_USERNAME}",
                 )
             ]
         ]

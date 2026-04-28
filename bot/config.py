@@ -90,6 +90,11 @@ MINIAPP_URL = os.getenv("MINIAPP_URL", "https://t.me/MyCampusBot/app")
 if IS_PROD and not MINIAPP_URL.startswith("https://"):
     sys.exit("Error: MINIAPP_URL must start with https:// when APP_ENV=prod")
 
+SUPPORT_USERNAME = (os.getenv("SUPPORT_USERNAME") or "nikochan1").lstrip("@").strip()
+WELCOME_PHOTO_PATH = Path(
+    os.getenv("WELCOME_PHOTO_PATH", ROOT_DIR / "frontend" / "public" / "photo_campus_640x360.jpg")
+)
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 BOT_FORCE_IPV4 = _env_bool("BOT_FORCE_IPV4", default=False)
 TELEGRAM_PROXY_URL = _first_env("TELEGRAM_PROXY_URL", "HTTPS_PROXY", "https_proxy")

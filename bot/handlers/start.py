@@ -5,8 +5,9 @@ import logging
 
 from aiogram import F, Router
 from aiogram.filters import CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 
+from config import WELCOME_PHOTO_PATH
 from keyboards.inline import open_miniapp_kb
 from templates.messages import format_welcome
 from services.api_client import api_client
@@ -14,6 +15,25 @@ from services.api_client import api_client
 logger = logging.getLogger(__name__)
 
 router = Router(name="start")
+
+
+async def send_welcome(message: Message, name: str = ""):
+    msg = format_welcome(name)
+    if WELCOME_PHOTO_PATH.is_file():
+        await message.answer_photo(
+            photo=FSInputFile(WELCOME_PHOTO_PATH),
+            caption=msg["text"],
+            reply_markup=msg["reply_markup"],
+            parse_mode="HTML",
+        )
+        return
+
+    logger.warning("Welcome photo not found: %s", WELCOME_PHOTO_PATH)
+    await message.answer(
+        text=msg["text"],
+        reply_markup=msg["reply_markup"],
+        parse_mode="HTML",
+    )
 
 
 @router.message(CommandStart(deep_link=True))
@@ -32,12 +52,7 @@ async def cmd_start_deep_link(message: Message, command: CommandObject):
     name = message.from_user.first_name or ""
 
     if args.startswith("enable_notifications"):
-        msg = format_welcome(name)
-        await message.answer(
-            text=msg["text"],
-            reply_markup=msg["reply_markup"],
-            parse_mode="HTML",
-        )
+        await send_welcome(message, name)
         return
 
     if args.startswith("profile_"):
@@ -47,12 +62,7 @@ async def cmd_start_deep_link(message: Message, command: CommandObject):
         )
         return
 
-    msg = format_welcome(name)
-    await message.answer(
-        text=msg["text"],
-        reply_markup=msg["reply_markup"],
-        parse_mode="HTML",
-    )
+    await send_welcome(message, name)
 
 
 @router.message(CommandStart())
@@ -62,12 +72,7 @@ async def cmd_start(message: Message):
     logger.info(f"👤 /start от {telegram_id}")
 
     name = message.from_user.first_name or ""
-    msg = format_welcome(name)
-    await message.answer(
-        text=msg["text"],
-        reply_markup=msg["reply_markup"],
-        parse_mode="HTML",
-    )
+    await send_welcome(message, name)
 
 
 @router.message(F.text)
