@@ -1,7 +1,7 @@
 // ===== 📄 ФАЙЛ: src/components/market/Market.js =====
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Heart, RotateCcw } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { useStore } from '../../store';
 import { getMarketItem, getMarketItems, triggerRegistrationPrompt } from '../../api';
 import AppHeader from '../shared/AppHeader';
@@ -289,14 +289,6 @@ const Market = () => {
   }, [isRegistered]);
 
   const filterActions = useMemo(() => ([
-    ...((activeFiltersCount > 0 || searchQuery) ? [{
-      key: 'reset',
-      label: 'Сбросить',
-      ariaLabel: 'Сбросить поиск и фильтры',
-      icon: <RotateCcw size={16} strokeWidth={2.25} />,
-      onClick: handleResetFiltersAndSearch,
-      active: true,
-    }] : []),
     {
       key: 'favorites',
       label: 'Избранное',
@@ -304,7 +296,7 @@ const Market = () => {
       icon: <Heart size={16} strokeWidth={2.25} />,
       onClick: handleOpenFavorites,
     },
-  ]), [activeFiltersCount, searchQuery, handleOpenFavorites, handleResetFiltersAndSearch]);
+  ]), [handleOpenFavorites]);
 
   const handleCardClick = useCallback((item) => { 
     haptic('medium'); 
@@ -389,7 +381,7 @@ const Market = () => {
             <div style={styles.emptyTitle}>Ничего не найдено</div>
             <div style={styles.emptyText}>Попробуйте изменить фильтры</div>
             {(activeFiltersCount > 0 || searchQuery) && (
-              <button style={styles.retryButton} onClick={handleResetFiltersAndSearch}>
+              <button style={styles.emptyResetButton} onClick={handleResetFiltersAndSearch}>
                 Сбросить поиск и фильтры
               </button>
             )}
@@ -505,6 +497,17 @@ const styles = {
   emptyTitle: { fontSize: 18, fontWeight: 600, color: theme.colors.text, marginBottom: 8 },
   emptyText: { fontSize: 14, color: theme.colors.textSecondary, maxWidth: 300 },
   retryButton: { marginTop: 16, background: theme.colors.premium.primary, border: 'none', borderRadius: 12, padding: '12px 24px', color: '#000', fontWeight: 600, cursor: 'pointer' },
+  emptyResetButton: {
+    marginTop: 20,
+    padding: '10px 24px',
+    borderRadius: 12,
+    background: 'rgba(212,255,0,0.1)',
+    border: '1px solid rgba(212,255,0,0.3)',
+    color: '#D4FF00',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
   loadMoreTrigger: { height: 20, width: '100%' },
   
   skeletonCard: { background: theme.colors.card, borderRadius: 20, overflow: 'hidden', animation: 'pulse 1.5s infinite', border: `1px solid ${theme.colors.premium.border}` },

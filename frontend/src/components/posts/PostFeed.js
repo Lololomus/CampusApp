@@ -489,7 +489,7 @@ function PostFeed() {
                   <p style={styles.emptyTitle}>Ничего не найдено</p>
                   <p style={styles.emptyHint}>Попробуй изменить или сбросить фильтры</p>
                   <button onClick={handleClearFiltersAndSearch} style={styles.emptyResetBtn}>
-                    Сбросить фильтры
+                    Сбросить поиск и фильтры
                   </button>
                 </>
               ) : (
