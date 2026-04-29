@@ -1065,6 +1065,7 @@ async def get_admin_stats(
         "activity_events_today": usage_summary["activity_events_today"],
         "action_usage_today": usage_summary["action_usage_today"],
         "online_time_30d": usage_summary["online_time_30d"],
+        "activity_windows": usage_summary["activity_windows"],
         "reports_today": reports_today,
         "reports_processed": reports_processed,
         "reports_overdue": reports_overdue,

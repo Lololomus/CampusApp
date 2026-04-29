@@ -444,9 +444,8 @@ function StatsSection() {
 
     return (
       <div key={windowKey} style={styles.windowBlock}>
-        <div
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           style={styles.windowToggle}
           onClick={(event) => handleWindowClick(event, windowKey)}
           onTouchEnd={(event) => handleWindowTouchEnd(event, windowKey)}
@@ -468,7 +467,7 @@ function StatsSection() {
               {renderDelta(row.change_pct)}
             </span>
           </div>
-        </div>
+        </button>
 
         {isExpanded && (
           <div style={styles.windowDetails}>
@@ -543,6 +542,10 @@ function StatsSection() {
     );
   };
 
+  const renderedActivityWindows = ['dau', 'wau', 'mau']
+    .map(renderWindowDetail)
+    .filter(Boolean);
+
   return (
     <>
       <div style={styles.section}>
@@ -563,7 +566,9 @@ function StatsSection() {
             <span style={styles.analyticsKpiMeta}>DAU · WAU · MAU</span>
           </div>
           <div style={styles.windowList}>
-            {['dau', 'wau', 'mau'].map(renderWindowDetail)}
+            {renderedActivityWindows.length > 0 ? renderedActivityWindows : (
+              <div style={styles.emptySmall}>Данные аудитории пока недоступны</div>
+            )}
           </div>
         </div>
       </div>
