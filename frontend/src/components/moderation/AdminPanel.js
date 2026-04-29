@@ -359,7 +359,7 @@ function StatsSection() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedWindows, setExpandedWindows] = useState({
-    dau: true,
+    dau: false,
     wau: false,
     mau: false,
   });
@@ -459,6 +459,9 @@ function StatsSection() {
             <span style={styles.windowTitle}>{row.label}</span>
             <span style={styles.usageMeta}>
               {row.start_date === row.end_date ? row.end_date : `${row.start_date} · ${row.end_date}`}
+            </span>
+            <span style={styles.windowHint}>
+              {isExpanded ? 'Тапни, чтобы скрыть подробности' : 'Тапни, чтобы открыть подробности'}
             </span>
           </div>
           <div style={styles.windowToggleNumbers}>
@@ -563,7 +566,7 @@ function StatsSection() {
         <div style={styles.analyticsCard}>
           <div style={styles.sectionHeader}>
             <span style={styles.sectionTitle}>Подробная аудитория</span>
-            <span style={styles.analyticsKpiMeta}>DAU · WAU · MAU</span>
+            <span style={styles.analyticsKpiMeta}>Тапни DAU / WAU / MAU для деталей</span>
           </div>
           <div style={styles.windowList}>
             {renderedActivityWindows.length > 0 ? renderedActivityWindows : (
@@ -1451,6 +1454,12 @@ const styles = {
     fontSize: 15,
     fontWeight: 800,
     color: '#fff',
+  },
+
+  windowHint: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: P.primary,
   },
 
   windowToggleNumbers: {
