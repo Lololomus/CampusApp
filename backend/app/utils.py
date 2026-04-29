@@ -23,13 +23,13 @@ except Exception:
 UPLOADS_ROOT = Path(os.getenv("UPLOADS_DIR", "uploads")).resolve()
 ALLOWED_UPLOAD_KINDS = {"images", "avatars", "videos", "thumbs"}
 
-MAX_IMAGE_SIZE = 1600
+MAX_IMAGE_SIZE = 2048
 MAX_AVATAR_SIZE = 512
 MIN_SHORT_SIDE = 40
 MIN_TOTAL_PIXELS = 10_000
-WEBP_QUALITY = 82
+WEBP_QUALITY = 88
 WEBP_METHOD = 6
-MAX_FILE_SIZE = 10 * 1024 * 1024
+MAX_FILE_SIZE = 20 * 1024 * 1024
 READ_CHUNK_SIZE = 1024 * 1024
 MAX_IMAGE_PIXELS = 40_000_000
 
@@ -223,7 +223,7 @@ async def _read_upload_content_limited(file: UploadFile) -> bytes:
             break
         total_size += len(chunk)
         if total_size > MAX_FILE_SIZE:
-            raise ValueError(f"File {file.filename} is too large (>10MB)")
+            raise ValueError(f"File {file.filename} is too large (>20MB)")
         chunks.append(chunk)
     return b"".join(chunks)
 

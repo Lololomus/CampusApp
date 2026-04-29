@@ -6,7 +6,6 @@ import {
   CheckCircle, XCircle, ChevronDown, ChevronUp, BarChart3,
   Globe, Building2, MapPin, ExternalLink, Calendar, Image as ImageIcon, X as XIcon
 } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
 import { useStore } from '../../store';
 import { hapticFeedback } from '../../utils/telegram';
 import {
@@ -19,9 +18,9 @@ import theme from '../../theme';
 import SmartDatePicker from '../shared/SmartDatePicker';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { isSafeCtaUrl } from '../../utils/safeUrl';
+import { processImageFiles, revokeObjectURLs } from '../../utils/media';
 
 const AD_IMAGE_SETTINGS = {
-  ALLOWED_FORMATS: ['image/jpeg', 'image/png', 'image/webp'],
   MAX_COUNT: 3,
 };
 
@@ -356,7 +355,7 @@ function CreateAdForm({ isAdmin = false, onCreated, onCancel }) {
     impressionLimitNum <= 1000000;
   const canSubmit = !submitting && !imageUploading && titleOk && bodyOk && advertiserOk && ctaTextOk && ctaUrlOk && impressionLimitOk;
 
-  // Обработка выбора фото: валидация + сжатие
+  // Обработка выбора фото: валидация + локальное превью
   const handleImageSelect = useCallback(async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
@@ -366,36 +365,19 @@ function CreateAdForm({ isAdmin = false, onCreated, onCancel }) {
     if (remaining <= 0) { toast.error('Максимум 3 фото'); return; }
 
     setImageUploading(true);
-    const newItems = [];
-    for (const file of files.slice(0, remaining)) {
-      if (!AD_IMAGE_SETTINGS.ALLOWED_FORMATS.includes(file.type)) {
-        toast.error(`Формат не поддерживается: ${file.name}`);
-        continue;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error(`Файл слишком большой: ${file.name}`);
-        continue;
-      }
-      try {
-        const compressed = await imageCompression(file, {
-          maxSizeMB: 1,
-          maxWidthOrHeight: 1600,
-          useWebWorker: true,
-          initialQuality: 0.8,
-        });
-        const preview = URL.createObjectURL(compressed);
-        newItems.push({ file: compressed, preview });
-      } catch {
-        toast.error(`Ошибка обработки: ${file.name}`);
-      }
+    try {
+      const newItems = await processImageFiles(files.slice(0, remaining));
+      setImageFiles((prev) => [...prev, ...newItems]);
+    } catch {
+      toast.error('Ошибка обработки фото');
+    } finally {
+      setImageUploading(false);
     }
-    setImageFiles((prev) => [...prev, ...newItems]);
-    setImageUploading(false);
   }, [imageFiles.length]);
 
   const removeImage = useCallback((idx) => {
     setImageFiles((prev) => {
-      URL.revokeObjectURL(prev[idx].preview);
+      revokeObjectURLs([prev[idx]?.preview]);
       return prev.filter((_, i) => i !== idx);
     });
   }, []);
@@ -482,7 +464,7 @@ function CreateAdForm({ isAdmin = false, onCreated, onCancel }) {
         <input
           ref={fileInputRef}
           type="file"
-          accept={AD_IMAGE_SETTINGS.ALLOWED_FORMATS.join(',')}
+          accept="image/*,.heic,.heif"
           multiple
           style={{ display: 'none' }}
           onChange={handleImageSelect}

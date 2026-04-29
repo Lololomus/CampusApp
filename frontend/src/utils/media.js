@@ -1,43 +1,26 @@
-// ===== 📄 ФАЙЛ: src/utils/media.js =====
+const MAX_FILE_SIZE_MB = 20;
 
-import imageCompression from 'browser-image-compression';
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
 
-// ===== КОНФИГУРАЦИЯ =====
+const FALLBACK_PREVIEW =
+  'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22240%22 viewBox=%220 0 240 240%22%3E%3Crect width=%22240%22 height=%22240%22 rx=%2224%22 fill=%22%231C1C1E%22/%3E%3Cpath d=%22M66 154l34-40 26 30 16-18 32 28H66z%22 fill=%22%235A5A60%22/%3E%3Ccircle cx=%2290%22 cy=%2282%22 r=%2218%22 fill=%22%23727278%22/%3E%3C/svg%3E';
 
-const MAX_FILE_SIZE_MB = 10; // Макс размер ДО сжатия: 10MB
-
-const COMPRESSION_OPTIONS = {
-  maxSizeMB: 1,
-  maxWidthOrHeight: 1280,
-  // useWebWorker: false — в Telegram WebView (iOS) web-worker может быть killed при потере фокуса,
-  // вешая imageCompression Promise навсегда. Main-thread async сжатие надёжнее.
-  useWebWorker: false,
-  fileType: 'image/jpeg',
-  initialQuality: 0.8,
-  alwaysKeepResolution: false,
+const getFileExtension = (file) => {
+  const name = file?.name || '';
+  const parts = name.split('.');
+  return parts.length > 1 ? parts.pop().toLowerCase() : '';
 };
 
-// Белый список расширений
-const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic'];
-
-// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
-
-/**
- * Проверка валидности файла
- */
 const validateImageFile = (file) => {
-  // 1. Проверка типа MIME
-  if (!file.type.startsWith('image/')) {
+  const extension = getFileExtension(file);
+  if (!ALLOWED_EXTENSIONS.includes(extension)) {
+    throw new Error(`Недопустимый формат: .${extension || 'unknown'}`);
+  }
+
+  if (file.type && !file.type.startsWith('image/')) {
     throw new Error('Файл не является изображением');
   }
 
-  // 2. Проверка расширения (защита от .php.jpg)
-  const extension = file.name.split('.').pop().toLowerCase();
-  if (!ALLOWED_EXTENSIONS.includes(extension)) {
-    throw new Error(`Недопустимый формат: .${extension}`);
-  }
-
-  // 3. Проверка размера ДО сжатия
   const fileSizeMB = file.size / 1024 / 1024;
   if (fileSizeMB > MAX_FILE_SIZE_MB) {
     throw new Error(`Файл слишком большой: ${fileSizeMB.toFixed(1)}MB (макс ${MAX_FILE_SIZE_MB}MB)`);
@@ -46,94 +29,37 @@ const validateImageFile = (file) => {
   return true;
 };
 
-/**
- * Очистка EXIF метаданных (дополнительная защита)
- * browser-image-compression уже удаляет EXIF с initialQuality < 1
- */
-const stripExifData = async (file) => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        
-        canvas.toBlob((blob) => {
-          const cleanFile = new File([blob], file.name, {
-            type: 'image/jpeg',
-            lastModified: Date.now(),
-          });
-          resolve(cleanFile);
-        }, 'image/jpeg', 0.85);
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-};
-
-// ===== ОСНОВНЫЕ ФУНКЦИИ =====
-
-/**
- * Сжимает изображение с валидацией и очисткой EXIF
- * @param {File} file - Исходный файл
- * @param {Function} [onProgress] - Callback прогресса (0–100)
- * @returns {Promise<File>} - Сжатый файл
- */
 export const compressImage = async (file, onProgress) => {
-  // 1. Валидация
   validateImageFile(file);
-
-  try {
-    // 2. Сжатие (библиотека удаляет EXIF благодаря initialQuality)
-    const opts = onProgress ? { ...COMPRESSION_OPTIONS, onProgress } : COMPRESSION_OPTIONS;
-    const compressed = await imageCompression(file, opts);
-    
-    // 3. Дополнительная очистка EXIF через Canvas (paranoid mode)
-    const cleaned = await stripExifData(compressed);
-    
-    return cleaned;
-    
-  } catch (error) {
-    console.error('❌ Ошибка сжатия:', error);
-    throw error; // НЕ возвращаем оригинал при ошибке
-  }
+  if (typeof onProgress === 'function') onProgress(100);
+  return file;
 };
 
-/**
- * Обрабатывает массив файлов: валидация + сжатие + превью
- * @param {FileList|Array} files - Файлы из input
- * @returns {Promise<Array<{file: File, preview: string, width: number, height: number}>>}
- */
 export const processImageFiles = async (files) => {
   const fileArray = Array.from(files);
   const results = [];
 
   for (const file of fileArray) {
     try {
-      // 1. Сжатие с валидацией
-      const compressed = await compressImage(file);
-      
-      // 2. Создание превью
-      const preview = URL.createObjectURL(compressed);
-      
-      // 3. Получение размеров (для backend metadata)
+      const processed = await compressImage(file);
+      let preview = URL.createObjectURL(processed);
       const dimensions = await getImageDimensions(preview);
-      
+      const previewError = !dimensions;
+
+      if (previewError) {
+        URL.revokeObjectURL(preview);
+        preview = FALLBACK_PREVIEW;
+      }
+
       results.push({
-        file: compressed,
-        preview: preview,
-        width: dimensions.width,
-        height: dimensions.height,
+        file: processed,
+        preview,
+        width: dimensions?.width ?? null,
+        height: dimensions?.height ?? null,
+        previewError,
       });
     } catch (err) {
       if (import.meta.env.DEV) console.warn('Пропускаем файл:', file.name, err.message);
-      // Можно добавить alert для пользователя
       alert(`Не удалось обработать ${file.name}: ${err.message}`);
     }
   }
@@ -141,27 +67,24 @@ export const processImageFiles = async (files) => {
   return results;
 };
 
-/**
- * Получить размеры изображения
- */
 const getImageDimensions = (url) => {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       resolve({ width: img.width, height: img.height });
-      img.src = ''; // Очистка
+      img.src = '';
+    };
+    img.onerror = () => {
+      resolve(null);
+      img.src = '';
     };
     img.src = url;
   });
 };
 
-/**
- * Очистка URL.createObjectURL (вызывать при размонтировании компонента)
- * @param {Array<string>} urls - Массив URL для очистки
- */
 export const revokeObjectURLs = (urls) => {
   urls.forEach(url => {
-    if (url.startsWith('blob:')) {
+    if (typeof url === 'string' && url.startsWith('blob:')) {
       URL.revokeObjectURL(url);
     }
   });
