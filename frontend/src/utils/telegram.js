@@ -268,6 +268,20 @@ export function getInitData() {
   return getTelegramWebApp()?.initData || '';
 }
 
+export function getStartParam() {
+  const telegramStartParam = getTelegramWebApp()?.initDataUnsafe?.start_param;
+  if (telegramStartParam) return telegramStartParam;
+
+  const readParam = (value) => {
+    const query = String(value || '').replace(/^[?#]/, '');
+    if (!query) return '';
+    const params = new URLSearchParams(query);
+    return params.get('tgWebAppStartParam') || params.get('startapp') || '';
+  };
+
+  return readParam(window?.location?.search) || readParam(window?.location?.hash);
+}
+
 export function getTelegramUser() {
   const user = getTelegramWebApp()?.initDataUnsafe?.user;
   if (!user) return null;

@@ -241,7 +241,7 @@
       // === ГЛАВНАЯ СЦЕНА ===
       function App() {
         const [activeFilter, setActiveFilter] = useState('Все');
-        const filters = ['Все', '🔥 Матчи', '💬 Комменты', '🛒 Маркет', '🆘 Запросы'];
+        const filters = ['Все', '🔥 Мэтчи', '💬 Комменты', '🛒 Маркет', '🆘 Запросы'];
 
         // Группировка уведомлений для рендера
         const groupedData = {

@@ -186,7 +186,7 @@ function SettingsModal() {
 
               <ToggleRow
                 icon={<Heart size={18} color="#ff3b5c" />}
-                label="Матчи"
+                label="Мэтчи"
                 description="Взаимные лайки в Dating"
                 value={settings.matches_enabled}
                 onChange={() => handleToggle('matches_enabled')}

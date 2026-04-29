@@ -2,7 +2,7 @@
 
 import React, { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from './store';
-import { getTelegramWebApp, initTelegramApp, setClosingConfirmation } from './utils/telegram';
+import { getStartParam, initTelegramApp, setClosingConfirmation } from './utils/telegram';
 import {
   deepLinkNeedsModerationRole,
   executeDeepLink,
@@ -24,28 +24,115 @@ import './App.css';
 const FEED_SCROLL_STALE_MS = 30 * 60 * 1000;
 const FEED_LAST_BACKGROUND_AT_KEY = 'campus:last-background-at';
 
+function isVeryWeakDevice() {
+  if (typeof navigator === 'undefined') return false;
+
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const memory = typeof navigator.deviceMemory === 'number' ? navigator.deviceMemory : null;
+  const cores = typeof navigator.hardwareConcurrency === 'number' ? navigator.hardwareConcurrency : null;
+  const effectiveType = connection?.effectiveType;
+
+  return (
+    connection?.saveData === true ||
+    effectiveType === 'slow-2g' ||
+    effectiveType === '2g' ||
+    (memory !== null && memory <= 2) ||
+    (cores !== null && cores <= 2)
+  );
+}
+
+const SHOULD_EAGER_PRELOAD_CHUNKS = !isVeryWeakDevice();
+
+function preloadableLazy(loader) {
+  let LoadedComponent = null;
+  let loadPromise = null;
+  let loadError = null;
+
+  const load = () => {
+    if (!loadPromise) {
+      loadPromise = loader()
+        .then((module) => {
+          LoadedComponent = module.default || module;
+          return module;
+        })
+        .catch((error) => {
+          loadError = error;
+          throw error;
+        });
+    }
+    return loadPromise;
+  };
+
+  const LazyComponent = lazy(load);
+
+  function PreloadableComponent(props) {
+    if (loadError) throw loadError;
+    if (LoadedComponent) return <LoadedComponent {...props} />;
+    return <LazyComponent {...props} />;
+  }
+
+  PreloadableComponent.preload = load;
+  return PreloadableComponent;
+}
+
 const loadPostFeed = () => import('./components/posts/PostFeed');
 const loadMarket = () => import('./components/market/Market');
 const loadProfile = () => import('./components/profile/Profile');
 const loadDatingFeed = () => import('./components/dating/DatingFeed');
+const loadCreatePostModal = () => import('./components/posts/CreatePostModal');
+const loadEditPostModal = () => import('./components/posts/EditPostModal');
+const loadCreateMarketItem = () => import('./components/market/CreateMarketItem');
+const loadEditProfile = () => import('./components/profile/EditProfile');
+const loadOnboarding = () => import('./components/Onboarding');
+const loadUserPosts = () => import('./components/profile/UserPosts');
+const loadUserRequests = () => import('./components/profile/UserRequests');
+const loadUserMarketItems = () => import('./components/profile/UserMarketItems');
+const loadPostDetail = () => import('./components/posts/PostDetail');
+const loadPublicProfileSheet = () => import('./components/user/PublicProfileSheet');
+const loadAmbassadorPanel = () => import('./components/moderation/AmbassadorPanel');
+const loadAdminPanel = () => import('./components/moderation/AdminPanel');
+const loadNotificationsScreen = () => import('./components/notifications/NotificationsScreen');
 
-const PostFeed = lazy(loadPostFeed);
-const Market = lazy(loadMarket);
-const Profile = lazy(loadProfile);
-const DatingFeed = lazy(loadDatingFeed);
-const CreatePostModal = lazy(() => import('./components/posts/CreatePostModal'));
-const EditPostModal = lazy(() => import('./components/posts/EditPostModal'));
-const CreateMarketItem = lazy(() => import('./components/market/CreateMarketItem'));
-const EditProfile = lazy(() => import('./components/profile/EditProfile'));
-const Onboarding = lazy(() => import('./components/Onboarding'));
-const UserPosts = lazy(() => import('./components/profile/UserPosts'));
-const UserRequests = lazy(() => import('./components/profile/UserRequests'));
-const UserMarketItems = lazy(() => import('./components/profile/UserMarketItems'));
-const PostDetail = lazy(() => import('./components/posts/PostDetail'));
-const PublicProfileSheet = lazy(() => import('./components/user/PublicProfileSheet'));
-const AmbassadorPanel = lazy(() => import('./components/moderation/AmbassadorPanel'));
-const AdminPanel = lazy(() => import('./components/moderation/AdminPanel'));
-const NotificationsScreen = lazy(() => import('./components/notifications/NotificationsScreen'));
+const PostFeed = preloadableLazy(loadPostFeed);
+const Market = preloadableLazy(loadMarket);
+const Profile = preloadableLazy(loadProfile);
+const DatingFeed = preloadableLazy(loadDatingFeed);
+const CreatePostModal = preloadableLazy(loadCreatePostModal);
+const EditPostModal = preloadableLazy(loadEditPostModal);
+const CreateMarketItem = preloadableLazy(loadCreateMarketItem);
+const EditProfile = preloadableLazy(loadEditProfile);
+const Onboarding = preloadableLazy(loadOnboarding);
+const UserPosts = preloadableLazy(loadUserPosts);
+const UserRequests = preloadableLazy(loadUserRequests);
+const UserMarketItems = preloadableLazy(loadUserMarketItems);
+const PostDetail = preloadableLazy(loadPostDetail);
+const PublicProfileSheet = preloadableLazy(loadPublicProfileSheet);
+const AmbassadorPanel = preloadableLazy(loadAmbassadorPanel);
+const AdminPanel = preloadableLazy(loadAdminPanel);
+const NotificationsScreen = preloadableLazy(loadNotificationsScreen);
+
+const EAGER_PRELOAD_COMPONENTS = [
+  PostFeed,
+  Market,
+  Profile,
+  DatingFeed,
+  CreatePostModal,
+  EditPostModal,
+  CreateMarketItem,
+  EditProfile,
+  Onboarding,
+  UserPosts,
+  UserRequests,
+  UserMarketItems,
+  PostDetail,
+  PublicProfileSheet,
+  AmbassadorPanel,
+  AdminPanel,
+  NotificationsScreen,
+];
+
+const preloadComponents = (components) =>
+  Promise.allSettled(components.map((Component) => Component.preload()));
 
 // Вычисляем точный left-offset для fixed-элементов (без учёта скроллбара)
 function updateFixedLayout() {
@@ -63,6 +150,7 @@ updateFixedLayout();
 function App() {
   const [authReady, setAuthReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+  const [eagerChunksReady, setEagerChunksReady] = useState(!SHOULD_EAGER_PRELOAD_CHUNKS);
   const [splashVariant, setSplashVariant] = useState('auto');
   const [splashInstanceKey, setSplashInstanceKey] = useState(0);
   const deepLinkExecutionRef = useRef(false);
@@ -190,7 +278,7 @@ function App() {
   }, [resetFeedScrollAfterStaleResume]);
 
   useEffect(() => {
-    const startParam = getTelegramWebApp()?.initDataUnsafe?.start_param;
+    const startParam = getStartParam();
     const parsedLink = parseDeepLink(startParam);
     if (parsedLink) {
       setPendingDeepLink(parsedLink);
@@ -204,39 +292,18 @@ function App() {
   }, [authStatus]);
 
   useEffect(() => {
-    if (authStatus === 'loading' || onboardingStep > 0 || showSplash) return undefined;
+    if (!SHOULD_EAGER_PRELOAD_CHUNKS) return undefined;
 
     let cancelled = false;
-    let idleId = null;
-    let delayedHeavyPreloadId = null;
-    const runPreload = () => {
-      if (cancelled) return;
-      loadPostFeed();
-      loadMarket();
-      loadProfile();
-      delayedHeavyPreloadId = window.setTimeout(() => {
-        if (!cancelled) loadDatingFeed();
-      }, 900);
-    };
 
-    if (typeof window.requestIdleCallback === 'function') {
-      idleId = window.requestIdleCallback(runPreload, { timeout: 1800 });
-    } else {
-      idleId = window.setTimeout(runPreload, 800);
-    }
+    preloadComponents(EAGER_PRELOAD_COMPONENTS).finally(() => {
+      if (!cancelled) setEagerChunksReady(true);
+    });
 
     return () => {
       cancelled = true;
-      if (delayedHeavyPreloadId !== null) window.clearTimeout(delayedHeavyPreloadId);
-      if (idleId !== null) {
-        if (typeof window.cancelIdleCallback === 'function') {
-          window.cancelIdleCallback(idleId);
-        } else {
-          window.clearTimeout(idleId);
-        }
-      }
     };
-  }, [authStatus, onboardingStep, showSplash]);
+  }, []);
 
   useEffect(() => {
     if (!pendingDeepLink || deepLinkExecutionRef.current) return;
@@ -420,7 +487,7 @@ function App() {
           <SplashScreen
             key={splashInstanceKey}
             variant={splashVariant}
-            authReady={authReady}
+            authReady={authReady && eagerChunksReady}
             onFinished={() => {
               setShowSplash(false);
               if (splashVariant !== 'auto') setSplashVariant('auto');

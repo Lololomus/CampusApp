@@ -3,6 +3,8 @@
 from .inline import (
     open_miniapp_kb,
     open_post_kb,
+    open_market_item_kb,
+    open_request_kb,
     open_dating_kb,
     match_kb,
     followup_market_kb,

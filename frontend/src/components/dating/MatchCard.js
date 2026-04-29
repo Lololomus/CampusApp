@@ -1,5 +1,5 @@
 // ===== FILE: src/components/dating/MatchCard.js =====
-// Вертикальная карточка матча 165x260 для горизонтального скролла
+// Вертикальная карточка мэтча 165x260 для горизонтального скролла
 
 import React from 'react';
 import { MessageCircle, Clock, GraduationCap } from 'lucide-react';

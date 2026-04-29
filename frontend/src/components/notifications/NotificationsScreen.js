@@ -40,7 +40,7 @@ const COLORS = {
 
 const FILTERS = [
   { key: 'all', label: 'Все', icon: Bell },
-  { key: 'match', label: 'Матчи', icon: Heart },
+  { key: 'match', label: 'Мэтчи', icon: Heart },
   { key: 'comment', label: 'Комменты', icon: MessageCircle },
   { key: 'market', label: 'Маркет', icon: ShoppingBag },
 ];

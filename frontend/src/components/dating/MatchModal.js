@@ -4,8 +4,10 @@ import { MessageCircle, Flame } from 'lucide-react';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
+import { CAMPUS_MATCH_MESSAGE, openTelegramChat } from '../../utils/telegramChat';
 import { getPrimaryDatingPhoto } from './photoUtils';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
+import { toast } from '../shared/Toast';
 
 function Particle({ delay, type }) {
   const [remove, setRemove] = useState(false);
@@ -79,6 +81,10 @@ function MatchModal() {
 
   const handleMessage = () => {
     hapticFeedback('medium');
+    if (!openTelegramChat(matchedUser?.telegram_username, CAMPUS_MATCH_MESSAGE)) {
+      toast.error('Telegram username недоступен');
+      return;
+    }
     setShowMatchModal(false);
   };
 

@@ -8,8 +8,10 @@ from keyboards.inline import (
     match_kb,
     open_dating_kb,
     open_market_deal_kb,
+    open_market_item_kb,
     open_miniapp_kb,
     open_post_kb,
+    open_request_kb,
     welcome_kb,
 )
 
@@ -33,7 +35,7 @@ def format_welcome(name: str = "") -> dict:
     text = (
         f"{greeting}\n"
         "\n"
-        "Добро пожаловать в <b>CampusApp</b> — соцсеть твоего кампуса.\n"
+        "Добро пожаловать в <b>Campus</b> — соцсеть твоего кампуса.\n"
         "\n"
         "📰  Лента постов и событий\n"
         "💘  Dating для студентов\n"
@@ -59,6 +61,7 @@ def format_notification(notif_type: str, payload: dict) -> dict:
         "market_deal_update": _format_market_deal_update,
         "request_response": _format_request_response,
         "contact_request_decision": _format_contact_request_decision,
+        "review_request": _format_review_request,
         "milestone": _format_milestone,
         "admin_report": _format_admin_report,
     }
@@ -236,7 +239,9 @@ def _format_market_contact(payload: dict) -> dict:
     else:
         text += "\nНаписал тебе в ЛС, проверь сообщения 👆"
 
-    return {"text": text, "reply_markup": open_miniapp_kb("📦 Открыть объявление")}
+    item_id = payload.get("item_id")
+    kb = open_market_item_kb(int(item_id)) if item_id else open_miniapp_kb("📦 Открыть объявление")
+    return {"text": text, "reply_markup": kb}
 
 
 def _format_market_deal_update(payload: dict) -> dict:
@@ -266,7 +271,13 @@ def _format_market_deal_update(payload: dict) -> dict:
         f"{status_line}"
     )
 
-    kb = open_market_deal_kb(int(deal_id)) if deal_id else open_miniapp_kb("📦 Открыть маркет")
+    item_id = payload.get("item_id")
+    if item_id:
+        kb = open_market_item_kb(int(item_id), "📦 Открыть сделку")
+    elif deal_id:
+        kb = open_market_deal_kb(int(deal_id))
+    else:
+        kb = open_miniapp_kb("📦 Открыть маркет")
     return {"text": text, "reply_markup": kb}
 
 
@@ -286,7 +297,9 @@ def _format_request_response(payload: dict) -> dict:
         text += f" (@{username})"
     text += "\nНаписал тебе в ЛС 👆"
 
-    return {"text": text, "reply_markup": open_miniapp_kb("📋 Открыть запрос")}
+    request_id = payload.get("request_id")
+    kb = open_request_kb(int(request_id)) if request_id else open_miniapp_kb("📋 Открыть запрос")
+    return {"text": text, "reply_markup": kb}
 
 
 def _format_contact_request_decision(payload: dict) -> dict:
@@ -316,7 +329,31 @@ def _format_contact_request_decision(payload: dict) -> dict:
         if source_title:
             text += f" «{source_title}»"
 
-    return {"text": text, "reply_markup": open_miniapp_kb()}
+    source_type = payload.get("source_type")
+    source_id = payload.get("source_id")
+    if source_type == "market_item" and source_id:
+        kb = open_market_item_kb(int(source_id))
+    elif source_type == "request" and source_id:
+        kb = open_request_kb(int(source_id))
+    else:
+        kb = open_miniapp_kb()
+    return {"text": text, "reply_markup": kb}
+
+
+def _format_review_request(payload: dict) -> dict:
+    seller = _escape(payload.get("seller_name", "продавца"))
+    title = _escape(payload.get("item_title", "товар"))
+    item_id = payload.get("item_id")
+
+    text = (
+        "⭐ <b>Оцени продавца</b>\n"
+        "\n"
+        f"Сделка по «{title}» завершена.\n"
+        f"Как прошло с <b>{seller}</b>?"
+    )
+
+    kb = open_market_item_kb(int(item_id)) if item_id else open_miniapp_kb("📦 Открыть маркет")
+    return {"text": text, "reply_markup": kb}
 
 
 def _format_milestone(payload: dict) -> dict:

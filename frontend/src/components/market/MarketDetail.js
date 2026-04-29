@@ -306,8 +306,9 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       setContactSubmitting(false);
     }
 
+    const itemLabel = currentItem.item_type === 'service' ? 'услуга' : 'товар';
     const message = encodeURIComponent(
-      `Привет! Интересует "${currentItem.title}" за ${formatPrice(currentItem.price)} ₽.\n\nКогда можем встретиться?`
+      `Привет, я из Campus. Интересует ${itemLabel} "${currentItem.title}" за ${formatPrice(currentItem.price)} ₽.\n\nЕщё актуально?`
     );
     const url = `https://t.me/${username}?text=${message}`;
 

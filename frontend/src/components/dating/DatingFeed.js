@@ -16,6 +16,7 @@ import ViewingProfileModal from './ViewingProfileModal';
 import ProfileSheet from './ProfileSheet';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
+import { CAMPUS_MATCH_MESSAGE, openTelegramChat } from '../../utils/telegramChat';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { toast } from '../shared/Toast';
 import { USE_MOCK_DATA, MOCK_PROFILES, MOCK_LIKES, MOCK_MATCHES } from './mockData';
@@ -205,6 +206,13 @@ function DatingFeed() {
     } catch (error) { console.error(error); }
     finally { setLoadingMatches(false); }
   };
+
+  const handleMatchMessage = useCallback((matchedUser) => {
+    hapticFeedback('medium');
+    if (!openTelegramChat(matchedUser?.telegram_username, CAMPUS_MATCH_MESSAGE)) {
+      toast.error('Telegram username недоступен');
+    }
+  }, []);
 
   useEffect(() => {
     if (checkingProfile || !pendingDatingOnboardingOpen) return;
@@ -645,7 +653,7 @@ function DatingFeed() {
             }}
             onQuickLike={handleQuickLike}
             onMessage={(user) => {
-              hapticFeedback('medium');
+              handleMatchMessage(user);
             }}
             onEmptyAction={() => {
               setActiveTab('profiles');
@@ -669,7 +677,7 @@ function DatingFeed() {
             }}
             onMessage={() => {
               if (viewingProfile.type === 'match') {
-                hapticFeedback('medium');
+                handleMatchMessage(viewingProfile.user);
                 setViewingProfile(null);
               }
             }}

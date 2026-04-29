@@ -114,6 +114,7 @@ const buildEventDateIso = (mode, customDate) => {
 
 const formatRequestDeadlineLabel = (deadlineType, customDate) => {
   if (deadlineType === '3h') return 'До 3 часов';
+  if (deadlineType === '24h') return 'До 24 часов';
   if (deadlineType === '3d') return 'До 3 дней';
   if (deadlineType === 'custom') return formatCustomDate(customDate);
   return '';
@@ -2483,12 +2484,12 @@ const styles = {
   tagAddBtn: { width: 38, height: 38, borderRadius: 19, border: 'none', background: 'rgba(255,255,255,0.1)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   tagAddBtnActive: { background: 'var(--create-primary)', color: '#000' },
   toolbar: { padding: '10px 16px', background: 'var(--create-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 20 },
-  toolGroup: { display: 'flex', gap: 8 },
-  toolBtn: { width: 40, height: 40, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  toolGroup: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' },
+  toolBtn: { width: 40, height: 40, minWidth: 40, minHeight: 40, flex: '0 0 40px', boxSizing: 'border-box', padding: 0, lineHeight: 0, borderRadius: 20, border: 'none', background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   toolBtnActive: { background: 'rgba(212,255,0,0.15)', color: 'var(--create-primary)' },
   toolBtnDisabled: { opacity: 0.5 },
   publishBtnWrap: { padding: '8px 16px', paddingBottom: 'calc(10px + var(--screen-bottom-offset))', background: 'var(--create-surface)' },
-  publishBtn: { position: 'relative', width: '100%', height: 52, borderRadius: 26, border: 'none', background: 'var(--create-surface-elevated)', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.35)' },
+  publishBtn: { position: 'relative', width: '100%', height: 52, boxSizing: 'border-box', padding: 0, borderRadius: 26, border: 'none', background: 'var(--create-surface-elevated)', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.35)' },
   publishFill: { position: 'absolute', left: 0, top: 0, bottom: 0, background: 'linear-gradient(90deg, #D4FF00 0%, #8fff00 100%)', transition: 'width 0.35s ease', borderRadius: 26 },
   pickerOverlay: {
     position: 'fixed',

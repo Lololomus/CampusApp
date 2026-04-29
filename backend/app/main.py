@@ -2844,7 +2844,7 @@ async def generate_mock_dating_data(
     
     return {
         "success": True,
-        "message": f"Создано {len(created_profiles)} профилей, {len(matches_created)} матчей",
+        "message": f"Создано {len(created_profiles)} профилей, {len(matches_created)} мэтчей",
         "profiles": created_profiles,
         "matches": matches_created,
         "regular_likes": "2   "

@@ -6,6 +6,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from config import MINIAPP_URL, SUPPORT_USERNAME
 
+MATCH_MESSAGE = "Привет, я из Campus. У нас мэтч в Dating.\n\nДавай познакомимся?"
+
 
 def _miniapp_startapp_url(start_param: str) -> str:
     separator = "&" if "?" in MINIAPP_URL else "?"
@@ -64,12 +66,45 @@ def open_market_deal_kb(deal_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def open_market_item_kb(item_id: int, text: str = "📦 Открыть объявление") -> InlineKeyboardMarkup:
+    """Кнопка открытия конкретного объявления в маркете."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=text,
+                    web_app=WebAppInfo(url=_miniapp_startapp_url(f"market_{item_id}")),
+                )
+            ]
+        ]
+    )
+
+
+def open_request_kb(request_id: int, text: str = "📋 Открыть запрос") -> InlineKeyboardMarkup:
+    """Кнопка открытия конкретного запроса."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=text,
+                    web_app=WebAppInfo(url=_miniapp_startapp_url(f"request_{request_id}")),
+                )
+            ]
+        ]
+    )
+
+
 def match_kb(username: str | None = None) -> InlineKeyboardMarkup:
     """Кнопки при мэтче: написать + открыть профиль в приложении."""
     buttons = []
     if username:
         buttons.append(
-            [InlineKeyboardButton(text="💬 Написать", url=f"https://t.me/{username}")]
+            [
+                InlineKeyboardButton(
+                    text="💬 Написать",
+                    url=f"https://t.me/{username}?text={quote(MATCH_MESSAGE)}",
+                )
+            ]
         )
 
     buttons.append(

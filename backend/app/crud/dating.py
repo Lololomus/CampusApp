@@ -1,10 +1,10 @@
 # ===== 📄 ФАЙЛ: backend/app/crud/dating.py =====
-# Dating CRUD: анкеты, лента с scoring, лайки, матчи, настройки
+# Dating CRUD: анкеты, лента с scoring, лайки, мэтчи, настройки
 #
 # ✅ Фаза 1.4: Убраны json.loads() — JSONB-колонки возвращают нативные list/dict.
 # ✅ Фаза 3.7: async/await + select() + AsyncSession
 # ✅ Фаза 3.7: legacy_query_api(Model).get(id) → await db.get(Model, id)
-# ✅ Фаза 5.6: create_like — один commit на лайк + матч + уведомления
+# ✅ Фаза 5.6: create_like — один commit на лайк + мэтч + уведомления
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -191,10 +191,10 @@ async def get_dating_feed(
     return page
 
 
-# ===== ЛАЙКИ И МАТЧИ =====
+# ===== ЛАЙКИ И МЭТЧИ =====
 
 async def create_like(db: AsyncSession, liker_id: int, liked_id: int) -> dict:
-    """✅ Фаза 5.6: один await db.commit() на лайк + матч + уведомления"""
+    """✅ Фаза 5.6: один await db.commit() на лайк + мэтч + уведомления"""
     if liker_id == liked_id:
         return {"success": False, "error": "Нельзя лайкнуть себя"}
 
@@ -256,7 +256,7 @@ async def create_like(db: AsyncSession, liker_id: int, liked_id: int) -> dict:
 
         matched_user = await db.get(models.User, liked_id)
 
-    # Единый коммит: лайк + (матч + уведомления)
+    # Единый коммит: лайк + (мэтч + уведомления)
     await db.commit()
 
     if match_obj:

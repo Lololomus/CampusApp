@@ -464,7 +464,7 @@ class CommentLike(Base):
 
 
 class Match(Base):
-    """Матчи для знакомств (взаимные лайки)"""
+    """Мэтчи для знакомств (взаимные лайки)"""
     __tablename__ = 'matches'
     
     id = Column(Integer, primary_key=True, index=True)

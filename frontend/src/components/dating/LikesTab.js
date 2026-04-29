@@ -363,7 +363,7 @@ const styles = {
     display: 'block',
   },
 
-  // Карусель матчей
+  // Карусель мэтчей
   matchesCarousel: {
     display: 'flex',
     overflowX: 'auto',

@@ -10,7 +10,7 @@
 #   posts.py     — Posts, Polls, лайки постов, просмотры
 #   comments.py  — Comments, лайки комментариев
 #   requests.py  — Requests, отклики, автоистечение
-#   dating.py    — Dating: анкеты, лента, лайки, матчи
+#   dating.py    — Dating: анкеты, лента, лайки, мэтчи
 #   market.py    — Market: товары, избранное, категории
 #   ads.py       — Реклама: посты, показы, клики, статистика
 

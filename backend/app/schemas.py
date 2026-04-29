@@ -848,7 +848,7 @@ class LikeResult(BaseModel):
     matched_user: Optional[UserShort] = None
 
 class MatchResponse(BaseModel):
-    """Матч"""
+    """Мэтч"""
     id: int
     user_a_id: int
     user_b_id: int
