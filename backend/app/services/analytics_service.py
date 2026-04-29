@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import cast, delete, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONB as JSONB_TYPE
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,8 +37,6 @@ REQUIRED_EVENT_NAMES: Tuple[str, ...] = (
     "post_like",
     "comment_create",
     "create_success",
-    "request_open",
-    "request_response_create",
     "market_item_open",
     "market_favorite",
     "market_contact",
@@ -56,8 +55,6 @@ REAL_ACTIVITY_EVENT_NAMES: Tuple[str, ...] = (
     "post_like",
     "comment_create",
     "create_success",
-    "request_open",
-    "request_response_create",
     "market_item_open",
     "market_favorite",
     "market_contact",
@@ -78,8 +75,6 @@ EVENT_MODULES: Dict[str, str] = {
     "create_open": "content",
     "create_submit": "content",
     "create_success": "content",
-    "request_open": "requests",
-    "request_response_create": "requests",
     "market_item_open": "market",
     "market_favorite": "market",
     "market_contact": "market",
@@ -116,13 +111,6 @@ ACTION_USAGE_DEFINITIONS: Tuple[Dict[str, Any], ...] = (
         "module": "content",
         "base_events": ("create_open", "create_submit", "create_success"),
         "completion_events": ("create_success",),
-    },
-    {
-        "action_key": "request_respond",
-        "label": "Request responders",
-        "module": "requests",
-        "base_events": ("request_open",),
-        "completion_events": ("request_response_create",),
     },
     {
         "action_key": "market_contact",
@@ -166,7 +154,7 @@ KPI_DEFINITIONS: Dict[str, str] = {
     "feed_engagement_pct": "users_with_like_or_comment / feed_open_users * 100",
     "post_open_rate_pct": "post_open_users / post_impression_or_feed_open_users * 100",
     "creator_share_pct": "create_success_users / active_users * 100",
-    "request_response_rate_pct": "requests_with_response / total_active_requests * 100",
+    "help_post_response_pct": "help_posts_with_response / active_help_posts * 100",
     "market_favorite_rate_pct": "market_favorite_users / market_item_open_users * 100",
     "match_rate_pct": "matches / dating_likes * 100",
     "notification_action_rate_pct": "notifications_acted / notifications_opened * 100",
@@ -266,7 +254,7 @@ def event_module(event_name: Optional[str], screen: Optional[str] = None) -> str
     if screen:
         normalized_screen = str(screen).strip().lower()
         if normalized_screen:
-            for known in ("feed", "requests", "market", "dating", "notifications", "moderation", "ads"):
+            for known in ("feed", "market", "dating", "notifications", "moderation", "ads"):
                 if known in normalized_screen:
                     return known
             if "post" in normalized_screen:
@@ -587,7 +575,132 @@ async def build_action_usage_rows_between_dates(
             }
         )
 
+    rows.append(await build_help_post_response_action_row_between_dates(db, start_date, end_date))
     return rows
+
+
+def help_post_filter() -> Any:
+    return or_(
+        models.Post.category == "help",
+        models.Post.tags.op("@>")(cast(["help"], JSONB_TYPE)),
+        models.Post.tags.op("@>")(cast(["помощь"], JSONB_TYPE)),
+    )
+
+
+def active_help_post_filter(day_start_utc: datetime, day_end_utc: datetime) -> Tuple[Any, ...]:
+    return (
+        help_post_filter(),
+        models.Post.is_deleted == False,  # noqa: E712
+        models.Post.created_at < day_end_utc,
+        or_(models.Post.help_expires_at.is_(None), models.Post.help_expires_at >= day_start_utc),
+        or_(models.Post.resolved_at.is_(None), models.Post.resolved_at >= day_start_utc),
+    )
+
+
+async def build_help_post_response_summary_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+) -> Dict[str, Any]:
+    if end_date < start_date:
+        return {"active_help_posts": 0, "help_posts_with_response": 0, "help_post_response_pct": None, "calc_status": INSUFFICIENT_DATA}
+
+    day_start_utc, _ = msk_day_bounds_utc(start_date)
+    _, day_end_utc = msk_day_bounds_utc(end_date)
+    active_filters = active_help_post_filter(day_start_utc, day_end_utc)
+
+    active_help_posts = await db.scalar(
+        select(func.count(models.Post.id)).where(*active_filters)
+    )
+    help_posts_with_response = await db.scalar(
+        select(func.count(func.distinct(models.Comment.post_id)))
+        .join(models.Post, models.Comment.post_id == models.Post.id)
+        .where(
+            *active_filters,
+            models.Comment.is_deleted == False,  # noqa: E712
+            models.Comment.author_id != models.Post.author_id,
+            models.Comment.created_at >= day_start_utc,
+            models.Comment.created_at < day_end_utc,
+        )
+    )
+    pct, status = safe_percent(int(help_posts_with_response or 0), int(active_help_posts or 0))
+
+    return {
+        "active_help_posts": int(active_help_posts or 0),
+        "help_posts_with_response": int(help_posts_with_response or 0),
+        "help_post_response_pct": pct,
+        "calc_status": status,
+    }
+
+
+async def build_help_post_response_action_row_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+) -> Dict[str, Any]:
+    if end_date < start_date:
+        return {
+            "action_key": "help_post_respond",
+            "label": "Help post responders",
+            "module": "feed",
+            "base_users": 0,
+            "active_users": 0,
+            "events_count": 0,
+            "completion_pct": None,
+            "events_per_active_user": 0.0,
+            "calc_status": INSUFFICIENT_DATA,
+        }
+
+    day_start_utc, _ = msk_day_bounds_utc(start_date)
+    _, day_end_utc = msk_day_bounds_utc(end_date)
+    active_filters = active_help_post_filter(day_start_utc, day_end_utc)
+
+    base_users = await db.scalar(
+        select(func.count(func.distinct(models.AnalyticsEvent.user_hash)))
+        .join(models.Post, models.AnalyticsEvent.entity_id == models.Post.id)
+        .where(
+            *active_filters,
+            models.AnalyticsEvent.event_date_msk >= start_date,
+            models.AnalyticsEvent.event_date_msk <= end_date,
+            models.AnalyticsEvent.event_name == "post_open",
+            models.AnalyticsEvent.entity_type == "post",
+        )
+    )
+    active_users = await db.scalar(
+        select(func.count(func.distinct(models.Comment.author_id)))
+        .join(models.Post, models.Comment.post_id == models.Post.id)
+        .where(
+            *active_filters,
+            models.Comment.is_deleted == False,  # noqa: E712
+            models.Comment.author_id != models.Post.author_id,
+            models.Comment.created_at >= day_start_utc,
+            models.Comment.created_at < day_end_utc,
+        )
+    )
+    events_count = await db.scalar(
+        select(func.count(models.Comment.id))
+        .join(models.Post, models.Comment.post_id == models.Post.id)
+        .where(
+            *active_filters,
+            models.Comment.is_deleted == False,  # noqa: E712
+            models.Comment.author_id != models.Post.author_id,
+            models.Comment.created_at >= day_start_utc,
+            models.Comment.created_at < day_end_utc,
+        )
+    )
+    pct, status = safe_percent(int(active_users or 0), int(base_users or 0))
+
+    return {
+        "action_key": "help_post_respond",
+        "label": "Help post responders",
+        "module": "feed",
+        "base_users": int(base_users or 0),
+        "active_users": int(active_users or 0),
+        "events_count": int(events_count or 0),
+        "completion_pct": pct,
+        "events_per_active_user": round(int(events_count or 0) / int(active_users or 0), 4) if active_users else 0.0,
+        "calc_status": status,
+    }
 
 
 async def build_module_usage_rows_between_dates(
@@ -660,8 +773,14 @@ async def _count_new_active_users_between_dates(
     return len(active_user_hashes.intersection(new_hashes))
 
 
-def build_business_metric_rows(active_users: int, action_rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def build_business_metric_rows(
+    active_users: int,
+    action_rows: Sequence[Dict[str, Any]],
+    *,
+    help_post_response: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     action_map = {row["action_key"]: row for row in action_rows}
+    help_response = help_post_response or {}
 
     def action_users(key: str) -> int:
         return int(action_map.get(key, {}).get("active_users") or 0)
@@ -699,12 +818,12 @@ def build_business_metric_rows(active_users: int, action_rows: Sequence[Dict[str
             "calc_status": creator_status,
         },
         {
-            "metric_key": "request_response_pct",
-            "label": "Request response",
-            "value_pct": action_pct("request_respond"),
-            "numerator": action_users("request_respond"),
-            "denominator": int(action_map.get("request_respond", {}).get("base_users") or 0),
-            "calc_status": action_map.get("request_respond", {}).get("calc_status") or INSUFFICIENT_DATA,
+            "metric_key": "help_post_response_pct",
+            "label": "Help post response",
+            "value_pct": help_response.get("help_post_response_pct"),
+            "numerator": int(help_response.get("help_posts_with_response") or 0),
+            "denominator": int(help_response.get("active_help_posts") or 0),
+            "calc_status": help_response.get("calc_status") or INSUFFICIENT_DATA,
         },
         {
             "metric_key": "market_intent_pct",
@@ -759,6 +878,7 @@ async def build_activity_window_detail(
     returning_active_users = max(active_users - new_active_users, 0)
     returning_pct, _ = safe_percent(returning_active_users, active_users)
     action_rows = await build_action_usage_rows_between_dates(db, start_date, end_date)
+    help_post_response = await build_help_post_response_summary_between_dates(db, start_date, end_date)
 
     return {
         "key": key,
@@ -776,7 +896,12 @@ async def build_activity_window_detail(
         "returning_pct": returning_pct,
         "modules": await build_module_usage_rows_between_dates(db, start_date, end_date, active_users),
         "actions": action_rows,
-        "business_metrics": build_business_metric_rows(active_users, action_rows),
+        "business_metrics": build_business_metric_rows(
+            active_users,
+            action_rows,
+            help_post_response=help_post_response,
+        ),
+        "help_post_response": help_post_response,
         "online_time": await estimate_online_time_between_dates(db, start_date, end_date),
     }
 
@@ -989,28 +1114,6 @@ async def _count_returned_users_for_cohort(
         select(func.count(func.distinct(models.AnalyticsEvent.user_hash))).where(
             models.AnalyticsEvent.event_date_msk == target_date,
             models.AnalyticsEvent.user_hash.in_(hashes),
-        )
-    )
-    return int(value or 0)
-
-
-async def _count_requests_with_response(db: AsyncSession, day_start_utc: datetime, day_end_utc: datetime) -> int:
-    value = await db.scalar(
-        select(func.count(func.distinct(models.RequestResponse.request_id))).where(
-            models.RequestResponse.created_at >= day_start_utc,
-            models.RequestResponse.created_at < day_end_utc,
-        )
-    )
-    return int(value or 0)
-
-
-async def _count_active_requests(db: AsyncSession, day_start_utc: datetime, day_end_utc: datetime) -> int:
-    value = await db.scalar(
-        select(func.count(models.Request.id)).where(
-            models.Request.is_deleted == False,  # noqa: E712
-            models.Request.status == "active",
-            models.Request.created_at < day_end_utc,
-            models.Request.expires_at >= day_start_utc,
         )
     )
     return int(value or 0)
@@ -1278,8 +1381,8 @@ def build_funnels(
     create_open_users: int,
     create_submit_users: int,
     create_success_users: int,
-    request_open_users: int,
-    request_response_users: int,
+    active_help_posts: int,
+    help_posts_with_response: int,
 ) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
 
@@ -1304,8 +1407,8 @@ def build_funnels(
     add_step("create", 2, "create_submit", create_submit_users, create_open_users)
     add_step("create", 3, "create_success", create_success_users, create_submit_users)
 
-    add_step("requests", 1, "request_open", request_open_users, request_open_users)
-    add_step("requests", 2, "request_response_create", request_response_users, request_open_users)
+    add_step("help_posts", 1, "active_help_posts", active_help_posts, active_help_posts)
+    add_step("help_posts", 2, "help_posts_with_response", help_posts_with_response, active_help_posts)
 
     return rows
 
@@ -1422,8 +1525,7 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
     create_submit_users = await _count_distinct_users_for_event(db, report_date, ["create_submit"])
     create_success_users = await _count_distinct_users_for_event(db, report_date, ["create_success"])
 
-    requests_with_response = await _count_requests_with_response(db, day_start_utc, day_end_utc)
-    total_active_requests = await _count_active_requests(db, day_start_utc, day_end_utc)
+    help_post_response = await build_help_post_response_summary_between_dates(db, report_date, report_date)
 
     market_favorites = await _count_market_favorites(db, day_start_utc, day_end_utc)
     market_item_opens = await _count_events(db, report_date, ["market_item_open"])
@@ -1479,7 +1581,12 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
         percentage_metric("feed_engagement_pct", "Feed Engagement %", engaged_feed_users, feed_view_users),
         percentage_metric("post_open_rate_pct", "Post Open Rate %", post_open_users, post_open_denominator_users),
         percentage_metric("creator_share_pct", "Creator Share %", create_success_users, active_users),
-        percentage_metric("request_response_rate_pct", "Request Response Rate %", requests_with_response, total_active_requests),
+        percentage_metric(
+            "help_post_response_pct",
+            "Help Post Response %",
+            help_post_response["help_posts_with_response"],
+            help_post_response["active_help_posts"],
+        ),
         percentage_metric("market_favorite_rate_pct", "Market Favorite Rate %", market_favorite_users, market_item_open_users),
         percentage_metric("match_rate_pct", "Match Rate %", matches, dating_likes),
         percentage_metric("notification_action_rate_pct", "Notification Action Rate %", notifications_acted, notifications_opened),
@@ -1493,7 +1600,7 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
         "feed_engagement_pct",
         "post_open_rate_pct",
         "creator_share_pct",
-        "request_response_rate_pct",
+        "help_post_response_pct",
         "market_favorite_rate_pct",
         "match_rate_pct",
         "notification_action_rate_pct",
@@ -1540,8 +1647,8 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
         create_open_users=create_open_users,
         create_submit_users=create_submit_users,
         create_success_users=create_success_users,
-        request_open_users=await _count_distinct_users_for_event(db, report_date, ["request_open"]),
-        request_response_users=await _count_distinct_users_for_event(db, report_date, ["request_response_create"]),
+        active_help_posts=help_post_response["active_help_posts"],
+        help_posts_with_response=help_post_response["help_posts_with_response"],
     )
 
     modules_rows = [
@@ -1549,8 +1656,8 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
         {"module": "feed", "metric_key": "engaged_feed_users", "value": engaged_feed_users},
         {"module": "feed", "metric_key": "post_open_users", "value": post_open_users},
         {"module": "feed", "metric_key": "post_impression_users", "value": post_impression_users},
-        {"module": "requests", "metric_key": "total_active_requests", "value": total_active_requests},
-        {"module": "requests", "metric_key": "requests_with_response", "value": requests_with_response},
+        {"module": "feed", "metric_key": "active_help_posts", "value": help_post_response["active_help_posts"]},
+        {"module": "feed", "metric_key": "help_posts_with_response", "value": help_post_response["help_posts_with_response"]},
         {"module": "market", "metric_key": "market_item_opens", "value": market_item_opens},
         {"module": "market", "metric_key": "market_favorites", "value": market_favorites},
         {"module": "market", "metric_key": "market_item_open_users", "value": market_item_open_users},
