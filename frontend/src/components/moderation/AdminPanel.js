@@ -1,6 +1,6 @@
 // ===== FILE: AdminPanel.js =====
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Activity, Users, MessageSquare, BarChart3,
   Shield, Plus, Trash2, Search, RefreshCw,
@@ -363,6 +363,7 @@ function StatsSection() {
     wau: false,
     mau: false,
   });
+  const lastTouchToggleAtRef = useRef(0);
 
   useEffect(() => {
     getAdminStats()
@@ -413,6 +414,24 @@ function StatsSection() {
     return `${sign}${Number(value).toFixed(1)}%`;
   };
 
+  const toggleWindow = (windowKey) => {
+    setExpandedWindows((prev) => ({ ...prev, [windowKey]: !prev[windowKey] }));
+  };
+
+  const handleWindowTouchEnd = (event, windowKey) => {
+    event.preventDefault();
+    event.stopPropagation();
+    lastTouchToggleAtRef.current = Date.now();
+    toggleWindow(windowKey);
+  };
+
+  const handleWindowClick = (event, windowKey) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (Date.now() - lastTouchToggleAtRef.current < 450) return;
+    toggleWindow(windowKey);
+  };
+
   const renderWindowDetail = (windowKey) => {
     const row = activityWindows[windowKey];
     if (!row) return null;
@@ -425,10 +444,17 @@ function StatsSection() {
 
     return (
       <div key={windowKey} style={styles.windowBlock}>
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           style={styles.windowToggle}
-          onClick={() => setExpandedWindows((prev) => ({ ...prev, [windowKey]: !prev[windowKey] }))}
+          onClick={(event) => handleWindowClick(event, windowKey)}
+          onTouchEnd={(event) => handleWindowTouchEnd(event, windowKey)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              handleWindowClick(event, windowKey);
+            }
+          }}
         >
           <div style={styles.windowToggleText}>
             <span style={styles.windowTitle}>{row.label}</span>
@@ -442,7 +468,7 @@ function StatsSection() {
               {renderDelta(row.change_pct)}
             </span>
           </div>
-        </button>
+        </div>
 
         {isExpanded && (
           <div style={styles.windowDetails}>
@@ -608,7 +634,7 @@ function StatsSection() {
 }
 
 const ACTION_LABELS_RU = {
-  feed_read: 'Читали ленту',
+  feed_read: 'Открыли пост',
   feed_engage: 'Лайки и комментарии',
   content_create: 'Создали контент',
   request_respond: 'Ответили на запрос',
@@ -632,7 +658,8 @@ const MODULE_LABELS_RU = {
 };
 
 const BUSINESS_LABELS_RU = {
-  feed_engagement_pct: 'Вовлечённость ленты',
+  feed_engagement_pct: 'Лайки/комменты от ленты',
+  post_open_rate_pct: 'Открытие постов из ленты',
   creator_share_pct: 'Доля создателей',
   request_response_pct: 'Отклик на запросы',
   market_intent_pct: 'Намерение в маркете',
@@ -644,19 +671,26 @@ const BUSINESS_LABELS_RU = {
 // Словарь переводов KPI-меток (label или metric_key с бэкенда)
 const KPI_LABELS_RU = {
   'New Users': 'Новые пользователи',
-  'Activated Users': 'Активированных',
-  'Activation Rate %': 'Конверсия активации',
-  'Feed Engagement %': 'Вовлечённость в ленте',
+  'Activated Users': 'Новые с активностью',
+  'New Users With Activity': 'Новые с активностью',
+  'Active Users': 'Активные пользователи',
+  'Activation Rate %': 'Новые с активностью',
+  'New User Activity %': 'Новые с активностью',
+  'Feed Engagement %': 'Лайки/комменты от ленты',
   'Post Open Rate %': 'Открываемость постов',
-  'Create Conversion %': 'Конверсия создания',
+  'Create Conversion %': 'Доля создателей',
+  'Creator Share %': 'Доля создателей',
   'Request Response Rate %': 'Отклик на запросы',
   'Market Favorite Rate %': 'Избранное в маркете',
   'new_users': 'Новые пользователи',
-  'activated_users': 'Активированных',
+  'activated_users': 'Новые с активностью',
+  'active_users': 'Активные пользователи',
   'activation_rate': 'Конверсия активации',
-  'feed_engagement_rate': 'Вовлечённость в ленте',
+  'feed_engagement_rate': 'Лайки/комменты от ленты',
   'post_open_rate': 'Открываемость постов',
-  'create_conversion_rate': 'Конверсия создания',
+  'creator_share_pct': 'Доля создателей',
+  'create_conversion_pct': 'Доля создателей',
+  'create_conversion_rate': 'Доля создателей',
   'request_response_rate': 'Отклик на запросы',
   'market_favorite_rate': 'Избранное в маркете',
   'dau': 'DAU',
@@ -796,12 +830,15 @@ function AnalyticsSection() {
   const formatMetricValue = (row) => {
     const raw = row?.value;
     if (raw === null || raw === undefined) return '—';
-    if (row?.unit === 'percent') return `${Number(raw).toFixed(2)}%`;
+    if (row?.unit === 'percent' || row?.unit === '%') return `${Number(raw).toFixed(2)}%`;
     if (typeof raw === 'number') return new Intl.NumberFormat('ru-RU').format(raw);
     return String(raw);
   };
 
-  const kpiRows = Array.isArray(report?.kpi_overview) ? report.kpi_overview.slice(0, 8) : [];
+  const allKpiRows = Array.isArray(report?.kpi_overview) ? report.kpi_overview : [];
+  const usefulKpiRows = allKpiRows.filter((row) => row?.value !== null && row?.value !== undefined);
+  const unavailableKpiRows = allKpiRows.filter((row) => row?.value === null || row?.value === undefined);
+  const kpiRows = [...usefulKpiRows, ...unavailableKpiRows].slice(0, 8);
   const qualityRows = Array.isArray(report?.quality_checks) ? report.quality_checks : [];
   const ingestLagHours = health?.ingest_lag_seconds != null
     ? (health.ingest_lag_seconds / 3600).toFixed(1)
@@ -1374,6 +1411,7 @@ const styles = {
     borderRadius: 12,
     border: `1px solid ${P.border}`,
     overflow: 'hidden',
+    position: 'relative',
   },
 
   windowToggle: {
@@ -1388,6 +1426,13 @@ const styles = {
     gap: 12,
     cursor: 'pointer',
     textAlign: 'left',
+    color: '#fff',
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
+    pointerEvents: 'auto',
+    position: 'relative',
+    zIndex: 1,
+    outline: 'none',
   },
 
   windowToggleText: {

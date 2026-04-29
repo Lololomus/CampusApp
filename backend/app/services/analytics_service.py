@@ -31,21 +31,16 @@ OK_STATUS = "ok"
 WINDOW_NOT_MATURED = "window_not_matured"
 
 REQUIRED_EVENT_NAMES: Tuple[str, ...] = (
-    "app_open",
-    "onboarding_step_completed",
-    "onboarding_completed",
     "feed_open",
-    "post_impression",
     "post_open",
     "post_like",
     "comment_create",
-    "create_open",
-    "create_submit",
     "create_success",
     "request_open",
     "request_response_create",
     "market_item_open",
     "market_favorite",
+    "market_contact",
     "dating_like",
     "dating_match",
     "notification_open",
@@ -112,7 +107,7 @@ ACTION_USAGE_DEFINITIONS: Tuple[Dict[str, Any], ...] = (
         "action_key": "feed_engage",
         "label": "Feed engaged users",
         "module": "feed",
-        "base_events": ("post_open",),
+        "base_events": ("feed_open",),
         "completion_events": ("post_like", "comment_create"),
     },
     {
@@ -164,15 +159,15 @@ KPI_DEFINITIONS: Dict[str, str] = {
     "wau": "distinct users with meaningful events in report_date-6..report_date",
     "mau": "distinct users with meaningful events in report_date-29..report_date",
     "stickiness_pct": "dau / mau * 100",
-    "activation_rate_pct": "activated_users / new_users * 100",
+    "activation_rate_pct": "new_users_with_real_activity / new_users * 100",
     "d1_retention_pct": "users_returned_d1 / cohort_new_users * 100",
     "d7_retention_pct": "users_returned_d7 / cohort_new_users * 100",
     "d30_retention_pct": "users_returned_d30 / cohort_new_users * 100",
-    "feed_engagement_pct": "engaged_feed_users / feed_view_users * 100",
-    "post_open_rate_pct": "post_open_users / post_impression_users * 100",
-    "create_conversion_pct": "create_success_users / create_open_users * 100",
+    "feed_engagement_pct": "users_with_like_or_comment / feed_open_users * 100",
+    "post_open_rate_pct": "post_open_users / post_impression_or_feed_open_users * 100",
+    "creator_share_pct": "create_success_users / active_users * 100",
     "request_response_rate_pct": "requests_with_response / total_active_requests * 100",
-    "market_favorite_rate_pct": "favorites / market_item_opens * 100",
+    "market_favorite_rate_pct": "market_favorite_users / market_item_open_users * 100",
     "match_rate_pct": "matches / dating_likes * 100",
     "notification_action_rate_pct": "notifications_acted / notifications_opened * 100",
     "moderation_sla_24h_pct": "reports_reviewed_under_24h / reports_reviewed_total * 100",
@@ -688,6 +683,14 @@ def build_business_metric_rows(active_users: int, action_rows: Sequence[Dict[str
             "calc_status": action_map.get("feed_engage", {}).get("calc_status") or INSUFFICIENT_DATA,
         },
         {
+            "metric_key": "post_open_rate_pct",
+            "label": "Post open rate",
+            "value_pct": action_pct("feed_read"),
+            "numerator": action_users("feed_read"),
+            "denominator": int(action_map.get("feed_read", {}).get("base_users") or 0),
+            "calc_status": action_map.get("feed_read", {}).get("calc_status") or INSUFFICIENT_DATA,
+        },
+        {
             "metric_key": "creator_share_pct",
             "label": "Creator share",
             "value_pct": creator_pct,
@@ -1023,9 +1026,37 @@ async def _count_market_favorites(db: AsyncSession, day_start_utc: datetime, day
     return int(value or 0)
 
 
+async def _count_market_favorite_users(db: AsyncSession, report_date: date, day_start_utc: datetime, day_end_utc: datetime) -> int:
+    event_users = await _count_distinct_users_for_event(db, report_date, ["market_favorite"])
+    if event_users:
+        return event_users
+
+    value = await db.scalar(
+        select(func.count(func.distinct(models.MarketFavorite.user_id))).where(
+            models.MarketFavorite.created_at >= day_start_utc,
+            models.MarketFavorite.created_at < day_end_utc,
+        )
+    )
+    return int(value or 0)
+
+
 async def _count_market_opens_from_views(db: AsyncSession, day_start_utc: datetime, day_end_utc: datetime) -> int:
     value = await db.scalar(
         select(func.count(models.MarketItemView.id)).where(
+            models.MarketItemView.viewed_at >= day_start_utc,
+            models.MarketItemView.viewed_at < day_end_utc,
+        )
+    )
+    return int(value or 0)
+
+
+async def _count_market_open_users(db: AsyncSession, report_date: date, day_start_utc: datetime, day_end_utc: datetime) -> int:
+    event_users = await _count_distinct_users_for_event(db, report_date, ["market_item_open"])
+    if event_users:
+        return event_users
+
+    value = await db.scalar(
+        select(func.count(func.distinct(models.MarketItemView.user_id))).where(
             models.MarketItemView.viewed_at >= day_start_utc,
             models.MarketItemView.viewed_at < day_end_utc,
         )
@@ -1369,10 +1400,11 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
     new_users_count, new_user_ids = await _load_new_users(db, day_start_utc, day_end_utc)
     new_user_hashes = {hash_user_id(uid, get_settings().analytics_salt) for uid in new_user_ids}
 
+    active_users = await _count_distinct_users_for_event(db, report_date, REAL_ACTIVITY_EVENT_NAMES)
     activated_users = await _count_distinct_users_for_event(
         db,
         report_date,
-        ["onboarding_completed"],
+        REAL_ACTIVITY_EVENT_NAMES,
         allowed_user_hashes=new_user_hashes if new_user_hashes else None,
     )
 
@@ -1380,10 +1412,11 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
     onboarding_completed_users = await _count_distinct_users_for_event(db, report_date, ["onboarding_completed"])
 
     feed_view_users = await _count_distinct_users_for_event(db, report_date, ["feed_open"])
-    engaged_feed_users = await _count_distinct_users_for_event(db, report_date, ["post_open", "post_like", "comment_create"])
+    engaged_feed_users = await _count_distinct_users_for_event(db, report_date, ["post_like", "comment_create"])
 
     post_open_users = await _count_distinct_users_for_event(db, report_date, ["post_open"])
     post_impression_users = await _count_distinct_users_for_event(db, report_date, ["post_impression"])
+    post_open_denominator_users = post_impression_users or feed_view_users
 
     create_open_users = await _count_distinct_users_for_event(db, report_date, ["create_open"])
     create_submit_users = await _count_distinct_users_for_event(db, report_date, ["create_submit"])
@@ -1396,6 +1429,8 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
     market_item_opens = await _count_events(db, report_date, ["market_item_open"])
     if market_item_opens == 0:
         market_item_opens = await _count_market_opens_from_views(db, day_start_utc, day_end_utc)
+    market_favorite_users = await _count_market_favorite_users(db, report_date, day_start_utc, day_end_utc)
+    market_item_open_users = await _count_market_open_users(db, report_date, day_start_utc, day_end_utc)
 
     dating_likes = await _count_dating_likes(db, day_start_utc, day_end_utc)
     matches = await _count_matches(db, day_start_utc, day_end_utc)
@@ -1440,12 +1475,12 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
         )
 
     kpi_metrics: List[PercentMetric] = [
-        percentage_metric("activation_rate_pct", "Activation Rate %", activated_users, new_users_count),
+        percentage_metric("activation_rate_pct", "New User Activity %", activated_users, new_users_count),
         percentage_metric("feed_engagement_pct", "Feed Engagement %", engaged_feed_users, feed_view_users),
-        percentage_metric("post_open_rate_pct", "Post Open Rate %", post_open_users, post_impression_users),
-        percentage_metric("create_conversion_pct", "Create Conversion %", create_success_users, create_open_users),
+        percentage_metric("post_open_rate_pct", "Post Open Rate %", post_open_users, post_open_denominator_users),
+        percentage_metric("creator_share_pct", "Creator Share %", create_success_users, active_users),
         percentage_metric("request_response_rate_pct", "Request Response Rate %", requests_with_response, total_active_requests),
-        percentage_metric("market_favorite_rate_pct", "Market Favorite Rate %", market_favorites, market_item_opens),
+        percentage_metric("market_favorite_rate_pct", "Market Favorite Rate %", market_favorite_users, market_item_open_users),
         percentage_metric("match_rate_pct", "Match Rate %", matches, dating_likes),
         percentage_metric("notification_action_rate_pct", "Notification Action Rate %", notifications_acted, notifications_opened),
         percentage_metric("moderation_sla_24h_pct", "Moderation SLA <=24h %", reports_reviewed_under_24h, reports_reviewed_total),
@@ -1457,7 +1492,7 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
         "activation_rate_pct",
         "feed_engagement_pct",
         "post_open_rate_pct",
-        "create_conversion_pct",
+        "creator_share_pct",
         "request_response_rate_pct",
         "market_favorite_rate_pct",
         "match_rate_pct",
@@ -1481,7 +1516,8 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
 
     kpi_overview_rows: List[Dict[str, Any]] = [
         {"metric_key": "new_users", "label": "New Users", "value": new_users_count, "unit": "users", "wow_pct": None},
-        {"metric_key": "activated_users", "label": "Activated Users", "value": activated_users, "unit": "users", "wow_pct": None},
+        {"metric_key": "activated_users", "label": "New Users With Activity", "value": activated_users, "unit": "users", "wow_pct": None},
+        {"metric_key": "active_users", "label": "Active Users", "value": active_users, "unit": "users", "wow_pct": None},
     ]
     for metric in kpi_metrics:
         kpi_overview_rows.append(
@@ -1517,6 +1553,8 @@ async def compute_daily_report_metrics(db: AsyncSession, report_date: date) -> D
         {"module": "requests", "metric_key": "requests_with_response", "value": requests_with_response},
         {"module": "market", "metric_key": "market_item_opens", "value": market_item_opens},
         {"module": "market", "metric_key": "market_favorites", "value": market_favorites},
+        {"module": "market", "metric_key": "market_item_open_users", "value": market_item_open_users},
+        {"module": "market", "metric_key": "market_favorite_users", "value": market_favorite_users},
         {"module": "dating", "metric_key": "dating_likes", "value": dating_likes},
         {"module": "dating", "metric_key": "dating_matches", "value": matches},
         {"module": "notifications", "metric_key": "notifications_opened", "value": notifications_opened},
