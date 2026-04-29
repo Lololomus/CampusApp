@@ -4,6 +4,13 @@
 let _lockCount = 0;
 let _savedBodyOverflow = '';
 let _savedHtmlOverflow = '';
+let _savedBodyPosition = '';
+let _savedBodyTop = '';
+let _savedBodyLeft = '';
+let _savedBodyRight = '';
+let _savedBodyWidth = '';
+let _savedHtmlScrollBehavior = '';
+let _savedScrollY = 0;
 let _isRestoringScroll = false;
 let _restoreFrameId = null;
 let _restoreTimeoutId = null;
@@ -80,9 +87,21 @@ export function lockBodyScroll() {
 
     _savedHtmlOverflow = html.style.overflow;
     _savedBodyOverflow = body.style.overflow;
+    _savedBodyPosition = body.style.position;
+    _savedBodyTop = body.style.top;
+    _savedBodyLeft = body.style.left;
+    _savedBodyRight = body.style.right;
+    _savedBodyWidth = body.style.width;
+    _savedHtmlScrollBehavior = html.style.scrollBehavior;
+    _savedScrollY = Math.max(0, window.scrollY || window.pageYOffset || 0);
 
     html.style.overflow = 'hidden';
     body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${_savedScrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
     document.documentElement.dataset.bodyScrollLocked = 'true';
   }
   _lockCount++;
@@ -107,9 +126,25 @@ export function unlockBodyScroll(options = {}) {
 
     html.style.overflow = _savedHtmlOverflow;
     body.style.overflow = _savedBodyOverflow;
+    body.style.position = _savedBodyPosition;
+    body.style.top = _savedBodyTop;
+    body.style.left = _savedBodyLeft;
+    body.style.right = _savedBodyRight;
+    body.style.width = _savedBodyWidth;
+
+    html.style.scrollBehavior = 'auto';
+    window.scrollTo(0, _savedScrollY);
+    html.style.scrollBehavior = _savedHtmlScrollBehavior;
 
     _savedHtmlOverflow = '';
     _savedBodyOverflow = '';
+    _savedBodyPosition = '';
+    _savedBodyTop = '';
+    _savedBodyLeft = '';
+    _savedBodyRight = '';
+    _savedBodyWidth = '';
+    _savedHtmlScrollBehavior = '';
+    _savedScrollY = 0;
     delete document.documentElement.dataset.bodyScrollLocked;
 
     if (!restoreGuard) emitBodyScrollState();
