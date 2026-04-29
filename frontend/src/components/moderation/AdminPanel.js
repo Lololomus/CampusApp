@@ -374,16 +374,32 @@ function StatsSection() {
     return <div style={styles.emptySmall}>Статистика недоступна</div>;
   }
 
+  const formatNumber = (value) => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
+  const formatPercent = (value) => value == null ? '—' : `${Number(value).toFixed(1)}%`;
+  const formatDuration = (seconds) => {
+    const total = Number(seconds || 0);
+    if (total < 60) return `${Math.round(total)}с`;
+    if (total < 3600) return `${Math.round(total / 60)}м`;
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.round((total % 3600) / 60);
+    return minutes ? `${hours}ч ${minutes}м` : `${hours}ч`;
+  };
+
   const statCards = [
-    { label: 'DAU', value: stats.dau || 0, color: '#4DA6FF' },
-    { label: 'WAU', value: stats.wau || 0, color: P.primary },
-    { label: 'MAU', value: stats.mau || 0, color: P.primary },
+    { label: 'Real DAU', value: stats.real_dau ?? stats.dau ?? 0, color: '#4DA6FF' },
+    { label: 'Real WAU', value: stats.real_wau ?? stats.wau ?? 0, color: P.primary },
+    { label: 'Real MAU', value: stats.real_mau ?? stats.mau ?? 0, color: P.primary },
+    { label: 'DAU/MAU', value: formatPercent(stats.stickiness_pct), color: '#22c55e' },
     { label: 'Жалоб сегодня', value: stats.reports_today || 0, color: '#f59e0b' },
     { label: 'Обработано', value: stats.reports_processed || 0, color: '#22c55e' },
     { label: 'Просрочено >24ч', value: stats.reports_overdue || 0, color: '#ef4444' },
     { label: 'Постов', value: stats.total_posts || 0, color: P.primary },
     { label: 'Пользователей', value: stats.total_users || 0, color: '#4DA6FF' },
   ];
+  const online = stats.online_time_30d || {};
+  const places = Array.isArray(online.places) ? online.places.slice(0, 6) : [];
+  const maxPlaceSeconds = Math.max(...places.map((p) => Number(p.active_seconds || 0)), 1);
+  const actionRows = Array.isArray(stats.action_usage_today) ? stats.action_usage_today : [];
 
   return (
     <>
@@ -397,10 +413,95 @@ function StatsSection() {
           ))}
         </div>
       </div>
+
+      <div style={styles.section}>
+        <div style={styles.analyticsCard}>
+          <div style={styles.sectionHeader}>
+            <span style={styles.sectionTitle}>Реальная активность</span>
+            <span style={styles.analyticsKpiMeta}>по событиям, 30 дней</span>
+          </div>
+          <div style={styles.usageSummaryGrid}>
+            <div style={styles.usageSummaryItem}>
+              <div style={styles.analyticsKpiLabel}>Средняя сессия</div>
+              <div style={styles.analyticsKpiValue}>{formatDuration(online.avg_session_seconds)}</div>
+            </div>
+            <div style={styles.usageSummaryItem}>
+              <div style={styles.analyticsKpiLabel}>В день на активного</div>
+              <div style={styles.analyticsKpiValue}>{formatDuration(online.avg_daily_user_seconds)}</div>
+            </div>
+            <div style={styles.usageSummaryItem}>
+              <div style={styles.analyticsKpiLabel}>Сессий</div>
+              <div style={styles.analyticsKpiValue}>{formatNumber(online.sessions_count)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={styles.analyticsCard}>
+          <div style={styles.sectionTitle}>Действия сегодня</div>
+          <div style={styles.usageList}>
+            {actionRows.map((row) => (
+              <div key={row.action_key} style={styles.usageRow}>
+                <div style={styles.usageText}>
+                  <span style={styles.usageName}>{ACTION_LABELS_RU[row.action_key] || row.label || row.action_key}</span>
+                  <span style={styles.usageMeta}>
+                    {formatNumber(row.events_count)} событий · {formatPercent(row.completion_pct)}
+                  </span>
+                </div>
+                <div style={styles.usageValue}>{formatNumber(row.active_users)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.analyticsCard}>
+          <div style={styles.sectionTitle}>Где проводят время</div>
+          <div style={styles.usageList}>
+            {places.map((place) => {
+              const width = `${Math.max(4, Math.round((Number(place.active_seconds || 0) / maxPlaceSeconds) * 100))}%`;
+              return (
+                <div key={place.module} style={styles.placeRow}>
+                  <div style={styles.placeHeader}>
+                    <span style={styles.usageName}>{MODULE_LABELS_RU[place.module] || place.module}</span>
+                    <span style={styles.usageValue}>{formatDuration(place.active_seconds)}</span>
+                  </div>
+                  <div style={styles.placeBar}><div style={{ ...styles.placeBarFill, width }} /></div>
+                  <div style={styles.usageMeta}>
+                    {formatNumber(place.users_count)} пользователей · {formatNumber(place.events_count)} событий
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
       <AnalyticsSection />
     </>
   );
 }
+
+const ACTION_LABELS_RU = {
+  feed_read: 'Читали ленту',
+  feed_engage: 'Лайки и комментарии',
+  content_create: 'Создали контент',
+  request_respond: 'Ответили на запрос',
+  market_contact: 'Маркет: контакт/избранное',
+  dating_like: 'Дейтинг: лайк',
+  notification_open: 'Открыли уведомление',
+  ad_click: 'Кликнули рекламу',
+};
+
+const MODULE_LABELS_RU = {
+  app: 'Приложение',
+  feed: 'Лента и посты',
+  content: 'Создание',
+  requests: 'Запросы',
+  market: 'Маркет',
+  dating: 'Дейтинг',
+  notifications: 'Уведомления',
+  moderation: 'Модерация',
+  ads: 'Реклама',
+  other: 'Другое',
+};
 
 // Словарь переводов KPI-меток (label или metric_key с бэкенда)
 const KPI_LABELS_RU = {
@@ -1034,6 +1135,94 @@ const styles = {
     fontSize: 13,
     fontWeight: 700,
     color: '#fff',
+  },
+
+  usageSummaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 8,
+  },
+
+  usageSummaryItem: {
+    background: P.surfaceHover,
+    borderRadius: 10,
+    border: `1px solid ${P.border}`,
+    padding: 10,
+    minWidth: 0,
+  },
+
+  usageList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+
+  usageRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    background: P.surfaceHover,
+    borderRadius: 10,
+    border: `1px solid ${P.border}`,
+    padding: '10px 12px',
+  },
+
+  usageText: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+  },
+
+  usageName: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#fff',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+
+  usageMeta: {
+    fontSize: 11,
+    color: P.textMuted,
+  },
+
+  usageValue: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: P.primary,
+    flexShrink: 0,
+  },
+
+  placeRow: {
+    background: P.surfaceHover,
+    borderRadius: 10,
+    border: `1px solid ${P.border}`,
+    padding: '10px 12px',
+  },
+
+  placeHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+
+  placeBar: {
+    height: 6,
+    borderRadius: 999,
+    background: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+
+  placeBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    background: P.primary,
   },
 
   // Shared

@@ -55,7 +55,115 @@ REQUIRED_EVENT_NAMES: Tuple[str, ...] = (
     "ad_click",
 )
 
+REAL_ACTIVITY_EVENT_NAMES: Tuple[str, ...] = (
+    "feed_open",
+    "post_open",
+    "post_like",
+    "comment_create",
+    "create_success",
+    "request_open",
+    "request_response_create",
+    "market_item_open",
+    "market_favorite",
+    "market_contact",
+    "dating_like",
+    "dating_match",
+    "notification_open",
+    "report_create",
+    "ad_click",
+)
+
+EVENT_MODULES: Dict[str, str] = {
+    "app_open": "app",
+    "feed_open": "feed",
+    "post_impression": "feed",
+    "post_open": "feed",
+    "post_like": "feed",
+    "comment_create": "feed",
+    "create_open": "content",
+    "create_submit": "content",
+    "create_success": "content",
+    "request_open": "requests",
+    "request_response_create": "requests",
+    "market_item_open": "market",
+    "market_favorite": "market",
+    "market_contact": "market",
+    "dating_like": "dating",
+    "dating_match": "dating",
+    "notification_open": "notifications",
+    "report_create": "moderation",
+    "report_reviewed": "moderation",
+    "ad_impression": "ads",
+    "ad_click": "ads",
+}
+
+SESSION_GAP_SECONDS = 30 * 60
+SINGLE_EVENT_SESSION_SECONDS = 15
+
+ACTION_USAGE_DEFINITIONS: Tuple[Dict[str, Any], ...] = (
+    {
+        "action_key": "feed_read",
+        "label": "Feed readers",
+        "module": "feed",
+        "base_events": ("feed_open",),
+        "completion_events": ("post_open",),
+    },
+    {
+        "action_key": "feed_engage",
+        "label": "Feed engaged users",
+        "module": "feed",
+        "base_events": ("post_open",),
+        "completion_events": ("post_like", "comment_create"),
+    },
+    {
+        "action_key": "content_create",
+        "label": "Content creators",
+        "module": "content",
+        "base_events": ("create_open", "create_submit", "create_success"),
+        "completion_events": ("create_success",),
+    },
+    {
+        "action_key": "request_respond",
+        "label": "Request responders",
+        "module": "requests",
+        "base_events": ("request_open",),
+        "completion_events": ("request_response_create",),
+    },
+    {
+        "action_key": "market_contact",
+        "label": "Market contacts",
+        "module": "market",
+        "base_events": ("market_item_open",),
+        "completion_events": ("market_contact", "market_favorite"),
+    },
+    {
+        "action_key": "dating_like",
+        "label": "Dating likes",
+        "module": "dating",
+        "base_events": ("dating_like",),
+        "completion_events": ("dating_like",),
+    },
+    {
+        "action_key": "notification_open",
+        "label": "Notification opens",
+        "module": "notifications",
+        "base_events": ("notification_open",),
+        "completion_events": ("notification_open",),
+    },
+    {
+        "action_key": "ad_click",
+        "label": "Ad clicks",
+        "module": "ads",
+        "base_events": ("ad_impression",),
+        "completion_events": ("ad_click",),
+    },
+)
+
 KPI_DEFINITIONS: Dict[str, str] = {
+    "dau": "distinct users with meaningful events on report_date",
+    "wau": "distinct users with meaningful events in report_date-6..report_date",
+    "mau": "distinct users with meaningful events in report_date-29..report_date",
+    "stickiness_pct": "dau / mau * 100",
     "activation_rate_pct": "activated_users / new_users * 100",
     "d1_retention_pct": "users_returned_d1 / cohort_new_users * 100",
     "d7_retention_pct": "users_returned_d7 / cohort_new_users * 100",
@@ -157,6 +265,20 @@ def wow_change(current: Optional[float], previous: Optional[float]) -> Optional[
     if current is None or previous in (None, 0, 0.0):
         return None
     return round(((current - previous) / abs(previous)) * 100.0, 4)
+
+
+def event_module(event_name: Optional[str], screen: Optional[str] = None) -> str:
+    if screen:
+        normalized_screen = str(screen).strip().lower()
+        if normalized_screen:
+            for known in ("feed", "requests", "market", "dating", "notifications", "moderation", "ads"):
+                if known in normalized_screen:
+                    return known
+            if "post" in normalized_screen:
+                return "feed"
+            if "create" in normalized_screen:
+                return "content"
+    return EVENT_MODULES.get(str(event_name or ""), "other")
 
 
 def msk_day_bounds_utc(day: date) -> Tuple[datetime, datetime]:
@@ -318,6 +440,42 @@ async def _count_events(db: AsyncSession, report_date: date, names: Sequence[str
     return int(value or 0)
 
 
+async def count_distinct_active_users_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    names: Sequence[str] = REAL_ACTIVITY_EVENT_NAMES,
+) -> int:
+    if not names or end_date < start_date:
+        return 0
+    value = await db.scalar(
+        select(func.count(func.distinct(models.AnalyticsEvent.user_hash))).where(
+            models.AnalyticsEvent.event_date_msk >= start_date,
+            models.AnalyticsEvent.event_date_msk <= end_date,
+            models.AnalyticsEvent.event_name.in_(list(names)),
+        )
+    )
+    return int(value or 0)
+
+
+async def _count_events_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    names: Sequence[str],
+) -> int:
+    if not names or end_date < start_date:
+        return 0
+    value = await db.scalar(
+        select(func.count(models.AnalyticsEvent.id)).where(
+            models.AnalyticsEvent.event_date_msk >= start_date,
+            models.AnalyticsEvent.event_date_msk <= end_date,
+            models.AnalyticsEvent.event_name.in_(list(names)),
+        )
+    )
+    return int(value or 0)
+
+
 async def _count_distinct_users_for_event(
     db: AsyncSession,
     report_date: date,
@@ -340,6 +498,199 @@ async def _count_distinct_users_for_event(
 
     value = await db.scalar(select(func.count(func.distinct(models.AnalyticsEvent.user_hash))).where(*filters))
     return int(value or 0)
+
+
+async def build_action_usage_rows(db: AsyncSession, report_date: date) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+
+    for definition in ACTION_USAGE_DEFINITIONS:
+        base_events = tuple(definition["base_events"])
+        completion_events = tuple(definition["completion_events"])
+        base_users = await _count_distinct_users_for_event(db, report_date, base_events)
+        active_users = await _count_distinct_users_for_event(db, report_date, completion_events)
+        events_count = await _count_events(db, report_date, completion_events)
+        pct, status = safe_percent(active_users, base_users)
+
+        rows.append(
+            {
+                "action_key": definition["action_key"],
+                "label": definition["label"],
+                "module": definition["module"],
+                "base_users": base_users,
+                "active_users": active_users,
+                "events_count": events_count,
+                "completion_pct": pct,
+                "calc_status": status,
+            }
+        )
+
+    return rows
+
+
+async def estimate_online_time_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    names: Sequence[str] = REAL_ACTIVITY_EVENT_NAMES,
+) -> Dict[str, Any]:
+    if not names or end_date < start_date:
+        return {
+            "users_count": 0,
+            "sessions_count": 0,
+            "total_active_seconds": 0,
+            "avg_session_seconds": 0,
+            "avg_daily_user_seconds": 0,
+            "places": [],
+        }
+
+    result = await db.execute(
+        select(
+            models.AnalyticsEvent.user_hash,
+            models.AnalyticsEvent.event_ts_utc,
+            models.AnalyticsEvent.event_date_msk,
+            models.AnalyticsEvent.event_name,
+            models.AnalyticsEvent.screen,
+        )
+        .where(
+            models.AnalyticsEvent.event_date_msk >= start_date,
+            models.AnalyticsEvent.event_date_msk <= end_date,
+            models.AnalyticsEvent.event_name.in_(list(names)),
+        )
+        .order_by(models.AnalyticsEvent.user_hash, models.AnalyticsEvent.event_ts_utc)
+    )
+
+    rows = result.all()
+    if not rows:
+        return {
+            "users_count": 0,
+            "sessions_count": 0,
+            "total_active_seconds": 0,
+            "avg_session_seconds": 0,
+            "avg_daily_user_seconds": 0,
+            "places": [],
+        }
+
+    users = set()
+    active_user_days = set()
+    sessions_count = 0
+    total_active_seconds = 0
+    place_map: Dict[str, Dict[str, Any]] = {}
+
+    current_user: Optional[str] = None
+    current_session_events = 0
+    previous_ts: Optional[datetime] = None
+    previous_module: Optional[str] = None
+
+    def ensure_place(module: str) -> Dict[str, Any]:
+        if module not in place_map:
+            place_map[module] = {
+                "module": module,
+                "active_seconds": 0,
+                "events_count": 0,
+                "users": set(),
+            }
+        return place_map[module]
+
+    def close_session() -> None:
+        nonlocal sessions_count, total_active_seconds, current_session_events, previous_module
+        if current_session_events <= 0:
+            return
+        sessions_count += 1
+        if current_session_events == 1 and previous_module:
+            place = ensure_place(previous_module)
+            place["active_seconds"] += SINGLE_EVENT_SESSION_SECONDS
+            total_active_seconds += SINGLE_EVENT_SESSION_SECONDS
+        current_session_events = 0
+
+    for user_hash, event_ts, event_date_msk, event_name, screen in rows:
+        if event_ts is None:
+            continue
+        module = event_module(event_name, screen)
+        users.add(user_hash)
+        active_user_days.add((user_hash, event_date_msk))
+
+        place = ensure_place(module)
+        place["events_count"] += 1
+        place["users"].add(user_hash)
+
+        if current_user != user_hash:
+            close_session()
+            current_user = user_hash
+            current_session_events = 1
+            previous_ts = event_ts
+            previous_module = module
+            continue
+
+        gap_seconds = int((event_ts - previous_ts).total_seconds()) if previous_ts else 0
+        if gap_seconds < 0:
+            gap_seconds = 0
+
+        if gap_seconds > SESSION_GAP_SECONDS:
+            close_session()
+            current_session_events = 1
+        else:
+            duration = gap_seconds
+            if duration > 0 and previous_module:
+                prev_place = ensure_place(previous_module)
+                prev_place["active_seconds"] += duration
+                total_active_seconds += duration
+            current_session_events += 1
+
+        previous_ts = event_ts
+        previous_module = module
+
+    close_session()
+
+    denominator_days = max(len(active_user_days), 1)
+    places: List[Dict[str, Any]] = []
+    for row in place_map.values():
+        users_set = row.pop("users")
+        active_seconds = int(row["active_seconds"])
+        places.append(
+            {
+                "module": row["module"],
+                "active_seconds": active_seconds,
+                "avg_user_seconds": int(round(active_seconds / max(len(users_set), 1))),
+                "events_count": int(row["events_count"]),
+                "users_count": len(users_set),
+            }
+        )
+
+    places.sort(key=lambda item: item["active_seconds"], reverse=True)
+
+    return {
+        "users_count": len(users),
+        "sessions_count": sessions_count,
+        "total_active_seconds": int(total_active_seconds),
+        "avg_session_seconds": int(round(total_active_seconds / max(sessions_count, 1))),
+        "avg_daily_user_seconds": int(round(total_active_seconds / denominator_days)),
+        "places": places,
+        "method": {
+            "session_gap_seconds": SESSION_GAP_SECONDS,
+            "single_event_session_seconds": SINGLE_EVENT_SESSION_SECONDS,
+        },
+    }
+
+
+async def build_admin_usage_summary(db: AsyncSession, today_msk: date) -> Dict[str, Any]:
+    dau = await count_distinct_active_users_between_dates(db, today_msk, today_msk)
+    wau = await count_distinct_active_users_between_dates(db, today_msk - timedelta(days=6), today_msk)
+    mau = await count_distinct_active_users_between_dates(db, today_msk - timedelta(days=29), today_msk)
+    stickiness_pct, _ = safe_percent(dau, mau)
+
+    return {
+        "real_dau": dau,
+        "real_wau": wau,
+        "real_mau": mau,
+        "stickiness_pct": stickiness_pct,
+        "activity_events_today": await _count_events_between_dates(db, today_msk, today_msk, REAL_ACTIVITY_EVENT_NAMES),
+        "action_usage_today": await build_action_usage_rows(db, today_msk),
+        "online_time_30d": await estimate_online_time_between_dates(
+            db,
+            today_msk - timedelta(days=29),
+            today_msk,
+        ),
+    }
 
 
 async def _count_returned_users_for_cohort(

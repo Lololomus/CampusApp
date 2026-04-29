@@ -16,6 +16,7 @@ from app.database import get_db
 from app.auth_service import require_user
 from app import models, schemas
 from app.serialization import public_user_short
+from app.services import analytics_service
 from app.services import notification_service as notif
 from app.services.analytics_service import record_server_event
 from app.utils import delete_images
@@ -1004,24 +1005,44 @@ async def get_admin_stats(
 
     now = datetime.utcnow()
     day_ago = now - timedelta(days=1)
-    week_ago = now - timedelta(days=7)
-    month_ago = now - timedelta(days=30)
+    today_msk = datetime.now(analytics_service.MSK_TZ).date()
+    today_start_utc, today_end_utc = analytics_service.msk_day_bounds_utc(today_msk)
 
     total_users = await db.scalar(select(func.count(models.User.id)))
-    dau = await db.scalar(select(func.count(models.User.id)).where(models.User.last_active_at >= day_ago))
-    wau = await db.scalar(select(func.count(models.User.id)).where(models.User.last_active_at >= week_ago))
-    mau = await db.scalar(select(func.count(models.User.id)).where(models.User.last_active_at >= month_ago))
+    usage_summary = await analytics_service.build_admin_usage_summary(db, today_msk)
 
     total_posts = await db.scalar(select(func.count(models.Post.id)).where(models.Post.is_deleted == False))
     total_comments = await db.scalar(select(func.count(models.Comment.id)).where(models.Comment.is_deleted == False))
     total_requests = await db.scalar(select(func.count(models.Request.id)).where(models.Request.is_deleted == False))
     total_market = await db.scalar(select(func.count(models.MarketItem.id)).where(models.MarketItem.is_deleted == False))
 
+    reports_today = await db.scalar(
+        select(func.count(models.Report.id)).where(
+            models.Report.created_at >= today_start_utc,
+            models.Report.created_at < today_end_utc,
+        )
+    )
+    reports_processed = await db.scalar(
+        select(func.count(models.Report.id)).where(
+            models.Report.reviewed_at.is_not(None),
+            models.Report.reviewed_at >= today_start_utc,
+            models.Report.reviewed_at < today_end_utc,
+        )
+    )
+    reports_overdue = await db.scalar(
+        select(func.count(models.Report.id)).where(
+            models.Report.status == 'pending',
+            models.Report.created_at < day_ago,
+        )
+    )
     pending_reports = await db.scalar(select(func.count(models.Report.id)).where(models.Report.status == 'pending'))
     pending_appeals = await db.scalar(select(func.count(models.Appeal.id)).where(models.Appeal.status == 'pending'))
     ambassadors_count = await db.scalar(select(func.count(models.User.id)).where(models.User.role == 'ambassador'))
     actions_today = await db.scalar(
-        select(func.count(models.ModerationLog.id)).where(models.ModerationLog.created_at >= day_ago)
+        select(func.count(models.ModerationLog.id)).where(
+            models.ModerationLog.created_at >= today_start_utc,
+            models.ModerationLog.created_at < today_end_utc,
+        )
     )
 
     top_unis_result = await db.execute(
@@ -1034,9 +1055,19 @@ async def get_admin_stats(
 
     return {
         "total_users": total_users,
-        "dau": dau,
-        "wau": wau,
-        "mau": mau,
+        "dau": usage_summary["real_dau"],
+        "wau": usage_summary["real_wau"],
+        "mau": usage_summary["real_mau"],
+        "real_dau": usage_summary["real_dau"],
+        "real_wau": usage_summary["real_wau"],
+        "real_mau": usage_summary["real_mau"],
+        "stickiness_pct": usage_summary["stickiness_pct"],
+        "activity_events_today": usage_summary["activity_events_today"],
+        "action_usage_today": usage_summary["action_usage_today"],
+        "online_time_30d": usage_summary["online_time_30d"],
+        "reports_today": reports_today,
+        "reports_processed": reports_processed,
+        "reports_overdue": reports_overdue,
         "total_posts": total_posts,
         "total_comments": total_comments,
         "total_requests": total_requests,
