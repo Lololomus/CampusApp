@@ -204,14 +204,77 @@ const getTouchMidpoint = (touches) => ({
   y: (touches[0].clientY + touches[1].clientY) / 2,
 });
 
+const getContainedImageFrame = (container) => {
+  const rect = container?.getBoundingClientRect?.();
+  if (!rect?.width || !rect?.height) return { left: 0, top: 0, width: 0, height: 0 };
+
+  const img = container.querySelector('img');
+  const naturalWidth = img?.naturalWidth || 0;
+  const naturalHeight = img?.naturalHeight || 0;
+  if (!naturalWidth || !naturalHeight) {
+    return { left: 0, top: 0, width: rect.width, height: rect.height };
+  }
+
+  const containerRatio = rect.width / rect.height;
+  const imageRatio = naturalWidth / naturalHeight;
+
+  if (imageRatio > containerRatio) {
+    const height = rect.width / imageRatio;
+    return {
+      left: 0,
+      top: (rect.height - height) / 2,
+      width: rect.width,
+      height,
+    };
+  }
+
+  const width = rect.height * imageRatio;
+  return {
+    left: (rect.width - width) / 2,
+    top: 0,
+    width,
+    height: rect.height,
+  };
+};
+
+const clampZoomAxis = (value, frameStart, frameSize, viewportSize, scale) => {
+  const scaledSize = frameSize * scale;
+  if (scaledSize <= viewportSize) {
+    return (viewportSize - scaledSize) / 2 - frameStart;
+  }
+
+  return clamp(value, viewportSize - frameStart - scaledSize, -frameStart);
+};
+
+const getZoomContentPoint = (localX, localY, frame, transform) => ({
+  x: clamp((localX - frame.left - transform.x) / transform.scale, 0, frame.width),
+  y: clamp((localY - frame.top - transform.y) / transform.scale, 0, frame.height),
+});
+
 const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
   const containerRef = useRef(null);
+  const contentFrameRef = useRef({ left: 0, top: 0, width: 0, height: 0 });
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
+  const [contentFrame, setContentFrame] = useState(contentFrameRef.current);
   const transformRef = useRef(transform);
   const gestureRef = useRef(null);
   const suppressTapRef = useRef(false);
   const isZoomedRef = useRef(false);
   const [isInteracting, setIsInteracting] = useState(false);
+
+  const measureContentFrame = useCallback(() => {
+    const next = getContainedImageFrame(containerRef.current);
+    contentFrameRef.current = next;
+    setContentFrame((prev) => (
+      Math.abs(prev.left - next.left) < 0.5 &&
+      Math.abs(prev.top - next.top) < 0.5 &&
+      Math.abs(prev.width - next.width) < 0.5 &&
+      Math.abs(prev.height - next.height) < 0.5
+        ? prev
+        : next
+    ));
+    return next;
+  }, []);
 
   const notifyZoomStart = useCallback(() => {
     if (isZoomedRef.current) return;
@@ -232,14 +295,17 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
   const clampTransform = useCallback((next) => {
     const scale = clamp(next.scale, MIN_ZOOM, MAX_ZOOM);
     const rect = containerRef.current?.getBoundingClientRect?.();
-    if (!rect || scale <= 1.01) return { scale: 1, x: 0, y: 0 };
+    const frame = contentFrameRef.current.width ? contentFrameRef.current : measureContentFrame();
+    if (!rect || !frame.width || !frame.height || scale <= 1.01) {
+      return { scale: 1, x: 0, y: 0 };
+    }
 
     return {
       scale,
-      x: clamp(next.x, rect.width - rect.width * scale, 0),
-      y: clamp(next.y, rect.height - rect.height * scale, 0),
+      x: clampZoomAxis(next.x, frame.left, frame.width, rect.width, scale),
+      y: clampZoomAxis(next.y, frame.top, frame.height, rect.height, scale),
     };
-  }, []);
+  }, [measureContentFrame]);
 
   const applyTransform = useCallback((next) => {
     const clamped = clampTransform(next);
@@ -255,24 +321,58 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
 
   const zoomAt = useCallback((clientX, clientY, nextScale) => {
     const rect = containerRef.current?.getBoundingClientRect?.();
-    if (!rect) return;
+    const frame = contentFrameRef.current.width ? contentFrameRef.current : measureContentFrame();
+    if (!rect || !frame.width || !frame.height) return;
 
     const current = transformRef.current;
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
-    const contentX = (localX - current.x) / current.scale;
-    const contentY = (localY - current.y) / current.scale;
+    const contentPoint = getZoomContentPoint(localX, localY, frame, current);
 
     applyTransform({
       scale: nextScale,
-      x: localX - contentX * nextScale,
-      y: localY - contentY * nextScale,
+      x: localX - frame.left - contentPoint.x * nextScale,
+      y: localY - frame.top - contentPoint.y * nextScale,
     });
-  }, [applyTransform]);
+  }, [applyTransform, measureContentFrame]);
 
   useEffect(() => {
     if (!isActive) resetZoom();
   }, [isActive, resetZoom]);
+
+  useLayoutEffect(() => {
+    measureContentFrame();
+  }, [children, isActive, measureContentFrame]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const image = container?.querySelector('img');
+    if (!container) return undefined;
+
+    const handleMeasure = () => {
+      const frame = measureContentFrame();
+      if (transformRef.current.scale > 1.01) {
+        applyTransform(transformRef.current);
+      } else {
+        contentFrameRef.current = frame;
+      }
+    };
+
+    image?.addEventListener('load', handleMeasure);
+    window.addEventListener('resize', handleMeasure);
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(handleMeasure)
+      : null;
+    observer?.observe(container);
+
+    handleMeasure();
+
+    return () => {
+      image?.removeEventListener('load', handleMeasure);
+      window.removeEventListener('resize', handleMeasure);
+      observer?.disconnect();
+    };
+  }, [applyTransform, measureContentFrame]);
 
   return (
     <div
@@ -283,7 +383,8 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
           e.stopPropagation();
 
           const rect = containerRef.current?.getBoundingClientRect?.();
-          if (!rect) return;
+          const frame = contentFrameRef.current.width ? contentFrameRef.current : measureContentFrame();
+          if (!rect || !frame.width || !frame.height) return;
 
           const midpoint = getTouchMidpoint(e.touches);
           const localX = midpoint.x - rect.left;
@@ -294,8 +395,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
             type: 'pinch',
             startDistance: getTouchDistance(e.touches),
             startScale: current.scale,
-            contentX: (localX - current.x) / current.scale,
-            contentY: (localY - current.y) / current.scale,
+            contentPoint: getZoomContentPoint(localX, localY, frame, current),
           };
           suppressTapRef.current = true;
           setIsInteracting(true);
@@ -324,7 +424,8 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
           e.stopPropagation();
 
           const rect = containerRef.current?.getBoundingClientRect?.();
-          if (!rect) return;
+          const frame = contentFrameRef.current.width ? contentFrameRef.current : measureContentFrame();
+          if (!rect || !frame.width || !frame.height) return;
 
           const midpoint = getTouchMidpoint(e.touches);
           const localX = midpoint.x - rect.left;
@@ -337,8 +438,8 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
 
           applyTransform({
             scale: nextScale,
-            x: localX - gesture.contentX * nextScale,
-            y: localY - gesture.contentY * nextScale,
+            x: localX - frame.left - gesture.contentPoint.x * nextScale,
+            y: localY - frame.top - gesture.contentPoint.y * nextScale,
           });
         } else if (gesture.type === 'pan' && e.touches.length === 1) {
           if (e.cancelable) e.preventDefault();
@@ -392,13 +493,23 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
         onTap?.(e);
       }}
       style={{
-        ...styles.zoomable,
+        ...styles.zoomViewport,
         touchAction: transform.scale > 1.01 || isInteracting ? 'none' : 'manipulation',
-        transition: isInteracting ? 'none' : 'transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)',
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
       }}
     >
-      {children}
+      <div
+        style={{
+          ...styles.zoomable,
+          left: contentFrame.left,
+          top: contentFrame.top,
+          width: contentFrame.width,
+          height: contentFrame.height,
+          transition: isInteracting ? 'none' : 'transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)',
+          transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 };
@@ -1136,15 +1247,21 @@ const styles = {
     justifyContent: 'center',
     cursor: 'pointer',
   },
-  zoomable: {
-    display: 'flex',
+  zoomViewport: {
+    position: 'relative',
     width: '100%',
     height: '100%',
+    overflow: 'hidden',
+    cursor: 'pointer',
+  },
+  zoomable: {
+    position: 'absolute',
+    display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     transition: 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
     transformOrigin: 'top left',
-    cursor: 'pointer',
+    willChange: 'transform',
   },
   image: {
     width: '100%',
