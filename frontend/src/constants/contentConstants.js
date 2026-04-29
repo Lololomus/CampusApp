@@ -150,7 +150,7 @@ export const POPULAR_TAGS = [
 // ========================================
 
 export const IMAGE_SETTINGS = {
-  ALLOWED_FORMATS: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+  ALLOWED_FORMATS: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'],
   MAX_DIMENSION: 1920,
   COMPRESSION_QUALITY: 0.8,
 };

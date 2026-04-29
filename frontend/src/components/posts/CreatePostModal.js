@@ -893,7 +893,7 @@ function CreatePostModal({ onClose }) {
         const processorId = processors[i].id;
 
         if (!isSupportedImageFile(file)) {
-          failedFiles.push(file?.name || `Файл ${i + 1}`);
+          failedFiles.push({ name: file?.name || `Файл ${i + 1}`, message: 'недопустимый формат' });
           setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
           continue;
         }
@@ -905,9 +905,12 @@ function CreatePostModal({ onClose }) {
               setProcessingImages((prev) => prev.map((p) => (p.id === processorId ? { ...p, progress } : p)));
             });
           } catch (compressionError) {
-            // Keep original file if compression fails to avoid silently dropping media.
-            if (import.meta.env.DEV) console.warn('Image compression failed, using original file:', file?.name, compressionError);
-            processedFile = file;
+            failedFiles.push({
+              name: file?.name || `Файл ${i + 1}`,
+              message: compressionError?.message || 'не удалось обработать',
+            });
+            setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
+            continue;
           }
 
           if (!processedFile) {
@@ -947,7 +950,10 @@ function CreatePostModal({ onClose }) {
             reader.readAsDataURL(processedFile);
           });
         } catch (fileError) {
-          failedFiles.push(file?.name || `Файл ${i + 1}`);
+          failedFiles.push({
+            name: file?.name || `Файл ${i + 1}`,
+            message: fileError?.message || 'не удалось обработать',
+          });
           setProcessingImages((prev) => prev.filter((p) => p.id !== processorId));
           console.error('Image processing failed:', fileError);
         }
@@ -958,9 +964,12 @@ function CreatePostModal({ onClose }) {
       }
 
       if (failedFiles.length > 0) {
-        const preview = failedFiles.slice(0, 2).join(', ');
-        const suffix = failedFiles.length > 2 ? '…' : '';
-        toast.warning(`Не удалось добавить ${failedFiles.length} файл(а): ${preview}${suffix}`);
+        const preview = failedFiles
+          .slice(0, 2)
+          .map((item) => `${item.name}: ${item.message}`)
+          .join('; ');
+        const suffix = failedFiles.length > 2 ? `; ещё ${failedFiles.length - 2}` : '';
+        toast.warning(`Добавлено ${filesToProcess.length - failedFiles.length} из ${filesToProcess.length}. Не добавлено ${failedFiles.length}. ${preview}${suffix}`);
       }
     } finally {
       clearPostFileInput();

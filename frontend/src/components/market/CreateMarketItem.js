@@ -6,7 +6,7 @@ import { useStore } from '../../store';
 import { createMarketItem } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import { processImageFiles } from '../../utils/media';
+import { formatImageProcessingWarning, processImageFiles } from '../../utils/media';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
 import { toast } from '../shared/Toast';
 import { useSwipe } from '../../hooks/useSwipe';
@@ -339,8 +339,10 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
       setLoading(true);
       try {
         const processed = await processImageFiles(files);
+        const warning = formatImageProcessingWarning(processed, files.length);
+        if (warning) toast.warning(warning);
         setPhotos(prev => [...prev, ...processed]);
-        hapticFeedback('light');
+        hapticFeedback(processed.length > 0 ? 'light' : 'error');
       } catch {
         toast.error('Ошибка загрузки фото');
       } finally {

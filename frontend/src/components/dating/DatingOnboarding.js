@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, Plus, X, Heart, Loader2, Edit3 } from 'lucide-react';
 import { useStore } from '../../store';
 import { createDatingProfile } from '../../api';
-import { processImageFiles, revokeObjectURLs } from '../../utils/media';
+import { formatImageProcessingWarning, processImageFiles, revokeObjectURLs } from '../../utils/media';
 import { hapticFeedback, isTelegramSDKAvailable } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
@@ -278,6 +278,8 @@ function DatingOnboarding({ onClose }) {
 
     try {
       const processed = await processImageFiles([e.target.files[0]]);
+      const warning = formatImageProcessingWarning(processed, 1);
+      if (warning) toast.warning(warning);
       if (processed.length > 0) {
         const { file, preview } = processed[0];
         setData(prev => {
@@ -292,6 +294,8 @@ function DatingOnboarding({ onClose }) {
           return { ...prev, photos: newPhotos, previews: newPreviews };
         });
         hapticFeedback('success');
+      } else {
+        hapticFeedback('error');
       }
     } catch (error) {
       toast.error(error?.message || 'Не удалось обработать фото');

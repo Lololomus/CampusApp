@@ -211,23 +211,37 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
     setProcessingImages(prev => [...prev, ...procs]);
     hapticFeedback('light');
 
-    try {
-      for (let i = 0; i < toProcess.length; i++) {
-        const file = toProcess[i];
-        const procId = procs[i].id;
+    const failedFiles = [];
+
+    for (let i = 0; i < toProcess.length; i++) {
+      const file = toProcess[i];
+      const procId = procs[i].id;
+
+      try {
         const compressed = await compressImage(file, (p) => setProcessingImages(prev => prev.map(x => x.id === procId ? { ...x, progress: p } : x)));
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setImages(prev => [...prev, { url: ev.target.result, file: compressed, isNew: true }]);
-          setProcessingImages(prev => prev.filter(x => x.id !== procId));
-        };
-        reader.readAsDataURL(compressed);
+        const preview = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => resolve(ev.target.result);
+          reader.onerror = () => reject(new Error('не удалось прочитать файл'));
+          reader.readAsDataURL(compressed);
+        });
+        setImages(prev => [...prev, { url: preview, file: compressed, isNew: true }]);
+      } catch (error) {
+        failedFiles.push({
+          name: file?.name || `Файл ${i + 1}`,
+          message: error?.message || 'не удалось обработать',
+        });
+      } finally {
+        setProcessingImages(prev => prev.filter(x => x.id !== procId));
       }
-      hapticFeedback('success');
-    } catch {
-      toast.error('Ошибка загрузки фото');
-      setProcessingImages([]);
     }
+
+    if (failedFiles.length > 0) {
+      const preview = failedFiles.slice(0, 2).map((item) => `${item.name}: ${item.message}`).join('; ');
+      const suffix = failedFiles.length > 2 ? `; ещё ${failedFiles.length - 2}` : '';
+      toast.warning(`Добавлено ${toProcess.length - failedFiles.length} из ${toProcess.length}. Не добавлено ${failedFiles.length}. ${preview}${suffix}`);
+    }
+    hapticFeedback(failedFiles.length < toProcess.length ? 'success' : 'error');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 

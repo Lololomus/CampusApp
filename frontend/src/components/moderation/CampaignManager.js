@@ -18,7 +18,7 @@ import theme from '../../theme';
 import SmartDatePicker from '../shared/SmartDatePicker';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import { isSafeCtaUrl } from '../../utils/safeUrl';
-import { processImageFiles, revokeObjectURLs } from '../../utils/media';
+import { formatImageProcessingWarning, processImageFiles, revokeObjectURLs } from '../../utils/media';
 
 const AD_IMAGE_SETTINGS = {
   MAX_COUNT: 3,
@@ -367,6 +367,8 @@ function CreateAdForm({ isAdmin = false, onCreated, onCancel }) {
     setImageUploading(true);
     try {
       const newItems = await processImageFiles(files.slice(0, remaining));
+      const warning = formatImageProcessingWarning(newItems, Math.min(files.length, remaining));
+      if (warning) toast.warning(warning);
       setImageFiles((prev) => [...prev, ...newItems]);
     } catch {
       toast.error('Ошибка обработки фото');

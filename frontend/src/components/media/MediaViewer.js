@@ -188,46 +188,214 @@ const SWIPE_CLOSE_MS = 300;
 const HERO_EASING = 'cubic-bezier(0.32,0.72,0,1)';
 const SWIPE_DIRECTION_THRESHOLD = 10;
 const SWIPE_AXIS_LOCK_RATIO = 1.15;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
 
-const Zoomable = ({ children, onTap, onZoomStart, onZoomEnd }) => {
-  const [scale, setScale] = useState(1);
-  const startDist = useRef(null);
-  const isPinching = useRef(false);
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const getTouchDistance = (touches) => {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+};
+
+const getTouchMidpoint = (touches) => ({
+  x: (touches[0].clientX + touches[1].clientX) / 2,
+  y: (touches[0].clientY + touches[1].clientY) / 2,
+});
+
+const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
+  const containerRef = useRef(null);
+  const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
+  const transformRef = useRef(transform);
+  const gestureRef = useRef(null);
+  const suppressTapRef = useRef(false);
+  const isZoomedRef = useRef(false);
+  const [isInteracting, setIsInteracting] = useState(false);
+
+  const notifyZoomStart = useCallback(() => {
+    if (isZoomedRef.current) return;
+    isZoomedRef.current = true;
+    onZoomStart?.();
+  }, [onZoomStart]);
+
+  const updateZoomState = useCallback((nextScale) => {
+    const isZoomedNow = nextScale > 1.01;
+    if (isZoomedNow && !isZoomedRef.current) {
+      notifyZoomStart();
+    } else if (!isZoomedNow && isZoomedRef.current) {
+      isZoomedRef.current = false;
+      onZoomEnd?.();
+    }
+  }, [notifyZoomStart, onZoomEnd]);
+
+  const clampTransform = useCallback((next) => {
+    const scale = clamp(next.scale, MIN_ZOOM, MAX_ZOOM);
+    const rect = containerRef.current?.getBoundingClientRect?.();
+    if (!rect || scale <= 1.01) return { scale: 1, x: 0, y: 0 };
+
+    return {
+      scale,
+      x: clamp(next.x, rect.width - rect.width * scale, 0),
+      y: clamp(next.y, rect.height - rect.height * scale, 0),
+    };
+  }, []);
+
+  const applyTransform = useCallback((next) => {
+    const clamped = clampTransform(next);
+    transformRef.current = clamped;
+    setTransform(clamped);
+    updateZoomState(clamped.scale);
+  }, [clampTransform, updateZoomState]);
+
+  const resetZoom = useCallback(() => {
+    setIsInteracting(false);
+    applyTransform({ scale: 1, x: 0, y: 0 });
+  }, [applyTransform]);
+
+  const zoomAt = useCallback((clientX, clientY, nextScale) => {
+    const rect = containerRef.current?.getBoundingClientRect?.();
+    if (!rect) return;
+
+    const current = transformRef.current;
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const contentX = (localX - current.x) / current.scale;
+    const contentY = (localY - current.y) / current.scale;
+
+    applyTransform({
+      scale: nextScale,
+      x: localX - contentX * nextScale,
+      y: localY - contentY * nextScale,
+    });
+  }, [applyTransform]);
+
+  useEffect(() => {
+    if (!isActive) resetZoom();
+  }, [isActive, resetZoom]);
 
   return (
     <div
+      ref={containerRef}
       onTouchStart={(e) => {
         if (e.touches.length === 2) {
-          const dx = e.touches[0].clientX - e.touches[1].clientX;
-          const dy = e.touches[0].clientY - e.touches[1].clientY;
-          startDist.current = Math.hypot(dx, dy);
-          if (!isPinching.current) {
-            isPinching.current = true;
-            onZoomStart?.();
-          }
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+
+          const rect = containerRef.current?.getBoundingClientRect?.();
+          if (!rect) return;
+
+          const midpoint = getTouchMidpoint(e.touches);
+          const localX = midpoint.x - rect.left;
+          const localY = midpoint.y - rect.top;
+          const current = transformRef.current;
+
+          gestureRef.current = {
+            type: 'pinch',
+            startDistance: getTouchDistance(e.touches),
+            startScale: current.scale,
+            contentX: (localX - current.x) / current.scale,
+            contentY: (localY - current.y) / current.scale,
+          };
+          suppressTapRef.current = true;
+          setIsInteracting(true);
+          notifyZoomStart();
+        } else if (e.touches.length === 1 && transformRef.current.scale > 1.01) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+          const touch = e.touches[0];
+          const current = transformRef.current;
+          gestureRef.current = {
+            type: 'pan',
+            startX: touch.clientX,
+            startY: touch.clientY,
+            startTransform: current,
+          };
+          suppressTapRef.current = true;
+          setIsInteracting(true);
         }
       }}
       onTouchMove={(e) => {
-        if (e.touches.length === 2 && startDist.current) {
-          const dx = e.touches[0].clientX - e.touches[1].clientX;
-          const dy = e.touches[0].clientY - e.touches[1].clientY;
-          setScale(Math.min(Math.max(1, Math.hypot(dx, dy) / startDist.current), 4));
+        const gesture = gestureRef.current;
+        if (!gesture) return;
+
+        if (gesture.type === 'pinch' && e.touches.length === 2) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+
+          const rect = containerRef.current?.getBoundingClientRect?.();
+          if (!rect) return;
+
+          const midpoint = getTouchMidpoint(e.touches);
+          const localX = midpoint.x - rect.left;
+          const localY = midpoint.y - rect.top;
+          const nextScale = clamp(
+            gesture.startScale * (getTouchDistance(e.touches) / gesture.startDistance),
+            MIN_ZOOM,
+            MAX_ZOOM
+          );
+
+          applyTransform({
+            scale: nextScale,
+            x: localX - gesture.contentX * nextScale,
+            y: localY - gesture.contentY * nextScale,
+          });
+        } else if (gesture.type === 'pan' && e.touches.length === 1) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+          const touch = e.touches[0];
+          applyTransform({
+            scale: gesture.startTransform.scale,
+            x: gesture.startTransform.x + touch.clientX - gesture.startX,
+            y: gesture.startTransform.y + touch.clientY - gesture.startY,
+          });
         }
       }}
-      onTouchEnd={() => {
-        setScale(1);
-        startDist.current = null;
-        if (isPinching.current) {
-          isPinching.current = false;
-          onZoomEnd?.();
+      onTouchEnd={(e) => {
+        if (e.touches.length === 0) {
+          gestureRef.current = null;
+          setIsInteracting(false);
+          if (transformRef.current.scale <= 1.01) resetZoom();
+          window.setTimeout(() => { suppressTapRef.current = false; }, 250);
+        } else if (e.touches.length === 1 && transformRef.current.scale > 1.01) {
+          const touch = e.touches[0];
+          gestureRef.current = {
+            type: 'pan',
+            startX: touch.clientX,
+            startY: touch.clientY,
+            startTransform: transformRef.current,
+          };
         }
       }}
-      onDoubleClick={() => setScale((prev) => (prev === 1 ? 2 : 1))}
-      onClick={onTap}
+      onTouchCancel={() => {
+        gestureRef.current = null;
+        setIsInteracting(false);
+        if (transformRef.current.scale <= 1.01) resetZoom();
+        window.setTimeout(() => { suppressTapRef.current = false; }, 250);
+      }}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        suppressTapRef.current = true;
+        setIsInteracting(false);
+        if (transformRef.current.scale > 1.01) resetZoom();
+        else zoomAt(e.clientX, e.clientY, 2.5);
+        window.setTimeout(() => { suppressTapRef.current = false; }, 250);
+      }}
+      onClick={(e) => {
+        if (suppressTapRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          suppressTapRef.current = false;
+          return;
+        }
+        onTap?.(e);
+      }}
       style={{
         ...styles.zoomable,
-        transition: scale === 1 ? 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
-        transform: `scale(${scale})`,
+        touchAction: transform.scale > 1.01 || isInteracting ? 'none' : 'manipulation',
+        transition: isInteracting ? 'none' : 'transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)',
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
       }}
     >
       {children}
@@ -725,7 +893,12 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             }
           }}
           className="mv-swiper"
-          style={styles.swiper}
+          style={{
+            ...styles.swiper,
+            overflowX: isZoomed ? 'hidden' : styles.swiper.overflowX,
+            scrollSnapType: isZoomed ? 'none' : styles.swiper.scrollSnapType,
+            touchAction: isZoomed ? 'none' : styles.swiper.touchAction,
+          }}
         >
           {items.map((media, idx) => {
             const isCurrent = idx === currentIndex;
@@ -804,6 +977,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
                 ) : (
                   <div onClick={toggleUI} style={styles.imageSlide}>
                     <Zoomable
+                      isActive={isCurrent}
                       onTap={(e) => {
                         e.stopPropagation();
                         toggleUI();
@@ -969,7 +1143,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     transition: 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
-    transformOrigin: 'center center',
+    transformOrigin: 'top left',
     cursor: 'pointer',
   },
   image: {

@@ -544,13 +544,15 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
     const processors = filesToProcess.map(() => ({ id: Math.random().toString(36).slice(2), progress: 0 }));
     setProcessingImages((prev) => [...prev, ...processors]);
 
-    try {
-      for (let i = 0; i < filesToProcess.length; i += 1) {
-        const file = filesToProcess[i];
-        const processorId = processors[i].id;
-        if (!ALLOWED_FORMATS.includes(file.type)) {
-          setProcessingImages((prev) => prev.filter((item) => item.id !== processorId));
-          continue;
+    const failedFiles = [];
+
+    for (let i = 0; i < filesToProcess.length; i += 1) {
+      const file = filesToProcess[i];
+      const processorId = processors[i].id;
+
+      try {
+        if (file.type && !ALLOWED_FORMATS.includes(file.type) && !['image/jpg', 'image/heic', 'image/heif'].includes(file.type)) {
+          throw new Error('недопустимый формат');
         }
 
         const compressed = await compressImage(file, (progress) =>
@@ -559,9 +561,10 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
           )
         );
 
-        const preview = await new Promise((resolve) => {
+        const preview = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result || '');
+          reader.onerror = () => reject(new Error('не удалось прочитать файл'));
           reader.readAsDataURL(compressed);
         });
 
@@ -575,17 +578,23 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
             file: compressed,
           },
         ]);
+      } catch (uploadError) {
+        failedFiles.push({
+          name: file?.name || `Файл ${i + 1}`,
+          message: uploadError?.message || 'не удалось обработать',
+        });
+      } finally {
         setProcessingImages((prev) => prev.filter((item) => item.id !== processorId));
       }
-      hapticFeedback('success');
-    } catch (uploadError) {
-      console.error(uploadError);
-      setProcessingImages([]);
-      toast.error('Ошибка обработки фото');
-      hapticFeedback('error');
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
+
+    if (failedFiles.length > 0) {
+      const preview = failedFiles.slice(0, 2).map((item) => `${item.name}: ${item.message}`).join('; ');
+      const suffix = failedFiles.length > 2 ? `; ещё ${failedFiles.length - 2}` : '';
+      toast.warning(`Добавлено ${filesToProcess.length - failedFiles.length} из ${filesToProcess.length}. Не добавлено ${failedFiles.length}. ${preview}${suffix}`);
+    }
+    hapticFeedback(failedFiles.length < filesToProcess.length ? 'success' : 'error');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSubmit = async () => {

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { GraduationCap, SlidersHorizontal, Camera, Edit3, Heart, ChevronRight, ChevronLeft, EyeOff, Plus, X } from 'lucide-react';
 import { useStore } from '../../store';
 import { updateDatingProfile, updateDatingSettings } from '../../api';
-import { processImageFiles, revokeObjectURLs } from '../../utils/media';
+import { formatImageProcessingWarning, processImageFiles, revokeObjectURLs } from '../../utils/media';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { toast } from '../shared/Toast';
@@ -344,6 +344,8 @@ function MyDatingProfileModal({ onClose }) {
     setSaving(true);
     try {
       const processed = await processImageFiles(e.target.files);
+      const warning = formatImageProcessingWarning(processed, e.target.files.length);
+      if (warning) toast.warning(warning);
       setTempNewFiles(prev => [...prev, ...processed.map(p => p.file)]);
       setTempNewPreviews(prev => [...prev, ...processed.map(p => p.preview)]);
     } catch {

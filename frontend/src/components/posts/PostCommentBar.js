@@ -3,7 +3,7 @@ import { Paperclip, Send, X } from 'lucide-react';
 
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
-import { processImageFiles, revokeObjectURLs } from '../../utils/media';
+import { formatImageProcessingWarning, processImageFiles, revokeObjectURLs } from '../../utils/media';
 import { toast } from '../shared/Toast';
 
 function PostCommentBar({
@@ -132,11 +132,13 @@ function PostCommentBar({
     setIsProcessing(true);
     try {
       const processed = await processImageFiles(toProcess);
+      const warning = formatImageProcessingWarning(processed, toProcess.length);
+      if (warning) toast.warning(warning);
       processed.forEach((item) => {
         if (item.preview) attachmentUrlsRef.current.add(item.preview);
       });
       setAttachments((prev) => [...prev, ...processed].slice(0, maxImages));
-      hapticFeedback('success');
+      hapticFeedback(processed.length > 0 ? 'success' : 'error');
     } catch (error) {
       console.error('Comment attachment processing failed:', error);
       toast.error('Не удалось обработать фото');
