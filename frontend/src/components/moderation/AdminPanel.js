@@ -358,6 +358,11 @@ function AppealsSection() {
 function StatsSection() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [expandedWindows, setExpandedWindows] = useState({
+    dau: true,
+    wau: false,
+    mau: false,
+  });
 
   useEffect(() => {
     getAdminStats()
@@ -400,6 +405,117 @@ function StatsSection() {
   const places = Array.isArray(online.places) ? online.places.slice(0, 6) : [];
   const maxPlaceSeconds = Math.max(...places.map((p) => Number(p.active_seconds || 0)), 1);
   const actionRows = Array.isArray(stats.action_usage_today) ? stats.action_usage_today : [];
+  const activityWindows = stats.activity_windows || {};
+
+  const renderDelta = (value) => {
+    if (value == null) return '—';
+    const sign = Number(value) > 0 ? '+' : '';
+    return `${sign}${Number(value).toFixed(1)}%`;
+  };
+
+  const renderWindowDetail = (windowKey) => {
+    const row = activityWindows[windowKey];
+    if (!row) return null;
+    const isExpanded = Boolean(expandedWindows[windowKey]);
+    const modules = Array.isArray(row.modules) ? row.modules.slice(0, 8) : [];
+    const actions = Array.isArray(row.actions) ? row.actions : [];
+    const businessMetrics = Array.isArray(row.business_metrics) ? row.business_metrics : [];
+    const windowOnline = row.online_time || {};
+    const maxModuleUsers = Math.max(...modules.map((m) => Number(m.users_count || 0)), 1);
+
+    return (
+      <div key={windowKey} style={styles.windowBlock}>
+        <button
+          type="button"
+          style={styles.windowToggle}
+          onClick={() => setExpandedWindows((prev) => ({ ...prev, [windowKey]: !prev[windowKey] }))}
+        >
+          <div style={styles.windowToggleText}>
+            <span style={styles.windowTitle}>{row.label}</span>
+            <span style={styles.usageMeta}>
+              {row.start_date === row.end_date ? row.end_date : `${row.start_date} · ${row.end_date}`}
+            </span>
+          </div>
+          <div style={styles.windowToggleNumbers}>
+            <span style={styles.windowValue}>{formatNumber(row.active_users)}</span>
+            <span style={{ ...styles.windowDelta, color: Number(row.change_pct || 0) >= 0 ? '#22c55e' : '#ef4444' }}>
+              {renderDelta(row.change_pct)}
+            </span>
+          </div>
+        </button>
+
+        {isExpanded && (
+          <div style={styles.windowDetails}>
+            <div style={styles.detailGrid}>
+              <div style={styles.detailItem}><span>Прошлый период</span><strong>{formatNumber(row.previous_active_users)}</strong></div>
+              <div style={styles.detailItem}><span>Новые активные</span><strong>{formatNumber(row.new_active_users)}</strong></div>
+              <div style={styles.detailItem}><span>Вернувшиеся</span><strong>{formatPercent(row.returning_pct)}</strong></div>
+              <div style={styles.detailItem}><span>Событий</span><strong>{formatNumber(row.events_count)}</strong></div>
+              <div style={styles.detailItem}><span>Событий / юзер</span><strong>{Number(row.events_per_user || 0).toFixed(1)}</strong></div>
+              <div style={styles.detailItem}><span>Средняя сессия</span><strong>{formatDuration(windowOnline.avg_session_seconds)}</strong></div>
+              <div style={styles.detailItem}><span>В день / активный</span><strong>{formatDuration(windowOnline.avg_daily_user_seconds)}</strong></div>
+              <div style={styles.detailItem}><span>Сессий</span><strong>{formatNumber(windowOnline.sessions_count)}</strong></div>
+            </div>
+
+            <div style={styles.detailSection}>
+              <div style={styles.detailTitle}>Бизнес-метрики</div>
+              <div style={styles.usageList}>
+                {businessMetrics.map((metric) => (
+                  <div key={metric.metric_key} style={styles.usageRow}>
+                    <div style={styles.usageText}>
+                      <span style={styles.usageName}>{BUSINESS_LABELS_RU[metric.metric_key] || metric.label || metric.metric_key}</span>
+                      <span style={styles.usageMeta}>
+                        {formatNumber(metric.numerator)} / {formatNumber(metric.denominator)}
+                      </span>
+                    </div>
+                    <div style={styles.usageValue}>{formatPercent(metric.value_pct)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.detailSection}>
+              <div style={styles.detailTitle}>Места</div>
+              <div style={styles.usageList}>
+                {modules.map((module) => {
+                  const width = `${Math.max(4, Math.round((Number(module.users_count || 0) / maxModuleUsers) * 100))}%`;
+                  return (
+                    <div key={module.module} style={styles.placeRow}>
+                      <div style={styles.placeHeader}>
+                        <span style={styles.usageName}>{MODULE_LABELS_RU[module.module] || module.module}</span>
+                        <span style={styles.usageValue}>{formatNumber(module.users_count)}</span>
+                      </div>
+                      <div style={styles.placeBar}><div style={{ ...styles.placeBarFill, width }} /></div>
+                      <div style={styles.usageMeta}>
+                        {formatPercent(module.share_active_pct)} активных · {formatNumber(module.events_count)} событий · {Number(module.events_per_user || 0).toFixed(1)} / юзер
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={styles.detailSection}>
+              <div style={styles.detailTitle}>Действия</div>
+              <div style={styles.usageList}>
+                {actions.map((action) => (
+                  <div key={action.action_key} style={styles.usageRow}>
+                    <div style={styles.usageText}>
+                      <span style={styles.usageName}>{ACTION_LABELS_RU[action.action_key] || action.label || action.action_key}</span>
+                      <span style={styles.usageMeta}>
+                        база {formatNumber(action.base_users)} · {formatNumber(action.events_count)} событий · {Number(action.events_per_active_user || 0).toFixed(1)} / юзер
+                      </span>
+                    </div>
+                    <div style={styles.usageValue}>{formatNumber(action.active_users)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -411,6 +527,18 @@ function StatsSection() {
               <div style={styles.statLabel}>{s.label}</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.analyticsCard}>
+          <div style={styles.sectionHeader}>
+            <span style={styles.sectionTitle}>Подробная аудитория</span>
+            <span style={styles.analyticsKpiMeta}>DAU · WAU · MAU</span>
+          </div>
+          <div style={styles.windowList}>
+            {['dau', 'wau', 'mau'].map(renderWindowDetail)}
+          </div>
         </div>
       </div>
 
@@ -501,6 +629,16 @@ const MODULE_LABELS_RU = {
   moderation: 'Модерация',
   ads: 'Реклама',
   other: 'Другое',
+};
+
+const BUSINESS_LABELS_RU = {
+  feed_engagement_pct: 'Вовлечённость ленты',
+  creator_share_pct: 'Доля создателей',
+  request_response_pct: 'Отклик на запросы',
+  market_intent_pct: 'Намерение в маркете',
+  dating_usage_pct: 'Использование дейтинга',
+  notification_reach_pct: 'Охват уведомлений',
+  ads_click_pct: 'Клики по рекламе',
 };
 
 // Словарь переводов KPI-меток (label или metric_key с бэкенда)
@@ -1223,6 +1361,104 @@ const styles = {
     height: '100%',
     borderRadius: 999,
     background: P.primary,
+  },
+
+  windowList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+
+  windowBlock: {
+    background: P.surfaceHover,
+    borderRadius: 12,
+    border: `1px solid ${P.border}`,
+    overflow: 'hidden',
+  },
+
+  windowToggle: {
+    width: '100%',
+    minHeight: 56,
+    background: 'transparent',
+    border: 'none',
+    padding: '10px 12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+
+  windowToggleText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    minWidth: 0,
+  },
+
+  windowTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: '#fff',
+  },
+
+  windowToggleNumbers: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    flexDirection: 'column',
+    gap: 2,
+    flexShrink: 0,
+  },
+
+  windowValue: {
+    fontSize: 20,
+    lineHeight: 1,
+    fontWeight: 900,
+    color: P.primary,
+  },
+
+  windowDelta: {
+    fontSize: 11,
+    fontWeight: 800,
+  },
+
+  windowDetails: {
+    borderTop: `1px solid ${P.border}`,
+    padding: 10,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+
+  detailGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 8,
+  },
+
+  detailItem: {
+    background: P.surfaceElevated,
+    borderRadius: 10,
+    border: `1px solid ${P.border}`,
+    padding: 10,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+
+  detailSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+
+  detailTitle: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: P.textMuted,
+    textTransform: 'uppercase',
   },
 
   // Shared

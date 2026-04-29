@@ -527,6 +527,257 @@ async def build_action_usage_rows(db: AsyncSession, report_date: date) -> List[D
     return rows
 
 
+async def _load_active_user_hashes_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    names: Sequence[str] = REAL_ACTIVITY_EVENT_NAMES,
+) -> set:
+    if not names or end_date < start_date:
+        return set()
+    result = await db.execute(
+        select(func.distinct(models.AnalyticsEvent.user_hash)).where(
+            models.AnalyticsEvent.event_date_msk >= start_date,
+            models.AnalyticsEvent.event_date_msk <= end_date,
+            models.AnalyticsEvent.event_name.in_(list(names)),
+        )
+    )
+    return {row[0] for row in result.all() if row[0]}
+
+
+async def _count_distinct_users_for_events_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    names: Sequence[str],
+) -> int:
+    if not names or end_date < start_date:
+        return 0
+    value = await db.scalar(
+        select(func.count(func.distinct(models.AnalyticsEvent.user_hash))).where(
+            models.AnalyticsEvent.event_date_msk >= start_date,
+            models.AnalyticsEvent.event_date_msk <= end_date,
+            models.AnalyticsEvent.event_name.in_(list(names)),
+        )
+    )
+    return int(value or 0)
+
+
+async def build_action_usage_rows_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+
+    for definition in ACTION_USAGE_DEFINITIONS:
+        base_events = tuple(definition["base_events"])
+        completion_events = tuple(definition["completion_events"])
+        base_users = await _count_distinct_users_for_events_between_dates(db, start_date, end_date, base_events)
+        active_users = await _count_distinct_users_for_events_between_dates(db, start_date, end_date, completion_events)
+        events_count = await _count_events_between_dates(db, start_date, end_date, completion_events)
+        pct, status = safe_percent(active_users, base_users)
+
+        rows.append(
+            {
+                "action_key": definition["action_key"],
+                "label": definition["label"],
+                "module": definition["module"],
+                "base_users": base_users,
+                "active_users": active_users,
+                "events_count": events_count,
+                "completion_pct": pct,
+                "events_per_active_user": round(events_count / active_users, 4) if active_users else 0.0,
+                "calc_status": status,
+            }
+        )
+
+    return rows
+
+
+async def build_module_usage_rows_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    active_users: int,
+) -> List[Dict[str, Any]]:
+    if end_date < start_date:
+        return []
+
+    result = await db.execute(
+        select(
+            models.AnalyticsEvent.event_name,
+            models.AnalyticsEvent.user_hash,
+            func.count(models.AnalyticsEvent.id),
+        )
+        .where(
+            models.AnalyticsEvent.event_date_msk >= start_date,
+            models.AnalyticsEvent.event_date_msk <= end_date,
+            models.AnalyticsEvent.event_name.in_(list(REAL_ACTIVITY_EVENT_NAMES)),
+        )
+        .group_by(models.AnalyticsEvent.event_name, models.AnalyticsEvent.user_hash)
+    )
+
+    module_map: Dict[str, Dict[str, Any]] = {}
+    for event_name, user_hash, count in result.all():
+        module = event_module(event_name)
+        if module not in module_map:
+            module_map[module] = {"module": module, "events_count": 0, "users": set()}
+        module_map[module]["events_count"] += int(count or 0)
+        if user_hash:
+            module_map[module]["users"].add(user_hash)
+
+    rows: List[Dict[str, Any]] = []
+    for row in module_map.values():
+        users_count = len(row["users"])
+        share_pct, _ = safe_percent(users_count, active_users)
+        rows.append(
+            {
+                "module": row["module"],
+                "users_count": users_count,
+                "events_count": int(row["events_count"]),
+                "share_active_pct": share_pct,
+                "events_per_user": round(float(row["events_count"]) / users_count, 4) if users_count else 0.0,
+            }
+        )
+
+    rows.sort(key=lambda item: (item["users_count"], item["events_count"]), reverse=True)
+    return rows
+
+
+async def _count_new_active_users_between_dates(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    active_user_hashes: set,
+) -> int:
+    if not active_user_hashes:
+        return 0
+
+    start_utc, _ = msk_day_bounds_utc(start_date)
+    _, end_utc = msk_day_bounds_utc(end_date)
+    _, user_ids = await _load_new_users(db, start_utc, end_utc)
+    if not user_ids:
+        return 0
+
+    settings = get_settings()
+    new_hashes = {hash_user_id(uid, settings.analytics_salt) for uid in user_ids}
+    return len(active_user_hashes.intersection(new_hashes))
+
+
+def build_business_metric_rows(active_users: int, action_rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    action_map = {row["action_key"]: row for row in action_rows}
+
+    def action_users(key: str) -> int:
+        return int(action_map.get(key, {}).get("active_users") or 0)
+
+    def action_pct(key: str) -> Optional[float]:
+        return action_map.get(key, {}).get("completion_pct")
+
+    creator_pct, creator_status = safe_percent(action_users("content_create"), active_users)
+    dating_pct, dating_status = safe_percent(action_users("dating_like"), active_users)
+    notification_pct, notification_status = safe_percent(action_users("notification_open"), active_users)
+
+    return [
+        {
+            "metric_key": "feed_engagement_pct",
+            "label": "Feed engagement",
+            "value_pct": action_pct("feed_engage"),
+            "numerator": action_users("feed_engage"),
+            "denominator": int(action_map.get("feed_engage", {}).get("base_users") or 0),
+            "calc_status": action_map.get("feed_engage", {}).get("calc_status") or INSUFFICIENT_DATA,
+        },
+        {
+            "metric_key": "creator_share_pct",
+            "label": "Creator share",
+            "value_pct": creator_pct,
+            "numerator": action_users("content_create"),
+            "denominator": active_users,
+            "calc_status": creator_status,
+        },
+        {
+            "metric_key": "request_response_pct",
+            "label": "Request response",
+            "value_pct": action_pct("request_respond"),
+            "numerator": action_users("request_respond"),
+            "denominator": int(action_map.get("request_respond", {}).get("base_users") or 0),
+            "calc_status": action_map.get("request_respond", {}).get("calc_status") or INSUFFICIENT_DATA,
+        },
+        {
+            "metric_key": "market_intent_pct",
+            "label": "Market intent",
+            "value_pct": action_pct("market_contact"),
+            "numerator": action_users("market_contact"),
+            "denominator": int(action_map.get("market_contact", {}).get("base_users") or 0),
+            "calc_status": action_map.get("market_contact", {}).get("calc_status") or INSUFFICIENT_DATA,
+        },
+        {
+            "metric_key": "dating_usage_pct",
+            "label": "Dating usage",
+            "value_pct": dating_pct,
+            "numerator": action_users("dating_like"),
+            "denominator": active_users,
+            "calc_status": dating_status,
+        },
+        {
+            "metric_key": "notification_reach_pct",
+            "label": "Notification reach",
+            "value_pct": notification_pct,
+            "numerator": action_users("notification_open"),
+            "denominator": active_users,
+            "calc_status": notification_status,
+        },
+        {
+            "metric_key": "ads_click_pct",
+            "label": "Ads click-through",
+            "value_pct": action_pct("ad_click"),
+            "numerator": action_users("ad_click"),
+            "denominator": int(action_map.get("ad_click", {}).get("base_users") or 0),
+            "calc_status": action_map.get("ad_click", {}).get("calc_status") or INSUFFICIENT_DATA,
+        },
+    ]
+
+
+async def build_activity_window_detail(
+    db: AsyncSession,
+    *,
+    key: str,
+    label: str,
+    start_date: date,
+    end_date: date,
+    previous_start_date: date,
+    previous_end_date: date,
+) -> Dict[str, Any]:
+    active_hashes = await _load_active_user_hashes_between_dates(db, start_date, end_date)
+    active_users = len(active_hashes)
+    previous_active_users = await count_distinct_active_users_between_dates(db, previous_start_date, previous_end_date)
+    events_count = await _count_events_between_dates(db, start_date, end_date, REAL_ACTIVITY_EVENT_NAMES)
+    new_active_users = await _count_new_active_users_between_dates(db, start_date, end_date, active_hashes)
+    returning_active_users = max(active_users - new_active_users, 0)
+    returning_pct, _ = safe_percent(returning_active_users, active_users)
+    action_rows = await build_action_usage_rows_between_dates(db, start_date, end_date)
+
+    return {
+        "key": key,
+        "label": label,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "window_days": (end_date - start_date).days + 1,
+        "active_users": active_users,
+        "previous_active_users": previous_active_users,
+        "change_pct": wow_change(active_users, previous_active_users),
+        "events_count": events_count,
+        "events_per_user": round(events_count / active_users, 4) if active_users else 0.0,
+        "new_active_users": new_active_users,
+        "returning_active_users": returning_active_users,
+        "returning_pct": returning_pct,
+        "modules": await build_module_usage_rows_between_dates(db, start_date, end_date, active_users),
+        "actions": action_rows,
+        "business_metrics": build_business_metric_rows(active_users, action_rows),
+        "online_time": await estimate_online_time_between_dates(db, start_date, end_date),
+    }
+
+
 async def estimate_online_time_between_dates(
     db: AsyncSession,
     start_date: date,
@@ -673,9 +924,37 @@ async def estimate_online_time_between_dates(
 
 
 async def build_admin_usage_summary(db: AsyncSession, today_msk: date) -> Dict[str, Any]:
-    dau = await count_distinct_active_users_between_dates(db, today_msk, today_msk)
-    wau = await count_distinct_active_users_between_dates(db, today_msk - timedelta(days=6), today_msk)
-    mau = await count_distinct_active_users_between_dates(db, today_msk - timedelta(days=29), today_msk)
+    dau_window = await build_activity_window_detail(
+        db,
+        key="dau",
+        label="DAU",
+        start_date=today_msk,
+        end_date=today_msk,
+        previous_start_date=today_msk - timedelta(days=1),
+        previous_end_date=today_msk - timedelta(days=1),
+    )
+    wau_window = await build_activity_window_detail(
+        db,
+        key="wau",
+        label="WAU",
+        start_date=today_msk - timedelta(days=6),
+        end_date=today_msk,
+        previous_start_date=today_msk - timedelta(days=13),
+        previous_end_date=today_msk - timedelta(days=7),
+    )
+    mau_window = await build_activity_window_detail(
+        db,
+        key="mau",
+        label="MAU",
+        start_date=today_msk - timedelta(days=29),
+        end_date=today_msk,
+        previous_start_date=today_msk - timedelta(days=59),
+        previous_end_date=today_msk - timedelta(days=30),
+    )
+
+    dau = dau_window["active_users"]
+    wau = wau_window["active_users"]
+    mau = mau_window["active_users"]
     stickiness_pct, _ = safe_percent(dau, mau)
 
     return {
@@ -684,12 +963,13 @@ async def build_admin_usage_summary(db: AsyncSession, today_msk: date) -> Dict[s
         "real_mau": mau,
         "stickiness_pct": stickiness_pct,
         "activity_events_today": await _count_events_between_dates(db, today_msk, today_msk, REAL_ACTIVITY_EVENT_NAMES),
-        "action_usage_today": await build_action_usage_rows(db, today_msk),
-        "online_time_30d": await estimate_online_time_between_dates(
-            db,
-            today_msk - timedelta(days=29),
-            today_msk,
-        ),
+        "action_usage_today": dau_window["actions"],
+        "online_time_30d": mau_window["online_time"],
+        "activity_windows": {
+            "dau": dau_window,
+            "wau": wau_window,
+            "mau": mau_window,
+        },
     }
 
 
