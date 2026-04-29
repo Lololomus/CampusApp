@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Play, Volume2, VolumeX } from 'lucide-react';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
+import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
@@ -251,6 +252,12 @@ const getZoomContentPoint = (localX, localY, frame, transform) => ({
   y: clamp((localY - frame.top - transform.y) / transform.scale, 0, frame.height),
 });
 
+const getZoomBoundary = (scale) => {
+  if (scale >= MAX_ZOOM - 0.001) return 'max';
+  if (scale <= MIN_ZOOM + 0.001) return 'min';
+  return null;
+};
+
 const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
   const containerRef = useRef(null);
   const contentFrameRef = useRef({ left: 0, top: 0, width: 0, height: 0 });
@@ -260,6 +267,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
   const gestureRef = useRef(null);
   const suppressTapRef = useRef(false);
   const isZoomedRef = useRef(false);
+  const zoomBoundaryRef = useRef(null);
   const [isInteracting, setIsInteracting] = useState(false);
 
   const measureContentFrame = useCallback(() => {
@@ -307,16 +315,24 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
     };
   }, [measureContentFrame]);
 
-  const applyTransform = useCallback((next) => {
+  const applyTransform = useCallback((next, options = {}) => {
+    const { haptic = true } = options;
     const clamped = clampTransform(next);
     transformRef.current = clamped;
     setTransform(clamped);
     updateZoomState(clamped.scale);
+
+    const nextBoundary = getZoomBoundary(clamped.scale);
+    if (haptic && nextBoundary && nextBoundary !== zoomBoundaryRef.current) {
+      hapticFeedback('selection');
+    }
+    zoomBoundaryRef.current = nextBoundary;
   }, [clampTransform, updateZoomState]);
 
   const resetZoom = useCallback(() => {
     setIsInteracting(false);
-    applyTransform({ scale: 1, x: 0, y: 0 });
+    zoomBoundaryRef.current = null;
+    applyTransform({ scale: 1, x: 0, y: 0 }, { haptic: false });
   }, [applyTransform]);
 
   const zoomAt = useCallback((clientX, clientY, nextScale) => {
@@ -352,7 +368,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
     const handleMeasure = () => {
       const frame = measureContentFrame();
       if (transformRef.current.scale > 1.01) {
-        applyTransform(transformRef.current);
+        applyTransform(transformRef.current, { haptic: false });
       } else {
         contentFrameRef.current = frame;
       }
@@ -453,11 +469,15 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
         }
       }}
       onTouchEnd={(e) => {
+        if (gestureRef.current || transformRef.current.scale > 1.01 || suppressTapRef.current) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+        }
         if (e.touches.length === 0) {
           gestureRef.current = null;
           setIsInteracting(false);
           if (transformRef.current.scale <= 1.01) resetZoom();
-          window.setTimeout(() => { suppressTapRef.current = false; }, 250);
+          window.setTimeout(() => { suppressTapRef.current = false; }, 450);
         } else if (e.touches.length === 1 && transformRef.current.scale > 1.01) {
           const touch = e.touches[0];
           gestureRef.current = {
@@ -468,11 +488,13 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
           };
         }
       }}
-      onTouchCancel={() => {
+      onTouchCancel={(e) => {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
         gestureRef.current = null;
         setIsInteracting(false);
         if (transformRef.current.scale <= 1.01) resetZoom();
-        window.setTimeout(() => { suppressTapRef.current = false; }, 250);
+        window.setTimeout(() => { suppressTapRef.current = false; }, 450);
       }}
       onDoubleClick={(e) => {
         e.preventDefault();
@@ -481,7 +503,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
         setIsInteracting(false);
         if (transformRef.current.scale > 1.01) resetZoom();
         else zoomAt(e.clientX, e.clientY, 2.5);
-        window.setTimeout(() => { suppressTapRef.current = false; }, 250);
+        window.setTimeout(() => { suppressTapRef.current = false; }, 450);
       }}
       onClick={(e) => {
         if (suppressTapRef.current) {
@@ -1093,8 +1115,20 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
                         e.stopPropagation();
                         toggleUI();
                       }}
-                      onZoomStart={() => setIsZoomed(true)}
-                      onZoomEnd={() => setIsZoomed(false)}
+                      onZoomStart={() => {
+                        touchStartY.current = null;
+                        touchStartX.current = null;
+                        swipeDirRef.current = null;
+                        resetDrag();
+                        setIsZoomed(true);
+                      }}
+                      onZoomEnd={() => {
+                        touchStartY.current = null;
+                        touchStartX.current = null;
+                        swipeDirRef.current = null;
+                        resetDrag();
+                        setIsZoomed(false);
+                      }}
                     >
                       <img
                         ref={isCurrent ? currentMediaRef : null}
