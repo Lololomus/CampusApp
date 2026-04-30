@@ -25,7 +25,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS } from '../../types';
 import DropdownMenu from '../shared/DropdownMenu';
-import MediaViewer from '../media/MediaViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import ReportModal from '../moderation/ReportModal';
 import Avatar from '../user/Avatar';
 import ProfileMiniCard from '../user/ProfileMiniCard';
@@ -78,10 +78,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const [isDropdownJustClosed, setIsDropdownJustClosed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -97,6 +93,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const descriptionRef = useRef(null);
   const imagesGridRef = useRef(null);
   const isClosingRef = useRef(false);
+  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
 
   const safeRequest = request || currentRequest;
   const finishClose = useCallback(() => {
@@ -167,7 +164,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   }, [descriptionExpanded]);
 
   const handleClose = () => {
-    if (isPhotoViewerJustClosed || isDropdownJustClosed) return;
+    if (isDropdownJustClosed) return;
     hapticFeedback('light');
     isClosingRef.current = true;
     requestClose();
@@ -314,23 +311,21 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const handleImageClick = (e, index) => {
     e.stopPropagation();
     hapticFeedback('light');
-    setPhotoViewerSourceRect(getRequestDetailImageSourceRect(e.currentTarget));
-    setCurrentImageIndex(index);
-    setIsPhotoViewerOpen(true);
+    const sourceRect = getRequestDetailImageSourceRect(e.currentTarget);
+    const ownerId = `request-detail:${safeRequest?.id}`;
+    openMediaViewer({
+      ownerId,
+      mediaList: viewerMedia,
+      initialIndex: index,
+      sourceRect,
+      meta: viewerMeta,
+      getSourceRect: (sourceIndex) => {
+        const sourceEl = imagesGridRef.current?.querySelector(`[data-request-detail-image-index="${sourceIndex}"]`);
+        return getRequestDetailImageSourceRect(sourceEl)
+          || (sourceIndex === index ? sourceRect : null);
+      },
+    });
   };
-
-  const resolvePhotoViewerSourceRect = useCallback((index) => {
-    const sourceEl = imagesGridRef.current?.querySelector(`[data-request-detail-image-index="${index}"]`);
-    return getRequestDetailImageSourceRect(sourceEl)
-      || (index === currentImageIndex ? photoViewerSourceRect : null);
-  }, [currentImageIndex, photoViewerSourceRect]);
-
-  const handlePhotoViewerClose = useCallback(() => {
-    setIsPhotoViewerOpen(false);
-    setPhotoViewerSourceRect(null);
-    setIsPhotoViewerJustClosed(true);
-    setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
-  }, []);
 
   const handleRespond = async () => {
     if (!safeRequest || isOwner || safeRequest.has_responded || datesInfo?.isExpired || safeRequest.status !== 'active') {
@@ -638,7 +633,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
                   data-request-detail-image-index={index}
                   style={{
                     ...styles.imageButton,
-                    visibility: isPhotoViewerOpen && currentImageIndex === index ? 'hidden' : 'visible',
+                    visibility: isMediaSourceHidden(`request-detail:${safeRequest?.id}`, index) ? 'hidden' : 'visible',
                   }}
                   onClick={(e) => handleImageClick(e, index)}
                 >
@@ -725,18 +720,6 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
         anchorRef={menuButtonRef}
         items={menuItems}
       />
-
-      {isPhotoViewerOpen && (
-        <MediaViewer
-          mediaList={viewerMedia}
-          initialIndex={currentImageIndex}
-          meta={viewerMeta}
-          onClose={handlePhotoViewerClose}
-          sourceRect={photoViewerSourceRect}
-          sourceRectProvider={resolvePhotoViewerSourceRect}
-          onIndexChange={setCurrentImageIndex}
-        />
-      )}
 
       {safeRequest.author && (
         <ProfileMiniCard

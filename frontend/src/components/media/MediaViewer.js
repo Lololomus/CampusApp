@@ -3,7 +3,6 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMe
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Play, Volume2, VolumeX } from 'lucide-react';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
-import { lockBodyScroll, unlockBodyScroll } from '../../utils/bodyScrollLock';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
@@ -539,6 +538,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
           height: contentFrame.height,
           transition: isInteracting ? 'none' : 'transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)',
           transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
+          willChange: isInteracting || transform.scale > 1.01 ? 'transform' : undefined,
         }}
       >
         {children}
@@ -664,8 +664,20 @@ const VideoSlide = ({ media, isActive, isClosing, showUI, toggleUI, mediaRef }) 
   );
 };
 
-function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, sourceRectProvider, onIndexChange }) {
+function MediaViewer({
+  mediaList = [],
+  initialIndex = 0,
+  onClose,
+  onCloseStart,
+  sourceRect,
+  sourceRectProvider,
+  onIndexChange,
+  requestCloseSignal = 0,
+  performanceMode = 'normal',
+}) {
   const items = useMemo(() => mediaList.map(normalizeItem).filter(Boolean), [mediaList]);
+  const isReducedPerformance = performanceMode === 'reduced';
+  const viewerScrollBehavior = isReducedPerformance ? 'auto' : 'smooth';
 
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showUI, setShowUI] = useState(true);
@@ -691,6 +703,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const heroCloseDoneRef = useRef(false);
   const didNotifyIndexChangeRef = useRef(false);
   const currentIndexRef = useRef(initialIndex);
+  const requestCloseSignalRef = useRef(requestCloseSignal);
 
   const resolveSourceRect = useCallback((index = currentIndex) => {
     if (typeof sourceRectProvider === 'function') {
@@ -704,6 +717,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     }
     return normalizeRect(sourceRect);
   }, [currentIndex, sourceRect, sourceRectProvider]);
+
+  const notifyCloseStart = useCallback(() => {
+    onCloseStart?.();
+  }, [onCloseStart]);
 
   useEffect(() => {
     if (!heroAnim) return undefined;
@@ -727,6 +744,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
 
   const closeViaSwipe = useCallback(() => {
     if (isClosing || swipeClosing || heroAnim) return;
+    notifyCloseStart();
     isDraggingRef.current = false;
     dragYRef.current = window.innerHeight;
     setIsClosing(true);
@@ -737,7 +755,22 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       closeTimeoutRef.current = null;
       onClose?.();
     }, SWIPE_CLOSE_MS);
-  }, [isClosing, swipeClosing, heroAnim, onClose]);
+  }, [isClosing, swipeClosing, heroAnim, notifyCloseStart, onClose]);
+
+  const closeViaFade = useCallback(() => {
+    if (isClosing || swipeClosing || heroAnim) return;
+    notifyCloseStart();
+    isDraggingRef.current = false;
+    dragYRef.current = 0;
+    setIsClosing(true);
+    setDragY(0);
+    setSwipeClosing(true);
+    if (closeTimeoutRef.current) window.clearTimeout(closeTimeoutRef.current);
+    closeTimeoutRef.current = window.setTimeout(() => {
+      closeTimeoutRef.current = null;
+      onClose?.();
+    }, 180);
+  }, [isClosing, swipeClosing, heroAnim, notifyCloseStart, onClose]);
 
   const finishHeroClose = useCallback(() => {
     if (heroCloseDoneRef.current) return;
@@ -751,6 +784,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
 
   const closeViaHero = useCallback((fallback = closeViaSwipe) => {
     if (isClosing || swipeClosing || heroAnim) return;
+    if (isReducedPerformance) {
+      fallback();
+      return;
+    }
 
     const mediaEl = currentMediaRef.current;
     const currentItem = items[currentIndex];
@@ -768,6 +805,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       return;
     }
 
+    notifyCloseStart();
     isDraggingRef.current = false;
     dragYRef.current = 0;
     setDragY(0);
@@ -792,7 +830,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       closeTimeoutRef.current = null;
       finishHeroClose();
     }, HERO_CLOSE_MS + 80);
-  }, [isClosing, swipeClosing, heroAnim, items, currentIndex, resolveSourceRect, closeViaSwipe, finishHeroClose]);
+  }, [isClosing, swipeClosing, heroAnim, isReducedPerformance, items, currentIndex, resolveSourceRect, closeViaSwipe, notifyCloseStart, finishHeroClose]);
 
   const updateDrag = useCallback((dy) => {
     const nextY = Math.max(0, dy);
@@ -812,11 +850,11 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     }
     isDraggingRef.current = false;
     if (dragYRef.current > 80) {
-      closeViaHero(closeViaSwipe);
+      closeViaHero(isReducedPerformance ? closeViaFade : closeViaSwipe);
     } else {
       resetDrag();
     }
-  }, [closeViaHero, closeViaSwipe, resetDrag]);
+  }, [closeViaHero, closeViaFade, closeViaSwipe, isReducedPerformance, resetDrag]);
 
   const cleanupMouseDrag = useCallback(() => {
     if (dragCleanupRef.current) {
@@ -826,25 +864,21 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
     mouseDragStartYRef.current = null;
   }, []);
 
-  useLayoutEffect(() => {
-    lockBodyScroll();
-    return () => {
-      if (closeTimeoutRef.current) {
-        window.clearTimeout(closeTimeoutRef.current);
-        closeTimeoutRef.current = null;
-      }
-      cleanupMouseDrag();
-      unlockBodyScroll();
-    };
+  useLayoutEffect(() => () => {
+    if (closeTimeoutRef.current) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    cleanupMouseDrag();
   }, [cleanupMouseDrag]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
     alignScrollToIndex(scrollRef.current, initialIndex);
     setTimeout(() => {
-      if (scrollRef.current) scrollRef.current.style.scrollBehavior = 'smooth';
+      if (scrollRef.current) scrollRef.current.style.scrollBehavior = isReducedPerformance ? 'auto' : 'smooth';
     }, 50);
-  }, [initialIndex]);
+  }, [initialIndex, isReducedPerformance]);
 
   useLayoutEffect(() => {
     const scrollEl = scrollRef.current;
@@ -889,17 +923,25 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   }, [currentIndex, onIndexChange]);
 
   useEffect(() => {
+    if (requestCloseSignal === requestCloseSignalRef.current) return;
+    requestCloseSignalRef.current = requestCloseSignal;
+    if (requestCloseSignal > 0) {
+      closeViaHero(isReducedPerformance ? closeViaFade : closeViaSwipe);
+    }
+  }, [requestCloseSignal, closeViaHero, closeViaFade, closeViaSwipe, isReducedPerformance]);
+
+  useEffect(() => {
     const handleKey = (e) => {
       if (e.key === 'ArrowLeft') {
-        scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' });
+        scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth, behavior: viewerScrollBehavior });
       }
       if (e.key === 'ArrowRight') {
-        scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' });
+        scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth, behavior: viewerScrollBehavior });
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [viewerScrollBehavior]);
 
   const toggleUI = useCallback(() => {
     if (suppressTapRef.current) {
@@ -1028,7 +1070,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             : dragY > 0 ? `rgba(0,0,0,${Math.max(0.12, 1 - dragY / 280)})` : '#000',
           opacity: swipeClosing || isHeroClosing ? 0 : 1,
           pointerEvents: closingPassthrough ? 'none' : styles.container.pointerEvents,
-          animation: styles.container.animation,
+          animation: isReducedPerformance ? 'mv-fade-in 0.16s ease' : styles.container.animation,
           transition: swipeClosing
             ? 'opacity 0.22s ease, background 0.32s cubic-bezier(0.32,0.72,0,1)'
             : isHeroClosing ? 'background 0.18s cubic-bezier(0.32,0.72,0,1)' : undefined,
@@ -1058,6 +1100,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             overflowX: isZoomed ? 'hidden' : styles.swiper.overflowX,
             scrollSnapType: isZoomed ? 'none' : styles.swiper.scrollSnapType,
             touchAction: isZoomed ? 'none' : styles.swiper.touchAction,
+            scrollBehavior: viewerScrollBehavior,
           }}
         >
           {items.map((media, idx) => {
@@ -1180,7 +1223,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
           <button
             type="button"
             style={{ ...styles.navBtn, left: 16 }}
-            onClick={() => scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth, behavior: 'smooth' })}
+            onClick={() => scrollRef.current?.scrollBy({ left: -scrollRef.current.clientWidth, behavior: viewerScrollBehavior })}
           >
             <ChevronLeft size={24} />
           </button>
@@ -1189,7 +1232,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
           <button
             type="button"
             style={{ ...styles.navBtn, right: 16 }}
-            onClick={() => scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth, behavior: 'smooth' })}
+            onClick={() => scrollRef.current?.scrollBy({ left: scrollRef.current.clientWidth, behavior: viewerScrollBehavior })}
           >
             <ChevronRight size={24} />
           </button>
@@ -1330,7 +1373,6 @@ const styles = {
     justifyContent: 'center',
     transition: 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
     transformOrigin: 'top left',
-    willChange: 'transform',
   },
   image: {
     width: '100%',

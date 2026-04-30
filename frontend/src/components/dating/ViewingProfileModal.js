@@ -1,13 +1,13 @@
 // ===== FILE: src/components/dating/ViewingProfileModal.js =====
 // Полноэкранный просмотр профиля из вкладки "Симпатии" — slide-in from right
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GraduationCap, ChevronLeft, ChevronRight, Heart, MessageCircle } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
-import PhotoViewer from '../media/PhotoViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useModalAnimation, SCREEN_EXIT_MS } from '../../hooks/useModalAnimation';
@@ -26,10 +26,9 @@ const getProfilePhotoSourceRect = (element) => captureSourceRect(element, {
 function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage, zIndex = Z_MODAL_LIKES_LIST }) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isLiking, setIsLiking] = useState(false);
-  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const isMountedRef = useRef(true);
   const photoSectionRef = useRef(null);
+  const { openMediaViewer, isMediaSourceHidden, activeOwnerId } = useMediaViewer();
 
   useEffect(() => () => { isMountedRef.current = false; }, []);
 
@@ -38,6 +37,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
   const isMatchProfile = profileType === 'match';
   const commonInterests = profile?.common_interests || [];
   const commonGoals = profile?.common_goals || [];
+  const mediaViewerOwnerId = `viewing-profile:${profile?.id || 'unknown'}`;
 
   const { isMounted, isVisible, handleClose } = useModalAnimation(onClose, SCREEN_EXIT_MS);
 
@@ -69,11 +69,21 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
   };
 
   // Навигация по фото через тап-зоны
-  const openPhotoViewer = () => {
+  const openProfileMediaViewer = () => {
     if (!hasPhotos) return;
     const sourceEl = photoSectionRef.current?.querySelector(`[data-viewing-profile-photo-index="${currentPhotoIndex}"]`);
-    setPhotoViewerSourceRect(getProfilePhotoSourceRect(sourceEl));
-    setShowPhotoViewer(true);
+    const sourceRect = getProfilePhotoSourceRect(sourceEl);
+    openMediaViewer({
+      ownerId: mediaViewerOwnerId,
+      mediaList: photos,
+      initialIndex: currentPhotoIndex,
+      sourceRect,
+      getSourceRect: (index) => (
+        getProfilePhotoSourceRect(photoSectionRef.current?.querySelector(`[data-viewing-profile-photo-index="${index}"]`))
+        || (index === currentPhotoIndex ? sourceRect : null)
+      ),
+      onIndexChange: setCurrentPhotoIndex,
+    });
   };
 
   const handlePrevPhoto = (e) => {
@@ -96,15 +106,10 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
       ? { question: 'Ледокол', answer: profile.icebreaker }
       : null;
 
-  const resolvePhotoViewerSourceRect = useCallback((index) => (
-    getProfilePhotoSourceRect(photoSectionRef.current?.querySelector(`[data-viewing-profile-photo-index="${index}"]`))
-    || (index === currentPhotoIndex ? photoViewerSourceRect : null)
-  ), [currentPhotoIndex, photoViewerSourceRect]);
-
   if (!isMounted) return null;
 
   return (
-    <EdgeSwipeBack onBack={handleClose} disabled={showPhotoViewer} zIndex={zIndex}>
+    <EdgeSwipeBack onBack={handleClose} disabled={activeOwnerId === mediaViewerOwnerId} zIndex={zIndex}>
       <div style={{
         ...styles.overlay,
         transform: isVisible ? 'translateX(0)' : 'translateX(100%)',
@@ -123,7 +128,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
 
         <div style={styles.scrollContent}>
           {/* Фото 4:5 с градиентом и overlaid инфо */}
-          <div ref={photoSectionRef} style={styles.photoSection} onClick={openPhotoViewer}>
+          <div ref={photoSectionRef} style={styles.photoSection} onClick={openProfileMediaViewer}>
             {hasPhotos ? (
               <>
                 {photos.map((photo, idx) => (
@@ -136,7 +141,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
                       ...styles.photo,
                       opacity: idx === currentPhotoIndex ? 1 : 0,
                       zIndex: idx === currentPhotoIndex ? 1 : 0,
-                      visibility: showPhotoViewer && idx === currentPhotoIndex ? 'hidden' : 'visible',
+                      visibility: isMediaSourceHidden(mediaViewerOwnerId, idx) ? 'hidden' : 'visible',
                     }}
                   />
                 ))}
@@ -272,21 +277,6 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
             )}
           </button>
         </div>
-
-        {showPhotoViewer && (
-          <PhotoViewer
-            photos={photos}
-            initialIndex={currentPhotoIndex}
-            onClose={() => {
-              setShowPhotoViewer(false);
-              setPhotoViewerSourceRect(null);
-            }}
-            dismissMode="swipe"
-            sourceRect={photoViewerSourceRect}
-            sourceRectProvider={resolvePhotoViewerSourceRect}
-            onIndexChange={setCurrentPhotoIndex}
-          />
-        )}
       </div>
     </EdgeSwipeBack>
   );

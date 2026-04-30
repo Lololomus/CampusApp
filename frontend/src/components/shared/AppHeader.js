@@ -5,7 +5,8 @@ import { hapticFeedback } from '../../utils/telegram';
 import { useStore } from '../../store';
 import { triggerRegistrationPrompt } from '../../api';
 import { BOTTOM_CHROME_STATIC_WHILE_SEARCH_CLASS } from '../../constants/layoutConstants';
-import { isBodyScrollRestoring, isBodyScrollLocked } from '../../utils/bodyScrollLock';
+import { subscribeBodyScrollState } from '../../utils/bodyScrollLock';
+import { useMediaViewerState } from '../media/MediaViewerProvider';
 
 const SCROLL_DIRECTION_THRESHOLD = 8;
 
@@ -37,6 +38,7 @@ const AppHeader = ({
   const [compactTitleWidth, setCompactTitleWidth] = useState(0);
   const [dimensions, setDimensions] = useState({ sticky: 56, collapsible: 0 });
   const [premiumMorphReady, setPremiumMorphReady] = useState(false);
+  const [bodyScrollState, setBodyScrollState] = useState({ locked: false, restoring: false });
 
   const lastScrollYRef = useRef(0);
   const collapsibleVisibleRef = useRef(true);
@@ -51,6 +53,7 @@ const AppHeader = ({
   const collapsibleRef = useRef(null);
   const compactTitleMeasureRef = useRef(null);
   const compactGestureRef = useRef({ startY: 0, lastY: 0, collapsed: false });
+  const isHeaderFrozenRef = useRef(false);
 
   const isModalOpen = useStore((state) => Boolean(
     state.showAuthModal ||
@@ -67,6 +70,13 @@ const AppHeader = ({
     state.showMatchModal
   ));
   const isRegistered = useStore((state) => Boolean(state.isRegistered));
+  const { isOpen: isMediaViewerOpen } = useMediaViewerState();
+  const isHeaderFrozen = Boolean(
+    isModalOpen ||
+    isMediaViewerOpen ||
+    bodyScrollState.locked ||
+    bodyScrollState.restoring
+  );
 
   const normalizedFilterActions = Array.isArray(filterActions) ? filterActions : [];
   const hasFilterActions = normalizedFilterActions.length > 0;
@@ -111,8 +121,14 @@ const AppHeader = ({
     isManualExpandedRef.current = isManualExpanded;
   }, [isManualExpanded]);
 
+  useEffect(() => {
+    isHeaderFrozenRef.current = isHeaderFrozen;
+  }, [isHeaderFrozen]);
+
+  useEffect(() => subscribeBodyScrollState(setBodyScrollState), []);
+
   useLayoutEffect(() => {
-    if (isModalOpen || isBodyScrollLocked() || isBodyScrollRestoring()) return;
+    if (isHeaderFrozen) return;
 
     const currentScrollY = window.scrollY || window.pageYOffset || 0;
     const nextCollapsibleVisible = currentScrollY < 10;
@@ -129,7 +145,7 @@ const AppHeader = ({
       isManualExpandedRef.current = false;
       setIsManualExpanded(false);
     }
-  }, [isModalOpen]);
+  }, [isHeaderFrozen]);
 
   useLayoutEffect(() => {
     if (!useCollapsedToolbarPremium) return undefined;
@@ -181,7 +197,7 @@ const AppHeader = ({
       if (scrollRafRef.current) return;
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null;
-        if (isModalOpen || isBodyScrollLocked() || isBodyScrollRestoring()) return;
+        if (isHeaderFrozenRef.current) return;
 
         const currentScrollY = window.scrollY;
         const scrollDelta = currentScrollY - lastScrollYRef.current;
@@ -221,7 +237,7 @@ const AppHeader = ({
         scrollRafRef.current = null;
       }
     };
-  }, [isModalOpen]);
+  }, []);
 
   useEffect(() => {
     if (!showDrawer && premiumSearchRef.current) premiumSearchRef.current.blur();
@@ -390,7 +406,7 @@ const AppHeader = ({
       const tagsWidth = tagsLeftPx > 0 ? `calc(100% - ${tagsLeftPx}px)` : '100%';
       const tagsOpacity = categories && !isCompact ? 1 : 0;
       const tagsPointer = categories && !isCompact ? 'auto' : 'none';
-      const overlayActive = isScrolled && isManualExpanded && !isModalOpen;
+      const overlayActive = isScrolled && isManualExpanded && !isHeaderFrozen;
       const overlayTop = `calc(var(--screen-top-offset, 0px) + 4px + ${containerHeight}px)`;
       const swipeThreshold = 16;
       const morphHeightTransition = premiumMorphReady ? `height 0.45s ${springSmooth}` : 'none';

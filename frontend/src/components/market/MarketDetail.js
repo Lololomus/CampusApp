@@ -5,7 +5,7 @@ import { ChevronLeft, Heart, MoreHorizontal, Edit3, Trash2, MessageCircle, Info,
 import { useStore } from '../../store';
 import { toggleMarketFavorite, deleteMarketItem, getSellerRating, contactMarketSeller, updateMarketItem as updateMarketItemApi } from '../../api';
 import EditMarketItemModal from './EditMarketItemModal';
-import PhotoViewer from '../media/PhotoViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import ConfirmationDialog from '../shared/ConfirmationDialog';
 import ReportModal from '../moderation/ReportModal';
 import RubleIcon from '../icons/RubleIcon';
@@ -90,7 +90,6 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -106,12 +105,12 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
   const [contactSubmitting, setContactSubmitting] = useState(false);
   const [requestSent, setRequestSent] = useState(() => hasSentMarketRequest(item));
   const [visibilityUpdating, setVisibilityUpdating] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   
   const menuRef = useRef(null);
   const galleryRef = useRef(null);
   const sellerAvatarRef = useRef(null);
   const currentItemRequestSent = hasSentMarketRequest(currentItem);
+  const { openMediaViewer, isMediaSourceHidden, activeOwnerId } = useMediaViewer();
 
   useBodyScrollLock();
 
@@ -135,6 +134,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     [isOwner]
   );
   const images = currentItem.images || [];
+  const mediaViewerOwnerId = `market-detail:${currentItem.id}`;
 
   const closeDetail = () => {
     if (isExiting) return;
@@ -394,23 +394,24 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     }
   };
 
-  const resolvePhotoViewerSourceRect = useCallback((index) => {
-    const sourceImg = galleryRef.current?.querySelector(`[data-market-gallery-image-index="${index}"]`);
-    const sourceSlide = galleryRef.current?.querySelector(`[data-market-gallery-index="${index}"]`);
-    return getMarketGallerySourceRect(sourceImg || sourceSlide)
-      || (index === currentImageIndex ? photoViewerSourceRect : null);
-  }, [currentImageIndex, photoViewerSourceRect]);
-
-  const handlePhotoViewerClose = useCallback(() => {
-    setShowPhotoViewer(false);
-    setPhotoViewerSourceRect(null);
-  }, []);
-
   const handleImageClick = (index, sourceElement) => {
     hapticFeedback('light');
-    setPhotoViewerSourceRect(getMarketGallerySourceRect(sourceElement));
+    const sourceRect = getMarketGallerySourceRect(sourceElement);
     setCurrentImageIndex(index);
-    setShowPhotoViewer(true);
+    openMediaViewer({
+      ownerId: mediaViewerOwnerId,
+      mediaList: images,
+      initialIndex: index,
+      sourceRect,
+      meta: { author: currentItem.seller, caption: currentItem.title },
+      getSourceRect: (sourceIndex) => {
+        const sourceImg = galleryRef.current?.querySelector(`[data-market-gallery-image-index="${sourceIndex}"]`);
+        const sourceSlide = galleryRef.current?.querySelector(`[data-market-gallery-index="${sourceIndex}"]`);
+        return getMarketGallerySourceRect(sourceImg || sourceSlide)
+          || (sourceIndex === index ? sourceRect : null);
+      },
+      onIndexChange: setCurrentImageIndex,
+    });
   };
 
   const handleImageLoad = (index) => {
@@ -549,7 +550,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
     <>
       <EdgeSwipeBack
         onBack={closeDetail}
-        disabled={isExiting || showPhotoViewer || showEditModal}
+        disabled={isExiting || activeOwnerId === mediaViewerOwnerId || showEditModal}
         zIndex={Z_MARKET_DETAIL}
       >
         <div style={{
@@ -592,7 +593,7 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                       style={{
                         ...styles.gallerySlide,
                         transform: `translateX(-${currentImageIndex * 100}%)`,
-                        transition: showPhotoViewer ? 'none' : styles.gallerySlide.transition,
+                        transition: activeOwnerId === mediaViewerOwnerId ? 'none' : styles.gallerySlide.transition,
                       }}
                       onClick={(e) => {
                         const sourceImg = e.currentTarget.querySelector('img[data-market-gallery-image-index]');
@@ -614,7 +615,10 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
                         data-market-gallery-image-index={index}
                         src={imageUrl}
                         alt={`Фото ${index + 1}`}
-                        style={styles.galleryImage}
+                        style={{
+                          ...styles.galleryImage,
+                          visibility: isMediaSourceHidden(mediaViewerOwnerId, index) ? 'hidden' : 'visible',
+                        }}
                         onLoad={() => handleImageLoad(index)}
                         onError={() => handleImageError(index)}
                       />
@@ -814,18 +818,6 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
           item={currentItem}
           onClose={() => setShowEditModal(false)}
           onSuccess={handleEditSuccess}
-        />
-      )}
-
-      {showPhotoViewer && (
-        <PhotoViewer
-          photos={images}
-          initialIndex={currentImageIndex}
-          onClose={handlePhotoViewerClose}
-          meta={{ author: currentItem.seller, caption: currentItem.title }}
-          sourceRect={photoViewerSourceRect}
-          sourceRectProvider={resolvePhotoViewerSourceRect}
-          onIndexChange={setCurrentImageIndex}
         />
       )}
 

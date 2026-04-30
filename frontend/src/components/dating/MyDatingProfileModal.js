@@ -8,7 +8,7 @@ import { formatImageProcessingWarning, processImageFiles, revokeObjectURLs } fro
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { toast } from '../shared/Toast';
-import PhotoViewer from '../media/PhotoViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import SwipeableModal from '../shared/SwipeableModal';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
@@ -101,9 +101,8 @@ function MyDatingProfileModal({ onClose }) {
 
   // Навигация по фото в hero
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const heroPhotoRef = useRef(null);
+  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
 
   // Активный bottom sheet
   const [activeSheet, setActiveSheet] = useState(null);
@@ -149,17 +148,12 @@ function MyDatingProfileModal({ onClose }) {
     back: { visible: true, onClick: handleClose },
   });
 
-  const resolvePhotoViewerSourceRect = useCallback((index) => (
-    index === currentPhotoIndex
-      ? getHeroPhotoSourceRect(heroPhotoRef.current) || photoViewerSourceRect
-      : null
-  ), [currentPhotoIndex, photoViewerSourceRect]);
-
   if (!isMounted || !datingProfile) return null;
 
   const photos = datingProfile.photos || [];
   const hasPhotos = photos.length > 0;
   const hasPrompt = datingProfile.prompts?.question && datingProfile.prompts?.answer;
+  const mediaViewerOwnerId = `my-dating-profile:${datingProfile.id || user?.id || 'me'}`;
 
   const getPhotoUrl = (photo) =>
     typeof photo === 'object' && photo?.url ? photo.url : typeof photo === 'string' ? photo : '';
@@ -379,7 +373,7 @@ function MyDatingProfileModal({ onClose }) {
   return (
     <EdgeSwipeBack
       onBack={handleClose}
-      disabled={showPhotoViewer || Boolean(activeSheet)}
+      disabled={isMediaSourceHidden(mediaViewerOwnerId, currentPhotoIndex) || Boolean(activeSheet)}
       zIndex={Z_MODAL}
     >
       <>
@@ -414,12 +408,19 @@ function MyDatingProfileModal({ onClose }) {
                 alt=""
                 style={{
                   ...styles.heroImg,
-                  visibility: showPhotoViewer ? 'hidden' : 'visible',
+                  visibility: isMediaSourceHidden(mediaViewerOwnerId, currentPhotoIndex) ? 'hidden' : 'visible',
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setPhotoViewerSourceRect(getHeroPhotoSourceRect(heroPhotoRef.current));
-                  setShowPhotoViewer(true);
+                  const sourceRect = getHeroPhotoSourceRect(heroPhotoRef.current);
+                  openMediaViewer({
+                    ownerId: mediaViewerOwnerId,
+                    mediaList: photos,
+                    initialIndex: currentPhotoIndex,
+                    sourceRect,
+                    getSourceRect: () => getHeroPhotoSourceRect(heroPhotoRef.current) || sourceRect,
+                    onIndexChange: setCurrentPhotoIndex,
+                  });
                 }}
               />
             ) : (
@@ -541,22 +542,6 @@ function MyDatingProfileModal({ onClose }) {
           </div>
         </div>
       </div>
-
-      {/* ===== PHOTO VIEWER ===== */}
-      {showPhotoViewer && (
-        <PhotoViewer
-          photos={photos}
-          initialIndex={currentPhotoIndex}
-          onClose={() => {
-            setShowPhotoViewer(false);
-            setPhotoViewerSourceRect(null);
-          }}
-          dismissMode="swipe"
-          sourceRect={photoViewerSourceRect}
-          sourceRectProvider={resolvePhotoViewerSourceRect}
-          onIndexChange={setCurrentPhotoIndex}
-        />
-      )}
 
       {/* ===== BIO SHEET ===== */}
       <SwipeableModal

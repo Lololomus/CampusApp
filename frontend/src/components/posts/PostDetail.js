@@ -12,7 +12,7 @@ import DropdownMenu from '../shared/DropdownMenu';
 import { Z_MODAL_POST_DETAIL } from '../../constants/zIndex';
 import theme from '../../theme';
 import PollView from './PollView';
-import PhotoViewer from '../media/PhotoViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import ReportModal from '../moderation/ReportModal';
 import Avatar from '../user/Avatar';
 import ProfileMiniCard from '../user/ProfileMiniCard';
@@ -125,6 +125,7 @@ const alignPostWithLocalLikeState = (postData, localLikeValue, isRegistered) => 
 
 function PostDetail() {
   const { viewPostId, setViewPostId, user, isRegistered, setUpdatedPost, likedPosts, setPostLiked, setEditingContent, updatePost } = useStore();
+  const { openMediaViewer, isMediaSourceHidden, activeOwnerId } = useMediaViewer();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -151,19 +152,9 @@ function PostDetail() {
   const [showPostAuthorReportModal, setShowPostAuthorReportModal] = useState(false);
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const [isResolved, setIsResolved] = useState(Boolean(post?.is_resolved));
   const [resolving, setResolving] = useState(false);
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
-  const [commentViewer, setCommentViewer] = useState({
-    isOpen: false,
-    photos: [],
-    index: 0,
-    sourceRect: null,
-    sourceCommentId: null,
-    sourceIndex: 0,
-  });
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [showDeletePostDialog, setShowDeletePostDialog] = useState(false);
@@ -322,6 +313,10 @@ function PostDetail() {
     author: post?.is_anonymous ? null : post?.author,
     caption: post?.title || post?.body,
   }), [post?.is_anonymous, post?.author, post?.title, post?.body]);
+  const postMediaViewerOwnerId = `post-detail:${viewPostId || 'unknown'}:media`;
+  const commentMediaViewerOwnerPrefix = `post-detail:${viewPostId || 'unknown'}:comment`;
+  const isPostDetailMediaViewerActive = activeOwnerId === postMediaViewerOwnerId
+    || String(activeOwnerId || '').startsWith(`${commentMediaViewerOwnerPrefix}:`);
 
   const safeRatio = useMemo(() => {
     const rawRatio = getMediaAspectRatio(currentMedia) || 1;
@@ -421,17 +416,12 @@ function PostDetail() {
     setMediaDragX(0);
   }, []);
 
-  const resolvePhotoViewerSourceRect = useCallback((index) => {
+  const resolvePostMediaSourceRect = useCallback((index, fallbackRect = null, fallbackIndex = currentImageIndex) => {
     const sourceEl = mediaContainerRef.current?.querySelector(`[data-post-detail-media-index="${index}"]`);
     const sourceFit = sourceEl?.dataset.mediaFit || currentMediaFit;
     return getPostDetailMediaSourceRect(sourceEl, sourceFit)
-      || (index === currentImageIndex ? photoViewerSourceRect : null);
-  }, [currentImageIndex, currentMediaFit, photoViewerSourceRect]);
-
-  const handlePhotoViewerClose = useCallback(() => {
-    setIsPhotoViewerOpen(false);
-    setPhotoViewerSourceRect(null);
-  }, []);
+      || (index === fallbackIndex ? fallbackRect : null);
+  }, [currentImageIndex, currentMediaFit]);
 
   const handleMediaClick = useCallback(() => {
     if (suppressMediaOpenRef.current) {
@@ -439,9 +429,17 @@ function PostDetail() {
       return;
     }
     hapticFeedback('light');
-    setPhotoViewerSourceRect(resolvePhotoViewerSourceRect(currentImageIndex));
-    setIsPhotoViewerOpen(true);
-  }, [currentImageIndex, resolvePhotoViewerSourceRect]);
+    const sourceRect = resolvePostMediaSourceRect(currentImageIndex);
+    openMediaViewer({
+      ownerId: postMediaViewerOwnerId,
+      mediaList: images,
+      initialIndex: currentImageIndex,
+      sourceRect,
+      getSourceRect: (index) => resolvePostMediaSourceRect(index, sourceRect, currentImageIndex),
+      onIndexChange: setCurrentImageIndex,
+      meta: viewerMeta,
+    });
+  }, [currentImageIndex, images, openMediaViewer, postMediaViewerOwnerId, resolvePostMediaSourceRect, viewerMeta]);
 
   const { dateText, isEdited } = useMemo(() => {
     if (!post) return { dateText: '', isEdited: false };
@@ -683,33 +681,41 @@ function PostDetail() {
     setMenuOpen(null);
   };
 
-  const openCommentImageViewer = (imagesList, index = 0, sourceElement = null, sourceCommentId = null) => {
+  const getCommentMediaViewerOwnerId = useCallback(
+    (commentId) => `${commentMediaViewerOwnerPrefix}:${commentId ?? 'unknown'}`,
+    [commentMediaViewerOwnerPrefix]
+  );
+
+  const isCommentImageHidden = useCallback(
+    (commentId, index) => isMediaSourceHidden(getCommentMediaViewerOwnerId(commentId), index),
+    [getCommentMediaViewerOwnerId, isMediaSourceHidden]
+  );
+
+  const openCommentImageViewer = useCallback((imagesList, index = 0, sourceElement = null, sourceCommentId = null) => {
     const photos = (imagesList || [])
       .map((item) => getImageUrl(item))
       .filter(Boolean);
     if (photos.length === 0) return;
     const boundedIndex = Math.max(0, Math.min(index, photos.length - 1));
-    setCommentViewer({
-      isOpen: true,
-      photos,
-      index: boundedIndex,
-      sourceRect: getPostDetailMediaSourceRect(sourceElement, 'cover'),
-      sourceCommentId,
-      sourceIndex: boundedIndex,
-    });
-  };
+    const sourceRect = getPostDetailMediaSourceRect(sourceElement, 'cover');
 
-  const resolveCommentViewerSourceRect = useCallback((index) => {
-    const sourceCommentId = commentViewer.sourceCommentId;
-    const commentsNode = commentsSectionRef.current;
-    if (commentsNode && sourceCommentId !== null && sourceCommentId !== undefined) {
-      const sourceEl = Array.from(commentsNode.querySelectorAll(`[data-comment-image-index="${index}"]`))
-        .find((node) => node.dataset.commentImageCommentId === String(sourceCommentId));
-      const liveRect = getPostDetailMediaSourceRect(sourceEl, 'cover');
-      if (liveRect) return liveRect;
-    }
-    return index === commentViewer.sourceIndex ? commentViewer.sourceRect : null;
-  }, [commentViewer.sourceCommentId, commentViewer.sourceIndex, commentViewer.sourceRect]);
+    openMediaViewer({
+      ownerId: getCommentMediaViewerOwnerId(sourceCommentId),
+      mediaList: photos,
+      initialIndex: boundedIndex,
+      sourceRect,
+      getSourceRect: (sourceIndex) => {
+        const commentsNode = commentsSectionRef.current;
+        if (commentsNode && sourceCommentId !== null && sourceCommentId !== undefined) {
+          const sourceEl = Array.from(commentsNode.querySelectorAll(`[data-comment-image-index="${sourceIndex}"]`))
+            .find((node) => node.dataset.commentImageCommentId === String(sourceCommentId));
+          const liveRect = getPostDetailMediaSourceRect(sourceEl, 'cover');
+          if (liveRect) return liveRect;
+        }
+        return sourceIndex === boundedIndex ? sourceRect : null;
+      },
+    });
+  }, [getCommentMediaViewerOwnerId, openMediaViewer]);
 
   const handleScrollToComments = useCallback(() => {
     const scrollNode = scrollContentRef.current;
@@ -809,7 +815,7 @@ function PostDetail() {
 
       <EdgeSwipeBack
         onBack={() => setViewPostId(null)}
-        disabled={isExiting || isPhotoViewerOpen}
+        disabled={isExiting || isPostDetailMediaViewerActive}
         zIndex={Z_MODAL_POST_DETAIL}
       >
       <div style={containerStyle}>
@@ -1000,7 +1006,7 @@ function PostDetail() {
                             ...styles.mediaSlide,
                             width: `${100 / mediaSlides.length}%`,
                             backgroundColor: slide.fit === 'contain' ? '#000' : styles.imageContainer.backgroundColor,
-                            visibility: isPhotoViewerOpen && currentImageIndex === index ? 'hidden' : 'visible',
+                            visibility: isMediaSourceHidden(postMediaViewerOwnerId, index) ? 'hidden' : 'visible',
                           }}
                         >
                           <img
@@ -1120,7 +1126,7 @@ function PostDetail() {
                         onSaveEdit={handleSaveEdit}
                         onCancelEdit={() => { setEditingComment(null); setEditText(''); }}
                         onOpenImage={openCommentImageViewer}
-                        activeImageViewer={commentViewer}
+                        isCommentImageHidden={isCommentImageHidden}
                       />
                     ))}
                   </div>
@@ -1137,36 +1143,6 @@ function PostDetail() {
           onCancelReply={() => { setReplyTo(null); setReplyToName(''); }}
           disableKeyboardLift={Boolean(editingComment)}
         />
-
-        {isPhotoViewerOpen && (
-          <PhotoViewer
-            photos={images}
-            initialIndex={currentImageIndex}
-            onClose={handlePhotoViewerClose}
-            meta={viewerMeta}
-            sourceRect={photoViewerSourceRect}
-            sourceRectProvider={resolvePhotoViewerSourceRect}
-            onIndexChange={setCurrentImageIndex}
-          />
-        )}
-
-        {commentViewer.isOpen && (
-          <PhotoViewer
-            photos={commentViewer.photos}
-            initialIndex={commentViewer.index}
-            onClose={() => setCommentViewer({
-              isOpen: false,
-              photos: [],
-              index: 0,
-              sourceRect: null,
-              sourceCommentId: null,
-              sourceIndex: 0,
-            })}
-            sourceRect={commentViewer.sourceRect}
-            sourceRectProvider={resolveCommentViewerSourceRect}
-            onIndexChange={(index) => setCommentViewer(prev => ({ ...prev, index }))}
-          />
-        )}
 
         <ConfirmationDialog
           isOpen={showDeletePostDialog}
@@ -1232,7 +1208,7 @@ function PostDetail() {
   );
 }
 
-const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit, onOpenImage, activeImageViewer }) => {
+const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onLike, onReply, onDelete, onEdit, onReport, menuOpen, setMenuOpen, editingComment, editText, setEditText, onSaveEdit, onCancelEdit, onOpenImage, isCommentImageHidden = () => false }) => {
   const menuButtonRef = useRef(null);
   const avatarRef = useRef(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -1377,11 +1353,7 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
                     data-comment-image-index={idx}
                     style={{
                       ...styles.commentImageButton,
-                      visibility: activeImageViewer?.isOpen
-                        && activeImageViewer.sourceCommentId === comment.id
-                        && activeImageViewer.index === idx
-                          ? 'hidden'
-                          : 'visible',
+                      visibility: isCommentImageHidden(comment.id, idx) ? 'hidden' : 'visible',
                     }}
                     onClick={(e) => onOpenImage(commentImages, idx, e.currentTarget, comment.id)}
                   >
@@ -1422,7 +1394,7 @@ const Comment = React.memo(({ comment, depth = 0, currentUser, commentLikes, onL
               editText={editText} setEditText={setEditText}
               onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}
               onOpenImage={onOpenImage}
-              activeImageViewer={activeImageViewer}
+              isCommentImageHidden={isCommentImageHidden}
             />
           ))}
         </div>

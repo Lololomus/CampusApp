@@ -1,10 +1,10 @@
 // ===== FILE: frontend/src/components/user/ProfileMiniCard.js =====
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { Camera, Flag, MessageCircle } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
-import PhotoViewer from '../media/PhotoViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import DropdownMenu from '../shared/DropdownMenu';
 import { useStore } from '../../store';
 import { getAvatarColor } from '../../utils/avatarColors';
@@ -29,13 +29,8 @@ function ProfileMiniCard({
   onReport,
 }) {
   const { user: currentUser } = useStore();
-  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const avatarImageRef = useRef(null);
-
-  const resolveAvatarSourceRect = useCallback(() => (
-    getMiniAvatarSourceRect(avatarImageRef.current) || photoViewerSourceRect
-  ), [photoViewerSourceRect]);
+  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
 
   if (!user) return null;
 
@@ -45,6 +40,7 @@ function ProfileMiniCard({
   };
 
   const avatarUrl = getAvatarUrl();
+  const mediaViewerOwnerId = `profile-mini:${user.id || user.username || avatarUrl || 'avatar'}`;
   const usernameValue = user.username ? String(user.username).replace(/^@/, '').trim() : null;
   const telegramUsername = normalizeTelegramUsername(user.telegram_username);
   const displayName = user.name || usernameValue || 'Пользователь';
@@ -68,8 +64,14 @@ function ProfileMiniCard({
 
   const handleViewPhoto = () => {
     hapticFeedback('light');
-    setPhotoViewerSourceRect(getMiniAvatarSourceRect(avatarImageRef.current));
-    setIsPhotoViewerOpen(true);
+    const sourceRect = getMiniAvatarSourceRect(avatarImageRef.current);
+    openMediaViewer({
+      ownerId: mediaViewerOwnerId,
+      mediaList: [avatarUrl],
+      initialIndex: 0,
+      sourceRect,
+      getSourceRect: () => getMiniAvatarSourceRect(avatarImageRef.current) || sourceRect,
+    });
   };
 
   const handleTelegramOpen = () => {
@@ -119,7 +121,7 @@ function ProfileMiniCard({
             alt=""
             style={{
               ...styles.headerAvatarImage,
-              visibility: isPhotoViewerOpen ? 'hidden' : 'visible',
+              visibility: isMediaSourceHidden(mediaViewerOwnerId, 0) ? 'hidden' : 'visible',
             }}
             loading="lazy"
             decoding="async"
@@ -145,19 +147,6 @@ function ProfileMiniCard({
         header={headerContent}
         closeOnScroll
       />
-
-      {isPhotoViewerOpen && avatarUrl && (
-        <PhotoViewer
-          photos={[avatarUrl]}
-          initialIndex={0}
-          onClose={() => {
-            setIsPhotoViewerOpen(false);
-            setPhotoViewerSourceRect(null);
-          }}
-          sourceRect={photoViewerSourceRect}
-          sourceRectProvider={resolveAvatarSourceRect}
-        />
-      )}
     </>
   );
 }

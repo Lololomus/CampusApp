@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/components/profile/Profile.js =====
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Grid, ShoppingBag, FileText, Share2, Heart,
   MessageCircle, MapPin, ChevronRight,
@@ -20,7 +20,7 @@ import { getCampusDisplayName } from '../../constants/universityData';
 
 import PostCard from '../posts/PostCard';
 import MyMarketCard from './MyMarketCard';
-import PhotoViewer from '../media/PhotoViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import SettingsModal from './SettingsModal';
 import theme from '../../theme';
 import EditMarketItemModal from '../market/EditMarketItemModal';
@@ -49,9 +49,8 @@ function Profile() {
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('posts');
-  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const avatarSourceRef = useRef(null);
+  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
 
   const [posts, setPosts] = useState([]);
   const [marketItems, setMarketItems] = useState([]);
@@ -152,18 +151,20 @@ function Profile() {
   const handleAvatarClick = () => {
     if (user.avatar) {
       hapticFeedback('light');
-      setPhotoViewerSourceRect(getAvatarSourceRect(avatarSourceRef.current));
-      setShowPhotoViewer(true);
+      const sourceRect = getAvatarSourceRect(avatarSourceRef.current);
+      openMediaViewer({
+        ownerId: `profile-avatar:${user.id || 'me'}`,
+        mediaList: [user.avatar],
+        initialIndex: 0,
+        sourceRect,
+        getSourceRect: () => getAvatarSourceRect(avatarSourceRef.current) || sourceRect,
+      });
     }
   };
 
   const handlePostClick = (postId) => { hapticFeedback('light'); setViewPostId(postId); };
 
   const handleMarketItemOpen = (item) => { hapticFeedback('light'); setSelectedMarketItem(item); };
-
-  const resolveAvatarSourceRect = useCallback(() => (
-    getAvatarSourceRect(avatarSourceRef.current) || photoViewerSourceRect
-  ), [photoViewerSourceRect]);
 
   return (
     <div style={styles.container}>
@@ -181,7 +182,7 @@ function Profile() {
             user={user}
             onAvatarClick={handleAvatarClick}
             avatarRef={avatarSourceRef}
-            isPhotoViewerOpen={showPhotoViewer}
+            isAvatarHidden={isMediaSourceHidden(`profile-avatar:${user.id || 'me'}`, 0)}
           />
         </div>
 
@@ -353,19 +354,6 @@ function Profile() {
         </div>
       </div>
 
-      {showPhotoViewer && user.avatar && (
-        <PhotoViewer
-          photos={[user.avatar]}
-          initialIndex={0}
-          onClose={() => {
-            setShowPhotoViewer(false);
-            setPhotoViewerSourceRect(null);
-          }}
-          sourceRect={photoViewerSourceRect}
-          sourceRectProvider={resolveAvatarSourceRect}
-        />
-      )}
-
       <SettingsModal />
 
       {editingMarketItem && (
@@ -416,7 +404,7 @@ function Profile() {
 }
 
 // ===== CAMPUS ID CARD =====
-const CampusIDCard = ({ user, onAvatarClick, avatarRef, isPhotoViewerOpen }) => {
+const CampusIDCard = ({ user, onAvatarClick, avatarRef, isAvatarHidden }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [copiedUsername, setCopiedUsername] = useState(false);
 
@@ -479,7 +467,7 @@ const CampusIDCard = ({ user, onAvatarClick, avatarRef, isPhotoViewerOpen }) => 
                   src={user.avatar}
                   style={{
                     ...cardStyles.avatarImg,
-                    visibility: isPhotoViewerOpen ? 'hidden' : 'visible',
+                    visibility: isAvatarHidden ? 'hidden' : 'visible',
                   }}
                   alt="avatar"
                 />

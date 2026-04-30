@@ -16,6 +16,7 @@ import DevAuthPanel from './components/dev/DevAuthPanel';
 import SplashScreen from './components/SplashScreen';
 import ToastContainer from './components/shared/Toast';
 import { TelegramScreenProvider } from './components/shared/telegram/TelegramScreenProvider';
+import MediaViewerProvider from './components/media/MediaViewerProvider';
 
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import { useMainTabScrollMemory } from './hooks/useMainTabScrollMemory';
@@ -490,20 +491,22 @@ function App() {
   return (
     <ErrorBoundary>
       <TelegramScreenProvider>
-        <Suspense fallback={<ScreenFallback />}>
-          {appContent}
-        </Suspense>
-        {showSplash && (
-          <SplashScreen
-            key={splashInstanceKey}
-            variant={splashVariant}
-            authReady={authReady && eagerChunksReady}
-            onFinished={() => {
-              setShowSplash(false);
-              if (splashVariant !== 'auto') setSplashVariant('auto');
-            }}
-          />
-        )}
+        <MediaViewerProvider>
+          <Suspense fallback={<ScreenFallback />}>
+            {appContent}
+          </Suspense>
+          {showSplash && (
+            <SplashScreen
+              key={splashInstanceKey}
+              variant={splashVariant}
+              authReady={authReady && eagerChunksReady}
+              onFinished={() => {
+                setShowSplash(false);
+                if (splashVariant !== 'auto') setSplashVariant('auto');
+              }}
+            />
+          )}
+        </MediaViewerProvider>
       </TelegramScreenProvider>
     </ErrorBoundary>
   );

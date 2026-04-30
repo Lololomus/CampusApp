@@ -9,7 +9,7 @@ import { useEdgeSwipeBack } from '../../hooks/useEdgeSwipeBack';
  *
  * @param {function} onBack    — прямой unmount-коллбэк (НЕ handleBack с isExiting)
  * @param {function} onInterceptBack — перехват edge-back без закрытия экрана (вернуть true)
- * @param {boolean}  disabled  — отключить жест (e.g. когда открыт PhotoViewer)
+ * @param {boolean}  disabled  — отключить жест (e.g. когда открыт media viewer)
  * @param {number}   zIndex    — z-index обёртки (передаётся от экрана)
  * @param {ReactNode} children — содержимое экрана
  */

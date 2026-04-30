@@ -10,8 +10,8 @@ import DropdownMenu from '../shared/DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
 import PollWidget from './PollWidget';
 import LinkText from '../shared/LinkText';
-import PhotoViewer from '../media/PhotoViewer';
 import MediaGrid from '../media/MediaGrid';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import ReportModal from '../moderation/ReportModal';
 import Avatar, { AVATAR_BORDER_RADIUS } from '../user/Avatar';
 import ProfileMiniCard from '../user/ProfileMiniCard';
@@ -52,7 +52,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [isBodyExpanded, setIsBodyExpanded] = useState(false);
   const [isBodyOverflowing, setIsBodyOverflowing] = useState(false);
-  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -69,6 +68,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   const [isExpanding, setIsExpanding] = useState(false);
   const impressionTracked = useRef(false);
   const [adHidden, setAdHidden] = useState(false);
+  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
 
   // ✅ Local state для likes_count
   const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
@@ -526,39 +526,37 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
     }
   };
 
-  const [viewerStartIndex, setViewerStartIndex] = useState(0);
-  const [viewerActiveIndex, setViewerActiveIndex] = useState(null);
-  const [viewerSourceRect, setViewerSourceRect] = useState(null);
+  const mediaViewerOwnerId = `post-card:${post.id}`;
+  const hiddenMediaIndex = images.findIndex((_, index) => isMediaSourceHidden(mediaViewerOwnerId, index));
+
   const handleMediaItemClick = useCallback((index, rect) => {
     hapticFeedback('light');
-    setViewerSourceRect(rect || null);
-    setViewerStartIndex(index);
-    setViewerActiveIndex(index);
-    setIsPhotoViewerOpen(true);
-  }, []);
-  const resolveViewerSourceRect = useCallback((index) => {
-    const sourceEl = cardRef.current?.querySelector(`[data-media-grid-index="${index}"]`);
-    if (!sourceEl) return index === viewerStartIndex ? viewerSourceRect : null;
+    openMediaViewer({
+      ownerId: mediaViewerOwnerId,
+      mediaList: images,
+      initialIndex: index,
+      sourceRect: rect || null,
+      meta: viewerMeta,
+      getSourceRect: (sourceIndex) => {
+        const sourceEl = cardRef.current?.querySelector(`[data-media-grid-index="${sourceIndex}"]`);
+        if (!sourceEl) return sourceIndex === index ? rect : null;
 
-    const rect = sourceEl.getBoundingClientRect();
-    return {
-      x: rect.x,
-      y: rect.y,
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-      objectFit: sourceEl.dataset.mediaFit || viewerSourceRect?.objectFit,
-      objectPosition: 'center center',
-      hasContainFill: sourceEl.dataset.mediaFit === 'contain',
-      zIndex: getMediaHeroReturnZIndex(sourceEl),
-    };
-  }, [viewerStartIndex, viewerSourceRect]);
-  const handlePhotoViewerClose = useCallback(() => {
-    setIsPhotoViewerOpen(false);
-    setViewerActiveIndex(null);
-    setViewerSourceRect(null);
-  }, []);
+        const sourceBox = sourceEl.getBoundingClientRect();
+        return {
+          x: sourceBox.x,
+          y: sourceBox.y,
+          left: sourceBox.left,
+          top: sourceBox.top,
+          width: sourceBox.width,
+          height: sourceBox.height,
+          objectFit: sourceEl.dataset.mediaFit || rect?.objectFit,
+          objectPosition: 'center center',
+          hasContainFill: sourceEl.dataset.mediaFit === 'contain',
+          zIndex: getMediaHeroReturnZIndex(sourceEl),
+        };
+      },
+    });
+  }, [images, mediaViewerOwnerId, openMediaViewer, viewerMeta]);
 
   const menuItems = isAd ? [
     {
@@ -837,7 +835,7 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
                 mediaItems={images}
                 onItemClick={handleMediaItemClick}
                 containerStyle={{ borderRadius: 0, border: 'none' }}
-                hiddenIndex={isPhotoViewerOpen ? viewerActiveIndex : null}
+                hiddenIndex={hiddenMediaIndex >= 0 ? hiddenMediaIndex : null}
               />
             </div>
           )
@@ -911,17 +909,6 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
           </div>
         )}
 
-        {isPhotoViewerOpen && (
-          <PhotoViewer
-            photos={images}
-            initialIndex={viewerStartIndex}
-            onClose={handlePhotoViewerClose}
-            meta={viewerMeta}
-            sourceRect={viewerSourceRect}
-            sourceRectProvider={resolveViewerSourceRect}
-            onIndexChange={setViewerActiveIndex}
-          />
-        )}
       </div>
 
       <ReportModal

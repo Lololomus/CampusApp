@@ -20,7 +20,7 @@ import theme from '../../theme';
 import { REWARD_TYPE_ICONS, REWARD_TYPE_LABELS } from '../../types';
 import DropdownMenu from '../shared/DropdownMenu';
 import OverflowMenuButton from '../shared/OverflowMenuButton';
-import MediaViewer from '../media/MediaViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import ReportModal from '../moderation/ReportModal';
 import Avatar from '../user/Avatar';
 import ProfileMiniCard from '../user/ProfileMiniCard';
@@ -55,12 +55,8 @@ const getRequestImageSourceRect = (element) => captureSourceRect(element, { obje
 
 function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compactTop = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isPhotoViewerJustClosed, setIsPhotoViewerJustClosed] = useState(false);
   const [isMenuPressing, setIsMenuPressing] = useState(false);
   const [isImagePressing, setIsImagePressing] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showUserReportModal, setShowUserReportModal] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -70,6 +66,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
   const menuButtonRef = useRef(null);
   const avatarRef = useRef(null);
   const cardRef = useRef(null);
+  const { openMediaViewer, isMediaSourceHidden, activeOwnerId, activeIndex } = useMediaViewer();
 
   const categoryConfig = CATEGORY_CONFIG[request.category] || CATEGORY_CONFIG.study;
 
@@ -266,7 +263,6 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
   }, [isAuthor, request.has_responded, statusInfo]);
 
   const handleCardClick = (e) => {
-    if (isPhotoViewerJustClosed) return;
     if (e.target.closest('.dropdown-menu-trigger') || e.target.closest('.dropdown-menu-content')) return;
     hapticFeedback('light');
     if (onClick) onClick(request);
@@ -282,25 +278,23 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
   const handleImageClick = (e, index) => {
     e.stopPropagation();
     hapticFeedback('light');
-    setPhotoViewerSourceRect(getRequestImageSourceRect(e.currentTarget));
-    setCurrentImageIndex(index);
-    setIsPhotoViewerOpen(true);
-  };
-
-  const resolvePhotoViewerSourceRect = useCallback((index) => {
-    const sourceEl = cardRef.current?.querySelector(`[data-request-image-index="${index}"]`)
-      || (index >= 3 ? cardRef.current?.querySelector('[data-request-image-index="3"]') : null);
-    return getRequestImageSourceRect(sourceEl)
-      || (index === currentImageIndex ? photoViewerSourceRect : null);
-  }, [currentImageIndex, photoViewerSourceRect]);
-
-  const handlePhotoViewerClose = useCallback(() => {
-    setIsPhotoViewerOpen(false);
+    const sourceRect = getRequestImageSourceRect(e.currentTarget);
+    const ownerId = `request-card:${request.id}`;
     setIsImagePressing(false);
-    setPhotoViewerSourceRect(null);
-    setIsPhotoViewerJustClosed(true);
-    setTimeout(() => setIsPhotoViewerJustClosed(false), 120);
-  }, []);
+    openMediaViewer({
+      ownerId,
+      mediaList: viewerMedia,
+      initialIndex: index,
+      sourceRect,
+      meta: viewerMeta,
+      getSourceRect: (sourceIndex) => {
+        const sourceEl = cardRef.current?.querySelector(`[data-request-image-index="${sourceIndex}"]`)
+          || (sourceIndex >= 3 ? cardRef.current?.querySelector('[data-request-image-index="3"]') : null);
+        return getRequestImageSourceRect(sourceEl)
+          || (sourceIndex === index ? sourceRect : null);
+      },
+    });
+  };
 
   const handleImagePressStart = (e) => {
     e.stopPropagation();
@@ -393,6 +387,8 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
 
   const previewImages = images.slice(0, 3);
   const remainingImages = images.length - 3;
+  const mediaViewerOwnerId = `request-card:${request.id}`;
+  const isOverflowPreviewHidden = activeOwnerId === mediaViewerOwnerId && Number(activeIndex) >= 3;
 
   const cardStyle = compactTop ? { ...styles.card, paddingTop: 16 } : styles.card;
 
@@ -520,7 +516,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
                       onPointerLeave={handleImagePressEnd}
                       style={{
                         ...styles.imageButton,
-                        visibility: isPhotoViewerOpen && currentImageIndex === index ? 'hidden' : 'visible',
+                        visibility: isMediaSourceHidden(mediaViewerOwnerId, index) ? 'hidden' : 'visible',
                       }}
                     >
                       {!isLoaded && !isFailed && <div style={styles.imageSkeleton} />}
@@ -554,7 +550,7 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
                   onPointerLeave={handleImagePressEnd}
                   style={{
                     ...styles.imageButton,
-                    visibility: isPhotoViewerOpen && currentImageIndex >= 3 ? 'hidden' : 'visible',
+                    visibility: isOverflowPreviewHidden ? 'hidden' : 'visible',
                   }}
                 >
                   <div style={styles.imageOverlay}>
@@ -579,18 +575,6 @@ function RequestCard({ request, onClick, onEdit, onDelete, currentUserId, compac
           </button>
         </div>
       </div>
-
-      {isPhotoViewerOpen && (
-        <MediaViewer
-          mediaList={viewerMedia}
-          initialIndex={currentImageIndex}
-          meta={viewerMeta}
-          onClose={handlePhotoViewerClose}
-          sourceRect={photoViewerSourceRect}
-          sourceRectProvider={resolvePhotoViewerSourceRect}
-          onIndexChange={setCurrentImageIndex}
-        />
-      )}
 
       <ReportModal
         isOpen={showReportModal}

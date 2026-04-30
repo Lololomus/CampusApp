@@ -1,10 +1,10 @@
 // ===== FILE: src/components/dating/ProfileCard.js =====
 
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { Lock, ChevronUp, GraduationCap, Heart, X } from 'lucide-react';
 import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import theme from '../../theme';
-import PhotoViewer from '../media/PhotoViewer';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import { getDatingPhotoList } from './photoUtils';
 import { captureSourceRect } from '../../utils/mediaRect';
 
@@ -31,14 +31,13 @@ const ProfileCard = memo(function ProfileCard({
 }) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
-  const [photoViewerSourceRect, setPhotoViewerSourceRect] = useState(null);
   const isDraggingRef = useRef(false);
   const cardRef = useRef(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const currentXRef = useRef(0);
   const dragDistanceRef = useRef(0);
+  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
 
   const photos = getDatingPhotoList(profile);
   const commonGoals = profile?.common_goals || [];
@@ -50,16 +49,10 @@ const ProfileCard = memo(function ProfileCard({
   useEffect(() => {
     setImageLoaded(false);
     setPhotoIndex(0);
-    setShowPhotoViewer(false);
-    setPhotoViewerSourceRect(null);
   }, [profile?.id]);
 
-  const resolvePhotoViewerSourceRect = useCallback((index) => (
-    getPhotoSourceRect(cardRef.current?.querySelector(`[data-profile-photo-index="${index}"]`))
-    || (index === photoIndex ? photoViewerSourceRect : null)
-  ), [photoIndex, photoViewerSourceRect]);
-
   if (!profile) return null;
+  const mediaViewerOwnerId = `dating-profile-card:${profile.id}`;
 
   const maxDrag = 350;
 
@@ -97,8 +90,18 @@ const ProfileCard = memo(function ProfileCard({
       } else {
         if (photos.length > 0) {
           const sourceEl = cardRef.current?.querySelector(`[data-profile-photo-index="${photoIndex}"]`);
-          setPhotoViewerSourceRect(getPhotoSourceRect(sourceEl));
-          setShowPhotoViewer(true);
+          const sourceRect = getPhotoSourceRect(sourceEl);
+          openMediaViewer({
+            ownerId: mediaViewerOwnerId,
+            mediaList: photos,
+            initialIndex: photoIndex,
+            sourceRect,
+            getSourceRect: (index) => (
+              getPhotoSourceRect(cardRef.current?.querySelector(`[data-profile-photo-index="${index}"]`))
+              || (index === photoIndex ? sourceRect : null)
+            ),
+            onIndexChange: setPhotoIndex,
+          });
         } else if (onExpandProfile) {
           onExpandProfile();
         }
@@ -190,21 +193,6 @@ const ProfileCard = memo(function ProfileCard({
 
   return (
     <>
-      {showPhotoViewer && (
-        <PhotoViewer
-          photos={photos}
-          initialIndex={photoIndex}
-          onClose={() => {
-            setShowPhotoViewer(false);
-            setPhotoViewerSourceRect(null);
-          }}
-          dismissMode="swipe"
-          sourceRect={photoViewerSourceRect}
-          sourceRectProvider={resolvePhotoViewerSourceRect}
-          onIndexChange={setPhotoIndex}
-        />
-      )}
-
       <div
         ref={cardRef}
         style={styles.card}
@@ -244,7 +232,7 @@ const ProfileCard = memo(function ProfileCard({
                     ...styles.avatarImage,
                     opacity: idx === photoIndex ? 1 : 0,
                     zIndex: idx === photoIndex ? 2 : 1,
-                    visibility: showPhotoViewer && idx === photoIndex ? 'hidden' : 'visible',
+                    visibility: isMediaSourceHidden(mediaViewerOwnerId, idx) ? 'hidden' : 'visible',
                     filter: isBlurred ? 'blur(24px) brightness(0.8)' : 'none',
                     transform: isBlurred ? 'scale(1.1)' : 'none',
                   }}
