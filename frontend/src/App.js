@@ -18,6 +18,7 @@ import ToastContainer from './components/shared/Toast';
 import { TelegramScreenProvider } from './components/shared/telegram/TelegramScreenProvider';
 
 import ErrorBoundary from './components/shared/ErrorBoundary';
+import { useMainTabScrollMemory } from './hooks/useMainTabScrollMemory';
 
 import './App.css';
 
@@ -160,7 +161,13 @@ function App() {
   useEffect(() => {
     updateFixedLayout();
     window.addEventListener('resize', updateFixedLayout);
-    return () => window.removeEventListener('resize', updateFixedLayout);
+    window.visualViewport?.addEventListener('resize', updateFixedLayout);
+    window.visualViewport?.addEventListener('scroll', updateFixedLayout);
+    return () => {
+      window.removeEventListener('resize', updateFixedLayout);
+      window.visualViewport?.removeEventListener('resize', updateFixedLayout);
+      window.visualViewport?.removeEventListener('scroll', updateFixedLayout);
+    };
   }, []);
 
   useEffect(() => {
@@ -203,6 +210,7 @@ function App() {
     publicProfilePreview,
     clearPublicProfilePreview,
   } = useStore();
+  const { saveCurrentScroll, setSavedScroll } = useMainTabScrollMemory(activeTab);
 
   const resetFeedScrollAfterStaleResume = useCallback((now = Date.now()) => {
     let lastBackgroundAt = appBackgroundedAtRef.current;
@@ -220,13 +228,14 @@ function App() {
     if (!lastBackgroundAt || now - lastBackgroundAt < FEED_SCROLL_STALE_MS) return;
 
     appBackgroundedAtRef.current = now;
+    setSavedScroll('feed', 0);
     forceFeedTopOnNextVisibleRef.current = true;
 
     if (activeTab === 'feed' && !viewPostId) {
       window.scrollTo(0, 0);
       forceFeedTopOnNextVisibleRef.current = false;
     }
-  }, [activeTab, viewPostId]);
+  }, [activeTab, setSavedScroll, viewPostId]);
 
   useLayoutEffect(() => {
     if (!forceFeedTopOnNextVisibleRef.current) return;
@@ -247,6 +256,7 @@ function App() {
     const rememberBackgroundTime = () => {
       const now = Date.now();
       appBackgroundedAtRef.current = now;
+      saveCurrentScroll();
       try {
         window.localStorage.setItem(FEED_LAST_BACKGROUND_AT_KEY, String(now));
       } catch {
@@ -275,7 +285,7 @@ function App() {
       window.removeEventListener('pageshow', handleResume);
       window.removeEventListener('focus', handleResume);
     };
-  }, [resetFeedScrollAfterStaleResume]);
+  }, [resetFeedScrollAfterStaleResume, saveCurrentScroll]);
 
   useEffect(() => {
     const startParam = getStartParam();
@@ -358,7 +368,7 @@ function App() {
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
-    const shouldUseCustomScroll = activeTab === 'feed' || activeTab === 'market';
+    const shouldUseCustomScroll = activeTab === 'feed' || activeTab === 'market' || activeTab === 'profile';
 
     if (shouldUseCustomScroll) {
       html.classList.add('custom-scroll');

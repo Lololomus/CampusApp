@@ -98,8 +98,6 @@ function SettingsModal() {
     }
   }, [settings]);
 
-  if (!showSettingsModal) return null;
-
   const isMuted = settings?.mute_all;
 
   // Custom Title Component

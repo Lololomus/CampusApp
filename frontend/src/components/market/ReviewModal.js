@@ -5,6 +5,7 @@ import { createMarketReview } from '../../api';
 import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import SwipeableModal from '../shared/SwipeableModal';
+import { BOTTOM_SHEET_EXIT_MS } from '../../hooks/useBottomSheetModal';
 
 const C = {
   bg: '#050505',
@@ -26,7 +27,7 @@ const ReviewModal = ({ sellerId, sellerName, itemId, dealId, itemTitle, onClose,
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
-    setTimeout(onClose, 300);
+    setTimeout(onClose, BOTTOM_SHEET_EXIT_MS);
   }, [onClose]);
 
   const handleSubmit = async () => {

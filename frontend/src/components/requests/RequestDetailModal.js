@@ -42,6 +42,7 @@ import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { Z_MODAL_REQUEST_DETAIL } from '../../constants/zIndex';
 import LinkText from '../shared/LinkText';
 import SwipeableModal from '../shared/SwipeableModal';
+import { useBottomSheetModal } from '../../hooks/useBottomSheetModal';
 import { captureSourceRect } from '../../utils/mediaRect';
 
 const CATEGORY_CONFIG = {
@@ -95,8 +96,18 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const authorAvatarRef = useRef(null);
   const descriptionRef = useRef(null);
   const imagesGridRef = useRef(null);
+  const isClosingRef = useRef(false);
 
   const safeRequest = request || currentRequest;
+  const finishClose = useCallback(() => {
+    setRequest(null);
+    setCurrentRequest(null);
+    onClose?.();
+  }, [onClose, setCurrentRequest]);
+  const { isOpen: sheetOpen, requestClose } = useBottomSheetModal({
+    open: Boolean(safeRequest),
+    onClose: finishClose,
+  });
   const categoryConfig = CATEGORY_CONFIG[safeRequest?.category] || CATEGORY_CONFIG.study;
 
   const images = useMemo(() => {
@@ -132,9 +143,10 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
 
   useEffect(() => {
     if (!currentRequest) {
-      onClose();
+      if (!isClosingRef.current) requestClose();
       return;
     }
+    isClosingRef.current = false;
     setRequest(currentRequest);
     loadRequestData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -157,8 +169,8 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
   const handleClose = () => {
     if (isPhotoViewerJustClosed || isDropdownJustClosed) return;
     hapticFeedback('light');
-    setCurrentRequest(null);
-    onClose();
+    isClosingRef.current = true;
+    requestClose();
   };
 
   const loadRequestData = async () => {
@@ -517,7 +529,7 @@ function RequestDetailModal({ onClose, onEdit, onDelete }) {
       <style>{cssStyles}</style>
 
       <SwipeableModal
-        isOpen={!!currentRequest}
+        isOpen={sheetOpen}
         onClose={handleClose}
         zIndex={Z_MODAL_REQUEST_DETAIL}
         footer={footer}

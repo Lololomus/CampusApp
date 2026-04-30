@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import SwipeableModal from '../shared/SwipeableModal';
+import { useBottomSheetModal } from '../../hooks/useBottomSheetModal';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { hapticFeedback } from '../../utils/telegram';
 import { normalizeTelegramUsername } from '../../utils/telegramUsername';
@@ -8,6 +9,7 @@ import theme from '../../theme';
 
 function PublicProfileSheet({ user, isOpen, onClose }) {
   const [isPhotoOpen, setIsPhotoOpen] = useState(false);
+  const { isOpen: sheetOpen, requestClose } = useBottomSheetModal({ open: isOpen, onClose });
   const avatarUrl = useMemo(() => {
     if (!user?.avatar) return null;
     return resolveImageUrl(user.avatar, 'avatars');
@@ -38,7 +40,7 @@ function PublicProfileSheet({ user, isOpen, onClose }) {
   };
 
   return (
-    <SwipeableModal isOpen={isOpen} onClose={onClose} title="Профиль">
+    <SwipeableModal isOpen={sheetOpen} onClose={requestClose} title="Профиль">
       <div style={styles.container}>
         <button
           type="button"

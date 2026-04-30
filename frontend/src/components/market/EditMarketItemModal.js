@@ -17,6 +17,7 @@ import { resolveImageUrl } from '../../utils/mediaUrl';
 import { MARKET_CONDITIONS, MARKET_CATEGORIES_MAP } from '../../constants/marketConstants';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { BOTTOM_SHEET_EXIT_MS, BOTTOM_SHEET_TRANSITION } from '../../hooks/useBottomSheetModal';
 
 const MAX_IMAGES = 3;
 const TOOL_ICON_SIZE = 26;
@@ -254,7 +255,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
     setVideoFile(null);
     setVideoThumb(null);
     setIsVisible(false);
-    setTimeout(onClose, 320);
+    setTimeout(onClose, BOTTOM_SHEET_EXIT_MS);
   }
 
   // --- Сохранение ---
@@ -658,7 +659,7 @@ const s = {
     flexDirection: 'column',
     position: 'relative',
     overflow: 'hidden',
-    transition: 'transform 0.36s cubic-bezier(0.32,0.72,0,1)',
+    transition: BOTTOM_SHEET_TRANSITION,
   },
   progressBar: {
     position: 'absolute',

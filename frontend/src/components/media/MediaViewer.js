@@ -194,6 +194,17 @@ const MAX_ZOOM = 4;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
+const alignScrollToIndex = (scrollEl, index) => {
+  if (!scrollEl) return;
+  const width = scrollEl.clientWidth;
+  if (!width) return;
+
+  const previousBehavior = scrollEl.style.scrollBehavior;
+  scrollEl.style.scrollBehavior = 'auto';
+  scrollEl.scrollLeft = width * index;
+  scrollEl.style.scrollBehavior = previousBehavior;
+};
+
 const getTouchDistance = (touches) => {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
@@ -679,6 +690,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const closeTimeoutRef = useRef(null);
   const heroCloseDoneRef = useRef(false);
   const didNotifyIndexChangeRef = useRef(false);
+  const currentIndexRef = useRef(initialIndex);
 
   const resolveSourceRect = useCallback((index = currentIndex) => {
     if (typeof sourceRectProvider === 'function') {
@@ -702,6 +714,10 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
       cancelAnimationFrame(id);
     };
   }, [heroAnim]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
 
   const resetDrag = useCallback(() => {
     dragYRef.current = 0;
@@ -824,12 +840,45 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
 
   useEffect(() => {
     if (!scrollRef.current) return;
-    scrollRef.current.style.scrollBehavior = 'auto';
-    scrollRef.current.scrollLeft = scrollRef.current.clientWidth * initialIndex;
+    alignScrollToIndex(scrollRef.current, initialIndex);
     setTimeout(() => {
       if (scrollRef.current) scrollRef.current.style.scrollBehavior = 'smooth';
     }, 50);
   }, [initialIndex]);
+
+  useLayoutEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return undefined;
+
+    let raf = null;
+    const align = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        alignScrollToIndex(scrollEl, currentIndexRef.current);
+      });
+    };
+
+    align();
+    window.addEventListener('resize', align);
+    window.addEventListener('orientationchange', align);
+    window.visualViewport?.addEventListener('resize', align);
+    window.visualViewport?.addEventListener('scroll', align);
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(align)
+      : null;
+    observer?.observe(scrollEl);
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', align);
+      window.removeEventListener('orientationchange', align);
+      window.visualViewport?.removeEventListener('resize', align);
+      window.visualViewport?.removeEventListener('scroll', align);
+      observer?.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (!didNotifyIndexChangeRef.current) {
@@ -1182,9 +1231,9 @@ const styles = {
   overlay: {
     position: 'fixed',
     top: 0,
-    right: 0,
     bottom: 0,
-    left: 0,
+    left: 'var(--app-fixed-left, 0px)',
+    width: 'var(--app-fixed-width, 100%)',
     backgroundColor: 'rgba(0,0,0,0.95)',
     zIndex: Z_PHOTO_VIEWER - 1,
     animation: 'mv-fade-in 0.2s ease',
@@ -1205,9 +1254,9 @@ const styles = {
   container: {
     position: 'fixed',
     top: 0,
-    right: 0,
     bottom: 0,
-    left: 0,
+    left: 'var(--app-fixed-left, 0px)',
+    width: 'var(--app-fixed-width, 100%)',
     zIndex: Z_PHOTO_VIEWER,
     display: 'flex',
     flexDirection: 'column',
@@ -1215,6 +1264,8 @@ const styles = {
     animation: 'mv-fade-in-scale 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
     userSelect: 'none',
     WebkitUserSelect: 'none',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
   },
   counter: {
     position: 'absolute',

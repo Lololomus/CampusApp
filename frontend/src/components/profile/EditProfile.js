@@ -14,6 +14,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import SwipeableModal from '../shared/SwipeableModal';
+import { BOTTOM_SHEET_EXIT_MS } from '../../hooks/useBottomSheetModal';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import theme from '../../theme';
 import { Z_EDIT_PROFILE } from '../../constants/zIndex';
@@ -54,7 +55,7 @@ function EduLockedSheet({ daysLeft, onClose }) {
 
   const handleClose = () => {
     setIsOpen(false);
-    setTimeout(onClose, 300);
+    setTimeout(onClose, BOTTOM_SHEET_EXIT_MS);
   };
 
   return (

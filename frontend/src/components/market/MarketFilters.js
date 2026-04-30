@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import SwipeableModal from '../shared/SwipeableModal';
+import { useBottomSheetModal } from '../../hooks/useBottomSheetModal';
 import { hapticFeedback } from '../../utils/telegram';
 import { getCampusDisplayName, getUserCity } from '../../constants/universityData';
 import { MARKET_CATEGORIES } from '../../constants/marketConstants';
@@ -28,6 +29,7 @@ const D = {
 
 
 const MarketFilters = ({ onClose, onApply, resultsCount = null, fetchCount = null }) => {
+  const { isOpen, requestClose } = useBottomSheetModal({ onClose });
   const { user, marketFilters, setMarketFilters, clearMarketFilters } = useStore();
 
   const [localFilters, setLocalFilters] = useState({ ...marketFilters });
@@ -125,7 +127,7 @@ const MarketFilters = ({ onClose, onApply, resultsCount = null, fetchCount = nul
     hapticFeedback('medium');
     setMarketFilters(localFilters);
     onApply();
-    onClose();
+    requestClose();
   };
 
   const handleReset = () => {
@@ -137,7 +139,7 @@ const MarketFilters = ({ onClose, onApply, resultsCount = null, fetchCount = nul
     setLocalFilters(defaultFilters);
     clearMarketFilters();
     onApply();
-    onClose();
+    requestClose();
   };
 
   const isConditionSelected = (value) => {
@@ -226,8 +228,8 @@ const MarketFilters = ({ onClose, onApply, resultsCount = null, fetchCount = nul
 
   return (
     <SwipeableModal
-      isOpen={true}
-      onClose={onClose}
+      isOpen={isOpen}
+      onClose={requestClose}
       showHeaderDivider={false}
       title={
         <div style={styles.titleWrapper}>

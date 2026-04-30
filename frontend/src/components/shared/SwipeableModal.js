@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useEdgeSwipeBack } from '../../hooks/useEdgeSwipeBack';
+import { BOTTOM_SHEET_EXIT_MS, BOTTOM_SHEET_TRANSITION } from '../../hooks/useBottomSheetModal';
 import theme from '../../theme';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 
@@ -78,7 +79,7 @@ const SwipeableModal = ({
 
   // Блокировка скролла фона
   useEffect(() => {
-    if (isOpen) {
+    if (isVisible) {
       openModalCount++;
       if (openModalCount === 1) {
         savedBodyOverflow = document.body.style.overflow;
@@ -86,14 +87,14 @@ const SwipeableModal = ({
       }
     }
     return () => {
-      if (isOpen) {
+      if (isVisible) {
         openModalCount--;
         if (openModalCount === 0) {
           document.body.style.overflow = savedBodyOverflow;
         }
       }
     };
-  }, [isOpen]);
+  }, [isVisible]);
 
   useEffect(() => {
     let timer;
@@ -108,7 +109,7 @@ const SwipeableModal = ({
       });
     } else {
       setIsAnimating(false);
-      timer = setTimeout(() => setIsVisible(false), 300);
+      timer = setTimeout(() => setIsVisible(false), BOTTOM_SHEET_EXIT_MS);
     }
     return () => clearTimeout(timer);
   }, [isOpen]);
@@ -163,9 +164,7 @@ const SwipeableModal = ({
           borderTopRightRadius: 24,
           boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
           transform: isAnimating ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
-          transition: isAnimating
-            ? 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)'
-            : 'transform 0.25s ease-in',
+          transition: BOTTOM_SHEET_TRANSITION,
           display: 'flex',
           flexDirection: 'column',
           maxHeight: '90vh',

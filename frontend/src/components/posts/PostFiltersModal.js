@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import SwipeableModal from '../shared/SwipeableModal';
+import { useBottomSheetModal } from '../../hooks/useBottomSheetModal';
 import { hapticFeedback } from '../../utils/telegram';
 import { getCampusDisplayName, getUserCity } from '../../constants/universityData';
 import { CREATE_CONTENT_POST_CATEGORIES } from '../../constants/createContentUiConfig';
@@ -25,6 +26,7 @@ const D = {
 };
 
 const PostFiltersModal = ({ onClose, onApply, resultsCount = null, fetchCount = null }) => {
+  const { isOpen, requestClose } = useBottomSheetModal({ onClose });
   const {
     user,
     feedSubTab,
@@ -179,7 +181,7 @@ const PostFiltersModal = ({ onClose, onApply, resultsCount = null, fetchCount = 
       setRequestsFilters(localFilters);
     }
     onApply();
-    onClose();
+    requestClose();
   };
 
   const handleReset = () => {
@@ -194,7 +196,7 @@ const PostFiltersModal = ({ onClose, onApply, resultsCount = null, fetchCount = 
       clearRequestsFilters();
     }
     onApply();
-    onClose();
+    requestClose();
   };
 
   const activeFiltersCount = () => {
@@ -238,8 +240,8 @@ const PostFiltersModal = ({ onClose, onApply, resultsCount = null, fetchCount = 
 
   return (
     <SwipeableModal
-      isOpen={true}
-      onClose={onClose}
+      isOpen={isOpen}
+      onClose={requestClose}
       showHeaderDivider={false}
       title={
         <div style={styles.titleWrapper}>

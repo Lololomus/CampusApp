@@ -47,6 +47,7 @@ import SmartDatePicker from '../shared/SmartDatePicker';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { BOTTOM_SHEET_EXIT_MS, BOTTOM_SHEET_TRANSITION } from '../../hooks/useBottomSheetModal';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
@@ -439,7 +440,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
 
   const confirmClose = () => {
     setIsVisible(false);
-    setTimeout(onClose, 280);
+    setTimeout(onClose, BOTTOM_SHEET_EXIT_MS);
   };
 
   const handleClose = () => {
@@ -1129,7 +1130,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
+    transition: BOTTOM_SHEET_TRANSITION,
     boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
   },
   progressBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.08)', zIndex: 2 },

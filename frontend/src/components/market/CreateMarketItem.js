@@ -17,6 +17,7 @@ import { MARKET_CATEGORIES, MARKET_CONDITIONS } from '../../constants/marketCons
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { BOTTOM_SHEET_EXIT_MS, BOTTOM_SHEET_TRANSITION } from '../../hooks/useBottomSheetModal';
 
 const MAX_IMAGES = 3;
 const MIN_TITLE_LEN = 3;
@@ -191,7 +192,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
 
     hapticFeedback('light');
     setIsVisible(false);
-    setTimeout(onClose, 320);
+    setTimeout(onClose, BOTTOM_SHEET_EXIT_MS);
   };
 
   const handleRestoreDraft = () => {
@@ -516,7 +517,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
         style={{
           ...s.sheet,
           transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 0.36s cubic-bezier(0.32,0.72,0,1)',
+          transition: BOTTOM_SHEET_TRANSITION,
         }}
         onClick={e => e.stopPropagation()}
       >
