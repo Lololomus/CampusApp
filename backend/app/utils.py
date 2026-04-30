@@ -25,9 +25,11 @@ ALLOWED_UPLOAD_KINDS = {"images", "avatars", "videos", "thumbs"}
 
 MAX_IMAGE_SIZE = 2048
 MAX_AVATAR_SIZE = 512
+MAX_THUMBNAIL_SIZE = 640
 MIN_SHORT_SIDE = 40
 MIN_TOTAL_PIXELS = 10_000
 WEBP_QUALITY = 88
+THUMB_WEBP_QUALITY = 82
 WEBP_METHOD = 6
 MAX_FILE_SIZE = 20 * 1024 * 1024
 READ_CHUNK_SIZE = 1024 * 1024
@@ -169,48 +171,91 @@ def _prepare_image(img: Image.Image, max_side: int) -> Image.Image:
     return img
 
 
+def _save_webp(img: Image.Image, path: Path, quality: int = WEBP_QUALITY) -> None:
+    with open(path, "wb") as f:
+        img.save(
+            f,
+            format="WEBP",
+            quality=quality,
+            method=WEBP_METHOD,
+            optimize=True,
+            exif=b"",
+        )
+
+
 def process_image_sync(content: bytes, kind: str = "images", max_side: int = MAX_IMAGE_SIZE) -> dict:
     if not verify_magic_bytes(content):
         raise ValueError("Unsupported image format")
 
     relative_path, temp_path, final_path = _make_storage_paths(kind)
+    should_make_thumbnail = kind == "images"
+    thumb_relative_path = ""
+    thumb_temp_path: Optional[Path] = None
+    thumb_final_path: Optional[Path] = None
     clean_img: Optional[Image.Image] = None
+    thumb_img: Optional[Image.Image] = None
 
     try:
         with Image.open(BytesIO(content)) as img:
             img.load()
             clean_img = _prepare_image(img, max_side=max_side)
+            if should_make_thumbnail:
+                thumb_relative_path, thumb_temp_path, thumb_final_path = _make_storage_paths("thumbs")
+                thumb_img = clean_img.copy()
+                if thumb_img.width > MAX_THUMBNAIL_SIZE or thumb_img.height > MAX_THUMBNAIL_SIZE:
+                    thumb_img.thumbnail((MAX_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE), Image.Resampling.LANCZOS)
 
-            with open(temp_path, "wb") as f:
-                clean_img.save(
-                    f,
-                    format="WEBP",
-                    quality=WEBP_QUALITY,
-                    method=WEBP_METHOD,
-                    optimize=True,
-                    exif=b"",
-                )
+            _save_webp(clean_img, temp_path)
+            if thumb_img and thumb_temp_path:
+                _save_webp(thumb_img, thumb_temp_path, quality=THUMB_WEBP_QUALITY)
 
         os.replace(temp_path, final_path)
+        if thumb_temp_path and thumb_final_path:
+            os.replace(thumb_temp_path, thumb_final_path)
         file_size = final_path.stat().st_size
-        return {
+        meta = {
             "url": relative_path,
             "w": clean_img.width,
             "h": clean_img.height,
             "format": "webp",
             "size_bytes": file_size,
         }
+        if thumb_img and thumb_relative_path:
+            meta.update({
+                "thumbnail_url": thumb_relative_path,
+                "thumbnail_w": thumb_img.width,
+                "thumbnail_h": thumb_img.height,
+            })
+        return meta
     except (UnidentifiedImageError, OSError) as exc:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
+        if thumb_temp_path and thumb_temp_path.exists():
+            thumb_temp_path.unlink(missing_ok=True)
+        if final_path.exists():
+            final_path.unlink(missing_ok=True)
+        if thumb_final_path and thumb_final_path.exists():
+            thumb_final_path.unlink(missing_ok=True)
         raise ValueError("Failed to decode image") from exc
     except ValueError:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
+        if thumb_temp_path and thumb_temp_path.exists():
+            thumb_temp_path.unlink(missing_ok=True)
+        if final_path.exists():
+            final_path.unlink(missing_ok=True)
+        if thumb_final_path and thumb_final_path.exists():
+            thumb_final_path.unlink(missing_ok=True)
         raise
     except Exception as exc:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
+        if thumb_temp_path and thumb_temp_path.exists():
+            thumb_temp_path.unlink(missing_ok=True)
+        if final_path.exists():
+            final_path.unlink(missing_ok=True)
+        if thumb_final_path and thumb_final_path.exists():
+            thumb_final_path.unlink(missing_ok=True)
         raise ValueError("Failed to process image") from exc
 
 
@@ -333,6 +378,25 @@ def delete_all_media(media_data: Union[List[dict], List[str], str]) -> None:
             pass
 
 
+def _delete_upload_path(raw_path: str, default_kind: str = "images") -> None:
+    parsed = _extract_upload_parts(raw_path or "", default_kind=default_kind)
+    if not parsed:
+        return
+
+    kind, relative_path = parsed
+    base_dir = (UPLOADS_ROOT / kind).resolve()
+    target = (base_dir / relative_path).resolve()
+
+    if base_dir not in target.parents and target != base_dir:
+        return
+
+    if target.exists():
+        try:
+            target.unlink()
+        except Exception:
+            pass
+
+
 def delete_images(images_data: Union[List[dict], List[str], str], default_kind: str = "images"):
     if not images_data:
         return
@@ -346,28 +410,12 @@ def delete_images(images_data: Union[List[dict], List[str], str], default_kind: 
     target_list = images_data if isinstance(images_data, list) else [images_data]
 
     for item in target_list:
-        raw_path = None
         if isinstance(item, dict):
-            raw_path = item.get("url")
+            _delete_upload_path(item.get("url", ""), default_kind=default_kind)
+            if item.get("thumbnail_url"):
+                _delete_upload_path(item.get("thumbnail_url", ""), default_kind="thumbs")
         elif isinstance(item, str):
-            raw_path = item
-
-        parsed = _extract_upload_parts(raw_path or "", default_kind=default_kind)
-        if not parsed:
-            continue
-
-        kind, relative_path = parsed
-        base_dir = (UPLOADS_ROOT / kind).resolve()
-        target = (base_dir / relative_path).resolve()
-
-        if base_dir not in target.parents and target != base_dir:
-            continue
-
-        if target.exists():
-            try:
-                target.unlink()
-            except Exception:
-                pass
+            _delete_upload_path(item, default_kind=default_kind)
 
 
 def normalize_uploads_path(value: str, kind: str = "images") -> str:
@@ -419,16 +467,15 @@ def get_image_urls(images_json: Union[str, List]) -> List[dict]:
                 if item.get("size_bytes") is not None:
                     image_meta["size_bytes"] = item.get("size_bytes")
                 # Видео-поля
-                if media_type == "video":
-                    thumb_url = normalize_uploads_path(item.get("thumbnail_url", ""), "thumbs")
-                    if thumb_url:
-                        image_meta["thumbnail_url"] = thumb_url
-                    if item.get("duration") is not None:
-                        image_meta["duration"] = item.get("duration")
-                    if item.get("thumbnail_w") is not None:
-                        image_meta["thumbnail_w"] = item.get("thumbnail_w")
-                    if item.get("thumbnail_h") is not None:
-                        image_meta["thumbnail_h"] = item.get("thumbnail_h")
+                thumb_url = normalize_uploads_path(item.get("thumbnail_url", ""), "thumbs")
+                if thumb_url:
+                    image_meta["thumbnail_url"] = thumb_url
+                if item.get("thumbnail_w") is not None:
+                    image_meta["thumbnail_w"] = item.get("thumbnail_w")
+                if item.get("thumbnail_h") is not None:
+                    image_meta["thumbnail_h"] = item.get("thumbnail_h")
+                if media_type == "video" and item.get("duration") is not None:
+                    image_meta["duration"] = item.get("duration")
                 result.append(image_meta)
 
     return result

@@ -395,6 +395,7 @@ const AppHeader = ({
       const swipeThreshold = 16;
       const morphHeightTransition = premiumMorphReady ? `height 0.45s ${springSmooth}` : 'none';
       const morphOpacityTransition = premiumMorphReady ? `opacity 0.5s ${springMorph}, transform 0.5s ${springMorph}` : 'none';
+      const compactPillTransition = premiumMorphReady && !isCompact ? morphOpacityTransition : 'none';
       const morphButtonTransition = premiumMorphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.45s ${springMorph}, height 0.45s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}, color 0.3s ${springSmooth}, opacity 0.3s ease, transform 0.2s ${springSmooth}, filter 0.2s ${springSmooth}` : 'none';
       const morphSearchTransition = premiumMorphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.5s ${springMorph}, height 0.5s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}` : 'none';
       const morphIconTransition = premiumMorphReady ? `left 0.5s ${springMorph}, top 0.5s ${springMorph}, color 0.3s ${springSmooth}` : 'none';
@@ -520,7 +521,7 @@ const AppHeader = ({
                   border: '1px solid rgba(255,255,255,0.06)',
                   backdropFilter: isCompact ? 'blur(10px) saturate(120%)' : 'none',
                   WebkitBackdropFilter: isCompact ? 'blur(10px) saturate(120%)' : 'none',
-                  transition: morphOpacityTransition,
+                  transition: compactPillTransition,
                 }}
               />
 

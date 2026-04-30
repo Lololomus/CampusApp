@@ -8,7 +8,10 @@ import { captureSourceRect } from '../../utils/mediaRect';
 function getItemThumbnailUrl(item) {
   if (!item) return '';
   if (typeof item === 'object' && item.type === 'video') {
-    return item.thumbnail_url ? resolveImageUrl(item.thumbnail_url, 'images') : '';
+    return item.thumbnail_url ? resolveImageUrl(item.thumbnail_url, 'thumbs') : '';
+  }
+  if (typeof item === 'object' && item.thumbnail_url) {
+    return resolveImageUrl(item.thumbnail_url, 'thumbs');
   }
   const filename = (typeof item === 'object') ? item.url : item;
   return resolveImageUrl(filename, 'images');
@@ -280,25 +283,15 @@ function readNaturalAspectRatio(img) {
   return w && h ? w / h : null;
 }
 
-function ContainFillBackground({ url, hidden }) {
-  if (!url || hidden) return null;
+function ContainFillBackground({ hidden }) {
+  if (hidden) return null;
 
   return (
-    <img
-      src={url}
-      alt=""
-      aria-hidden="true"
-      decoding="async"
+    <div
       style={{
         position: 'absolute',
         inset: 0,
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
-        objectPosition: 'center center',
-        transform: 'scale(1.08)',
-        filter: 'blur(14px)',
-        opacity: CONTAIN_BACKGROUND_OPACITY,
+        background: `radial-gradient(circle at 50% 42%, rgba(255,255,255,${CONTAIN_BACKGROUND_OPACITY * 0.12}) 0%, transparent 58%), #000`,
         zIndex: 0,
         pointerEvents: 'none',
       }}
@@ -337,7 +330,7 @@ const MediaCell = React.memo(function MediaCell({ item, index, total, maxVisible
       onClick={handleClick}
     >
       {mediaFit === 'contain' && !failed && (
-        <ContainFillBackground url={url} hidden={isHidden} />
+        <ContainFillBackground hidden={isHidden} />
       )}
       {!isHidden && !loaded && !failed && <div style={shimmerStyle} />}
       {!isHidden && failed && <div style={fallbackStyle}>Р¤РѕС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕ</div>}
@@ -605,7 +598,7 @@ function SingleCell({ item, total, maxVisible, measuredAr, onNaturalAspectRatio,
   return (
     <>
       {mediaFit === 'contain' && !failed && (
-        <ContainFillBackground url={url} hidden={isHidden} />
+        <ContainFillBackground hidden={isHidden} />
       )}
       {!isHidden && !loaded && !failed && <div style={shimmerStyle} />}
       {!isHidden && failed && <div style={fallbackStyle}>Р¤РѕС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕ</div>}

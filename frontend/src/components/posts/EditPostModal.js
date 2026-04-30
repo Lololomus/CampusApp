@@ -46,6 +46,7 @@ import ConfirmationDialog from '../shared/ConfirmationDialog';
 import SmartDatePicker from '../shared/SmartDatePicker';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
@@ -191,6 +192,8 @@ const mapRewardTypeToUi = (value) => {
 };
 
 function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSuccess }) {
+  useBodyScrollLock();
+
   const isPost = contentType === 'post';
   const postCategory = initialData.category || 'news';
   const requestCategory = initialData.category || 'help';
@@ -413,27 +416,6 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
     setIsMounted(true);
     const timer = setTimeout(() => setIsVisible(true), 20);
     return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    const body = document.body;
-    const html = document.documentElement;
-    const root = document.getElementById('root');
-    const prevBodyStyle = {
-      overflow: body.style.overflow,
-    };
-    const prevHtmlOverflow = html.style.overflow;
-    const prevRootOverflow = root?.style.overflow || '';
-
-    body.style.overflow = 'hidden';
-    html.style.overflow = 'hidden';
-    if (root) root.style.overflow = 'hidden';
-
-    return () => {
-      body.style.overflow = prevBodyStyle.overflow;
-      html.style.overflow = prevHtmlOverflow;
-      if (root) root.style.overflow = prevRootOverflow;
-    };
   }, []);
 
   useEffect(() => {

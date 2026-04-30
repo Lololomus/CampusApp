@@ -16,6 +16,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { MARKET_CONDITIONS, MARKET_CATEGORIES_MAP } from '../../constants/marketConstants';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const MAX_IMAGES = 3;
 const TOOL_ICON_SIZE = 26;
@@ -29,6 +30,8 @@ const extractImageKey = (value) => {
 };
 
 function EditMarketItemModal({ item, onClose, onSuccess }) {
+  useBodyScrollLock();
+
   const [isVisible, setIsVisible]         = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting]   = useState(false);
@@ -116,28 +119,6 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
   useEffect(() => {
     const t = setTimeout(() => setIsVisible(true), 20);
     return () => clearTimeout(t);
-  }, []);
-
-  // Скролл-фриз страницы при открытии
-  useEffect(() => {
-    const body = document.body;
-    const root = document.getElementById('root');
-    const html = document.documentElement;
-    const prevBodyStyle = {
-      overflow: body.style.overflow,
-    };
-    const prevRootOverflow = root?.style.overflow || '';
-    const prevHtmlOverflow = html.style.overflow;
-
-    body.style.overflow = 'hidden';
-    html.style.overflow = 'hidden';
-    if (root) root.style.overflow = 'hidden';
-
-    return () => {
-      body.style.overflow = prevBodyStyle.overflow;
-      html.style.overflow = prevHtmlOverflow;
-      if (root) root.style.overflow = prevRootOverflow;
-    };
   }, []);
 
   const swipeHandlers = useSwipe({

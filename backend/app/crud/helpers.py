@@ -59,7 +59,7 @@ def merge_images(
     Returns:
         (final_images_meta, files_to_delete):
             final_images_meta — итоговый список медиа
-            files_to_delete — ключи удалённых изображений для очистки storage
+            files_to_delete — метаданные удалённых изображений для очистки storage
             (видео удаляются сразу внутри этой функции через delete_video)
     """
     from app.utils import get_storage_key
@@ -136,6 +136,6 @@ def merge_images(
         if isinstance(img, dict) and img.get("type", "image") != "video"
     }
     kept_urls.discard("")
-    files_to_delete = [url for url in old_images_map if url not in kept_urls]
+    files_to_delete = [meta for url, meta in old_images_map.items() if url not in kept_urls]
 
     return final_images_meta, files_to_delete

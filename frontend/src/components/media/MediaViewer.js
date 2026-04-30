@@ -890,7 +890,6 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
   const overlayTransition = swipeClosing || isHeroClosing
     ? 'opacity 0.18s ease'
     : dragY > 0 ? 'none' : undefined;
-  const overlayBackdropFilter = closingPassthrough ? 'none' : styles.overlay.backdropFilter;
   const heroTransform = getHeroCloseTransform(heroAnim, heroAnimActive);
 
   return createPortal(
@@ -935,25 +934,6 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
             if (e.currentTarget === e.target && e.propertyName === 'transform') finishHeroClose();
           }}
         >
-          {heroAnim.hasContainFill && (
-            <img
-              src={heroAnim.url}
-              alt=""
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: heroAnim.objectPosition,
-                transform: 'scale(1.08)',
-                filter: 'blur(14px)',
-                opacity: 0.42,
-                pointerEvents: 'none',
-              }}
-            />
-          )}
           <img
             src={heroAnim.url}
             alt=""
@@ -977,8 +957,6 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
           opacity: overlayOpacity,
           transition: overlayTransition,
           pointerEvents: closingPassthrough ? 'none' : styles.overlay.pointerEvents,
-          backdropFilter: overlayBackdropFilter,
-          WebkitBackdropFilter: overlayBackdropFilter,
         }}
       />
 
@@ -1035,6 +1013,7 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
         >
           {items.map((media, idx) => {
             const isCurrent = idx === currentIndex;
+            const shouldRenderMedia = Math.abs(idx - currentIndex) <= 1;
             const slideDy = isCurrent ? dragY : 0;
             const slideTransform = slideDy > 0 ? `translateY(${slideDy}px)` : undefined;
             const slideTransition = isDraggingRef.current ? 'none' : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
@@ -1098,7 +1077,9 @@ function MediaViewer({ mediaList = [], initialIndex = 0, onClose, sourceRect, so
                 }}
                 onMouseDown={(e) => handleMouseDown(e, isCurrent)}
               >
-                {media.type === 'video' ? (
+                {!shouldRenderMedia ? (
+                  <div style={styles.virtualSlidePlaceholder} />
+                ) : media.type === 'video' ? (
                   <VideoSlide
                     media={media}
                     isActive={isCurrent}
@@ -1205,8 +1186,6 @@ const styles = {
     bottom: 0,
     left: 0,
     backgroundColor: 'rgba(0,0,0,0.95)',
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
     zIndex: Z_PHOTO_VIEWER - 1,
     animation: 'mv-fade-in 0.2s ease',
   },
@@ -1280,6 +1259,11 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
+  },
+  virtualSlidePlaceholder: {
+    width: '100%',
+    height: '100%',
+    background: '#000',
   },
   zoomViewport: {
     position: 'relative',

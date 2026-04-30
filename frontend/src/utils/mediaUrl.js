@@ -43,6 +43,6 @@ export const resolveImageUrl = (value, kind = 'images') => {
   const filename = withoutQuery.split('/').pop();
   if (!filename) return '';
 
-  const folder = kind === 'avatars' ? 'avatars' : 'images';
+  const folder = kind === 'avatars' || kind === 'thumbs' || kind === 'videos' ? kind : 'images';
   return `/uploads/${folder}/${filename}`;
 };

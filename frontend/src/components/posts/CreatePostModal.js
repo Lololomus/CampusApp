@@ -45,6 +45,7 @@ import SmartDatePicker from '../shared/SmartDatePicker';
 import IncognitoIcon from '../icons/IncognitoIcon';
 import { getUniversityName, getUniqueUniversities } from '../../constants/universityData';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
@@ -157,6 +158,8 @@ const hasCreateContentDraftData = (draft) => {
 };
 
 function CreatePostModal({ onClose }) {
+  useBodyScrollLock();
+
   const {
     addNewPost,
     addNewRequest,
@@ -336,27 +339,6 @@ function CreatePostModal({ onClose }) {
     setIsMounted(true);
     const timer = setTimeout(() => setIsVisible(true), 20);
     return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    const body = document.body;
-    const root = document.getElementById('root');
-    const html = document.documentElement;
-    const prevBodyStyle = {
-      overflow: body.style.overflow,
-    };
-    const prevRootOverflow = root?.style.overflow || '';
-    const prevHtmlOverflow = html.style.overflow;
-
-    body.style.overflow = 'hidden';
-    html.style.overflow = 'hidden';
-    if (root) root.style.overflow = 'hidden';
-
-    return () => {
-      body.style.overflow = prevBodyStyle.overflow;
-      html.style.overflow = prevHtmlOverflow;
-      if (root) root.style.overflow = prevRootOverflow;
-    };
   }, []);
 
   useEffect(() => {
