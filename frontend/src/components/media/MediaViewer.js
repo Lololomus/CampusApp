@@ -194,6 +194,8 @@ const DOUBLE_TAP_MS = 280;
 const TAP_MOVE_THRESHOLD = 10;
 const PAN_START_THRESHOLD = 4;
 const TRANSFORM_EPSILON = 0.01;
+const ZOOM_LIMIT_EPSILON = 0.003;
+const ZOOM_TRANSITION = 'transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)';
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -277,6 +279,10 @@ const areTransformsClose = (a, b) => (
   Math.abs(a.y - b.y) < TRANSFORM_EPSILON
 );
 
+const getZoomTransformStyle = ({ x, y, scale }) => (
+  `translate3d(${x}px, ${y}px, 0) scale(${scale})`
+);
+
 const getZoomContentPoint = (localX, localY, frame, transform) => ({
   x: clamp((localX - frame.left - transform.x) / transform.scale, 0, frame.width),
   y: clamp((localY - frame.top - transform.y) / transform.scale, 0, frame.height),
@@ -290,6 +296,7 @@ const getZoomBoundary = (scale) => {
 
 const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
   const containerRef = useRef(null);
+  const zoomableRef = useRef(null);
   const contentFrameRef = useRef({ left: 0, top: 0, width: 0, height: 0 });
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [contentFrame, setContentFrame] = useState(contentFrameRef.current);
@@ -348,6 +355,15 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
     };
   }, [measureContentFrame]);
 
+  const writeZoomTransform = useCallback((next, isGesture = false) => {
+    const node = zoomableRef.current;
+    if (!node) return;
+
+    node.style.transform = getZoomTransformStyle(next);
+    node.style.willChange = isGesture || next.scale > 1.01 ? 'transform' : '';
+    node.style.transition = isGesture ? 'none' : ZOOM_TRANSITION;
+  }, []);
+
   const applyTransform = useCallback((next, options = {}) => {
     const { haptic = true } = options;
     const clamped = clampTransform(next);
@@ -364,6 +380,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
 
     transformRef.current = clamped;
     setTransform(clamped);
+    writeZoomTransform(clamped);
     updateZoomState(clamped.scale);
 
     const nextBoundary = getZoomBoundary(clamped.scale);
@@ -372,13 +389,40 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
     }
     zoomBoundaryRef.current = nextBoundary;
     return clamped;
-  }, [clampTransform, updateZoomState]);
+  }, [clampTransform, updateZoomState, writeZoomTransform]);
+
+  const applyGestureTransform = useCallback((next) => {
+    const clamped = clampTransform(next);
+    const previous = transformRef.current;
+    const nextBoundary = getZoomBoundary(clamped.scale);
+    zoomBoundaryRef.current = nextBoundary;
+
+    if (areTransformsClose(previous, clamped)) {
+      return clamped;
+    }
+
+    transformRef.current = clamped;
+    writeZoomTransform(clamped, true);
+    return clamped;
+  }, [clampTransform, writeZoomTransform]);
+
+  const commitGestureTransform = useCallback(() => {
+    const current = transformRef.current;
+    setTransform((prev) => (areTransformsClose(prev, current) ? prev : current));
+    writeZoomTransform(current);
+    updateZoomState(current.scale);
+    return current;
+  }, [updateZoomState, writeZoomTransform]);
 
   const resetZoom = useCallback(() => {
+    const next = { scale: 1, x: 0, y: 0 };
     setIsInteracting(false);
     zoomBoundaryRef.current = null;
-    applyTransform({ scale: 1, x: 0, y: 0 }, { haptic: false });
-  }, [applyTransform]);
+    transformRef.current = next;
+    setTransform(next);
+    writeZoomTransform(next);
+    updateZoomState(next.scale);
+  }, [updateZoomState, writeZoomTransform]);
 
   const zoomAt = useCallback((clientX, clientY, nextScale) => {
     const rect = getZoomViewportRect(containerRef.current);
@@ -479,6 +523,8 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
     };
   }, [applyTransform, measureContentFrame]);
 
+  const renderedTransform = isInteracting ? transformRef.current : transform;
+
   return (
     <div
       ref={containerRef}
@@ -549,10 +595,20 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
           const current = transformRef.current;
           const distance = getTouchDistance(e.touches);
           const distanceRatio = gesture.lastDistance ? distance / gesture.lastDistance : 1;
-          const nextScale = clamp(current.scale * distanceRatio, MIN_ZOOM, MAX_ZOOM);
+          const rawScale = current.scale * distanceRatio;
+
+          if (
+            (current.scale >= MAX_ZOOM - ZOOM_LIMIT_EPSILON && rawScale >= current.scale) ||
+            (current.scale <= MIN_ZOOM + ZOOM_LIMIT_EPSILON && rawScale <= current.scale)
+          ) {
+            gesture.lastDistance = distance;
+            return;
+          }
+
+          const nextScale = clamp(rawScale, MIN_ZOOM, MAX_ZOOM);
           const contentPoint = getZoomContentPoint(localX, localY, frame, current);
 
-          applyTransform({
+          applyGestureTransform({
             scale: nextScale,
             x: localX - frame.left - contentPoint.x * nextScale,
             y: localY - frame.top - contentPoint.y * nextScale,
@@ -576,11 +632,18 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
           }
 
           const current = transformRef.current;
-          applyTransform({
+          const nextTransform = applyGestureTransform({
             scale: current.scale,
             x: current.x + touch.clientX - gesture.lastX,
             y: current.y + touch.clientY - gesture.lastY,
           });
+
+          if (areTransformsClose(current, nextTransform)) {
+            gesture.lastX = touch.clientX;
+            gesture.lastY = touch.clientY;
+            return;
+          }
+
           gesture.lastX = touch.clientX;
           gesture.lastY = touch.clientY;
         }
@@ -605,8 +668,12 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
         if (e.touches.length === 0) {
           gestureRef.current = null;
           tapStartRef.current = null;
-          setIsInteracting(false);
-          if (transformRef.current.scale <= 1.01) resetZoom();
+          if (transformRef.current.scale <= 1.01) {
+            resetZoom();
+          } else {
+            commitGestureTransform();
+            setIsInteracting(false);
+          }
           if (isTapCandidate) {
             handleTouchTap(changedTouch.clientX, changedTouch.clientY);
           } else {
@@ -629,8 +696,12 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
         e.stopPropagation();
         gestureRef.current = null;
         tapStartRef.current = null;
-        setIsInteracting(false);
-        if (transformRef.current.scale <= 1.01) resetZoom();
+        if (transformRef.current.scale <= 1.01) {
+          resetZoom();
+        } else {
+          commitGestureTransform();
+          setIsInteracting(false);
+        }
         window.setTimeout(() => { suppressTapRef.current = false; }, 450);
       }}
       onDoubleClick={(e) => {
@@ -652,19 +723,20 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
       }}
       style={{
         ...styles.zoomViewport,
-        touchAction: transform.scale > 1.01 || isInteracting ? 'none' : 'manipulation',
+        touchAction: renderedTransform.scale > 1.01 || isInteracting ? 'none' : 'manipulation',
       }}
     >
       <div
+        ref={zoomableRef}
         style={{
           ...styles.zoomable,
           left: contentFrame.left,
           top: contentFrame.top,
           width: contentFrame.width,
           height: contentFrame.height,
-          transition: isInteracting ? 'none' : 'transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)',
-          transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
-          willChange: isInteracting || transform.scale > 1.01 ? 'transform' : undefined,
+          transition: isInteracting ? 'none' : ZOOM_TRANSITION,
+          transform: getZoomTransformStyle(renderedTransform),
+          willChange: isInteracting || renderedTransform.scale > 1.01 ? 'transform' : undefined,
         }}
       >
         {children}
