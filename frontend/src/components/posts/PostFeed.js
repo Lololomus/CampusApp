@@ -10,6 +10,7 @@ import PostCardSkeleton from './PostCardSkeleton';
 import theme from '../../theme';
 import AppHeader from '../shared/AppHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 import { buildFeedSections } from '../../utils/feedDateSections';
 import { hapticFeedback } from '../../utils/telegram';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
@@ -55,6 +56,7 @@ function PostFeed() {
   const postsObserverRef = useRef(null);
   const revealObserverRef = useRef(null);
   const revealCallbacksRef = useRef(new Map());
+  const { openMediaViewer, activeOwnerId, activeIndex } = useMediaViewer();
   
   const {
     feedSubTab,
@@ -415,6 +417,10 @@ function PostFeed() {
   }, [feedSubTab, hasMorePosts, loading, loadPosts, lastVisiblePostId]);
 
   const postCardWrapperStyle = useMemo(() => ({ marginBottom: 0 }), []);
+  const activePostCardId = useMemo(() => {
+    if (typeof activeOwnerId !== 'string' || !activeOwnerId.startsWith('post-card:')) return null;
+    return activeOwnerId.slice('post-card:'.length);
+  }, [activeOwnerId]);
 
   return (
     <div style={styles.container}>
@@ -522,6 +528,8 @@ function PostFeed() {
                   onPostDeleted={row.item._isAd ? undefined : handlePostDeleted}
                   onAdHidden={row.item._isAd ? handleAdHidden : undefined}
                   registerReveal={registerReveal}
+                  openMediaViewer={openMediaViewer}
+                  activeMediaIndex={String(row.item.id) === String(activePostCardId) ? activeIndex : null}
                 />
               </div>
             )

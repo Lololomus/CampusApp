@@ -11,7 +11,6 @@ import OverflowMenuButton from '../shared/OverflowMenuButton';
 import PollWidget from './PollWidget';
 import LinkText from '../shared/LinkText';
 import MediaGrid from '../media/MediaGrid';
-import { useMediaViewer } from '../media/MediaViewerProvider';
 import ReportModal from '../moderation/ReportModal';
 import Avatar, { AVATAR_BORDER_RADIUS } from '../user/Avatar';
 import ProfileMiniCard from '../user/ProfileMiniCard';
@@ -45,7 +44,18 @@ function getMediaHeroReturnZIndex(sourceEl) {
   return maxAncestorZIndex ? maxAncestorZIndex + 1 : FEED_HERO_RETURN_Z_INDEX;
 }
 
-function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPostResolved, skipReveal, registerReveal }) {
+function PostCard({
+  post,
+  onClick,
+  onLikeUpdate,
+  onPostDeleted,
+  onAdHidden,
+  onPostResolved,
+  skipReveal,
+  registerReveal,
+  openMediaViewer,
+  activeMediaIndex = null,
+}) {
   const { likedPosts, setPostLiked, user, setEditingContent, isRegistered, updatePost } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -68,25 +78,32 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   const [isExpanding, setIsExpanding] = useState(false);
   const impressionTracked = useRef(false);
   const [adHidden, setAdHidden] = useState(false);
-  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
-
   // ✅ Local state для likes_count
   const [localLikesCount, setLocalLikesCount] = useState(post.likes_count || 0);
 
   // Scroll-reveal: карточка вплывает при входе в viewport
   const [isRevealed, setIsRevealed] = useState(false);
+  const [isRevealAnimating, setIsRevealAnimating] = useState(false);
   useEffect(() => {
-    if (skipReveal) { setIsRevealed(true); return; }
+    if (skipReveal) {
+      setIsRevealed(true);
+      setIsRevealAnimating(false);
+      return;
+    }
     const card = cardRef.current;
     if (!card) return;
+    const revealCard = () => {
+      setIsRevealAnimating(true);
+      setIsRevealed(true);
+    };
 
     if (registerReveal) {
-      return registerReveal(card, () => setIsRevealed(true));
+      return registerReveal(card, revealCard);
     }
 
     // Fallback для PostDetail и других контекстов без shared observer
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setIsRevealed(true); observer.unobserve(card); } },
+      ([entry]) => { if (entry.isIntersecting) { revealCard(); observer.unobserve(card); } },
       { threshold: 0, rootMargin: '50px' }
     );
     observer.observe(card);
@@ -527,9 +544,17 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
   };
 
   const mediaViewerOwnerId = `post-card:${post.id}`;
-  const hiddenMediaIndex = images.findIndex((_, index) => isMediaSourceHidden(mediaViewerOwnerId, index));
+  const normalizedActiveMediaIndex = activeMediaIndex === null || activeMediaIndex === undefined
+    ? null
+    : Number(activeMediaIndex);
+  const hiddenMediaIndex = Number.isInteger(normalizedActiveMediaIndex)
+    && normalizedActiveMediaIndex >= 0
+    && normalizedActiveMediaIndex < images.length
+      ? normalizedActiveMediaIndex
+      : null;
 
   const handleMediaItemClick = useCallback((index, rect) => {
+    if (typeof openMediaViewer !== 'function') return;
     hapticFeedback('light');
     openMediaViewer({
       ownerId: mediaViewerOwnerId,
@@ -653,6 +678,13 @@ function PostCard({ post, onClick, onLikeUpdate, onPostDeleted, onAdHidden, onPo
           ...styles.card,
           opacity: isRevealed ? 1 : 0,
           transform: isRevealed ? 'none' : 'translateY(24px) scale(0.97)',
+          willChange: isRevealAnimating ? 'opacity, transform' : 'auto',
+        }}
+        onTransitionEnd={(e) => {
+          if (e.currentTarget !== e.target) return;
+          if (e.propertyName === 'opacity' || e.propertyName === 'transform') {
+            setIsRevealAnimating(false);
+          }
         }}
         onClick={handleCardClick}
       >
@@ -969,7 +1001,6 @@ const styles = {
     border: `1px solid ${theme.colors.premium.border}`,
     WebkitTapHighlightColor: 'transparent',
     transition: 'opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
-    willChange: 'opacity, transform',
   },
   header: {
     display: 'flex',

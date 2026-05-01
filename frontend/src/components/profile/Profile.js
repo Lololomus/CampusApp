@@ -50,7 +50,7 @@ function Profile() {
 
   const [activeTab, setActiveTab] = useState('posts');
   const avatarSourceRef = useRef(null);
-  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
+  const { openMediaViewer, isMediaSourceHidden, activeOwnerId, activeIndex } = useMediaViewer();
 
   const [posts, setPosts] = useState([]);
   const [marketItems, setMarketItems] = useState([]);
@@ -165,6 +165,9 @@ function Profile() {
   const handlePostClick = (postId) => { hapticFeedback('light'); setViewPostId(postId); };
 
   const handleMarketItemOpen = (item) => { hapticFeedback('light'); setSelectedMarketItem(item); };
+  const activePostCardId = typeof activeOwnerId === 'string' && activeOwnerId.startsWith('post-card:')
+    ? activeOwnerId.slice('post-card:'.length)
+    : null;
 
   return (
     <div style={styles.container}>
@@ -315,6 +318,8 @@ function Profile() {
                       post={post}
                       onClick={handlePostClick}
                       onPostDeleted={(postId) => setPosts(prev => prev.filter(p => p.id !== postId))}
+                      openMediaViewer={openMediaViewer}
+                      activeMediaIndex={String(post.id) === String(activePostCardId) ? activeIndex : null}
                     />
                   ))}
                 </div>

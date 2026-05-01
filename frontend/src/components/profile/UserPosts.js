@@ -15,6 +15,7 @@ import DrilldownHeader from '../shared/DrilldownHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
 import { buildFeedSections } from '../../utils/feedDateSections';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { useMediaViewer } from '../media/MediaViewerProvider';
 
 // Premium palette (единый источник, без legacy theme)
 const C = {
@@ -40,6 +41,11 @@ function UserPosts() {
   const loadLockRef = useRef(false);
   const closeTimeoutRef = useRef(null);
   const LIMIT = 10;
+  const { openMediaViewer, activeOwnerId, activeIndex } = useMediaViewer();
+  const activePostCardId = useMemo(() => {
+    if (typeof activeOwnerId !== 'string' || !activeOwnerId.startsWith('post-card:')) return null;
+    return activeOwnerId.slice('post-card:'.length);
+  }, [activeOwnerId]);
 
   const closeImmediately = useCallback(() => {
     if (closeTimeoutRef.current) {
@@ -238,6 +244,8 @@ function UserPosts() {
                   onPostDeleted={handlePostDeleted}
                   onLikeUpdate={handleLikeUpdate}
                   skipReveal
+                  openMediaViewer={openMediaViewer}
+                  activeMediaIndex={String(row.item.id) === String(activePostCardId) ? activeIndex : null}
                 />
               </div>
             )
