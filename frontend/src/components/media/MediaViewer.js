@@ -217,34 +217,36 @@ const getTouchMidpoint = (touches) => ({
 
 const getContainedImageFrame = (container) => {
   const rect = container?.getBoundingClientRect?.();
-  if (!rect?.width || !rect?.height) return { left: 0, top: 0, width: 0, height: 0 };
+  const containerWidth = container?.clientWidth || rect?.width || 0;
+  const containerHeight = container?.clientHeight || rect?.height || 0;
+  if (!containerWidth || !containerHeight) return { left: 0, top: 0, width: 0, height: 0 };
 
   const img = container.querySelector('img');
   const naturalWidth = img?.naturalWidth || 0;
   const naturalHeight = img?.naturalHeight || 0;
   if (!naturalWidth || !naturalHeight) {
-    return { left: 0, top: 0, width: rect.width, height: rect.height };
+    return { left: 0, top: 0, width: containerWidth, height: containerHeight };
   }
 
-  const containerRatio = rect.width / rect.height;
+  const containerRatio = containerWidth / containerHeight;
   const imageRatio = naturalWidth / naturalHeight;
 
   if (imageRatio > containerRatio) {
-    const height = rect.width / imageRatio;
+    const height = containerWidth / imageRatio;
     return {
       left: 0,
-      top: (rect.height - height) / 2,
-      width: rect.width,
+      top: (containerHeight - height) / 2,
+      width: containerWidth,
       height,
     };
   }
 
-  const width = rect.height * imageRatio;
+  const width = containerHeight * imageRatio;
   return {
-    left: (rect.width - width) / 2,
+    left: (containerWidth - width) / 2,
     top: 0,
     width,
-    height: rect.height,
+    height: containerHeight,
   };
 };
 
