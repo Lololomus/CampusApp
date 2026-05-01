@@ -395,6 +395,10 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
     const clamped = clampTransform(next);
     const previous = transformRef.current;
     const nextBoundary = getZoomBoundary(clamped.scale);
+
+    if (nextBoundary && nextBoundary !== zoomBoundaryRef.current) {
+      hapticFeedback('selection');
+    }
     zoomBoundaryRef.current = nextBoundary;
 
     if (areTransformsClose(previous, clamped)) {
