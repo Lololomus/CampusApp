@@ -190,6 +190,10 @@ const SWIPE_DIRECTION_THRESHOLD = 10;
 const SWIPE_AXIS_LOCK_RATIO = 1.15;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
+const DOUBLE_TAP_MS = 280;
+const TAP_MOVE_THRESHOLD = 10;
+const PAN_START_THRESHOLD = 4;
+const TRANSFORM_EPSILON = 0.01;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -250,6 +254,14 @@ const getContainedImageFrame = (container) => {
   };
 };
 
+const getZoomViewportRect = (container) => {
+  const rect = container?.getBoundingClientRect?.();
+  const width = container?.clientWidth || rect?.width || 0;
+  const height = container?.clientHeight || rect?.height || 0;
+  if (!rect || !width || !height) return null;
+  return { left: rect.left, top: rect.top, width, height };
+};
+
 const clampZoomAxis = (value, frameStart, frameSize, viewportSize, scale) => {
   const scaledSize = frameSize * scale;
   if (scaledSize <= viewportSize) {
@@ -258,6 +270,12 @@ const clampZoomAxis = (value, frameStart, frameSize, viewportSize, scale) => {
 
   return clamp(value, viewportSize - frameStart - scaledSize, -frameStart);
 };
+
+const areTransformsClose = (a, b) => (
+  Math.abs(a.scale - b.scale) < 0.001 &&
+  Math.abs(a.x - b.x) < TRANSFORM_EPSILON &&
+  Math.abs(a.y - b.y) < TRANSFORM_EPSILON
+);
 
 const getZoomContentPoint = (localX, localY, frame, transform) => ({
   x: clamp((localX - frame.left - transform.x) / transform.scale, 0, frame.width),
@@ -280,6 +298,9 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
   const suppressTapRef = useRef(false);
   const isZoomedRef = useRef(false);
   const zoomBoundaryRef = useRef(null);
+  const tapStartRef = useRef(null);
+  const lastTapRef = useRef(null);
+  const singleTapTimerRef = useRef(null);
   const [isInteracting, setIsInteracting] = useState(false);
 
   const measureContentFrame = useCallback(() => {
@@ -314,7 +335,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
 
   const clampTransform = useCallback((next) => {
     const scale = clamp(next.scale, MIN_ZOOM, MAX_ZOOM);
-    const rect = containerRef.current?.getBoundingClientRect?.();
+    const rect = getZoomViewportRect(containerRef.current);
     const frame = contentFrameRef.current.width ? contentFrameRef.current : measureContentFrame();
     if (!rect || !frame.width || !frame.height || scale <= 1.01) {
       return { scale: 1, x: 0, y: 0 };
@@ -330,6 +351,17 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
   const applyTransform = useCallback((next, options = {}) => {
     const { haptic = true } = options;
     const clamped = clampTransform(next);
+    const previous = transformRef.current;
+    if (areTransformsClose(previous, clamped)) {
+      updateZoomState(clamped.scale);
+      const nextBoundary = getZoomBoundary(clamped.scale);
+      if (haptic && nextBoundary && nextBoundary !== zoomBoundaryRef.current) {
+        hapticFeedback('selection');
+      }
+      zoomBoundaryRef.current = nextBoundary;
+      return clamped;
+    }
+
     transformRef.current = clamped;
     setTransform(clamped);
     updateZoomState(clamped.scale);
@@ -339,6 +371,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
       hapticFeedback('selection');
     }
     zoomBoundaryRef.current = nextBoundary;
+    return clamped;
   }, [clampTransform, updateZoomState]);
 
   const resetZoom = useCallback(() => {
@@ -348,7 +381,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
   }, [applyTransform]);
 
   const zoomAt = useCallback((clientX, clientY, nextScale) => {
-    const rect = containerRef.current?.getBoundingClientRect?.();
+    const rect = getZoomViewportRect(containerRef.current);
     const frame = contentFrameRef.current.width ? contentFrameRef.current : measureContentFrame();
     if (!rect || !frame.width || !frame.height) return;
 
@@ -364,9 +397,53 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
     });
   }, [applyTransform, measureContentFrame]);
 
+  const clearSingleTapTimer = useCallback(() => {
+    if (singleTapTimerRef.current) {
+      window.clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+  }, []);
+
+  const zoomByDoubleTap = useCallback((clientX, clientY) => {
+    clearSingleTapTimer();
+    lastTapRef.current = null;
+    suppressTapRef.current = true;
+    setIsInteracting(false);
+    if (transformRef.current.scale > 1.01) resetZoom();
+    else zoomAt(clientX, clientY, MAX_ZOOM);
+    window.setTimeout(() => { suppressTapRef.current = false; }, 450);
+  }, [clearSingleTapTimer, resetZoom, zoomAt]);
+
+  const handleTouchTap = useCallback((clientX, clientY) => {
+    const now = Date.now();
+    suppressTapRef.current = true;
+    const previousTap = lastTapRef.current;
+    if (
+      previousTap &&
+      now - previousTap.time <= DOUBLE_TAP_MS &&
+      Math.hypot(clientX - previousTap.x, clientY - previousTap.y) <= TAP_MOVE_THRESHOLD * 2
+    ) {
+      zoomByDoubleTap(clientX, clientY);
+      return;
+    }
+
+    clearSingleTapTimer();
+    lastTapRef.current = { time: now, x: clientX, y: clientY };
+    singleTapTimerRef.current = window.setTimeout(() => {
+      singleTapTimerRef.current = null;
+      lastTapRef.current = null;
+      onTap?.({ preventDefault() {}, stopPropagation() {} });
+      suppressTapRef.current = false;
+    }, DOUBLE_TAP_MS);
+  }, [clearSingleTapTimer, onTap, zoomByDoubleTap]);
+
   useEffect(() => {
     if (!isActive) resetZoom();
   }, [isActive, resetZoom]);
+
+  useEffect(() => () => {
+    clearSingleTapTimer();
+  }, [clearSingleTapTimer]);
 
   useLayoutEffect(() => {
     measureContentFrame();
@@ -410,93 +487,140 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
           if (e.cancelable) e.preventDefault();
           e.stopPropagation();
 
-          const rect = containerRef.current?.getBoundingClientRect?.();
+          const rect = getZoomViewportRect(containerRef.current);
           const frame = contentFrameRef.current.width ? contentFrameRef.current : measureContentFrame();
           if (!rect || !frame.width || !frame.height) return;
 
-          const midpoint = getTouchMidpoint(e.touches);
-          const localX = midpoint.x - rect.left;
-          const localY = midpoint.y - rect.top;
-          const current = transformRef.current;
-
+          tapStartRef.current = null;
+          clearSingleTapTimer();
+          lastTapRef.current = null;
           gestureRef.current = {
             type: 'pinch',
-            startDistance: getTouchDistance(e.touches),
-            startScale: current.scale,
-            contentPoint: getZoomContentPoint(localX, localY, frame, current),
+            lastDistance: getTouchDistance(e.touches),
           };
           suppressTapRef.current = true;
           setIsInteracting(true);
           notifyZoomStart();
-        } else if (e.touches.length === 1 && transformRef.current.scale > 1.01) {
-          if (e.cancelable) e.preventDefault();
-          e.stopPropagation();
+        } else if (e.touches.length === 1) {
           const touch = e.touches[0];
-          const current = transformRef.current;
-          gestureRef.current = {
-            type: 'pan',
-            startX: touch.clientX,
-            startY: touch.clientY,
-            startTransform: current,
+          tapStartRef.current = {
+            x: touch.clientX,
+            y: touch.clientY,
+            time: Date.now(),
+            moved: false,
           };
-          suppressTapRef.current = true;
-          setIsInteracting(true);
+
+          if (transformRef.current.scale > 1.01) {
+            if (e.cancelable) e.preventDefault();
+            e.stopPropagation();
+            gestureRef.current = {
+              type: 'pan',
+              startX: touch.clientX,
+              startY: touch.clientY,
+              lastX: touch.clientX,
+              lastY: touch.clientY,
+              moved: false,
+            };
+          }
         }
       }}
       onTouchMove={(e) => {
         const gesture = gestureRef.current;
+        if (!gesture && tapStartRef.current && e.touches.length === 1) {
+          const touch = e.touches[0];
+          if (Math.hypot(touch.clientX - tapStartRef.current.x, touch.clientY - tapStartRef.current.y) > TAP_MOVE_THRESHOLD) {
+            tapStartRef.current.moved = true;
+          }
+          return;
+        }
         if (!gesture) return;
 
         if (gesture.type === 'pinch' && e.touches.length === 2) {
           if (e.cancelable) e.preventDefault();
           e.stopPropagation();
 
-          const rect = containerRef.current?.getBoundingClientRect?.();
+          const rect = getZoomViewportRect(containerRef.current);
           const frame = contentFrameRef.current.width ? contentFrameRef.current : measureContentFrame();
           if (!rect || !frame.width || !frame.height) return;
 
           const midpoint = getTouchMidpoint(e.touches);
           const localX = midpoint.x - rect.left;
           const localY = midpoint.y - rect.top;
-          const nextScale = clamp(
-            gesture.startScale * (getTouchDistance(e.touches) / gesture.startDistance),
-            MIN_ZOOM,
-            MAX_ZOOM
-          );
+          const current = transformRef.current;
+          const distance = getTouchDistance(e.touches);
+          const distanceRatio = gesture.lastDistance ? distance / gesture.lastDistance : 1;
+          const nextScale = clamp(current.scale * distanceRatio, MIN_ZOOM, MAX_ZOOM);
+          const contentPoint = getZoomContentPoint(localX, localY, frame, current);
 
           applyTransform({
             scale: nextScale,
-            x: localX - frame.left - gesture.contentPoint.x * nextScale,
-            y: localY - frame.top - gesture.contentPoint.y * nextScale,
+            x: localX - frame.left - contentPoint.x * nextScale,
+            y: localY - frame.top - contentPoint.y * nextScale,
           });
+          gesture.lastDistance = distance;
         } else if (gesture.type === 'pan' && e.touches.length === 1) {
           if (e.cancelable) e.preventDefault();
           e.stopPropagation();
           const touch = e.touches[0];
+          const totalDx = touch.clientX - gesture.startX;
+          const totalDy = touch.clientY - gesture.startY;
+          if (!gesture.moved && Math.hypot(totalDx, totalDy) < PAN_START_THRESHOLD) {
+            return;
+          }
+
+          if (!gesture.moved) {
+            gesture.moved = true;
+            if (tapStartRef.current) tapStartRef.current.moved = true;
+            suppressTapRef.current = true;
+            setIsInteracting(true);
+          }
+
+          const current = transformRef.current;
           applyTransform({
-            scale: gesture.startTransform.scale,
-            x: gesture.startTransform.x + touch.clientX - gesture.startX,
-            y: gesture.startTransform.y + touch.clientY - gesture.startY,
+            scale: current.scale,
+            x: current.x + touch.clientX - gesture.lastX,
+            y: current.y + touch.clientY - gesture.lastY,
           });
+          gesture.lastX = touch.clientX;
+          gesture.lastY = touch.clientY;
         }
       }}
       onTouchEnd={(e) => {
-        if (gestureRef.current || transformRef.current.scale > 1.01 || suppressTapRef.current) {
+        const gesture = gestureRef.current;
+        const tapStart = tapStartRef.current;
+        const changedTouch = e.changedTouches?.[0];
+        const isTapCandidate = Boolean(
+          changedTouch &&
+          tapStart &&
+          !tapStart.moved &&
+          Date.now() - tapStart.time <= 450 &&
+          Math.hypot(changedTouch.clientX - tapStart.x, changedTouch.clientY - tapStart.y) <= TAP_MOVE_THRESHOLD &&
+          (!gesture || (gesture.type === 'pan' && !gesture.moved))
+        );
+
+        if (gesture || transformRef.current.scale > 1.01 || suppressTapRef.current || isTapCandidate) {
           if (e.cancelable) e.preventDefault();
           e.stopPropagation();
         }
         if (e.touches.length === 0) {
           gestureRef.current = null;
+          tapStartRef.current = null;
           setIsInteracting(false);
           if (transformRef.current.scale <= 1.01) resetZoom();
-          window.setTimeout(() => { suppressTapRef.current = false; }, 450);
+          if (isTapCandidate) {
+            handleTouchTap(changedTouch.clientX, changedTouch.clientY);
+          } else {
+            window.setTimeout(() => { suppressTapRef.current = false; }, 450);
+          }
         } else if (e.touches.length === 1 && transformRef.current.scale > 1.01) {
           const touch = e.touches[0];
           gestureRef.current = {
             type: 'pan',
             startX: touch.clientX,
             startY: touch.clientY,
-            startTransform: transformRef.current,
+            lastX: touch.clientX,
+            lastY: touch.clientY,
+            moved: false,
           };
         }
       }}
@@ -504,6 +628,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         gestureRef.current = null;
+        tapStartRef.current = null;
         setIsInteracting(false);
         if (transformRef.current.scale <= 1.01) resetZoom();
         window.setTimeout(() => { suppressTapRef.current = false; }, 450);
@@ -513,8 +638,7 @@ const Zoomable = ({ children, isActive, onTap, onZoomStart, onZoomEnd }) => {
         e.stopPropagation();
         suppressTapRef.current = true;
         setIsInteracting(false);
-        if (transformRef.current.scale > 1.01) resetZoom();
-        else zoomAt(e.clientX, e.clientY, 2.5);
+        zoomByDoubleTap(e.clientX, e.clientY);
         window.setTimeout(() => { suppressTapRef.current = false; }, 450);
       }}
       onClick={(e) => {
@@ -1375,14 +1499,19 @@ const styles = {
     justifyContent: 'center',
     transition: 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
     transformOrigin: 'top left',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
   },
   image: {
     width: '100%',
     height: '100%',
+    display: 'block',
     objectFit: 'contain',
     userSelect: 'none',
     WebkitUserSelect: 'none',
     pointerEvents: 'none',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
   },
   navBtn: {
     position: 'absolute',
