@@ -20,6 +20,7 @@ import MediaViewerProvider from './components/media/MediaViewerProvider';
 
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import { useMainTabScrollMemory } from './hooks/useMainTabScrollMemory';
+import { subscribeBodyScrollState } from './utils/bodyScrollLock';
 
 import './App.css';
 
@@ -160,14 +161,32 @@ function App() {
   const forceFeedTopOnNextVisibleRef = useRef(false);
 
   useEffect(() => {
-    updateFixedLayout();
-    window.addEventListener('resize', updateFixedLayout);
-    window.visualViewport?.addEventListener('resize', updateFixedLayout);
-    window.visualViewport?.addEventListener('scroll', updateFixedLayout);
+    let fixedLayoutFrame = null;
+    const scheduleFixedLayoutUpdate = () => {
+      updateFixedLayout();
+      if (fixedLayoutFrame !== null) {
+        window.cancelAnimationFrame(fixedLayoutFrame);
+      }
+      fixedLayoutFrame = window.requestAnimationFrame(() => {
+        fixedLayoutFrame = null;
+        updateFixedLayout();
+      });
+    };
+
+    const unsubscribeBodyScrollState = subscribeBodyScrollState(scheduleFixedLayoutUpdate);
+
+    scheduleFixedLayoutUpdate();
+    window.addEventListener('resize', scheduleFixedLayoutUpdate);
+    window.visualViewport?.addEventListener('resize', scheduleFixedLayoutUpdate);
+    window.visualViewport?.addEventListener('scroll', scheduleFixedLayoutUpdate);
     return () => {
-      window.removeEventListener('resize', updateFixedLayout);
-      window.visualViewport?.removeEventListener('resize', updateFixedLayout);
-      window.visualViewport?.removeEventListener('scroll', updateFixedLayout);
+      if (fixedLayoutFrame !== null) {
+        window.cancelAnimationFrame(fixedLayoutFrame);
+      }
+      unsubscribeBodyScrollState();
+      window.removeEventListener('resize', scheduleFixedLayoutUpdate);
+      window.visualViewport?.removeEventListener('resize', scheduleFixedLayoutUpdate);
+      window.visualViewport?.removeEventListener('scroll', scheduleFixedLayoutUpdate);
     };
   }, []);
 
