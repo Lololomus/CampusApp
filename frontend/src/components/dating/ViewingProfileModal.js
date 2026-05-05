@@ -14,6 +14,7 @@ import { useModalAnimation, SCREEN_EXIT_MS } from '../../hooks/useModalAnimation
 import { Z_MODAL_LIKES_LIST } from '../../constants/zIndex';
 import theme from '../../theme';
 import { captureSourceRect } from '../../utils/mediaRect';
+import { getEducationDisplayName } from '../../constants/universityData';
 
 const d = theme.colors.dating;
 
@@ -38,6 +39,7 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
   const commonInterests = profile?.common_interests || [];
   const commonGoals = profile?.common_goals || [];
   const mediaViewerOwnerId = `viewing-profile:${profile?.id || 'unknown'}`;
+  const educationLabel = getEducationDisplayName(profile, { includeCourse: true });
 
   const { isMounted, isVisible, handleClose } = useModalAnimation(onClose, SCREEN_EXIT_MS);
 
@@ -193,10 +195,8 @@ function ViewingProfileModal({ profile, profileType, onClose, onLike, onMessage,
                 {profile.name}, {profile.age}
               </h1>
               <div style={styles.overlayUni}>
-                <GraduationCap size={16} />
-                {profile.university}
-                {profile.institute && ` • ${profile.institute}`}
-                {profile.course && ` • ${profile.course} курс`}
+                <GraduationCap size={16} style={styles.overlayUniIcon} />
+                <span style={styles.overlayUniText}>{educationLabel}</span>
               </div>
             </div>
           </div>
@@ -415,13 +415,25 @@ const styles = {
   },
   overlayUni: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
     fontSize: 15,
     fontWeight: 500,
+    lineHeight: 1.25,
     color: 'rgba(255, 255, 255, 0.9)',
     marginTop: 6,
     textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+  },
+  overlayUniIcon: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  overlayUniText: {
+    minWidth: 0,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
   },
   infoSection: {
     padding: '24px 20px',

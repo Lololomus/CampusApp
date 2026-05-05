@@ -859,15 +859,17 @@ class MatchResponse(BaseModel):
 
 class DatingProfile(BaseModel):
     id: int
-    telegram_id: int
+    telegram_id: Optional[int] = None
     name: str
     age: Optional[int] = None
     bio: Optional[str] = None
     avatar: Optional[str] = None
+    campus_id: Optional[str] = None
     photos: List[Any] = []
     university: str
-    institute: str
+    institute: Optional[str] = None
     course: Optional[int] = None
+    city: Optional[str] = None
     group: Optional[str] = None
     interests: List[str] = []
     goals: List[str] = []
@@ -1158,9 +1160,11 @@ class DatingProfileResponse(BaseModel):
 
     name: str
     age: Optional[int] = None
+    campus_id: Optional[str] = None
     university: str
     institute: Optional[str] = None
     course: Optional[int] = None
+    city: Optional[str] = None
 
     # ✅ Фаза 5.1: единые coerce
     @field_validator('photos', 'goals', 'lifestyle', 'interests', mode='before')

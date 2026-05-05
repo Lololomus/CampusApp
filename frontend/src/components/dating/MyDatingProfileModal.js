@@ -14,6 +14,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import DrilldownHeader from '../shared/DrilldownHeader';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { captureSourceRect } from '../../utils/mediaRect';
+import { getEducationDisplayName } from '../../constants/universityData';
 import {
   PROMPT_OPTIONS,
   PROMPTS_BY_CATEGORY,
@@ -154,6 +155,7 @@ function MyDatingProfileModal({ onClose }) {
   const hasPhotos = photos.length > 0;
   const hasPrompt = datingProfile.prompts?.question && datingProfile.prompts?.answer;
   const mediaViewerOwnerId = `my-dating-profile:${datingProfile.id || user?.id || 'me'}`;
+  const educationLabel = getEducationDisplayName(user, { includeCourse: true });
 
   const getPhotoUrl = (photo) =>
     typeof photo === 'object' && photo?.url ? photo.url : typeof photo === 'string' ? photo : '';
@@ -457,9 +459,8 @@ function MyDatingProfileModal({ onClose }) {
                   {user?.name}{datingProfile.age ? `, ${datingProfile.age}` : ''}
                 </div>
                 <div style={styles.heroUniversity}>
-                  <GraduationCap size={16} />
-                  {user?.university}{user?.institute ? ` • ${user.institute}` : ''}
-                  {user?.course ? ` • ${user.course} курс` : ''}
+                  <GraduationCap size={16} style={styles.heroUniversityIcon} />
+                  <span style={styles.heroUniversityText}>{educationLabel}</span>
                 </div>
               </div>
 
@@ -970,6 +971,7 @@ const styles = {
   },
   heroInfo: {
     flex: 1,
+    minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
@@ -998,12 +1000,24 @@ const styles = {
   },
   heroUniversity: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
     color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
     fontWeight: 500,
+    lineHeight: 1.25,
     textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+  },
+  heroUniversityIcon: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  heroUniversityText: {
+    minWidth: 0,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
   },
   heroButtons: {
     display: 'flex',

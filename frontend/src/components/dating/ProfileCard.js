@@ -7,6 +7,7 @@ import theme from '../../theme';
 import { useMediaViewer } from '../media/MediaViewerProvider';
 import { getDatingPhotoList } from './photoUtils';
 import { captureSourceRect } from '../../utils/mediaRect';
+import { getEducationDisplayName } from '../../constants/universityData';
 
 const d = theme.colors.dating;
 
@@ -45,6 +46,7 @@ const ProfileCard = memo(function ProfileCard({
   const activePhotoSrc = getPhotoSrc(photos[photoIndex]);
   const shouldLoadPhoto = (idx) => idx === photoIndex || (eagerFirstPhoto && idx === 0);
   const getPhotoLoading = (idx) => (idx === 0 && eagerFirstPhoto ? 'eager' : 'lazy');
+  const educationLabel = getEducationDisplayName(profile);
 
   useEffect(() => {
     setImageLoaded(false);
@@ -302,8 +304,8 @@ const ProfileCard = memo(function ProfileCard({
                   </h2>
                 </div>
                 <div style={styles.uniRow}>
-                  <GraduationCap size={16} />
-                  {profile.university}{profile.institute ? ` • ${profile.institute}` : ''}
+                  <GraduationCap size={16} style={styles.uniIcon} />
+                  <span style={styles.uniText}>{educationLabel}</span>
                 </div>
 
                 {/* Бейджи */}
@@ -552,6 +554,7 @@ const styles = {
   },
   infoLeft: {
     flex: 1,
+    minWidth: 0,
     paddingRight: 56,
     pointerEvents: 'none',
   },
@@ -568,13 +571,26 @@ const styles = {
   },
   uniRow: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
     color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 15,
     fontWeight: 500,
+    lineHeight: 1.25,
     textShadow: '0 1px 4px rgba(0,0,0,0.5)',
     marginBottom: 12,
+    maxWidth: '100%',
+  },
+  uniIcon: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  uniText: {
+    minWidth: 0,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
   },
   badgesRow: {
     display: 'flex',

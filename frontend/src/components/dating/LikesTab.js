@@ -6,6 +6,7 @@ import { hapticFeedback } from '../../utils/telegram';
 import MatchCard from './MatchCard';
 import { MatchCardSkeleton, LikesCardSkeleton } from './DatingSkeletons';
 import { INTEREST_EMOJIS, GOAL_EMOJIS } from '../../constants/datingConstants';
+import { getEducationDisplayName } from '../../constants/universityData';
 
 const d = theme.colors.dating;
 
@@ -192,6 +193,7 @@ function LikesTab({
               const isQuickLiking = quickLikeIds.includes(user.id);
               const quickLikeStage = quickLikeFx[user.id] || 'idle';
               const isQuickLikeActive = isQuickLiking || quickLikeStage !== 'idle';
+              const educationLabel = getEducationDisplayName(user);
 
               return (
                 <div
@@ -256,8 +258,8 @@ function LikesTab({
                         {user.name}, {user.age}
                       </div>
                       <div style={styles.cardUni}>
-                        <GraduationCap size={12} />
-                        {user.institute || user.university}
+                        <GraduationCap size={12} style={styles.cardUniIcon} />
+                        <span style={styles.cardUniText}>{educationLabel}</span>
                       </div>
                     </div>
                   </div>
@@ -450,16 +452,25 @@ const styles = {
   },
   cardUni: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 4,
     fontSize: 11,
     fontWeight: 500,
+    lineHeight: 1.2,
     color: d.textLight,
     marginTop: 2,
     textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+  },
+  cardUniIcon: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  cardUniText: {
+    minWidth: 0,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
   },
 
   // Инфографика под фото

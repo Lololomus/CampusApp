@@ -1,10 +1,8 @@
 // ===== 📄 ФАЙЛ: src/components/profile/EditProfile.js =====
-// TODO: Факультет/институт временно убран из редактирования — вернуть перед релизом
-
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   X, Plus, User, AtSign, Search,
-  Hash, GraduationCap, ChevronLeft, Info, Lock, MessageCircle, ArrowLeft,
+  GraduationCap, ChevronLeft, Info, Lock, MessageCircle, ArrowLeft,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { updateUserProfile, uploadUserAvatar } from '../../api';
@@ -16,35 +14,18 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import SwipeableModal from '../shared/SwipeableModal';
 import { BOTTOM_SHEET_EXIT_MS } from '../../hooks/useBottomSheetModal';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
+import CampusLogoAvatar from '../shared/CampusLogoAvatar';
+import FacultyGraphPicker from '../shared/FacultyGraphPicker';
 import theme from '../../theme';
 import { Z_EDIT_PROFILE } from '../../constants/zIndex';
 import {
   searchCampuses,
-  getCampusById, ONBOARDING_LIMITS,
+  getCampusById, getFacultiesForCampus, ONBOARDING_LIMITS,
 } from '../../constants/universityData';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const normalizeText = (value) => String(value ?? '').trim();
 const normalizeUsername = (value) => normalizeText(value).replace(/^@/, '');
-
-// --- Детерминированный градиент для аватара кампуса ---
-const UNI_GRADIENTS = [
-  'linear-gradient(135deg, #0A84FF, #005BBB)',
-  'linear-gradient(135deg, #FF453A, #D70015)',
-  'linear-gradient(135deg, #FF9F0A, #FF375F)',
-  'linear-gradient(135deg, #32D74B, #30D158)',
-  'linear-gradient(135deg, #BF5AF2, #5E5CE6)',
-  'linear-gradient(135deg, #FFD60A, #FF9F0A)',
-  'linear-gradient(135deg, #5E5CE6, #0A84FF)',
-  'linear-gradient(135deg, #FF6B6B, #FF8E53)',
-  'linear-gradient(135deg, #00C6FF, #0072FF)',
-];
-function getCampusGradient(id) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  return UNI_GRADIENTS[hash % UNI_GRADIENTS.length];
-}
-
 
 // ============================================================
 // Шторка: учёба заморожена
@@ -141,9 +122,8 @@ function EditProfile() {
   const [isCustom, setIsCustom] = useState(false);
   const [customUni, setCustomUni] = useState('');
   const [customCity, setCustomCity] = useState('');
-  // TODO: faculty/institute временно убран — вернуть перед релизом
   const [course, setCourse] = useState(null);
-  const [group, setGroup] = useState('');
+  const [institute, setInstitute] = useState('');
 
   // === Приватность ===
   const [showTelegramId, setShowTelegramId] = useState(false);
@@ -176,7 +156,7 @@ function EditProfile() {
     setShowTelegramId(Boolean(user.show_telegram_id));
     // Нормализуем курс в строку для корректного сравнения с chip-значениями
     setCourse(user.course != null ? String(user.course) : null);
-    setGroup(user.group || '');
+    setInstitute(user.institute || user.custom_faculty || '');
 
     if (user.campus_id) {
       setCampusId(user.campus_id);
@@ -203,10 +183,11 @@ function EditProfile() {
   }, [showCampusPicker]);
 
   const selectedCampus = useMemo(() => (campusId ? getCampusById(campusId) : null), [campusId]);
+  const campusFaculties = useMemo(() => (campusId ? getFacultiesForCampus(campusId) : []), [campusId]);
   const filteredCampuses = useMemo(() => searchCampuses(searchQuery), [searchQuery]);
 
   const initialProfileState = useMemo(() => {
-    if (!user) return { name: '', username: '', campusId: null, isCustom: false, customUni: '', customCity: '', course: null, group: '', showTelegramId: false };
+    if (!user) return { name: '', username: '', campusId: null, isCustom: false, customUni: '', customCity: '', course: null, institute: '', showTelegramId: false };
     const hasCampus = Boolean(user.campus_id);
     const isCustomUniversity = !hasCampus && Boolean(user.custom_university || user.university);
     return {
@@ -218,7 +199,7 @@ function EditProfile() {
       customCity: isCustomUniversity ? normalizeText(user.custom_city || user.city) : '',
       // Нормализуем в строку — иначе 2 !== '2' → hasUnsavedChanges всегда true
       course: user.course != null ? String(user.course) : null,
-      group: normalizeText(user.group),
+      institute: normalizeText(user.institute || user.custom_faculty),
       showTelegramId: Boolean(user.show_telegram_id),
     };
   }, [user]);
@@ -231,9 +212,9 @@ function EditProfile() {
     customUni: isCustom ? normalizeText(customUni) : '',
     customCity: isCustom ? normalizeText(customCity) : '',
     course: course || null,
-    group: normalizeText(group),
+    institute: normalizeText(institute),
     showTelegramId,
-  }), [campusId, course, customCity, customUni, group, isCustom, name, showTelegramId, username]);
+  }), [campusId, course, customCity, customUni, institute, isCustom, name, showTelegramId, username]);
 
   const hasUnsavedChanges = useMemo(
     () => JSON.stringify(initialProfileState) !== JSON.stringify(currentProfileState),
@@ -299,6 +280,7 @@ function EditProfile() {
     hapticFeedback('medium');
     setCampusId(campus.id);
     setIsCustom(false);
+    setInstitute((current) => (campus.faculties.includes(current) ? current : ''));
     setShowCampusPicker(false);
     setSearchQuery('');
   }, []);
@@ -307,8 +289,23 @@ function EditProfile() {
     hapticFeedback('light');
     setIsCustom(true);
     setCampusId(null);
+    setInstitute('');
     setShowCampusPicker(false);
     setSearchQuery('');
+  }, []);
+
+  const handleSelectInstitute = useCallback((value) => {
+    hapticFeedback('selection');
+    if (!canEditEdu) {
+      setShowEduLockedSheet(true);
+      return;
+    }
+    setInstitute(value);
+  }, [canEditEdu]);
+
+  const handleLockedEduClick = useCallback(() => {
+    hapticFeedback('light');
+    setShowEduLockedSheet(true);
   }, []);
 
   const handleSave = async () => {
@@ -324,9 +321,8 @@ function EditProfile() {
         name: name.trim(),
         username: cleanUsername,
         course: courseNum,
-        group: group.trim() || null,
+        institute: institute.trim() || null,
         show_telegram_id: showTelegramId,
-        // TODO: institute временно убран — вернуть перед релизом
       };
 
       if (selectedCampus) {
@@ -342,7 +338,7 @@ function EditProfile() {
         updateData.custom_university = customUni.trim();
         updateData.custom_city = customCity.trim() || null;
         updateData.city = customCity.trim() || null;
-        updateData.custom_faculty = null;
+        updateData.custom_faculty = institute.trim() || null;
       }
 
       const updatedUser = await updateUserProfile(updateData);
@@ -522,13 +518,11 @@ function EditProfile() {
                 {/* Выбранный кампус */}
                 {selectedCampus ? (
                   <div style={{ ...styles.selectedCampusCard, ...(!canEditEdu ? styles.eduLockedSection : {}) }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div style={{ ...styles.campusAvatarLg, background: getCampusGradient(selectedCampus.id) }}>
-                        <span style={{ ...styles.campusAvatarLetter, fontSize: 20 }}>{selectedCampus.university.charAt(0)}</span>
-                      </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
+                      <CampusLogoAvatar campus={selectedCampus} size={64} radius={18} letterSize={20} />
                       <div style={styles.campusInfo}>
-                        <span style={{ ...styles.campusName, fontSize: 20 }}>{selectedCampus.university}</span>
-                        <span style={styles.campusCity}>{selectedCampus.city}</span>
+                        <span style={{ ...styles.campusName, fontSize: 20 }}>{selectedCampus.short}</span>
+                        <span style={styles.campusCity}>{selectedCampus.fullName}</span>
                       </div>
                     </div>
                     <button
@@ -605,15 +599,34 @@ function EditProfile() {
                       {['1', '2', '3', '4', '5', '6'].map((c) => (
                         <button
                           key={c}
-                          style={{ ...styles.courseCell, ...(course === c ? styles.courseCellActive : {}) }}
-                          onClick={() => { hapticFeedback('selection'); setCourse(c); }}
+                          type="button"
+                          style={{
+                            ...styles.courseCell,
+                            ...(course === c ? styles.courseCellActive : {}),
+                            ...(!canEditEdu ? styles.eduControlLocked : {}),
+                          }}
+                          onClick={() => {
+                            if (!canEditEdu) { handleLockedEduClick(); return; }
+                            hapticFeedback('selection');
+                            setCourse(c);
+                          }}
                         >
                           {c}
                         </button>
                       ))}
                       <button
-                        style={{ ...styles.courseCell, ...styles.courseCellWide, ...(course === 'Выпускник' ? styles.courseCellActive : {}) }}
-                        onClick={() => { hapticFeedback('selection'); setCourse('Выпускник'); }}
+                        type="button"
+                        style={{
+                          ...styles.courseCell,
+                          ...styles.courseCellWide,
+                          ...(course === 'Выпускник' ? styles.courseCellActive : {}),
+                          ...(!canEditEdu ? styles.eduControlLocked : {}),
+                        }}
+                        onClick={() => {
+                          if (!canEditEdu) { handleLockedEduClick(); return; }
+                          hapticFeedback('selection');
+                          setCourse('Выпускник');
+                        }}
                       >
                         Уже выпускник 🎓
                       </button>
@@ -623,16 +636,90 @@ function EditProfile() {
                   <div style={{ height: 16 }} />
                   <div style={styles.divider} />
 
-                  {/* Группа */}
-                  <div style={styles.inputGroup}>
-                    <div style={styles.inputIcon}><Hash size={18} color="#8E8E93" /></div>
-                    <input
-                      style={styles.input}
-                      value={group}
-                      onChange={(e) => setGroup(e.target.value)}
-                      placeholder="Группа (необязательно)"
-                      maxLength={ONBOARDING_LIMITS.GROUP_MAX}
-                    />
+                  <div style={styles.facultySection}>
+                    <div style={styles.fieldLabel}>Институт / факультет</div>
+
+                    {selectedCampus ? (
+                      <div style={selectedCampus.facultyGraph ? styles.facultyGraphShell : styles.eduTree}>
+                        {selectedCampus.facultyGraph ? (
+                          <FacultyGraphPicker
+                            campus={selectedCampus}
+                            value={institute}
+                            onSelect={handleSelectInstitute}
+                            disabled={!canEditEdu}
+                            onDisabledClick={handleLockedEduClick}
+                          />
+                        ) : (
+                          <>
+                            <div style={styles.treeRoot}>
+                              <div style={styles.treeDot} />
+                              <div style={styles.treeRootText}>
+                                <span style={styles.treeRootTitle}>{selectedCampus.short}</span>
+                                <span style={styles.treeRootSubtitle}>Учебное дерево</span>
+                              </div>
+                            </div>
+
+                            <div style={styles.treeBranch}>
+                              <div style={styles.treeLine} />
+                              <div style={styles.treeNode}>
+                                <div style={styles.treeNodeLabel}>Выберите подразделение</div>
+                                <div style={styles.facultyChips}>
+                                  {campusFaculties.map((faculty) => {
+                                    const isActive = institute === faculty;
+                                    return (
+                                      <button
+                                        key={faculty}
+                                        type="button"
+                                        style={{
+                                          ...styles.facultyChip,
+                                          ...(isActive ? styles.facultyChipActive : {}),
+                                          ...(!canEditEdu ? styles.eduControlLocked : {}),
+                                        }}
+                                        onClick={() => handleSelectInstitute(faculty)}
+                                      >
+                                        {faculty}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+
+                            {institute ? (
+                              <div style={styles.pathPill}>
+                                <span style={styles.pathMuted}>Путь:</span>
+                                <span>{selectedCampus.university} → {institute}</span>
+                              </div>
+                            ) : (
+                              <div style={styles.pathEmpty}>Выберите свой институт или факультет</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ) : isCustom ? (
+                      <div>
+                        <input
+                          style={{ ...styles.customInput, ...(!canEditEdu ? styles.eduInputLocked : {}) }}
+                          value={institute}
+                          onChange={(e) => setInstitute(e.target.value)}
+                          placeholder="Например, Экономический факультет"
+                          maxLength={ONBOARDING_LIMITS.CUSTOM_FACULTY_MAX}
+                          readOnly={!canEditEdu}
+                          onClick={() => { if (!canEditEdu) handleLockedEduClick(); }}
+                        />
+                        <div style={{ ...styles.customInfoBox, marginTop: 12 }}>
+                          <Info size={18} color="#8E8E93" style={{ flexShrink: 0 }} />
+                          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.62)', lineHeight: 1.4 }}>
+                            Для своего ВУЗа подразделение вводится вручную.
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={styles.facultyDisabled}>
+                        <GraduationCap size={18} color="#8E8E93" />
+                        <span>Сначала выберите ВУЗ</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -673,12 +760,10 @@ function EditProfile() {
                       }}
                       onClick={() => handleSelectCampus(campus)}
                     >
-                      <div style={{ ...styles.campusAvatar, background: getCampusGradient(campus.id) }}>
-                        <span style={styles.campusAvatarLetter}>{campus.university.charAt(0)}</span>
-                      </div>
+                      <CampusLogoAvatar campus={campus} size={48} radius={14} />
                       <div style={styles.campusInfo}>
                         <span style={{ ...styles.campusName, ...(campusId === campus.id ? { color: '#000' } : {}) }}>
-                          {campus.university}
+                          {campus.short}
                         </span>
                         <span style={{ ...styles.campusCity, ...(campusId === campus.id ? { color: 'rgba(0,0,0,0.6)' } : {}) }}>
                           {campus.fullName} · {campus.city}
@@ -905,6 +990,7 @@ const styles = {
     background: SURFACE, border: `1px solid ${BORDER}`,
     borderRadius: 20, padding: 16, marginBottom: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+    minWidth: 0,
   },
   changeBtn: {
     background: '#2C2C2E', border: 'none', color: '#fff',
@@ -931,6 +1017,8 @@ const styles = {
     fontSize: 12, fontWeight: 700, color: '#FF9F0A',
   },
   eduLockedSection: { opacity: 0.5, pointerEvents: 'none' },
+  eduControlLocked: { opacity: 0.48 },
+  eduInputLocked: { opacity: 0.48 },
   changeBtnLocked: {
     background: 'rgba(255,255,255,0.06)', color: '#8E8E93',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -952,6 +1040,131 @@ const styles = {
     background: PRIMARY, border: `1px solid ${PRIMARY}`, color: '#000',
   },
   courseCellWide: { gridColumn: 'span 3', fontSize: 15, fontWeight: 700 },
+
+  // Институт / факультет
+  facultySection: {
+    padding: '14px 16px 16px',
+  },
+  eduTree: {
+    background: 'linear-gradient(180deg, rgba(212,255,0,0.07), rgba(255,255,255,0.025))',
+    border: `1px solid ${BORDER}`,
+    borderRadius: 18,
+    padding: 14,
+  },
+  facultyGraphShell: {
+    margin: '0 -16px',
+  },
+  treeRoot: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  treeDot: {
+    width: 12,
+    height: 12,
+    borderRadius: '50%',
+    background: PRIMARY,
+    boxShadow: '0 0 18px rgba(212,255,0,0.45)',
+    flexShrink: 0,
+  },
+  treeRootText: {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+  },
+  treeRootTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 800,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  treeRootSubtitle: {
+    color: MUTED,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  treeBranch: {
+    display: 'flex',
+    alignItems: 'stretch',
+    gap: 14,
+  },
+  treeLine: {
+    width: 1,
+    marginLeft: 5,
+    background: 'linear-gradient(180deg, rgba(212,255,0,0.6), rgba(212,255,0,0.05))',
+    borderRadius: 1,
+    flexShrink: 0,
+  },
+  treeNode: {
+    flex: 1,
+    minWidth: 0,
+  },
+  treeNodeLabel: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 13,
+    fontWeight: 700,
+    marginBottom: 10,
+  },
+  facultyChips: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  facultyChip: {
+    border: `1px solid ${BORDER}`,
+    background: 'rgba(255,255,255,0.06)',
+    color: '#fff',
+    borderRadius: 999,
+    padding: '10px 13px',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'background 0.16s, color 0.16s, border-color 0.16s, transform 0.16s',
+  },
+  facultyChipActive: {
+    background: PRIMARY,
+    color: '#000',
+    border: `1px solid ${PRIMARY}`,
+    boxShadow: '0 8px 22px rgba(212,255,0,0.16)',
+  },
+  pathPill: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 14,
+    padding: '10px 12px',
+    background: 'rgba(0,0,0,0.28)',
+    border: `1px solid ${BORDER}`,
+    borderRadius: 14,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+  },
+  pathMuted: {
+    color: MUTED,
+    fontWeight: 600,
+  },
+  pathEmpty: {
+    marginTop: 14,
+    color: MUTED,
+    fontSize: 13,
+  },
+  facultyDisabled: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '14px 16px',
+    borderRadius: 16,
+    background: 'rgba(255,255,255,0.04)',
+    border: `1px solid ${BORDER}`,
+    color: MUTED,
+    fontSize: 15,
+    fontWeight: 600,
+  },
 
   // Поиск кампусов (панель 2)
   searchWrapper: {
@@ -975,18 +1188,9 @@ const styles = {
   campusCardActive: {
     background: PRIMARY, border: `1px solid ${PRIMARY}`,
   },
-  campusAvatar: {
-    width: 48, height: 48, borderRadius: 14,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  campusAvatarLetter: { fontSize: 18, fontWeight: 800, color: '#fff' },
-  campusAvatarLg: {
-    width: 64, height: 64, borderRadius: 18,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
   campusInfo: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' },
-  campusName: { fontSize: 17, fontWeight: 700, color: '#fff', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  campusCity: { fontSize: 14, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  campusName: { fontSize: 17, fontWeight: 700, color: '#fff', marginBottom: 2, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  campusCity: { fontSize: 14, color: MUTED, lineHeight: 1.25, minWidth: 0, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' },
   emptySearch: { textAlign: 'center', padding: '32px 16px', color: MUTED, fontSize: 15 },
   addCustomUniBtn: {
     display: 'flex', alignItems: 'center', gap: 12,

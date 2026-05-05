@@ -6,6 +6,7 @@ import { MessageCircle, Clock, GraduationCap } from 'lucide-react';
 import { INTEREST_EMOJIS, GOAL_EMOJIS } from '../../constants/datingConstants';
 import theme from '../../theme';
 import { hapticFeedback } from '../../utils/telegram';
+import { getEducationDisplayName } from '../../constants/universityData';
 
 const d = theme.colors.dating;
 
@@ -13,6 +14,7 @@ function MatchCard({ match, onClick, onMessage }) {
   const photo = match?.photos?.[0]?.url || match?.photos?.[0] || null;
   const commonInterests = match?.common_interests || [];
   const commonGoals = match?.common_goals || [];
+  const educationLabel = getEducationDisplayName(match);
 
   const timeLabel = match?.hours_left > 0
     ? `${match.hours_left}ч`
@@ -42,8 +44,8 @@ function MatchCard({ match, onClick, onMessage }) {
           <div style={styles.name}>{match.name}, {match.age}</div>
           {/* Вуз (факультет) */}
           <div style={styles.university}>
-            <GraduationCap size={12} />
-            {match.institute || match.university}
+            <GraduationCap size={12} style={styles.universityIcon} />
+            <span style={styles.universityText}>{educationLabel}</span>
           </div>
         </div>
 
@@ -171,15 +173,24 @@ const styles = {
   },
   university: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 4,
     fontSize: 11,
     fontWeight: 500,
+    lineHeight: 1.2,
     color: d.textMuted,
     marginTop: 2,
+  },
+  universityIcon: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  universityText: {
+    minWidth: 0,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
   },
   goalsRow: {
     display: 'flex',

@@ -4,13 +4,16 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Search, User, AtSign, ChevronLeft, X, Check, Zap, Plus, Info } from 'lucide-react';
 import { useStore } from '../store';
 import { hapticFeedback, getTelegramUser } from '../utils/telegram';
-import { uploadUserAvatar } from '../api';
+import { updateUserProfile, uploadUserAvatar } from '../api';
 import { compressImage } from '../utils/media';
 import { toast } from './shared/Toast';
 import { Z_ONBOARDING_MAIN } from '../constants/zIndex';
 import { useTelegramScreen } from './shared/telegram/useTelegramScreen';
+import CampusLogoAvatar from './shared/CampusLogoAvatar';
+import FacultyGraphPicker from './shared/FacultyGraphPicker';
 import {
   CAMPUSES, searchCampuses,
+  getFacultiesForCampus,
   ONBOARDING_LIMITS,
 } from '../constants/universityData';
 
@@ -43,26 +46,6 @@ function triggerNeonSparks(rect) {
   }
 }
 
-// --- Детерминированный градиент для аватара кампуса ---
-const UNI_GRADIENTS = [
-  'linear-gradient(135deg, #0A84FF, #005BBB)',
-  'linear-gradient(135deg, #FF453A, #D70015)',
-  'linear-gradient(135deg, #FF9F0A, #FF375F)',
-  'linear-gradient(135deg, #32D74B, #30D158)',
-  'linear-gradient(135deg, #BF5AF2, #5E5CE6)',
-  'linear-gradient(135deg, #FFD60A, #FF9F0A)',
-  'linear-gradient(135deg, #5E5CE6, #0A84FF)',
-  'linear-gradient(135deg, #FF6B6B, #FF8E53)',
-  'linear-gradient(135deg, #00C6FF, #0072FF)',
-];
-
-function getCampusGradient(id) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  return UNI_GRADIENTS[hash % UNI_GRADIENTS.length];
-}
-
-
 // =============================================
 // Главный компонент
 // =============================================
@@ -80,14 +63,23 @@ function Onboarding() {
   const [educationDraft, setEducationDraft] = useState({});
   // Хранит сжатый файл аватара для загрузки ПОСЛЕ регистрации
   const pendingAvatarFileRef = useRef(null);
+  const pendingTelegramAvatarUrlRef = useRef(null);
+  const educationBackHandlerRef = useRef(null);
+  const [educationNestedActive, setEducationNestedActive] = useState(false);
 
   const goToStep = useCallback((step) => {
+    if (step === 1) setEducationNestedActive(false);
     setOnboardingStep(step);
   }, [setOnboardingStep]);
 
   const handleNativeBack = useCallback(() => {
-    if (onboardingStep > 1) goToStep(onboardingStep - 1);
-  }, [goToStep, onboardingStep]);
+    if (onboardingStep !== 2) return;
+    if (educationNestedActive && educationBackHandlerRef.current) {
+      educationBackHandlerRef.current();
+      return;
+    }
+    goToStep(1);
+  }, [educationNestedActive, goToStep, onboardingStep]);
 
   // Нативная кнопка "Назад" в TMA — управляется через useTelegramScreen
   useTelegramScreen({
@@ -103,13 +95,31 @@ function Onboarding() {
   const handleFinishRegistration = useCallback(async (data) => {
     await finishRegistration(data);
     const pending = pendingAvatarFileRef.current;
+    const telegramAvatarUrl = pendingTelegramAvatarUrlRef.current;
     pendingAvatarFileRef.current = null;
+    pendingTelegramAvatarUrlRef.current = null;
+
+    if (!useStore.getState().user?.id) return;
+
+    let avatarSynced = false;
     if (pending) {
       try {
         const result = await uploadUserAvatar(pending);
         if (result?.avatar) {
           setUser({ ...useStore.getState().user, avatar: result.avatar });
+          avatarSynced = true;
         }
+      } catch {
+        // Аватар можно добавить позже в профиле — не критично
+      }
+    }
+
+    // Telegram CDN sometimes blocks browser file fetch by CORS. Keep the visible
+    // Telegram photo as an external URL fallback instead of losing the avatar.
+    if (!avatarSynced && telegramAvatarUrl) {
+      try {
+        const updatedUser = await updateUserProfile({ avatar: telegramAvatarUrl });
+        setUser(updatedUser || { ...useStore.getState().user, avatar: telegramAvatarUrl });
       } catch {
         // Аватар можно добавить позже в профиле — не критично
       }
@@ -132,6 +142,7 @@ function Onboarding() {
               onboardingData={onboardingData}
               setOnboardingData={setOnboardingData}
               onSetPendingFile={(file) => { pendingAvatarFileRef.current = file; }}
+              onSetTelegramAvatarUrl={(url) => { pendingTelegramAvatarUrlRef.current = url; }}
               onNext={() => goToStep(2)}
             />
           </div>
@@ -141,6 +152,8 @@ function Onboarding() {
               onboardingData={onboardingData}
               educationDraft={educationDraft}
               setEducationDraft={setEducationDraft}
+              onNestedStateChange={setEducationNestedActive}
+              onRegisterNestedBack={(handler) => { educationBackHandlerRef.current = handler; }}
               onBack={() => goToStep(1)}
               onFinish={handleFinishRegistration}
             />
@@ -156,7 +169,7 @@ function Onboarding() {
 // Шаг 1: фото + имя + ник в Campus
 // =============================================
 
-function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onNext }) {
+function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onSetTelegramAvatarUrl, onNext }) {
   const telegramUser = useMemo(() => getTelegramUser(), []);
   const telegramPhotoUrl = telegramUser?.photoUrl || null;
   const persistedAvatar = onboardingData.avatar || null;
@@ -214,6 +227,7 @@ function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onN
 
       // Сохраняем для загрузки после регистрации
       onSetPendingFile(compressed);
+      onSetTelegramAvatarUrl(null);
       // Сбрасываем сохранённый server URL аватара, т.к. будет новый
       setOnboardingData({ avatar: null });
     } catch (err) {
@@ -232,6 +246,7 @@ function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onN
 
     // Если аватар из Telegram — скачиваем и сохраняем как файл для загрузки после регистрации
     if (avatarSource === 'telegram' && avatarPreview) {
+      onSetTelegramAvatarUrl(avatarPreview);
       try {
         const response = await fetch(avatarPreview);
         if (response.ok) {
@@ -243,6 +258,8 @@ function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onN
       } catch {
         // Не критично — аватар можно добавить позже
       }
+    } else if (avatarSource !== 'uploaded') {
+      onSetTelegramAvatarUrl(null);
     }
 
     onNext();
@@ -256,9 +273,9 @@ function StepAboutYou({ onboardingData, setOnboardingData, onSetPendingFile, onN
       <div style={{ ...styles.stepScrollable, overflowY: 'hidden' }}>
         <div style={styles.stepCenterContent}>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-            <h2 style={{ ...styles.bigTitle, marginBottom: 0 }}>Как тебя зовут?</h2>
-            <span style={styles.stepIndicator}>ШАГ 1 ИЗ 2</span>
+          <div style={styles.titleRow}>
+            <h2 style={{ ...styles.bigTitle, ...styles.bigTitleInRow }}>Как тебя зовут?</h2>
+            <span style={{ ...styles.stepIndicator, ...styles.titleStepIndicator }}>ШАГ 1 ИЗ 2</span>
           </div>
 
           {/* Аватар — весь блок кликабельный, включая плюс-бейдж */}
@@ -347,6 +364,8 @@ function StepEducation({
   onboardingData,
   educationDraft,
   setEducationDraft,
+  onNestedStateChange,
+  onRegisterNestedBack,
   onBack,
   onFinish,
 }) {
@@ -370,6 +389,7 @@ function StepEducation({
     educationDraft.customUni ?? onboardingData.custom_university ?? (!onboardingData.campus_id ? onboardingData.university || '' : '')
   );
   const [course, setCourse] = useState(educationDraft.course ?? onboardingData.course ?? null);
+  const [institute, setInstitute] = useState(educationDraft.institute ?? onboardingData.institute ?? onboardingData.custom_faculty ?? '');
   const [finishStatus, setFinishStatus] = useState('idle'); // 'idle' | 'loading' | 'success'
   const searchInputRef = useRef(null);
   const finishBtnRef = useRef(null);
@@ -382,10 +402,31 @@ function StepEducation({
       isCustom,
       customUni,
       course,
+      institute,
     });
-  }, [searchQuery, selectedCampus, isCustom, customUni, course, setEducationDraft]);
+  }, [searchQuery, selectedCampus, isCustom, customUni, course, institute, setEducationDraft]);
 
   const filteredCampuses = useMemo(() => searchCampuses(searchQuery), [searchQuery]);
+  const campusFaculties = useMemo(
+    () => (selectedCampus ? getFacultiesForCampus(selectedCampus.id) : []),
+    [selectedCampus]
+  );
+  const inSearchMode = !selectedCampus && !isCustom;
+  const resetToCampusList = useCallback(() => {
+    hapticFeedback('light');
+    setSelectedCampus(null);
+    setIsCustom(false);
+    setInstitute('');
+  }, []);
+
+  useEffect(() => {
+    onNestedStateChange?.(!inSearchMode);
+  }, [inSearchMode, onNestedStateChange]);
+
+  useEffect(() => {
+    onRegisterNestedBack?.(() => resetToCampusList());
+    return () => onRegisterNestedBack?.(null);
+  }, [onRegisterNestedBack, resetToCampusList]);
 
   // Авто-фокус поиска только на десктопе
   useEffect(() => {
@@ -400,11 +441,23 @@ function StepEducation({
     hapticFeedback('medium');
     setSelectedCampus(campus);
     setIsCustom(false);
+    setInstitute((current) => (campus.faculties.includes(current) ? current : ''));
   }, []);
 
-  const handleResetCampus = () => { hapticFeedback('light'); setSelectedCampus(null); setIsCustom(false); };
-  const handleCustomMode = () => { hapticFeedback('light'); setIsCustom(true); setSelectedCampus(null); };
-  const handleBack = () => { hapticFeedback('light'); onBack(); };
+  const handleResetCampus = resetToCampusList;
+  const handleCustomMode = () => { hapticFeedback('light'); setIsCustom(true); setSelectedCampus(null); setInstitute(''); };
+  const handleBack = () => {
+    if (!inSearchMode) {
+      resetToCampusList();
+      return;
+    }
+    hapticFeedback('light');
+    onBack();
+  };
+  const handleSelectInstitute = (value) => {
+    hapticFeedback('selection');
+    setInstitute(value);
+  };
 
   const hasValidCampus = Boolean(selectedCampus) || (isCustom && customUni.trim().length >= ONBOARDING_LIMITS.CUSTOM_UNIVERSITY_MIN);
   const canFinish = hasValidCampus && Boolean(course) && finishStatus === 'idle';
@@ -418,10 +471,14 @@ function StepEducation({
       data.campus_id = selectedCampus.id;
       data.university = selectedCampus.university;
       data.city = selectedCampus.city;
+      data.institute = institute.trim() || null;
+      data.custom_faculty = null;
     } else {
       data.campus_id = null;
       data.university = customUni.trim();
       data.custom_university = customUni.trim();
+      data.institute = institute.trim() || null;
+      data.custom_faculty = institute.trim() || null;
     }
     data.course = course;
 
@@ -436,8 +493,6 @@ function StepEducation({
       setFinishStatus('idle');
     }
   };
-
-  const inSearchMode = !selectedCampus && !isCustom;
 
   // Кнопка назад в UI — только в Dev (в проде нативный TMA BackButton)
   const showLocalBack = import.meta.env.DEV;
@@ -488,11 +543,9 @@ function StepEducation({
                   className="onb-pressable"
                   onClick={() => handleSelectCampus(campus)}
                 >
-                  <div style={{ ...styles.campusAvatar, background: getCampusGradient(campus.id) }}>
-                    <span style={styles.campusAvatarLetter}>{campus.university.charAt(0)}</span>
-                  </div>
+                  <CampusLogoAvatar campus={campus} size={48} radius={14} />
                   <div style={styles.campusInfo}>
-                    <span style={styles.campusName}>{campus.university}</span>
+                    <span style={styles.campusName}>{campus.short}</span>
                     <span style={styles.campusCity}>{campus.fullName} · {campus.city}</span>
                   </div>
                 </button>
@@ -507,13 +560,11 @@ function StepEducation({
         {/* === Выбранный ВУЗ === */}
         {selectedCampus && (
           <div style={styles.selectedCampusCard}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ ...styles.campusAvatarLg, background: getCampusGradient(selectedCampus.id) }}>
-                <span style={{ ...styles.campusAvatarLetter, fontSize: 20 }}>{selectedCampus.university.charAt(0)}</span>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
+              <CampusLogoAvatar campus={selectedCampus} size={64} radius={18} letterSize={20} />
               <div style={styles.campusInfo}>
-                <span style={{ ...styles.campusName, fontSize: 20 }}>{selectedCampus.university}</span>
-                <span style={styles.campusCity}>{selectedCampus.city}</span>
+                <span style={{ ...styles.campusName, fontSize: 20 }}>{selectedCampus.short}</span>
+                <span style={styles.campusCity}>{selectedCampus.fullName}</span>
               </div>
             </div>
             <button className="onb-pressable" style={styles.changeBtn} onClick={handleResetCampus}>Изменить</button>
@@ -552,25 +603,100 @@ function StepEducation({
         {/* === Курс — показываем только после выбора ВУЗа === */}
         {(selectedCampus || isCustom) && (
           <div style={{ marginBottom: 32 }}>
-            <div style={styles.sectionLabel}>Какой курс?</div>
-            <div style={styles.courseGrid}>
-              {['1', '2', '3', '4', '5', '6'].map((c) => (
+            <div style={styles.educationDetailsCard}>
+              <div style={styles.sectionLabel}>Какой курс?</div>
+              <div style={styles.courseGrid}>
+                {['1', '2', '3', '4', '5', '6'].map((c) => (
+                  <button
+                    key={c}
+                    style={{ ...styles.courseCell, ...(course === c ? styles.courseCellActive : {}) }}
+                    className="onb-pressable"
+                    onClick={() => { hapticFeedback('selection'); setCourse(c); }}
+                  >
+                    {c}
+                  </button>
+                ))}
                 <button
-                  key={c}
-                  style={{ ...styles.courseCell, ...(course === c ? styles.courseCellActive : {}) }}
+                  style={{ ...styles.courseCell, ...styles.courseCellWide, ...(course === 'Выпускник' ? styles.courseCellActive : {}) }}
                   className="onb-pressable"
-                  onClick={() => { hapticFeedback('selection'); setCourse(c); }}
+                  onClick={() => { hapticFeedback('selection'); setCourse('Выпускник'); }}
                 >
-                  {c}
+                  Уже выпускник 🎓
                 </button>
-              ))}
-              <button
-                style={{ ...styles.courseCell, ...styles.courseCellWide, ...(course === 'Выпускник' ? styles.courseCellActive : {}) }}
-                className="onb-pressable"
-                onClick={() => { hapticFeedback('selection'); setCourse('Выпускник'); }}
-              >
-                Уже выпускник 🎓
-              </button>
+              </div>
+
+              <div style={styles.educationDivider} />
+
+              <div style={styles.facultyHeader}>
+                <span style={styles.sectionLabel}>Институт / факультет</span>
+                <span style={styles.optionalBadge}>необязательно</span>
+              </div>
+
+              {selectedCampus ? (
+                <div style={selectedCampus.facultyGraph ? styles.facultyGraphShell : styles.eduTree}>
+                  {selectedCampus.facultyGraph ? (
+                    <FacultyGraphPicker
+                      campus={selectedCampus}
+                      value={institute}
+                      onSelect={handleSelectInstitute}
+                    />
+                  ) : (
+                    <>
+                      <div style={styles.treeRoot}>
+                        <div style={styles.treeDot} />
+                        <div style={styles.treeRootText}>
+                          <span style={styles.treeRootTitle}>{selectedCampus.short}</span>
+                          <span style={styles.treeRootSubtitle}>Учебное дерево</span>
+                        </div>
+                      </div>
+
+                      <div style={styles.treeBranch}>
+                        <div style={styles.treeLine} />
+                        <div style={styles.treeNode}>
+                          <div style={styles.treeNodeLabel}>Выберите подразделение</div>
+                          <div style={styles.facultyChips}>
+                            {campusFaculties.map((faculty) => {
+                              const isActive = institute === faculty;
+                              return (
+                                <button
+                                  key={faculty}
+                                  type="button"
+                                  style={{ ...styles.facultyChip, ...(isActive ? styles.facultyChipActive : {}) }}
+                                  className="onb-pressable"
+                                  onClick={() => handleSelectInstitute(faculty)}
+                                >
+                                  {faculty}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {institute ? (
+                        <div style={styles.pathPill}>
+                          <span style={styles.pathMuted}>Путь:</span>
+                          <span>{selectedCampus.university} → {institute}</span>
+                        </div>
+                      ) : (
+                        <div style={styles.pathEmpty}>Можно пропустить и указать позже</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Например, Экономический факультет"
+                    value={institute}
+                    onChange={(e) => setInstitute(e.target.value)}
+                    style={styles.customInput}
+                    maxLength={ONBOARDING_LIMITS.CUSTOM_FACULTY_MAX}
+                  />
+                  <div style={styles.customFacultyHint}>Для своего ВУЗа подразделение вводится вручную.</div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -649,10 +775,12 @@ const styles = {
   },
 
   stepPage: {
+    position: 'relative',
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
     backgroundColor: BG,
+    overflow: 'hidden',
   },
   stepHeader: {
     display: 'flex',
@@ -667,20 +795,29 @@ const styles = {
     color: PRIMARY,
     letterSpacing: 1,
     textTransform: 'uppercase',
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
   },
   stepScrollable: {
     flex: 1,
     overflowY: 'auto',
-    padding: '0 20px',
+    padding: '0 20px calc(164px + var(--screen-bottom-offset, 0px))',
     msOverflowStyle: 'none',
     scrollbarWidth: 'none',
   },
   stepBottom: {
-    flexShrink: 0,
-    padding: '16px 20px',
-    paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
-    borderTop: '1px solid rgba(255,255,255,0.05)',
-    backgroundColor: BG,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 20,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: '18px 20px calc(16px + var(--screen-bottom-offset, 0px))',
+    background: 'linear-gradient(to top, rgba(0,0,0,0.94) 0%, rgba(0,0,0,0.72) 62%, transparent 100%)',
+    pointerEvents: 'none',
   },
 
   stepCenterContent: {
@@ -697,6 +834,26 @@ const styles = {
     fontWeight: 800,
     color: '#fff',
     letterSpacing: -1,
+  },
+  titleRow: {
+    position: 'relative',
+    display: 'block',
+    marginBottom: 24,
+    minWidth: 0,
+  },
+  bigTitleInRow: {
+    boxSizing: 'border-box',
+    width: '100%',
+    paddingRight: 104,
+    marginBottom: 0,
+    lineHeight: 1.18,
+    overflowWrap: 'normal',
+  },
+  titleStepIndicator: {
+    position: 'absolute',
+    top: 8,
+    right: 0,
+    transform: 'translateY(0)',
   },
 
   // Аватар
@@ -797,9 +954,10 @@ const styles = {
   // Кнопки
   primaryCta: {
     width: '100%',
+    minHeight: 58,
     background: PRIMARY,
     color: '#000',
-    border: 'none',
+    border: `1px solid ${PRIMARY}`,
     padding: 18,
     borderRadius: 20,
     fontSize: 17,
@@ -809,12 +967,20 @@ const styles = {
     justifyContent: 'center',
     gap: 8,
     cursor: 'pointer',
+    pointerEvents: 'auto',
+    boxShadow: '0 12px 28px rgba(212,255,0,0.22)',
   },
   primaryCtaDisabled: {
-    opacity: 0.4,
+    background: '#2C2C2E',
+    color: MUTED,
+    border: `1px solid ${BORDER}`,
+    boxShadow: 'none',
     cursor: 'not-allowed',
   },
   primaryCtaSuccess: {
+    background: PRIMARY,
+    color: '#000',
+    border: `1px solid ${PRIMARY}`,
     boxShadow: '0 8px 24px rgba(212,255,0,0.3)',
     transform: 'scale(1.04)',
   },
@@ -881,29 +1047,6 @@ const styles = {
     textAlign: 'left',
     width: '100%',
   },
-  campusAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  campusAvatarLetter: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: '#fff',
-  },
-  campusAvatarLg: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
   campusInfo: {
     flex: 1,
     minWidth: 0,
@@ -915,6 +1058,7 @@ const styles = {
     fontWeight: 700,
     color: '#fff',
     marginBottom: 2,
+    minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -922,9 +1066,12 @@ const styles = {
   campusCity: {
     fontSize: 14,
     color: MUTED,
+    lineHeight: 1.25,
+    minWidth: 0,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
   },
   emptySearch: {
     textAlign: 'center',
@@ -944,6 +1091,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    minWidth: 0,
   },
   changeBtn: {
     background: '#2C2C2E',
@@ -994,6 +1142,19 @@ const styles = {
     marginBottom: 12,
   },
 
+  educationDetailsCard: {
+    background: SURFACE,
+    border: `1px solid ${BORDER}`,
+    borderRadius: 24,
+    padding: 16,
+  },
+
+  educationDivider: {
+    height: 1,
+    background: BORDER,
+    margin: '18px 0',
+  },
+
   // Курс — 3 колонки
   courseGrid: {
     display: 'grid',
@@ -1022,19 +1183,153 @@ const styles = {
     fontWeight: 700,
   },
 
+  facultyHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+  },
+  optionalBadge: {
+    color: MUTED,
+    background: 'rgba(255,255,255,0.06)',
+    border: `1px solid ${BORDER}`,
+    borderRadius: 999,
+    padding: '4px 9px',
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    flexShrink: 0,
+  },
+  eduTree: {
+    background: 'linear-gradient(180deg, rgba(212,255,0,0.07), rgba(255,255,255,0.025))',
+    border: `1px solid ${BORDER}`,
+    borderRadius: 18,
+    padding: 14,
+  },
+  facultyGraphShell: {
+    margin: '0 -16px',
+  },
+  treeRoot: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  treeDot: {
+    width: 12,
+    height: 12,
+    borderRadius: '50%',
+    background: PRIMARY,
+    boxShadow: '0 0 18px rgba(212,255,0,0.45)',
+    flexShrink: 0,
+  },
+  treeRootText: {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+  },
+  treeRootTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 800,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  treeRootSubtitle: {
+    color: MUTED,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  treeBranch: {
+    display: 'flex',
+    alignItems: 'stretch',
+    gap: 14,
+  },
+  treeLine: {
+    width: 1,
+    marginLeft: 5,
+    background: 'linear-gradient(180deg, rgba(212,255,0,0.6), rgba(212,255,0,0.05))',
+    borderRadius: 1,
+    flexShrink: 0,
+  },
+  treeNode: {
+    flex: 1,
+    minWidth: 0,
+  },
+  treeNodeLabel: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 13,
+    fontWeight: 700,
+    marginBottom: 10,
+  },
+  facultyChips: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  facultyChip: {
+    border: `1px solid ${BORDER}`,
+    background: 'rgba(255,255,255,0.06)',
+    color: '#fff',
+    borderRadius: 999,
+    padding: '10px 13px',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  facultyChipActive: {
+    background: PRIMARY,
+    color: '#000',
+    border: `1px solid ${PRIMARY}`,
+    boxShadow: '0 8px 22px rgba(212,255,0,0.16)',
+  },
+  pathPill: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 14,
+    padding: '10px 12px',
+    background: 'rgba(0,0,0,0.28)',
+    border: `1px solid ${BORDER}`,
+    borderRadius: 14,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+  },
+  pathMuted: {
+    color: MUTED,
+    fontWeight: 600,
+  },
+  pathEmpty: {
+    marginTop: 14,
+    color: MUTED,
+    fontSize: 13,
+  },
+  customFacultyHint: {
+    marginTop: 10,
+    color: MUTED,
+    fontSize: 13,
+    lineHeight: 1.35,
+  },
+
   // "Нет моего ВУЗа"
   addCustomUniBtn: {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
     padding: '12px 16px',
-    background: SURFACE,
+    background: 'rgba(28,28,30,0.92)',
     border: `1px solid ${BORDER}`,
-    borderRadius: 16,
+    borderRadius: 18,
     cursor: 'pointer',
     width: '100%',
     textAlign: 'left',
-    marginBottom: 12,
+    pointerEvents: 'auto',
+    boxShadow: '0 12px 30px rgba(0,0,0,0.28)',
   },
   addCustomUniIcon: {
     width: 36,

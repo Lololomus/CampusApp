@@ -7,6 +7,7 @@ import { GOAL_LABELS, INTEREST_LABELS } from '../../constants/datingConstants';
 import { hapticFeedback } from '../../utils/telegram';
 import SwipeableModal from '../shared/SwipeableModal';
 import theme from '../../theme';
+import { getEducationDisplayName } from '../../constants/universityData';
 
 const d = theme.colors.dating;
 
@@ -15,6 +16,7 @@ function ProfileSheet({ profile, isOpen, onClose, onLike, onSkip }) {
 
   const commonInterests = profile.common_interests || [];
   const commonGoals = profile.common_goals || [];
+  const educationLabel = getEducationDisplayName(profile);
   const isFromUni = profile.match_reason && (
     profile.match_reason.includes('вуз') ||
     profile.match_reason.includes('факультет') ||
@@ -54,11 +56,11 @@ function ProfileSheet({ profile, isOpen, onClose, onLike, onSkip }) {
     <SwipeableModal isOpen={isOpen} onClose={onClose} footer={footer} zIndex={2000}>
       {/* Header: Имя + возраст + кнопка закрытия */}
       <div style={styles.header}>
-        <div>
+        <div style={styles.headerInfo}>
           <h1 style={styles.name}>{profile.name}, {profile.age}</h1>
           <div style={styles.uniRow}>
-            <GraduationCap size={18} color={d.textMuted} />
-            <span>{profile.university}{profile.institute ? ` • ${profile.institute}` : ''}</span>
+            <GraduationCap size={18} color={d.textMuted} style={styles.uniIcon} />
+            <span style={styles.uniText}>{educationLabel}</span>
           </div>
         </div>
         <button style={styles.closeButton} onClick={onClose}>
@@ -129,6 +131,11 @@ const styles = {
     marginBottom: 24,
     paddingTop: 4,
   },
+  headerInfo: {
+    minWidth: 0,
+    flex: 1,
+    paddingRight: 12,
+  },
   name: {
     fontSize: 30,
     fontWeight: 800,
@@ -138,12 +145,24 @@ const styles = {
   },
   uniRow: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     marginTop: 8,
     color: d.textMuted,
     fontWeight: 500,
     fontSize: 15,
+    lineHeight: 1.3,
+  },
+  uniIcon: {
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  uniText: {
+    minWidth: 0,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
   },
   closeButton: {
     width: 44,
