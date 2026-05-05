@@ -139,7 +139,7 @@ def _format_dating_like(payload: dict) -> dict:
         "\n"
         "Зайди в Dating — может, это взаимно?"
     )
-    return {"text": text, "reply_markup": open_dating_kb()}
+    return {"text": text, "reply_markup": open_dating_kb("dating_likes")}
 
 
 def _format_comment(payload: dict) -> dict:

@@ -37,14 +37,14 @@ def open_post_kb(post_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def open_dating_kb() -> InlineKeyboardMarkup:
+def open_dating_kb(start_param: str = "tab_dating") -> InlineKeyboardMarkup:
     """Кнопка открытия Dating."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="💘 Открыть Dating",
-                    web_app=WebAppInfo(url=_miniapp_startapp_url("tab_dating")),
+                    web_app=WebAppInfo(url=_miniapp_startapp_url(start_param)),
                 )
             ]
         ]

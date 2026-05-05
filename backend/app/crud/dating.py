@@ -206,20 +206,23 @@ async def create_like(db: AsyncSession, liker_id: int, liked_id: int) -> dict:
             models.DatingLike.whom_liked_id == liked_id
         )
     )
-    if existing_result.scalar_one_or_none():
+    existing_like = existing_result.scalar_one_or_none()
+    if existing_like and existing_like.is_like:
         return {"success": True, "is_match": False, "already_liked": True}
 
-    new_like = models.DatingLike(who_liked_id=liker_id, whom_liked_id=liked_id, is_like=True)
-    db.add(new_like)
+    if existing_like:
+        existing_like.is_like = True
+        existing_like.created_at = datetime.utcnow()
+        existing_like.matched_at = None
+    else:
+        new_like = models.DatingLike(who_liked_id=liker_id, whom_liked_id=liked_id, is_like=True)
+        db.add(new_like)
 
-    try:
-        await db.flush()  # получаем ID, но НЕ коммитим
-    except IntegrityError:
-        await db.rollback()
-        return {"success": True, "is_match": False, "already_liked": True}
-
-    # Уведомление о лайке
-    await notif.notify_dating_like(db, liked_id)
+        try:
+            await db.flush()  # получаем ID, но НЕ коммитим
+        except IntegrityError:
+            await db.rollback()
+            return {"success": True, "is_match": False, "already_liked": True}
 
     # Проверяем обратный лайк
     reverse_result = await db.execute(
@@ -257,6 +260,10 @@ async def create_like(db: AsyncSession, liker_id: int, liked_id: int) -> dict:
                 await notif.notify_match(db, liker_user, liked_user)
 
         matched_user = await db.get(models.User, liked_id)
+    else:
+        # Anonymous dating_like should only point to actionable incoming likes.
+        # Mutual likes are covered by match notifications instead.
+        await notif.notify_dating_like(db, liked_id)
 
     # Единый коммит: лайк + (мэтч + уведомления)
     await db.commit()
@@ -301,9 +308,12 @@ async def create_dislike(db: AsyncSession, disliker_id: int, disliked_id: int) -
 
 
 async def get_who_liked_me(db: AsyncSession, user_id: int, limit: int = 20, offset: int = 0) -> List[models.User]:
-    my_likes_subq = (
+    my_positive_likes_subq = (
         select(models.DatingLike.whom_liked_id)
-        .where(models.DatingLike.who_liked_id == user_id)
+        .where(
+            models.DatingLike.who_liked_id == user_id,
+            models.DatingLike.is_like == True,
+        )
         .scalar_subquery()
     )
 
@@ -313,7 +323,7 @@ async def get_who_liked_me(db: AsyncSession, user_id: int, limit: int = 20, offs
         .where(
             models.DatingLike.whom_liked_id == user_id,
             models.DatingLike.is_like == True,
-            models.User.id.notin_(my_likes_subq)
+            models.User.id.notin_(my_positive_likes_subq)
         )
         .order_by(models.DatingLike.created_at.desc())
         .offset(offset)
@@ -325,9 +335,12 @@ async def get_who_liked_me(db: AsyncSession, user_id: int, limit: int = 20, offs
 # ===== СТАТИСТИКА И НАСТРОЙКИ =====
 
 async def get_dating_stats(db: AsyncSession, user_id: int) -> dict:
-    my_likes_subq = (
+    my_positive_likes_subq = (
         select(models.DatingLike.whom_liked_id)
-        .where(models.DatingLike.who_liked_id == user_id)
+        .where(
+            models.DatingLike.who_liked_id == user_id,
+            models.DatingLike.is_like == True,
+        )
         .scalar_subquery()
     )
 
@@ -335,7 +348,7 @@ async def get_dating_stats(db: AsyncSession, user_id: int) -> dict:
         select(func.count(models.DatingLike.id)).where(
             models.DatingLike.whom_liked_id == user_id,
             models.DatingLike.is_like == True,
-            models.DatingLike.who_liked_id.notin_(my_likes_subq)
+            models.DatingLike.who_liked_id.notin_(my_positive_likes_subq)
         )
     )
 
