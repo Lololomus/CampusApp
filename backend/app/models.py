@@ -199,6 +199,7 @@ class Post(Base):
     event_date = Column(DateTime, nullable=True)
     event_location = Column(String(200), nullable=True)
     event_contact = Column(String(255), nullable=True)
+    event_type = Column(String(20), default='community', nullable=False, index=True)
     
     # Для help-постов
     help_expires_at = Column(DateTime, nullable=True)

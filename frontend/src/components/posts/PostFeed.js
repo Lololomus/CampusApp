@@ -1,6 +1,7 @@
 // ===== FILE: frontend/src/components/posts/PostFeed.js =====
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { CalendarDays } from 'lucide-react';
 import PostCard from './PostCard';
 // [LEGACY] import RequestsFeed from '../requests/RequestsFeed';
 import PostFiltersModal from './PostFiltersModal';
@@ -71,6 +72,7 @@ function PostFeed() {
     setPostsFilters,
     clearPostsFilters,
     user,
+    setShowCalendarScreen,
   } = useStore();
 
   const haptic = (type = 'light') => {
@@ -298,6 +300,21 @@ function PostFeed() {
     setShowFiltersModal(true);
   };
 
+  const handleOpenCalendar = useCallback(() => {
+    hapticFeedback('medium');
+    setShowCalendarScreen(true);
+  }, [setShowCalendarScreen]);
+
+  const feedHeaderActions = useMemo(() => ([
+    {
+      key: 'calendar',
+      label: 'Календарь',
+      ariaLabel: 'Открыть календарь событий',
+      icon: <CalendarDays size={16} strokeWidth={2.25} />,
+      onClick: handleOpenCalendar,
+    },
+  ]), [handleOpenCalendar]);
+
   const handleFiltersApply = () => {
     // Reload triggered automatically by useEffect when postsFilters updates in store
   };
@@ -469,9 +486,12 @@ function PostFeed() {
         showFilters={true}
         onFiltersClick={handleFiltersClick}
         activeFiltersCount={countActiveFilters}
+        filterActions={feedHeaderActions}
         premiumCollapsedToolbar
         freezeBottomChromeOnSearchFocus
       />
+
+      {/* TODO: add a top "new posts" pill that scrolls feed to top and calls loadPosts(true). */}
 
       <div style={{
         ...styles.content,

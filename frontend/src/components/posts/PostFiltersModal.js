@@ -1,5 +1,6 @@
 // ===== FILE: frontend/src/components/posts/PostFiltersModal.js =====
 import React, { useState, useEffect, useRef } from 'react';
+import { CalendarDays } from 'lucide-react';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import SwipeableModal from '../shared/SwipeableModal';
@@ -36,6 +37,7 @@ const PostFiltersModal = ({ onClose, onApply, resultsCount = null, fetchCount = 
     setRequestsFilters,
     clearPostsFilters,
     clearRequestsFilters,
+    setShowCalendarScreen,
   } = useStore();
 
   const isPostsMode = feedSubTab === 'posts';
@@ -184,6 +186,12 @@ const PostFiltersModal = ({ onClose, onApply, resultsCount = null, fetchCount = 
     requestClose();
   };
 
+  const handleOpenCalendar = () => {
+    hapticFeedback('medium');
+    setShowCalendarScreen(true);
+    requestClose();
+  };
+
   const handleReset = () => {
     hapticFeedback('light');
     if (isPostsMode) {
@@ -300,6 +308,13 @@ const PostFiltersModal = ({ onClose, onApply, resultsCount = null, fetchCount = 
         {/* ===== ФИЛЬТРЫ ДЛЯ ПОСТОВ ===== */}
         {isPostsMode && (
           <>
+            <button type="button" onClick={handleOpenCalendar} style={styles.calendarCta} className="pressable">
+              <span style={styles.calendarCtaIcon}><CalendarDays size={22} /></span>
+              <span style={styles.calendarCtaText}>
+                <span style={styles.calendarCtaTitle}>Календарь событий</span>
+                <span style={styles.calendarCtaSubtitle}>Мероприятия по датам</span>
+              </span>
+            </button>
             <SectionCard title="ТЕМА" isActive={localFilters.category !== 'all'}>
               <CategoryTileGrid
                 categories={CREATE_CONTENT_POST_CATEGORIES}
@@ -691,6 +706,47 @@ const styles = {
     animation: 'filterShimmer 1.4s ease-in-out infinite',
     verticalAlign: 'middle',
     marginLeft: 2,
+  },
+  calendarCta: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    border: `1px solid ${D.accentBorder}`,
+    background: 'linear-gradient(135deg, rgba(212,255,0,0.16), rgba(255,255,255,0.04))',
+    color: '#fff',
+    cursor: 'pointer',
+    textAlign: 'left',
+    boxShadow: '0 12px 28px rgba(212,255,0,0.08)',
+  },
+  calendarCtaIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    background: D.accent,
+    color: '#000',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  calendarCtaText: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+  },
+  calendarCtaTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    lineHeight: 1.15,
+  },
+  calendarCtaSubtitle: {
+    color: D.muted,
+    fontSize: 12,
+    fontWeight: 600,
   },
   footer: {
     display: 'flex',

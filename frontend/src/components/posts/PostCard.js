@@ -698,7 +698,7 @@ function PostCard({
 
         {/* === HEADER: аватар + имя + меню (одна строка) === */}
         <div style={styles.header}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={styles.headerLeft}>
             {/* Аватар */}
             {isAd ? (
               <div style={{ ...styles.avatar, background: theme.colors.surfaceElevated, border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -726,8 +726,8 @@ function PostCard({
             )}
             {/* Имя + подзаголовок */}
             <div style={styles.nameMetaBlock}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={styles.authorName}>{headerInfo.name}</span>
+              <div style={styles.nameLine}>
+                <span style={isAd ? styles.adAuthorName : styles.authorName}>{headerInfo.name}</span>
                 {post.is_important && !isAd && <span style={styles.pinned}>📌</span>}
               </div>
               {headerInfo.subtitle && (
@@ -841,6 +841,7 @@ function PostCard({
           />
         </div>
 
+        {/* TODO: add post attachments for audio files and documents. */}
         {images.length > 0 && (
           isAd ? (
             // Для рекламы: простая картинка с отступами и скруглением по моку
@@ -889,6 +890,8 @@ function PostCard({
             ))}
           </div>
         )}
+
+        {/* TODO: decide how to show the first or popular comment in feed without opening PostDetail. */}
 
         {/* === FOOTER (СКРЫТ ДЛЯ РЕКЛАМЫ) === */}
         {!isAd && (
@@ -1008,6 +1011,13 @@ const styles = {
     alignItems: 'center',
     marginBottom: 12,
   },
+  headerLeft: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center',
+    flex: '1 1 auto',
+    minWidth: 0,
+  },
   avatar: {
     width: 46,
     height: 46,
@@ -1036,6 +1046,12 @@ const styles = {
     flex: 1,
     minWidth: 0,
   },
+  nameLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    minWidth: 0,
+  },
   authorName: {
     fontSize: 16,
     fontWeight: 800,
@@ -1046,6 +1062,18 @@ const styles = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     display: 'block',
+    minWidth: 0,
+  },
+  adAuthorName: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: theme.colors.text,
+    lineHeight: 1.2,
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
+    display: 'block',
+    minWidth: 0,
   },
   pinned: { fontSize: 12 },
   authorMeta: {

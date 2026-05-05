@@ -12,7 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import Float, String, and_, cast, func, or_, select, update as sa_update
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import logging
 
 from app import models, schemas
@@ -21,6 +22,7 @@ from app.utils import delete_images, delete_all_media, process_base64_images
 from app.services import notification_service as notif
 
 logger = logging.getLogger(__name__)
+MSK_TZ = ZoneInfo("Europe/Moscow")
 
 
 # ===== ЛЕНТА И ПОЛУЧЕНИЕ =====
@@ -199,6 +201,91 @@ async def get_posts(
     }
 
 
+async def get_calendar_events(
+    db: AsyncSession,
+    from_date: date,
+    to_date: date,
+    university: Optional[str] = None,
+    campus_id: Optional[str] = None,
+    viewer_city: Optional[str] = None,
+    current_user_id: Optional[int] = None,
+) -> List[models.Post]:
+    """Get event posts by event_date for calendar surfaces."""
+    start_dt = datetime.combine(from_date, datetime.min.time(), tzinfo=MSK_TZ)
+    end_dt = datetime.combine(to_date + timedelta(days=1), datetime.min.time(), tzinfo=MSK_TZ)
+    start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    query = (
+        select(models.Post)
+        .join(models.User, models.Post.author_id == models.User.id)
+        .options(selectinload(models.Post.author))
+        .where(
+            models.Post.is_deleted == False,
+            models.Post.category == 'events',
+            models.Post.event_date != None,
+            models.Post.event_date >= start_dt,
+            models.Post.event_date < end_dt,
+        )
+    )
+
+    ad_post_ids = select(models.AdPost.post_id).scalar_subquery()
+    query = query.where(~models.Post.id.in_(ad_post_ids))
+
+    if current_user_id:
+        query = query.where(
+            or_(
+                models.User.is_shadow_banned_posts == False,
+                models.Post.author_id == current_user_id,
+            )
+        )
+    else:
+        query = query.where(models.User.is_shadow_banned_posts == False)
+
+    if campus_id:
+        city_cond = and_(
+            models.Post.scope == 'city',
+            models.User.city == viewer_city,
+        ) if viewer_city else None
+        scope_conditions = [
+            models.Post.scope == 'all',
+            and_(
+                models.Post.scope == 'university',
+                or_(
+                    and_(models.Post.target_university == None, models.User.campus_id == campus_id),
+                    and_(models.Post.target_university != None, models.Post.target_university == university),
+                ),
+            ),
+        ]
+        if city_cond is not None:
+            scope_conditions.append(city_cond)
+        query = query.where(or_(*scope_conditions))
+    elif university and university != 'all':
+        city_cond = and_(
+            models.Post.scope == 'city',
+            models.User.city == viewer_city,
+        ) if viewer_city else None
+        scope_conditions = [
+            models.Post.scope == 'all',
+            and_(
+                models.Post.scope == 'university',
+                or_(
+                    and_(models.Post.target_university == None, models.User.university == university),
+                    and_(models.Post.target_university != None, models.Post.target_university == university),
+                ),
+            ),
+        ]
+        if city_cond is not None:
+            scope_conditions.append(city_cond)
+        query = query.where(or_(*scope_conditions))
+    else:
+        query = query.where(models.Post.scope == 'all')
+
+    query = query.order_by(models.Post.event_date.asc(), models.Post.created_at.asc()).limit(300)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
 async def get_post(db: AsyncSession, post_id: int) -> Optional[models.Post]:
     """Получить пост по ID (только неудалённые)"""
     result = await db.execute(
@@ -279,6 +366,7 @@ async def create_post(
         event_date=post.event_date,
         event_location=post.event_location,
         event_contact=post.event_contact,
+        event_type=post.event_type if post.category == 'events' else 'community',
         is_important=post.is_important,
         scope=post.scope,
         target_university=post.target_university if post.scope == 'university' else None,
@@ -312,6 +400,8 @@ async def update_post(
         return None
 
     update_data = post_update.model_dump(exclude_unset=True)
+    if update_data.get("event_type") is None:
+        update_data.pop("event_type", None)
 
     if "tags" in update_data:
         update_data["tags"] = sanitize_json_field(update_data["tags"])

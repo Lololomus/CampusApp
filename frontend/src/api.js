@@ -359,6 +359,23 @@ export async function getPost(id) {
   }
 }
 
+export async function getCalendarEvents(filters = {}) {
+  try {
+    const params = {};
+    if (filters.from) params.from = filters.from;
+    if (filters.to) params.to = filters.to;
+    if (filters.campus_id) params.campus_id = filters.campus_id;
+    if (filters.university && filters.university !== 'all') params.university = filters.university;
+    if (filters.viewer_city) params.viewer_city = filters.viewer_city;
+
+    const response = await api.get('/events/calendar', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Ошибка получения календаря событий:', error);
+    throw error;
+  }
+}
+
 export async function createPost(postData, onProgress = null) {
   try {
     const hasVideo = postData instanceof FormData && postData.has('video');

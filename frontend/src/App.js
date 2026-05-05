@@ -90,6 +90,7 @@ const loadUserPosts = () => import('./components/profile/UserPosts');
 const loadUserRequests = () => import('./components/profile/UserRequests');
 const loadUserMarketItems = () => import('./components/profile/UserMarketItems');
 const loadPostDetail = () => import('./components/posts/PostDetail');
+const loadEventCalendarScreen = () => import('./components/events/EventCalendarScreen');
 const loadPublicProfileSheet = () => import('./components/user/PublicProfileSheet');
 const loadAmbassadorPanel = () => import('./components/moderation/AmbassadorPanel');
 const loadAdminPanel = () => import('./components/moderation/AdminPanel');
@@ -108,6 +109,7 @@ const UserPosts = preloadableLazy(loadUserPosts);
 const UserRequests = preloadableLazy(loadUserRequests);
 const UserMarketItems = preloadableLazy(loadUserMarketItems);
 const PostDetail = preloadableLazy(loadPostDetail);
+const EventCalendarScreen = preloadableLazy(loadEventCalendarScreen);
 const PublicProfileSheet = preloadableLazy(loadPublicProfileSheet);
 const AmbassadorPanel = preloadableLazy(loadAmbassadorPanel);
 const AdminPanel = preloadableLazy(loadAdminPanel);
@@ -127,6 +129,7 @@ const EAGER_PRELOAD_COMPONENTS = [
   UserRequests,
   UserMarketItems,
   PostDetail,
+  EventCalendarScreen,
   PublicProfileSheet,
   AmbassadorPanel,
   AdminPanel,
@@ -202,6 +205,7 @@ function App() {
     editingType,
     closeEditing,
     viewPostId,
+    showCalendarScreen,
     setUpdatedPost,
     authStatus,
     bootstrapAuth,
@@ -428,6 +432,7 @@ function App() {
         </Suspense>
 
         {!hideNavigation && <Navigation />}
+        {showCalendarScreen && <EventCalendarScreen />}
         {viewPostId && <PostDetail />}
         {showUserPosts && <UserPosts />}
         {showUserRequests && <UserRequests />}

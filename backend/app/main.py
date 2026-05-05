@@ -34,13 +34,15 @@ from app.routers import dating, moderation, ads, notifications, auth_router, dev
 from app.services import analytics_service, market_expiry_service, notification_service
 import os
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
 TITLE_PARSE_LIMIT = 70
 POST_BODY_MIN_LEN = 10
 MEMES_MIN_LETTERS = 3
+EVENT_TYPES = {"community", "official"}
+EVENT_OFFICIAL_ROLES = {"ambassador", "admin", "superadmin"}
 MEMES_LETTERS_RE = re.compile(r"[A-Za-zА-Яа-яЁё]")
 
 
@@ -452,6 +454,7 @@ async def get_user_posts_endpoint(
             "event_date": post.event_date,
             "event_location": post.event_location,
             "event_contact": post.event_contact,
+            "event_type": post.event_type,
             "is_important": post.is_important,
             "scope": post.scope,
             "target_university": post.target_university,
@@ -585,6 +588,7 @@ async def get_posts_feed(
             "event_date": post.event_date,
             "event_location": post.event_location,
             "event_contact": post.event_contact,
+            "event_type": post.event_type,
             "is_important": post.is_important,
             "scope": post.scope,
             "target_university": post.target_university,
@@ -608,6 +612,66 @@ async def get_posts_feed(
         "has_more": posts_data["has_more"],
     })
 
+
+@app.get("/events/calendar")
+async def get_events_calendar(
+    request: Request,
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    university: Optional[str] = Query(None),
+    campus_id: Optional[str] = Query(None),
+    viewer_city: Optional[str] = Query(None),
+    user: Optional[models.User] = Depends(optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Calendar event posts filtered by event_date and feed visibility scope."""
+    await check_rate_limit(request, "events_calendar", limit=60, window_sec=60)
+    if to_date < from_date:
+        raise HTTPException(status_code=400, detail="Invalid date range")
+    if (to_date - from_date).days > 370:
+        raise HTTPException(status_code=400, detail="Date range is too large")
+
+    current_user_id = user.id if user else None
+    viewer_campus_id = user.campus_id if user else None
+    viewer_university = (user.university or user.custom_university) if user else None
+    resolved_viewer_city = (user.city or user.custom_city) if user else None
+    events = await crud.get_calendar_events(
+        db,
+        from_date=from_date,
+        to_date=to_date,
+        university=viewer_university,
+        campus_id=viewer_campus_id,
+        viewer_city=resolved_viewer_city,
+        current_user_id=current_user_id,
+    )
+
+    items = []
+    for post in events:
+        items.append({
+            "id": post.id,
+            "author_id": None if post.is_anonymous else post.author_id,
+            "author": {"name": "РђРЅРѕРЅРёРј"} if post.is_anonymous else public_user_short(post.author, viewer_id=user.id if user else None),
+            "category": post.category,
+            "title": post.title,
+            "body": post.body,
+            "tags": post.tags or [],
+            "images": get_image_urls(post.images) if post.images else [],
+            "is_anonymous": post.is_anonymous,
+            "event_name": post.event_name,
+            "event_date": post.event_date,
+            "event_location": post.event_location,
+            "event_contact": post.event_contact,
+            "event_type": post.event_type,
+            "scope": post.scope,
+            "target_university": post.target_university,
+            "likes_count": post.likes_count,
+            "comments_count": post.comments_count,
+            "created_at": post.created_at,
+            "updated_at": post.updated_at,
+        })
+
+    return normalize_datetime_payload({"items": items, "total": len(items)})
+
 @app.post("/posts/create", response_model=schemas.PostResponse)
 async def create_post_endpoint(
     request: Request,
@@ -628,6 +692,7 @@ async def create_post_endpoint(
     event_date: Optional[str] = Form(None),
     event_location: Optional[str] = Form(None),
     event_contact: Optional[str] = Form(None),
+    event_type: Optional[str] = Form(None),
 
     is_important: Optional[bool] = Form(False),
     scope: Optional[str] = Form('university'),
@@ -711,6 +776,15 @@ async def create_post_endpoint(
         normalized_target_university = None
     elif normalized_target_university == (user.university or "").strip():
         normalized_target_university = None
+
+    raw_event_type = event_type if isinstance(event_type, str) else None
+    normalized_event_type = (raw_event_type or "community").strip().lower()
+    if normalized_event_type not in EVENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid event_type")
+    if category != "events":
+        normalized_event_type = "community"
+    elif normalized_event_type == "official" and user.role not in EVENT_OFFICIAL_ROLES:
+        raise HTTPException(status_code=403, detail="Only moderators can create official events")
     
     try:
         post_data = schemas.PostCreate(
@@ -729,6 +803,7 @@ async def create_post_endpoint(
             event_date=event_date,
             event_location=event_location,
             event_contact=event_contact,
+            event_type=normalized_event_type,
             is_important=bool(is_important),
             scope=scope or 'university',
             target_university=normalized_target_university,
@@ -822,6 +897,7 @@ async def get_post_endpoint(
         "event_date": post.event_date,
         "event_location": post.event_location,
         "event_contact": post.event_contact,
+        "event_type": post.event_type,
         "is_important": post.is_important,
         "scope": post.scope,
         "target_university": post.target_university,
@@ -871,6 +947,7 @@ async def resolve_post_endpoint(
         "event_date": post.event_date,
         "event_location": post.event_location,
         "event_contact": post.event_contact,
+        "event_type": post.event_type,
         "is_important": post.is_important,
         "scope": post.scope,
         "target_university": post.target_university,
@@ -917,6 +994,7 @@ async def update_post_endpoint(
     event_date: Optional[str] = Form(None),
     event_location: Optional[str] = Form(None),
     event_contact: Optional[str] = Form(None),
+    event_type: Optional[str] = Form(None),
     is_important: Optional[bool] = Form(None),
     new_images: List[UploadFile] = File(default=[]),
     keep_images: Optional[str] = Form(None),
@@ -947,6 +1025,20 @@ async def update_post_endpoint(
     if post.category == "confessions" and (valid_new_images or keep_images_list or valid_new_video):
         raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
 
+    normalized_event_type = None
+    raw_event_type = event_type if isinstance(event_type, str) else None
+    if raw_event_type is not None:
+        normalized_event_type = (raw_event_type or "community").strip().lower()
+        if normalized_event_type not in EVENT_TYPES:
+            raise HTTPException(status_code=400, detail="Invalid event_type")
+        if post.category != "events":
+            raise HTTPException(status_code=400, detail="event_type is only available for events")
+        changes_official_status = normalized_event_type != post.event_type and (
+            normalized_event_type == "official" or post.event_type == "official"
+        )
+        if changes_official_status and user.role not in EVENT_OFFICIAL_ROLES:
+            raise HTTPException(status_code=403, detail="Only moderators can change official event status")
+
     try:
         post_update = schemas.PostUpdate(
             title=title,
@@ -961,6 +1053,7 @@ async def update_post_endpoint(
             event_date=event_date,
             event_location=event_location,
             event_contact=event_contact,
+            event_type=normalized_event_type,
             is_important=is_important,
             images=None
         )

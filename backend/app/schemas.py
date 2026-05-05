@@ -313,6 +313,7 @@ class PostCreate(BaseModel):
     event_date: Optional[datetime] = None
     event_location: Optional[str] = None
     event_contact: Optional[str] = None
+    event_type: str = Field(default='community', pattern='^(community|official)$')
 
     # Help
     help_expires_at: Optional[datetime] = None
@@ -382,6 +383,7 @@ class PostUpdate(BaseModel):
     event_date: Optional[datetime] = None
     event_location: Optional[str] = None
     event_contact: Optional[str] = None
+    event_type: Optional[str] = Field(None, pattern='^(community|official)$')
     
     is_important: Optional[bool] = None
     
@@ -425,6 +427,7 @@ class PostResponse(BaseModel):
     event_date: Optional[datetime] = None
     event_location: Optional[str] = None
     event_contact: Optional[str] = None
+    event_type: str = 'community'
 
     # Help
     help_expires_at: Optional[datetime] = None

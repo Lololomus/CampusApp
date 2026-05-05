@@ -48,6 +48,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { BOTTOM_SHEET_EXIT_MS, BOTTOM_SHEET_TRANSITION } from '../../hooks/useBottomSheetModal';
+import { useStore } from '../../store';
 
 const MAX_IMAGES = POST_LIMITS.IMAGES_MAX;
 const MAX_TAGS = POST_LIMITS.TAGS_MAX;
@@ -194,6 +195,7 @@ const mapRewardTypeToUi = (value) => {
 
 function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSuccess }) {
   useBodyScrollLock();
+  const user = useStore((state) => state.user);
 
   const isPost = contentType === 'post';
   const postCategory = initialData.category || 'news';
@@ -235,6 +237,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
   const [isAnonymous, setIsAnonymous] = useState(Boolean(initialData?.is_anonymous) || postCategory === 'confessions');
   const [lfType, setLfType] = useState(initialData?.lost_or_found || 'lost');
   const [location, setLocation] = useState(initialData?.location || initialData?.event_location || '');
+  const [isOfficialEvent, setIsOfficialEvent] = useState(initialData?.event_type === 'official');
   const [eventDateMode, setEventDateMode] = useState(initialEventPreset.mode);
   const [customDate, setCustomDate] = useState(initialEventPreset.custom);
   const [activePicker, setActivePicker] = useState(null);
@@ -284,6 +287,13 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
     CREATE_CONTENT_POST_PLACEHOLDERS[postCategory] || CREATE_CONTENT_POST_PLACEHOLDERS.default;
   const requestPlaceholder =
     CREATE_CONTENT_REQUEST_PLACEHOLDERS[requestCategory] || CREATE_CONTENT_REQUEST_PLACEHOLDERS.default;
+  const canEditOfficialEvent = ['ambassador', 'admin', 'superadmin'].includes(user?.role);
+
+  useEffect(() => {
+    if (postCategory !== 'events') {
+      setIsOfficialEvent(false);
+    }
+  }, [postCategory]);
   // requestParsed removed — using reqTitle/reqBody directly
   const resolvedRequestExpiresAt = useMemo(
     () => buildRequestExpiresAtIso(reqDeadlineType, reqCustomDate),
@@ -310,6 +320,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
       lfType: initialData?.lost_or_found || 'lost',
       location: (initialData?.location || initialData?.event_location || '').trim(),
       eventDate: buildEventDateIso(initialEventPreset.mode, initialEventPreset.custom) || '',
+      eventType: initialData?.event_type || 'community',
       rewardType: mapRewardTypeToUi(initialData?.reward_type),
       rewardValue: (initialData?.reward_value || '').trim(),
       requestExpiresAt: toIso(initialData?.expires_at),
@@ -340,6 +351,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
       if (postCategory === 'events') {
         if (location.trim() !== baseline.location) return true;
         if ((buildEventDateIso(eventDateMode, customDate) || '') !== baseline.eventDate) return true;
+        if ((isOfficialEvent ? 'official' : 'community') !== baseline.eventType) return true;
       }
       return false;
     }
@@ -353,6 +365,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
     customDate,
     eventDateMode,
     isAnonymous,
+    isOfficialEvent,
     isPost,
     lfType,
     location,
@@ -617,6 +630,9 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
           formData.append('event_name', (postBody.trim().split('\n')[0] || postBody.trim()).slice(0, 200) || 'Событие');
           if (eventDateIso) formData.append('event_date', eventDateIso);
           formData.append('event_location', location.trim());
+          if (canEditOfficialEvent) {
+            formData.append('event_type', isOfficialEvent ? 'official' : 'community');
+          }
         }
 
         if (videoFile) formData.append('video', videoFile);
@@ -868,6 +884,19 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
                   <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Место проведения" style={styles.smartInput} disabled={isSubmitting} />
                 </div>
               </div>
+            ) : null}
+
+            {isPost && postCategory === 'events' && canEditOfficialEvent ? (
+              <button
+                type="button"
+                onClick={() => setIsOfficialEvent((value) => !value)}
+                style={isOfficialEvent ? { ...styles.officialToggle, ...styles.officialToggleActive } : styles.officialToggle}
+                className="create-spring-btn"
+                disabled={isSubmitting}
+              >
+                <span style={styles.officialToggleDot} />
+                <span>Официальное событие</span>
+              </button>
             ) : null}
 
             {isPost && (isAnonymous || postCategory === 'confessions') ? (
@@ -1261,6 +1290,9 @@ const styles = {
   eventRow: { display: 'flex', gap: 8 },
   eventBtn: { flex: 1, border: 'none', borderRadius: 12, background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', padding: '10px 4px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   eventBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  officialToggle: { width: '100%', borderRadius: 14, border: '1px solid rgba(212,255,0,0.18)', background: 'rgba(255,255,255,0.04)', color: '#fff', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 800, cursor: 'pointer', marginBottom: 16 },
+  officialToggleActive: { background: 'rgba(212,255,0,0.14)', border: '1px solid rgba(212,255,0,0.48)', color: 'var(--create-primary)' },
+  officialToggleDot: { width: 10, height: 10, borderRadius: 5, background: 'currentColor', boxShadow: '0 0 14px rgba(212,255,0,0.5)' },
   pollCard: {
     borderRadius: 14,
     border: '1px solid var(--create-border)',

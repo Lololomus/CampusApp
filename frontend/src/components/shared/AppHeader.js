@@ -814,23 +814,24 @@ const AppHeader = ({
                   >
                     {categories.map((cat) => {
                       const isActive = isCategoryVisuallyActive(cat.id);
+                      const isCalendar = cat.highlight === 'calendar';
                       return (
                         <button
                           key={cat.id}
                           onClick={() => handleCategoryClick(cat.id)}
                           style={{
                             height: 40,
-                            padding: '0 18px',
+                            padding: isCalendar ? '0 20px' : '0 18px',
                             borderRadius: 14,
-                            background: isActive ? (categoryOutline ? 'transparent' : p.primary) : p.surfaceElevated,
-                            color: isActive ? (categoryOutline ? p.primary : '#000') : '#FFF',
-                            border: categoryOutline ? `1px solid ${isActive ? p.primary : 'transparent'}` : 'none',
+                            background: isCalendar ? 'rgba(212,255,0,0.12)' : (isActive ? (categoryOutline ? 'transparent' : p.primary) : p.surfaceElevated),
+                            color: isCalendar ? p.primary : (isActive ? (categoryOutline ? p.primary : '#000') : '#FFF'),
+                            border: isCalendar ? `1px solid ${p.primary}` : (categoryOutline ? `1px solid ${isActive ? p.primary : 'transparent'}` : 'none'),
                             fontSize: 14,
                             fontWeight: 800,
                             whiteSpace: 'nowrap',
                             cursor: 'pointer',
                             flexShrink: 0,
-                            boxShadow: isActive && !categoryOutline ? '0 10px 22px rgba(212,255,0,0.18)' : 'inset 0 1px 1px rgba(255,255,255,0.05)',
+                            boxShadow: isCalendar ? '0 10px 22px rgba(212,255,0,0.14)' : (isActive && !categoryOutline ? '0 10px 22px rgba(212,255,0,0.18)' : 'inset 0 1px 1px rgba(255,255,255,0.05)'),
                             transition: `background 0.25s ${springSmooth}, color 0.25s ${springSmooth}, box-shadow 0.25s ${springSmooth}, border-color 0.25s ${springSmooth}`,
                           }}
                         >
@@ -967,8 +968,9 @@ const AppHeader = ({
                       <div ref={categoriesRef} style={{ display: 'flex', gap: 8, overflowX: 'auto', flex: 1, scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
                         {categories.map((cat) => {
                           const isActive = isCategoryVisuallyActive(cat.id);
+                          const isCalendar = cat.highlight === 'calendar';
                           return (
-                            <button key={cat.id} onClick={() => handleCategoryClick(cat.id)} style={{ padding: '0 14px', height: 36, borderRadius: 18, background: isActive ? (categoryOutline ? 'transparent' : p.primary) : p.surfaceElevated, color: isActive ? (categoryOutline ? p.primary : '#000') : '#FFF', border: categoryOutline ? `1px solid ${isActive ? p.primary : 'transparent'}` : 'none', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0, transition: 'background 0.2s cubic-bezier(0.32, 0.72, 0, 1), color 0.2s cubic-bezier(0.32, 0.72, 0, 1), border-color 0.2s cubic-bezier(0.32, 0.72, 0, 1)' }}>
+                            <button key={cat.id} onClick={() => handleCategoryClick(cat.id)} style={{ padding: isCalendar ? '0 16px' : '0 14px', height: 36, borderRadius: 18, background: isCalendar ? 'rgba(212,255,0,0.12)' : (isActive ? (categoryOutline ? 'transparent' : p.primary) : p.surfaceElevated), color: isCalendar ? p.primary : (isActive ? (categoryOutline ? p.primary : '#000') : '#FFF'), border: isCalendar ? `1px solid ${p.primary}` : (categoryOutline ? `1px solid ${isActive ? p.primary : 'transparent'}` : 'none'), fontSize: 13, fontWeight: isCalendar ? 800 : 600, whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0, transition: 'background 0.2s cubic-bezier(0.32, 0.72, 0, 1), color 0.2s cubic-bezier(0.32, 0.72, 0, 1), border-color 0.2s cubic-bezier(0.32, 0.72, 0, 1)' }}>
                               {cat.emoji && `${cat.emoji} `}
                               {cat.label}
                             </button>

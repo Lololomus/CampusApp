@@ -201,6 +201,7 @@ function CreatePostModal({ onClose }) {
   const [eventDateMode, setEventDateMode] = useState('today');
   const [customDate, setCustomDate] = useState('');
   const [location, setLocation] = useState('');
+  const [isOfficialEvent, setIsOfficialEvent] = useState(false);
 
   const [hasPoll, setHasPoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(['', '']);
@@ -281,6 +282,14 @@ function CreatePostModal({ onClose }) {
     if (isCrossUniversityScope && postTargetUniversity) return postTargetUniversity;
     return currentUniversityName || 'Мой вуз';
   }, [currentUniversityName, isCrossUniversityScope, postTargetUniversity]);
+
+  const canCreateOfficialEvent = ['ambassador', 'admin', 'superadmin'].includes(user?.role);
+
+  useEffect(() => {
+    if (postCategory !== 'events' || !canCreateOfficialEvent) {
+      setIsOfficialEvent(false);
+    }
+  }, [canCreateOfficialEvent, postCategory]);
 
   const activeScopeOption = useMemo(() => {
     if (postScope === 'city') return 'city';
@@ -1071,6 +1080,7 @@ function CreatePostModal({ onClose }) {
           formData.append('event_name', eventName || 'Событие');
           formData.append('event_date', eventDateIso || new Date().toISOString());
           formData.append('event_location', location.trim());
+          formData.append('event_type', isOfficialEvent && canCreateOfficialEvent ? 'official' : 'community');
         }
 
         if (postCategory === 'help') {
@@ -1438,6 +1448,19 @@ function CreatePostModal({ onClose }) {
                           <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Место проведения" style={styles.smartInput} disabled={isSubmitting} />
                         </div>
                       </div>
+                    )}
+
+                    {postCategory === 'events' && canCreateOfficialEvent && (
+                      <button
+                        type="button"
+                        onClick={() => setIsOfficialEvent((value) => !value)}
+                        style={isOfficialEvent ? { ...styles.officialToggle, ...styles.officialToggleActive } : styles.officialToggle}
+                        className="create-spring-btn"
+                        disabled={isSubmitting}
+                      >
+                        <span style={styles.officialToggleDot} />
+                        <span>Официальное событие</span>
+                      </button>
                     )}
 
                     {postCategory === 'help' && (helpRewardType !== 'none' || helpDeadlineType !== 'none') && (
@@ -2289,6 +2312,9 @@ const styles = {
   eventRow: { display: 'flex', gap: 8 },
   eventBtn: { flex: 1, border: 'none', borderRadius: 12, background: 'var(--create-surface-elevated)', color: 'var(--create-text-muted)', padding: '10px 4px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   eventBtnActive: { background: 'var(--create-primary)', color: '#000' },
+  officialToggle: { width: '100%', borderRadius: 14, border: '1px solid rgba(212,255,0,0.18)', background: 'rgba(255,255,255,0.04)', color: '#fff', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 800, cursor: 'pointer', marginBottom: 16 },
+  officialToggleActive: { background: 'rgba(212,255,0,0.14)', border: '1px solid rgba(212,255,0,0.48)', color: 'var(--create-primary)' },
+  officialToggleDot: { width: 10, height: 10, borderRadius: 5, background: 'currentColor', boxShadow: '0 0 14px rgba(212,255,0,0.5)' },
   hiddenDateInput: { position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' },
   anonBlock: { borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16, overflow: 'hidden' },
   anonRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' },

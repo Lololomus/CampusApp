@@ -21,7 +21,10 @@ class PostsFeedSearchRouteTests(unittest.IsolatedAsyncioTestCase):
         request = SimpleNamespace()
         db = object()
 
-        with patch('app.main.check_rate_limit', new=AsyncMock()), patch('app.main.crud.get_posts', new=AsyncMock(return_value=[])) as mocked_get_posts:
+        with patch('app.main.check_rate_limit', new=AsyncMock()), patch(
+            'app.main.crud.get_posts',
+            new=AsyncMock(return_value={'items': [], 'total_count': 0, 'has_more': False}),
+        ) as mocked_get_posts:
             payload = await get_posts_feed(
                 request=request,
                 skip=5,
@@ -40,7 +43,7 @@ class PostsFeedSearchRouteTests(unittest.IsolatedAsyncioTestCase):
                 db=db,
             )
 
-        self.assertEqual(payload, {'items': [], 'total': 0, 'has_more': False})
+        self.assertEqual(payload, {'items': [], 'total': 0, 'total_count': 0, 'has_more': False})
         mocked_get_posts.assert_awaited_once_with(
             db,
             skip=5,
@@ -61,7 +64,10 @@ class PostsFeedSearchRouteTests(unittest.IsolatedAsyncioTestCase):
 
 class PostsFeedSearchCrudTests(unittest.IsolatedAsyncioTestCase):
     async def test_crud_adds_search_clause_without_dropping_other_filters(self):
-        fake_db = SimpleNamespace(execute=AsyncMock(return_value=_EmptyScalarResult()))
+        fake_db = SimpleNamespace(
+            execute=AsyncMock(return_value=_EmptyScalarResult()),
+            scalar=AsyncMock(return_value=0),
+        )
 
         await posts_crud.get_posts(
             fake_db,
