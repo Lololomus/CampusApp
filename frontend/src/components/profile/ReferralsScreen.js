@@ -141,7 +141,7 @@ function PeopleLeaderboard({ items }) {
   if (!items.length) {
     return (
       <div style={styles.state}>
-        Пока никто не приглашал друзей на этой неделе
+        Пока никто не приглашал друзей в этом месяце
       </div>
     );
   }
@@ -245,9 +245,9 @@ function ReferralsScreen() {
   const activeGroupData = useMemo(() => {
     if (activeTab === 'universities') {
       return {
-        title: 'Вузы недели',
+        title: 'Вузы месяца',
         items: universityLeaderboard,
-        empty: 'Пока нет приглашений по вузам на этой неделе',
+        empty: 'Пока нет приглашений по вузам в этом месяце',
       };
     }
 
@@ -317,7 +317,7 @@ function ReferralsScreen() {
                 <div>
                   <h2 style={styles.heroTitle}>Приглашай друзей в Campus</h2>
                   <p style={styles.heroText}>
-                    Реферал засчитывается после регистрации друга. Рейтинг обновляется за текущую неделю.
+                    Реферал засчитывается после регистрации друга. Рейтинг обновляется за текущий месяц.
                   </p>
                 </div>
               </section>
@@ -380,7 +380,7 @@ function ReferralsScreen() {
                   <section style={styles.section}>
                     <div style={styles.sectionTitleRow}>
                       <h3 style={styles.sectionTitle}>
-                        {activeTab === 'people' ? 'Лидеры недели' : activeGroupData.title}
+                        {activeTab === 'people' ? 'Лидеры месяца' : activeGroupData.title}
                       </h3>
                       {activeTab !== 'people' && <Trophy size={18} color={C.accent} />}
                     </div>

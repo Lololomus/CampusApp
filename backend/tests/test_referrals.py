@@ -14,11 +14,11 @@ class ReferralCodeTests(unittest.TestCase):
         self.assertIsNone(referrals.normalize_referral_code("abc_123"))
         self.assertIsNone(referrals.normalize_referral_code("a" * 33))
 
-    def test_current_period_uses_moscow_monday(self):
+    def test_current_period_uses_moscow_month(self):
         start, end = referrals.get_current_referral_period(datetime(2026, 5, 6, 12, 0, 0))
 
-        self.assertEqual(start, datetime(2026, 5, 3, 21, 0, 0))
-        self.assertEqual(end, datetime(2026, 5, 10, 21, 0, 0))
+        self.assertEqual(start, datetime(2026, 4, 30, 21, 0, 0))
+        self.assertEqual(end, datetime(2026, 5, 31, 21, 0, 0))
 
 
 class ReferralGroupLeaderboardTests(unittest.TestCase):

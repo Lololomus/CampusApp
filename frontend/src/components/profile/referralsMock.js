@@ -1,17 +1,12 @@
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-function getMoscowWeekBounds() {
+function getMoscowMonthBounds() {
   const now = new Date();
   const moscowNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-  const day = moscowNow.getDay() || 7;
-  const weekStartMoscow = new Date(moscowNow.getTime() - (day - 1) * MS_PER_DAY);
-  weekStartMoscow.setHours(0, 0, 0, 0);
-
-  const weekEndMoscow = new Date(weekStartMoscow.getTime() + 7 * MS_PER_DAY);
+  const monthStartMoscow = new Date(moscowNow.getFullYear(), moscowNow.getMonth(), 1);
+  const monthEndMoscow = new Date(moscowNow.getFullYear(), moscowNow.getMonth() + 1, 1);
 
   return {
-    period_start: weekStartMoscow.toISOString(),
-    period_end: weekEndMoscow.toISOString(),
+    period_start: monthStartMoscow.toISOString(),
+    period_end: monthEndMoscow.toISOString(),
   };
 }
 
@@ -152,7 +147,7 @@ const instituteLeaderboard = [
 
 export function getDevMockReferralSummary() {
   return {
-    ...getMoscowWeekBounds(),
+    ...getMoscowMonthBounds(),
     referral_code: 'DevRef2026',
     invite_url: null,
     my_count: 18,

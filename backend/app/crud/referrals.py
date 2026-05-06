@@ -1,7 +1,7 @@
 import re
 import secrets
 import string
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, update
@@ -144,13 +144,17 @@ def get_current_referral_period(now_utc: datetime | None = None) -> tuple[dateti
         now_utc = now_utc.replace(tzinfo=timezone.utc)
 
     now_moscow = now_utc.astimezone(MOSCOW_TZ)
-    start_moscow = (now_moscow - timedelta(days=now_moscow.weekday())).replace(
+    start_moscow = now_moscow.replace(
+        day=1,
         hour=0,
         minute=0,
         second=0,
         microsecond=0,
     )
-    end_moscow = start_moscow + timedelta(days=7)
+    if start_moscow.month == 12:
+        end_moscow = start_moscow.replace(year=start_moscow.year + 1, month=1)
+    else:
+        end_moscow = start_moscow.replace(month=start_moscow.month + 1)
 
     start_utc = start_moscow.astimezone(timezone.utc).replace(tzinfo=None)
     end_utc = end_moscow.astimezone(timezone.utc).replace(tzinfo=None)
