@@ -11,6 +11,7 @@ import {
 } from './api';
 import { getTelegramUser } from './utils/telegram';
 import { normalizeTelegramUsername } from './utils/telegramUsername';
+import { clearStoredReferralCode, getStoredReferralCode } from './utils/referralAttribution';
 
 export const useStore = create(
   persist(
@@ -171,6 +172,9 @@ export const useStore = create(
       
       showUserMarketItems: false,
       setShowUserMarketItems: (show) => set({ showUserMarketItems: show }),
+
+      showReferralsScreen: false,
+      setShowReferralsScreen: (show) => set({ showReferralsScreen: show }),
 
       showUserRequests: false,
       setShowUserRequests: (show) => set({ showUserRequests: show }),
@@ -748,9 +752,14 @@ export const useStore = create(
             ...useStore.getState().onboardingData,
             ...data
           };
+          const referralCode = getStoredReferralCode();
+          if (referralCode) {
+            fullData.referral_code = referralCode;
+          }
           const pendingAuthTab = get().pendingAuthTab;
           
           const user = await registerUser(fullData);
+          clearStoredReferralCode();
 
           set({
             user: user,

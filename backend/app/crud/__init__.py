@@ -22,3 +22,4 @@ from app.crud.requests import *   # noqa: F401,F403
 from app.crud.dating import *     # noqa: F401,F403
 from app.crud.market import *     # noqa: F401,F403
 from app.crud.ads import *        # noqa: F401,F403
+from app.crud.referrals import *  # noqa: F401,F403

@@ -84,6 +84,7 @@ class UserCreate(UserBase):
 class UserRegister(UserBase):
     """Регистрация пользователя в auth-потоке (telegram_id берется из токена)"""
     username: Optional[str] = Field(None, max_length=64)
+    referral_code: Optional[str] = Field(None, max_length=32)
     age: Optional[int] = Field(None, ge=14, le=100)
     group: Optional[str] = Field(None, max_length=50)
     bio: Optional[str] = Field(None, max_length=500)
@@ -169,6 +170,48 @@ class UserResponse(BaseModel):
         return self
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ReferralLeaderboardEntry(BaseModel):
+    rank: int
+    user_id: int
+    name: str
+    avatar: Optional[str] = None
+    referrals_count: int
+    is_me: bool = False
+
+
+class ReferralGroupLeaderboardEntry(BaseModel):
+    rank: int
+    key: str
+    label: str
+    referrals_count: int
+    is_my_group: bool = False
+    campus_id: Optional[str] = None
+    university: Optional[str] = None
+    city: Optional[str] = None
+
+
+class ReferralInstituteScope(BaseModel):
+    key: str
+    label: str
+    campus_id: Optional[str] = None
+    university: Optional[str] = None
+    city: Optional[str] = None
+
+
+class ReferralSummary(BaseModel):
+    referral_code: str
+    period_start: datetime
+    period_end: datetime
+    my_count: int
+    my_rank: Optional[int] = None
+    leaderboard: List[ReferralLeaderboardEntry] = Field(default_factory=list)
+    people_leaderboard: List[ReferralLeaderboardEntry] = Field(default_factory=list)
+    university_leaderboard: List[ReferralGroupLeaderboardEntry] = Field(default_factory=list)
+    institute_leaderboard: List[ReferralGroupLeaderboardEntry] = Field(default_factory=list)
+    institute_scope: Optional[ReferralInstituteScope] = None
+
 
 class UserShort(BaseModel):
     """Краткие данные пользователя"""

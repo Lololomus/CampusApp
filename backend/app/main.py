@@ -30,7 +30,7 @@ from app.time_utils import ensure_utc, normalize_datetime_payload
 import json
 import re
 from pydantic import ValidationError
-from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router, analytics
+from app.routers import dating, moderation, ads, notifications, auth_router, dev_auth_router, analytics, referrals
 from app.services import analytics_service, market_expiry_service, notification_service
 import os
 import logging
@@ -214,6 +214,7 @@ app.include_router(moderation.router)
 app.include_router(ads.router)
 app.include_router(notifications.router)
 app.include_router(analytics.router)
+app.include_router(referrals.router)
 app.include_router(auth_router.router)
 if not settings.is_prod and settings.app_env.lower() == "dev" and settings.dev_auth_enabled:
     app.include_router(dev_auth_router.router)

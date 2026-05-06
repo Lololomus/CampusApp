@@ -49,6 +49,7 @@ export const Z_MODAL_REQUEST_DETAIL = 2450;
 export const Z_MODAL_PROFILE_MENU = 2500;
 export const Z_MODAL_USER_POSTS = 2550;
 export const Z_MODAL_NOTIFICATIONS_SCREEN = 2551;
+export const Z_MODAL_REFERRALS_SCREEN = 2552;
 export const Z_MODAL_USER_MARKET_ITEMS = 2560;
 export const Z_MODAL_EDIT_PROFILE = 2600;
 
@@ -100,6 +101,7 @@ export const Z_CREATE_POST = Z_MODAL_CREATE_POST;           // CreatePost.js
 export const Z_EDIT_POST = Z_MODAL_EDIT_POST;               // EditPost.js
 export const Z_EDIT_PROFILE = Z_MODAL_EDIT_PROFILE;         // EditProfile.js
 export const Z_USER_POSTS = Z_MODAL_USER_POSTS;             // UserPosts.js
+export const Z_REFERRALS_SCREEN = Z_MODAL_REFERRALS_SCREEN; // ReferralsScreen.js
 export const Z_USER_MARKET_ITEMS = Z_MODAL_USER_MARKET_ITEMS;  // UserMarketItems.js
 export const Z_CREATE_MARKET_ITEM = Z_MODAL_CREATE_MARKET_ITEM;  // CreateMarketItem.js
 export const Z_MARKET_FAVORITES = Z_MODAL_MARKET_FAVORITES;   // MarketFavoritesScreen.js
@@ -163,6 +165,7 @@ export const zIndex = {
   modalProfileMenu: Z_MODAL_PROFILE_MENU,
   modalUserPosts: Z_MODAL_USER_POSTS,
   modalNotificationsScreen: Z_MODAL_NOTIFICATIONS_SCREEN,
+  modalReferralsScreen: Z_MODAL_REFERRALS_SCREEN,
   modalUserMarketItems: Z_MODAL_USER_MARKET_ITEMS,
   modalEditProfile: Z_MODAL_EDIT_PROFILE,
   
@@ -202,6 +205,7 @@ export const zIndex = {
   editPost: Z_EDIT_POST,
   editProfile: Z_EDIT_PROFILE,
   userPosts: Z_USER_POSTS,
+  referralsScreen: Z_REFERRALS_SCREEN,
   userMarketItems: Z_USER_MARKET_ITEMS,
   createMarketItem: Z_CREATE_MARKET_ITEM,
   marketDetail: Z_MARKET_DETAIL,

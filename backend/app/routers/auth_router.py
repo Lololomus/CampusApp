@@ -105,12 +105,14 @@ async def register_user(
     if existing_user:
         raise HTTPException(status_code=409, detail="User already exists")
 
+    referral_code = user_data.referral_code
     create_payload = schemas.UserCreate(
         telegram_id=identity.telegram_id,
         telegram_username=identity.telegram_username,
-        **user_data.model_dump(),
+        **user_data.model_dump(exclude={"referral_code"}),
     )
     user = await crud.create_user(db, create_payload)
+    await crud.credit_referral_for_user(db, user, referral_code)
 
     await db.execute(
         sa_update(models.AuthSession)

@@ -52,6 +52,13 @@ function sharePayloadToTelegram(payload) {
   return payload;
 }
 
+function buildReferralSharePayload(referralCode) {
+  return {
+    link: buildMiniAppStartappUrl(`ref_${referralCode}`),
+    message: 'Приходи в CampusApp. Тут студенты, посты, маркет и знакомства в одном месте.',
+  };
+}
+
 function buildPostSharePayload(post) {
   const title = compactText(post?.title);
   const previewBody = compactText(stripLeadingTitleFromBody(title, post?.body));
@@ -122,4 +129,8 @@ export function shareRequestViaTelegram(request) {
 
 export function shareMarketItemViaTelegram(item) {
   return sharePayloadToTelegram(buildMarketItemSharePayload(item));
+}
+
+export function shareReferralInviteViaTelegram(referralCode) {
+  return sharePayloadToTelegram(buildReferralSharePayload(referralCode));
 }

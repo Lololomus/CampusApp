@@ -8,6 +8,11 @@ import {
   executeDeepLink,
   parseDeepLink,
 } from './utils/deepLinks';
+import {
+  clearStoredReferralCode,
+  parseReferralStartParam,
+  storeReferralCode,
+} from './utils/referralAttribution';
 
 import Navigation from './components/Navigation';
 import AuthModal from './components/AuthModal';
@@ -89,6 +94,7 @@ const loadOnboarding = () => import('./components/Onboarding');
 const loadUserPosts = () => import('./components/profile/UserPosts');
 const loadUserRequests = () => import('./components/profile/UserRequests');
 const loadUserMarketItems = () => import('./components/profile/UserMarketItems');
+const loadReferralsScreen = () => import('./components/profile/ReferralsScreen');
 const loadPostDetail = () => import('./components/posts/PostDetail');
 const loadEventCalendarScreen = () => import('./components/events/EventCalendarScreen');
 const loadPublicProfileSheet = () => import('./components/user/PublicProfileSheet');
@@ -108,6 +114,7 @@ const Onboarding = preloadableLazy(loadOnboarding);
 const UserPosts = preloadableLazy(loadUserPosts);
 const UserRequests = preloadableLazy(loadUserRequests);
 const UserMarketItems = preloadableLazy(loadUserMarketItems);
+const ReferralsScreen = preloadableLazy(loadReferralsScreen);
 const PostDetail = preloadableLazy(loadPostDetail);
 const EventCalendarScreen = preloadableLazy(loadEventCalendarScreen);
 const PublicProfileSheet = preloadableLazy(loadPublicProfileSheet);
@@ -128,6 +135,7 @@ const EAGER_PRELOAD_COMPONENTS = [
   UserPosts,
   UserRequests,
   UserMarketItems,
+  ReferralsScreen,
   PostDetail,
   EventCalendarScreen,
   PublicProfileSheet,
@@ -200,6 +208,7 @@ function App() {
     showUserPosts,
     showUserRequests,
     showUserMarketItems,
+    showReferralsScreen,
     showEditModal,
     editingContent,
     editingType,
@@ -299,6 +308,20 @@ function App() {
       setPendingDeepLink(parsedLink);
     }
   }, [setPendingDeepLink]);
+
+  useEffect(() => {
+    if (authStatus === 'loading') return;
+
+    const referralCode = parseReferralStartParam(getStartParam());
+    if (!referralCode) return;
+
+    if (isRegistered) {
+      clearStoredReferralCode();
+      return;
+    }
+
+    storeReferralCode(referralCode);
+  }, [authStatus, isRegistered]);
 
   useEffect(() => {
     if (authStatus !== 'loading') {
@@ -437,6 +460,7 @@ function App() {
         {showUserPosts && <UserPosts />}
         {showUserRequests && <UserRequests />}
         {showUserMarketItems && <UserMarketItems />}
+        {showReferralsScreen && <ReferralsScreen />}
         {publicProfilePreview && (
           <PublicProfileSheet
             user={publicProfilePreview}

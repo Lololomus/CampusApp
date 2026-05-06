@@ -5,6 +5,7 @@ import {
   Grid, ShoppingBag, FileText, Share2, Heart,
   MessageCircle, MapPin, ChevronRight,
   Shield, Zap, Settings, PencilLine, Check, Barcode, Bell,
+  Gift,
 } from 'lucide-react';
 import { HandTap } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -46,6 +47,7 @@ function Profile() {
     setShowSettingsModal, setViewPostId,
     updatedPostId, updatedPostData, clearUpdatedPost,
     setShowNotificationsScreen, unreadNotificationsCount,
+    setShowReferralsScreen,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('posts');
@@ -148,6 +150,11 @@ function Profile() {
     });
   };
 
+  const handleOpenReferrals = () => {
+    hapticFeedback('medium');
+    setShowReferralsScreen(true);
+  };
+
   const handleAvatarClick = () => {
     if (user.avatar) {
       hapticFeedback('light');
@@ -226,6 +233,14 @@ function Profile() {
             <Settings size={20} />
           </button>
         </div>
+
+        {/* РЕФЕРАЛЫ */}
+        <ActionCard
+          icon={<Gift size={20} color="#D4FF00" />}
+          title="Пригласить друзей"
+          subtitle="Конкурс и таблица лидеров"
+          onClick={handleOpenReferrals}
+        />
 
         {/* КНОПКИ МОДЕРАЦИИ */}
         {moderationRole?.can_moderate && (

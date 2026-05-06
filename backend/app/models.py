@@ -18,6 +18,7 @@ class User(Base):
     telegram_id = Column(BigInteger, unique=True, index=True, nullable=False)
     username = Column(String(255), nullable=True)
     telegram_username = Column(String(255), nullable=True)
+    referral_code = Column(String(32), unique=True, nullable=True, index=True)
     name = Column(String(255), nullable=False)
     age = Column(Integer, nullable=True)
     bio = Column(Text, nullable=True)
@@ -146,6 +147,19 @@ class User(Base):
         cascade='all, delete-orphan',
         passive_deletes=True,
     )
+    referrals_sent = relationship(
+        'Referral',
+        foreign_keys='[Referral.inviter_user_id]',
+        back_populates='inviter',
+        cascade='all, delete-orphan',
+    )
+    referral_received = relationship(
+        'Referral',
+        foreign_keys='[Referral.invited_user_id]',
+        back_populates='invited',
+        uselist=False,
+        cascade='all, delete-orphan',
+    )
 
 
 class AuthSession(Base):
@@ -163,6 +177,24 @@ class AuthSession(Base):
     revoked_at = Column(DateTime, nullable=True, index=True)
 
     user = relationship('User', back_populates='auth_sessions')
+
+
+class Referral(Base):
+    __tablename__ = 'referrals'
+
+    id = Column(Integer, primary_key=True, index=True)
+    inviter_user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    invited_user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    referral_code_used = Column(String(32), nullable=False, index=True)
+    credited_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    inviter = relationship('User', foreign_keys=[inviter_user_id], back_populates='referrals_sent')
+    invited = relationship('User', foreign_keys=[invited_user_id], back_populates='referral_received')
+
+    __table_args__ = (
+        CheckConstraint('inviter_user_id <> invited_user_id', name='ck_referrals_not_self'),
+        Index('ix_referrals_inviter_credited', 'inviter_user_id', 'credited_at'),
+    )
 
 
 class Post(Base):

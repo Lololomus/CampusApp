@@ -21,6 +21,7 @@ let registrationPromptTs = 0;
 const registrationPromptByReason = new Map();
 const IS_DEV = import.meta.env.DEV;
 let notificationsMockModulePromise = null;
+let referralsMockModulePromise = null;
 
 async function loadNotificationsMockModule() {
   if (!IS_DEV) return null;
@@ -30,6 +31,16 @@ async function loadNotificationsMockModule() {
   }
 
   return notificationsMockModulePromise;
+}
+
+async function loadReferralsMockModule() {
+  if (!IS_DEV) return null;
+
+  if (!referralsMockModulePromise) {
+    referralsMockModulePromise = import('./components/profile/referralsMock');
+  }
+
+  return referralsMockModulePromise;
 }
 
 export function setAccessToken(token) {
@@ -291,6 +302,20 @@ export async function getUserStats(userId) {
     console.error('Ошибка загрузки статистики:', error);
     throw error;
   }
+}
+
+export async function getReferralSummary() {
+  if (IS_DEV) {
+    try {
+      const { getDevMockReferralSummary } = await loadReferralsMockModule();
+      return getDevMockReferralSummary();
+    } catch (error) {
+      console.warn('Referrals mock load failed, falling back to API:', error);
+    }
+  }
+
+  const response = await api.get('/referrals/me');
+  return response.data;
 }
 
 export async function getUserPublic(userId) {
