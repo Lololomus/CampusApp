@@ -14,7 +14,7 @@ def _miniapp_startapp_url(start_param: str) -> str:
     return f"{MINIAPP_URL}{separator}startapp={quote(start_param)}"
 
 
-def open_miniapp_kb(text: str = "📱 Открыть CampusApp") -> InlineKeyboardMarkup:
+def open_miniapp_kb(text: str = "📱 Открыть Campus") -> InlineKeyboardMarkup:
     """Кнопка открытия mini app."""
     return InlineKeyboardMarkup(
         inline_keyboard=[

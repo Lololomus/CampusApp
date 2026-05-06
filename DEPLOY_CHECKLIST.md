@@ -1,4 +1,4 @@
-# CampusApp Deployment Runbook
+# Campus Deployment Runbook
 
 ## 1. Choose ingress mode first
 
@@ -67,8 +67,8 @@ Clone the repository as `deploy`:
 
 ```bash
 cd /home/deploy
-git clone <YOUR_REPO_URL> CampusApp
-cd CampusApp
+git clone <YOUR_REPO_URL> Campus
+cd Campus
 ```
 
 Create persistent host directories:
@@ -182,13 +182,13 @@ Example unit file:
 
 ```ini
 [Unit]
-Description=Tuna tunnel for CampusApp beta
+Description=Tuna tunnel for Campus beta
 After=network-online.target docker.service
 Wants=network-online.target
 
 [Service]
 User=deploy
-WorkingDirectory=/home/deploy/CampusApp
+WorkingDirectory=/home/deploy/Campus
 ExecStart=/usr/local/bin/tuna http 80 --subdomain=<your-subdomain>
 Restart=always
 RestartSec=5
@@ -208,7 +208,7 @@ sudo systemctl status tuna-campusapp.service --no-pager
 ### 5.5. Routine beta update
 
 ```bash
-cd /home/deploy/CampusApp
+cd /home/deploy/Campus
 ./scripts/deploy-tuna.sh
 ```
 
@@ -249,7 +249,7 @@ sudo install -d /etc/letsencrypt/renewal-hooks/deploy
 sudo tee /etc/letsencrypt/renewal-hooks/deploy/campusapp.sh >/dev/null <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-exec /home/deploy/CampusApp/scripts/cert-renew-hook.sh
+exec /home/deploy/Campus/scripts/cert-renew-hook.sh
 EOF
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/campusapp.sh
 ```
@@ -271,7 +271,7 @@ sudo systemctl enable --now certbot.timer
 Smoke-test the deploy hook directly:
 
 ```bash
-sudo RENEWED_LINEAGE=/etc/letsencrypt/live/app.example.com /home/deploy/CampusApp/scripts/cert-renew-hook.sh
+sudo RENEWED_LINEAGE=/etc/letsencrypt/live/app.example.com /home/deploy/Campus/scripts/cert-renew-hook.sh
 ```
 
 Test the full renewal flow with a dry run:
@@ -308,7 +308,7 @@ What the script does:
 ### 6.4. Routine production update
 
 ```bash
-cd /home/deploy/CampusApp
+cd /home/deploy/Campus
 ./scripts/deploy-prod.sh
 ```
 

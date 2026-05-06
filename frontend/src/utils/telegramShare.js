@@ -55,7 +55,7 @@ function sharePayloadToTelegram(payload) {
 function buildReferralSharePayload(referralCode) {
   return {
     link: buildMiniAppStartappUrl(`ref_${referralCode}`),
-    message: 'Приходи в CampusApp. Тут студенты, посты, маркет и знакомства в одном месте.',
+    message: 'Приходи в Campus. Тут студенты, посты, маркет и знакомства в одном месте.',
   };
 }
 
@@ -63,12 +63,12 @@ function buildPostSharePayload(post) {
   const title = compactText(post?.title);
   const previewBody = compactText(stripLeadingTitleFromBody(title, post?.body));
   const categoryIcon = POST_CATEGORY_ICONS[post?.category] || '📝';
-  const preview = truncateText(title || previewBody || 'Открыть пост в CampusApp', 110);
+  const preview = truncateText(title || previewBody || 'Открыть пост в Campus', 110);
   const location = compactText(
     post?.event_location || post?.location || post?.author?.university || post?.university
   );
 
-  const secondLine = [location, 'CampusApp'].filter(Boolean).join(' · ');
+  const secondLine = [location, 'Campus'].filter(Boolean).join(' · ');
 
   return {
     link: buildMiniAppStartappUrl(`post_${post.id}`),
@@ -86,13 +86,13 @@ function buildRequestRewardPart(request) {
 function buildRequestSharePayload(request) {
   const title = compactText(request?.title);
   const previewBody = compactText(stripLeadingTitleFromBody(title, request?.body));
-  const preview = truncateText(title || previewBody || 'Открыть запрос в CampusApp', 110);
+  const preview = truncateText(title || previewBody || 'Открыть запрос в Campus', 110);
   const location = compactText(
     request?.author?.university || request?.university || request?.location
   );
   const reward = buildRequestRewardPart(request);
 
-  const secondLine = [location, reward, 'CampusApp'].filter(Boolean).join(' · ');
+  const secondLine = [location, reward, 'Campus'].filter(Boolean).join(' · ');
 
   return {
     link: buildMiniAppStartappUrl(`request_${request.id}`),
@@ -104,14 +104,14 @@ function buildMarketItemSharePayload(item) {
   const categoryMeta = MARKET_CATEGORIES_MAP[item?.category] || {};
   const isService = item?.item_type === 'service';
   const categoryIcon = categoryMeta.icon || (isService ? '✨' : '📦');
-  const title = truncateText(item?.title || 'Открыть объявление в CampusApp', 110);
+  const title = truncateText(item?.title || 'Открыть объявление в Campus', 110);
   const price = formatMoney(item?.price) || 'цена договорная';
   const location = compactText(
     item?.location || item?.seller?.university || item?.university
   );
 
   const firstLine = `${categoryIcon} ${title} · ${price}`;
-  const secondLine = [location, 'CampusApp'].filter(Boolean).join(' · ');
+  const secondLine = [location, 'Campus'].filter(Boolean).join(' · ');
 
   return {
     link: buildMiniAppStartappUrl(`market_${item.id}`),

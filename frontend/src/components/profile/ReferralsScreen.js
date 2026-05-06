@@ -315,7 +315,7 @@ function ReferralsScreen() {
                   <Gift size={24} />
                 </div>
                 <div>
-                  <h2 style={styles.heroTitle}>Приглашай друзей в CampusApp</h2>
+                  <h2 style={styles.heroTitle}>Приглашай друзей в Campus</h2>
                   <p style={styles.heroText}>
                     Реферал засчитывается после регистрации друга. Рейтинг обновляется за текущую неделю.
                   </p>
@@ -406,21 +406,21 @@ function ReferralsScreen() {
           <div style={styles.footer}>
             <button
               type="button"
-              style={{ ...styles.primaryButton, opacity: hasCode ? 1 : 0.55 }}
-              onClick={handleShare}
-              disabled={!hasCode}
-            >
-              <Send size={18} />
-              Отправить в Telegram
-            </button>
-            <button
-              type="button"
               style={{ ...styles.secondaryButton, opacity: hasCode ? 1 : 0.55 }}
               onClick={handleCopy}
               disabled={!hasCode}
             >
               <Copy size={18} />
-              Скопировать ссылку
+              Скопировать
+            </button>
+            <button
+              type="button"
+              style={{ ...styles.primaryButton, opacity: hasCode ? 1 : 0.55 }}
+              onClick={handleShare}
+              disabled={!hasCode}
+            >
+              <Send size={18} />
+              Отправить
             </button>
           </div>
         </div>
@@ -445,7 +445,7 @@ const styles = {
     minHeight: 0,
     overflowY: 'auto',
     WebkitOverflowScrolling: 'touch',
-    paddingBottom: 'calc(136px + env(safe-area-inset-bottom, 0px))',
+    paddingBottom: 'calc(84px + env(safe-area-inset-bottom, 0px))',
   },
   content: {
     width: '100%',
@@ -460,14 +460,14 @@ const styles = {
     gap: 14,
     alignItems: 'center',
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 16,
     background: C.surface,
     border: `1px solid ${C.border}`,
   },
   heroIcon: {
     width: 52,
     height: 52,
-    borderRadius: 8,
+    borderRadius: 14,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -490,7 +490,7 @@ const styles = {
   state: {
     marginTop: 14,
     minHeight: 96,
-    borderRadius: 8,
+    borderRadius: 16,
     border: `1px solid ${C.border}`,
     background: C.surface,
     color: C.textMuted,
@@ -506,7 +506,7 @@ const styles = {
   },
   retryButton: {
     border: 'none',
-    borderRadius: 8,
+    borderRadius: 14,
     padding: '10px 14px',
     background: C.accent,
     color: C.accentText,
@@ -518,7 +518,7 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: '1fr 1px 1fr',
     alignItems: 'stretch',
-    borderRadius: 8,
+    borderRadius: 16,
     border: `1px solid ${C.border}`,
     background: C.surface,
     overflow: 'hidden',
@@ -607,7 +607,7 @@ const styles = {
     alignItems: 'center',
     gap: 10,
     padding: '10px 12px',
-    borderRadius: 8,
+    borderRadius: 16,
     background: C.surface,
     border: `1px solid ${C.border}`,
   },
@@ -651,7 +651,7 @@ const styles = {
     minWidth: 34,
     height: 34,
     padding: '0 10px',
-    borderRadius: 8,
+    borderRadius: 12,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -662,7 +662,7 @@ const styles = {
   },
   chartPanel: {
     padding: '16px 0 12px',
-    borderRadius: 8,
+    borderRadius: 16,
     background: C.surface,
     border: `1px solid ${C.border}`,
     overflow: 'hidden',
@@ -711,7 +711,7 @@ const styles = {
   chartBar: {
     width: '100%',
     minHeight: 18,
-    borderRadius: '14px 14px 8px 8px',
+    borderRadius: '16px 16px 10px 10px',
     transformOrigin: 'bottom',
     animation: 'referralBarGrow 0.48s cubic-bezier(0.32, 0.72, 0, 1) both',
   },
@@ -739,7 +739,7 @@ const styles = {
     alignItems: 'center',
     gap: 10,
     padding: '10px 12px',
-    borderRadius: 8,
+    borderRadius: 16,
     background: C.surface,
     border: `1px solid ${C.border}`,
   },
@@ -772,6 +772,7 @@ const styles = {
     margin: '0 auto',
     zIndex: Z_REFERRALS_SCREEN + 1,
     display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
     gap: 10,
     boxSizing: 'border-box',
     pointerEvents: 'none',
@@ -779,7 +780,7 @@ const styles = {
   primaryButton: {
     height: 48,
     border: 'none',
-    borderRadius: 12,
+    borderRadius: 16,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -793,16 +794,16 @@ const styles = {
     boxShadow: '0 14px 34px rgba(0, 0, 0, 0.38)',
   },
   secondaryButton: {
-    height: 44,
+    height: 48,
     border: `1px solid ${C.border}`,
-    borderRadius: 12,
+    borderRadius: 16,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     background: C.surface,
     color: C.text,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 850,
     cursor: 'pointer',
     pointerEvents: 'auto',

@@ -285,7 +285,7 @@ function SettingsModal() {
 
               <div style={styles.infoRow}>
                 <Info size={16} color={theme.colors.textTertiary} />
-                <span style={styles.infoText}>CampusApp v2.1.0</span>
+                <span style={styles.infoText}>Campus v2.1.0</span>
               </div>
             </div>
           </>

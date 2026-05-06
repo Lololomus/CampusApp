@@ -12,7 +12,7 @@ BOT_HEADERS = {"X-Bot-Secret": BOT_SECRET}
 
 class ApiClient:
     """
-    Async HTTP клиент к бэкенду CampusApp.
+    Async HTTP клиент к бэкенду Campus.
     Бот использует его для получения очереди уведомлений,
     подтверждения отправки и обработки follow-up ответов.
     """
