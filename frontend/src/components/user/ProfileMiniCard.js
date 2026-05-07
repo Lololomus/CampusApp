@@ -1,6 +1,6 @@
 // ===== FILE: frontend/src/components/user/ProfileMiniCard.js =====
 
-import React, { useRef } from 'react';
+import React, { useCallback, useLayoutEffect, useRef } from 'react';
 import { Camera, Flag, MessageCircle } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
@@ -19,6 +19,8 @@ const getMiniAvatarSourceRect = (element) => captureSourceRect(element, {
   borderRadius: AVATAR_BORDER_RADIUS,
 });
 
+let profileMiniCardInstanceSeq = 0;
+
 function ProfileMiniCard({
   isOpen,
   onClose,
@@ -30,17 +32,56 @@ function ProfileMiniCard({
 }) {
   const { user: currentUser } = useStore();
   const avatarImageRef = useRef(null);
-  const { openMediaViewer, isMediaSourceHidden } = useMediaViewer();
+  const hiddenAnchorRef = useRef(null);
+  const instanceIdRef = useRef(null);
+  const { openMediaViewer, isMediaSourceHidden, activeOwnerId, activeIndex } = useMediaViewer();
 
-  if (!user) return null;
+  if (instanceIdRef.current === null) {
+    profileMiniCardInstanceSeq += 1;
+    instanceIdRef.current = profileMiniCardInstanceSeq;
+  }
 
   const getAvatarUrl = () => {
-    if (!user.avatar) return null;
+    if (!user?.avatar) return null;
     return resolveImageUrl(user.avatar, 'avatars');
   };
 
   const avatarUrl = getAvatarUrl();
-  const mediaViewerOwnerId = `profile-mini:${user.id || user.username || avatarUrl || 'avatar'}`;
+  const mediaViewerOwnerId = `profile-mini:${user?.id || user?.username || avatarUrl || 'avatar'}:${instanceIdRef.current}`;
+  const isViewingAvatar = activeOwnerId === mediaViewerOwnerId && Number(activeIndex) === 0;
+
+  const restoreHiddenAnchor = useCallback(() => {
+    const hidden = hiddenAnchorRef.current;
+    if (!hidden) return;
+    hidden.element.style.visibility = hidden.previousVisibility;
+    hiddenAnchorRef.current = null;
+  }, []);
+
+  const setAnchorHidden = useCallback((hidden) => {
+    const anchorEl = anchorRef?.current;
+    if (!anchorEl) return;
+
+    if (!hidden) {
+      restoreHiddenAnchor();
+      return;
+    }
+
+    if (hiddenAnchorRef.current?.element === anchorEl) return;
+    restoreHiddenAnchor();
+    hiddenAnchorRef.current = {
+      element: anchorEl,
+      previousVisibility: anchorEl.style.visibility,
+    };
+    anchorEl.style.visibility = 'hidden';
+  }, [anchorRef, restoreHiddenAnchor]);
+
+  useLayoutEffect(() => {
+    setAnchorHidden(isViewingAvatar);
+    return () => restoreHiddenAnchor();
+  }, [isViewingAvatar, setAnchorHidden, restoreHiddenAnchor]);
+
+  if (!user) return null;
+
   const usernameValue = user.username ? String(user.username).replace(/^@/, '').trim() : null;
   const telegramUsername = normalizeTelegramUsername(user.telegram_username);
   const displayName = user.name || usernameValue || 'Пользователь';
@@ -63,15 +104,18 @@ function ProfileMiniCard({
   ].filter(Boolean).join(' · ');
 
   const handleViewPhoto = () => {
+    if (!avatarUrl) return;
     hapticFeedback('light');
-    const sourceRect = getMiniAvatarSourceRect(avatarImageRef.current);
-    openMediaViewer({
+    const sourceEl = anchorRef?.current || avatarImageRef.current;
+    const sourceRect = getMiniAvatarSourceRect(sourceEl);
+    const opened = openMediaViewer({
       ownerId: mediaViewerOwnerId,
       mediaList: [avatarUrl],
       initialIndex: 0,
       sourceRect,
-      getSourceRect: () => getMiniAvatarSourceRect(avatarImageRef.current) || sourceRect,
+      getSourceRect: () => getMiniAvatarSourceRect(anchorRef?.current || avatarImageRef.current) || sourceRect,
     });
+    if (opened) setAnchorHidden(true);
   };
 
   const handleTelegramOpen = () => {
