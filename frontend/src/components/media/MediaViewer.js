@@ -183,6 +183,19 @@ const getHeroCloseTransform = (heroAnim, isActive) => {
   return `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleX}, ${scaleY})`;
 };
 
+const getRectAspectRatio = (rect) => {
+  if (!rect?.width || !rect?.height) return null;
+  return rect.width / rect.height;
+};
+
+const shouldAnimateHeroBounds = (from, to, objectFit) => {
+  if ((objectFit || 'cover') !== 'cover') return false;
+  const fromAspect = getRectAspectRatio(from);
+  const toAspect = getRectAspectRatio(to);
+  if (!fromAspect || !toAspect) return false;
+  return Math.abs(fromAspect - toAspect) > 0.04;
+};
+
 const HERO_CLOSE_MS = 340;
 const SWIPE_CLOSE_MS = 300;
 const HERO_EASING = 'cubic-bezier(0.32,0.72,0,1)';
@@ -1016,15 +1029,19 @@ function MediaViewer({
       ? getContainedRect(to, getMediaAspectRatio(mediaEl, currentItem?.type, currentItem))
       : to;
 
+    const targetObjectFit = to.objectFit || 'cover';
+
     setHeroAnim({
       url: heroUrl,
       from,
       to: targetRect,
-      objectFit: to.objectFit || 'cover',
+      objectFit: targetObjectFit,
       objectPosition: to.objectPosition || 'center center',
+      fromBorderRadius: 0,
       borderRadius: to.borderRadius ?? 0,
       zIndex: to.zIndex ?? Z_PHOTO_VIEWER + 10,
       hasContainFill: Boolean(to.hasContainFill || to.objectFit === 'contain'),
+      animateBounds: shouldAnimateHeroBounds(from, targetRect, targetObjectFit),
     });
     heroCloseDoneRef.current = false;
     if (closeTimeoutRef.current) window.clearTimeout(closeTimeoutRef.current);
@@ -1184,6 +1201,10 @@ function MediaViewer({
     ? 'opacity 0.18s ease'
     : dragY > 0 ? 'none' : undefined;
   const heroTransform = getHeroCloseTransform(heroAnim, heroAnimActive);
+  const heroUsesBoundsAnimation = Boolean(heroAnim?.animateBounds);
+  const heroRect = heroAnim
+    ? (heroUsesBoundsAnimation && heroAnimActive ? heroAnim.to : heroAnim.from)
+    : null;
 
   return createPortal(
     <>
@@ -1206,25 +1227,29 @@ function MediaViewer({
             zIndex: heroAnim.zIndex,
             pointerEvents: 'none',
             overflow: 'hidden',
-            borderRadius: heroAnim.borderRadius,
-            left: heroAnim.from.x,
-            top: heroAnim.from.y,
-            width: heroAnim.from.width,
-            height: heroAnim.from.height,
-            transform: heroTransform,
+            borderRadius: heroAnimActive ? heroAnim.borderRadius : heroAnim.fromBorderRadius,
+            left: heroRect.x,
+            top: heroRect.y,
+            width: heroRect.width,
+            height: heroRect.height,
+            transform: heroUsesBoundsAnimation ? 'translate3d(0, 0, 0)' : heroTransform,
             transformOrigin: 'top left',
-            willChange: 'transform',
+            willChange: heroUsesBoundsAnimation ? 'left, top, width, height, border-radius' : 'transform, border-radius',
             backfaceVisibility: 'hidden',
             WebkitBackfaceVisibility: 'hidden',
             contain: 'layout paint style',
             isolation: 'isolate',
             backgroundColor: heroAnim.hasContainFill ? '#000' : 'transparent',
             transition: heroAnimActive
-              ? `transform ${HERO_CLOSE_MS}ms ${HERO_EASING}`
+              ? heroUsesBoundsAnimation
+                ? `left ${HERO_CLOSE_MS}ms ${HERO_EASING}, top ${HERO_CLOSE_MS}ms ${HERO_EASING}, width ${HERO_CLOSE_MS}ms ${HERO_EASING}, height ${HERO_CLOSE_MS}ms ${HERO_EASING}, border-radius ${HERO_CLOSE_MS}ms ${HERO_EASING}`
+                : `transform ${HERO_CLOSE_MS}ms ${HERO_EASING}, border-radius ${HERO_CLOSE_MS}ms ${HERO_EASING}`
               : 'none',
           }}
           onTransitionEnd={(e) => {
-            if (e.currentTarget === e.target && e.propertyName === 'transform') finishHeroClose();
+            if (e.currentTarget !== e.target) return;
+            if (heroUsesBoundsAnimation && e.propertyName === 'width') finishHeroClose();
+            if (!heroUsesBoundsAnimation && e.propertyName === 'transform') finishHeroClose();
           }}
         >
           <img
