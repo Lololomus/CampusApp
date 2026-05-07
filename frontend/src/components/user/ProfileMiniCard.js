@@ -103,17 +103,18 @@ function ProfileMiniCard({
     user.course ? `${user.course} курс` : null,
   ].filter(Boolean).join(' · ');
 
+  const getReturnSourceRect = () => getMiniAvatarSourceRect(anchorRef?.current);
+
   const handleViewPhoto = () => {
     if (!avatarUrl) return;
     hapticFeedback('light');
-    const sourceEl = anchorRef?.current || avatarImageRef.current;
-    const sourceRect = getMiniAvatarSourceRect(sourceEl);
+    const sourceRect = getReturnSourceRect();
     const opened = openMediaViewer({
       ownerId: mediaViewerOwnerId,
       mediaList: [avatarUrl],
       initialIndex: 0,
       sourceRect,
-      getSourceRect: () => getMiniAvatarSourceRect(anchorRef?.current || avatarImageRef.current) || sourceRect,
+      getSourceRect: () => getReturnSourceRect() || sourceRect,
     });
     if (opened) setAnchorHidden(true);
   };
