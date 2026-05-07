@@ -10,9 +10,9 @@ export const MARKET_CATEGORIES = [
   { id: 'other_g',     label: 'Другое',    icon: '📦', type: 'product' },
   { id: 'tutor',       label: 'Репетитор', icon: '👨‍🏫', type: 'service' },
   { id: 'homework',    label: 'Курсачи',   icon: '📝', type: 'service' },
-  { id: 'repair',      label: 'Ремонт',    icon: '🛠️', type: 'service' },
-  { id: 'design',      label: 'Дизайн',    icon: '🎨', type: 'service' },
-  { id: 'delivery',    label: 'Курьер',    icon: '🏃', type: 'service' },
+  { id: 'repair',      label: 'Техпомощь',    icon: '🛠️', type: 'service' },
+  { id: 'design',      label: 'Презентации',    icon: '🎨', type: 'service' },
+  { id: 'delivery',    label: 'Подработка',    icon: '💼', type: 'service' },
   { id: 'other_s',     label: 'Другое',    icon: '✨', type: 'service' },
 ];
 
@@ -27,9 +27,9 @@ export const MARKET_CATEGORIES_MAP = {
   hobby:       { label: 'Хобби',     icon: '🎸' },
   tutor:       { label: 'Репетитор', icon: '👨‍🏫' },
   homework:    { label: 'Курсачи',   icon: '📝' },
-  repair:      { label: 'Ремонт',    icon: '🛠️' },
-  design:      { label: 'Дизайн',    icon: '🎨' },
-  delivery:    { label: 'Курьер',    icon: '🏃' },
+  repair:      { label: 'Техпомощь',    icon: '🛠️' },
+  design:      { label: 'Презентации',    icon: '🎨' },
+  delivery:    { label: 'Подработка',    icon: '💼' },
   other_g:     { label: 'Другое',    icon: '📦' },
   other_s:     { label: 'Другое',    icon: '✨' },
 };

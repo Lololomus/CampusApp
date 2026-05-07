@@ -441,10 +441,16 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
   const condLabel = MARKET_CONDITIONS.find(c => c.id === condition);
 
   // --- Слайд с категориями + полями (общий для product/service) ---
-  const renderSlide = (type) => (
+  const renderSlide = (type) => {
+    const categoriesByType = MARKET_CATEGORIES.filter(c => c.type === type);
+    const splitIndex = Math.ceil(categoriesByType.length / 2);
+
+    return (
     <div style={s.slide}>
-      <div style={s.catGrid}>
-        {MARKET_CATEGORIES.filter(c => c.type === type).map(c => {
+      <div className="market-hide-scroll" style={s.catRow}>
+        <div style={s.catInner}>
+          <div style={s.catLine}>
+            {categoriesByType.slice(0, splitIndex).map(c => {
           const isSelected = cat === c.id;
           return (
             <button key={c.id}
@@ -452,17 +458,37 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
               style={{
                 ...s.catBtn,
                 borderColor: isSelected ? theme.colors.premium.primary : 'transparent',
-                background: isSelected ? 'rgba(212,255,0,0.1)' : theme.colors.premium.surfaceHover,
-                color: isSelected ? theme.colors.premium.primary : '#fff',
+                background: isSelected ? theme.colors.premium.primary : theme.colors.premium.surfaceHover,
+                color: isSelected ? '#0B0F1A' : '#fff',
                 transition: 'opacity 0.15s, background-color 0.2s, border-color 0.2s',
               }}>
               <span>{c.icon}</span><span>{c.label}</span>
             </button>
           );
         })}
+          </div>
+          <div style={s.catLine}>
+            {categoriesByType.slice(splitIndex).map(c => {
+              const isSelected = cat === c.id;
+              return (
+                <button key={c.id}
+                  onClick={() => { hapticFeedback('medium'); setCat(c.id); }}
+                  style={{
+                    ...s.catBtn,
+                    borderColor: isSelected ? theme.colors.premium.primary : 'transparent',
+                    background: isSelected ? theme.colors.premium.primary : theme.colors.premium.surfaceHover,
+                    color: isSelected ? '#0B0F1A' : '#fff',
+                    transition: 'opacity 0.15s, background-color 0.2s, border-color 0.2s',
+                  }}>
+                  <span>{c.icon}</span><span>{c.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
       {videoFile && (
-        <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
+        <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: photos.length > 0 ? 8 : 16, background: '#111' }}>
           {videoThumb ? <img src={videoThumb} alt="" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: 130, background: '#1a1a1a' }} />}
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
             <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -503,7 +529,7 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
         {location && <div style={{ ...s.metaChip, transition: 'opacity 0.15s' }} onClick={() => setActiveSubSheet('loc')}><MapPin size={14} color={theme.colors.premium.primary} style={{ marginRight: 4 }} />{location}</div>}
       </div>
     </div>
-  );
+  )};
 
   const sheet = (
     <div
@@ -722,9 +748,9 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
         .cm-grow-wrap { display: grid; }
         .cm-grow-wrap > textarea,
         .cm-grow-wrap::after {
-          font-size: 16px;
+          font-size: 18px;
           line-height: 1.4;
-          min-height: 80px;
+          min-height: 76px;
           padding: 0;
           font-family: inherit;
           word-break: break-word;
@@ -783,7 +809,7 @@ const s = {
     left: 'var(--app-fixed-left)',
     width: 'var(--app-fixed-width)',
     background: 'rgba(0,0,0,0.75)',
-    backdropFilter: 'blur(4px)',
+    backdropFilter: 'blur(2px)',
     zIndex: Z_MODAL_CREATE_MARKET_ITEM,
     display: 'flex',
     flexDirection: 'column',
@@ -794,11 +820,13 @@ const s = {
     background: theme.colors.premium.surfaceElevated,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    borderTop: `1px solid ${theme.colors.premium.border}`,
     height: '90%',
     display: 'flex',
     flexDirection: 'column',
     position: 'relative',
     overflow: 'hidden',
+    boxShadow: '0 -20px 60px rgba(0,0,0,0.65)',
   },
   progressBar: {
     position: 'absolute',
@@ -852,32 +880,32 @@ const s = {
     flexShrink: 0,
     display: 'flex',
     flexDirection: 'column',
-    padding: '0 20px 200px',
+    padding: '0 16px 200px',
     boxSizing: 'border-box',
   },
   // Категории
-  catGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: 8,
+  catRow: {
     padding: '12px 0 16px',
+    overflowX: 'auto',
     flexShrink: 0,
   },
+  catInner: { display: 'flex', flexDirection: 'column', gap: 8, width: 'max-content' },
+  catLine: { display: 'flex', gap: 8, width: 'max-content' },
   catBtn: {
     border: '1px solid transparent',
     borderRadius: 20,
     background: theme.colors.premium.surfaceHover,
     color: '#fff',
-    padding: '8px 10px',
-    fontSize: 13,
+    padding: '8px 16px',
+    fontSize: 14,
     fontWeight: 600,
     display: 'flex',
-    gap: 5,
+    gap: 6,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     cursor: 'pointer',
-    minWidth: 0,
-    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    width: 'fit-content',
   },
   // Фото
   photosRow: {
@@ -896,7 +924,8 @@ const s = {
     width: '100%',
     aspectRatio: '1',
     objectFit: 'cover',
-    borderRadius: 12,
+    borderRadius: 16,
+    border: `1px solid ${theme.colors.premium.border}`,
     display: 'block',
   },
   photoRemove: {
@@ -971,9 +1000,9 @@ const s = {
     background: 'transparent',
     border: 'none',
     color: theme.colors.premium.textBody,
-    fontSize: 16,
+    fontSize: 18,
     outline: 'none',
-    minHeight: 80,
+    minHeight: 76,
     lineHeight: 1.4,
     padding: 0,
   },

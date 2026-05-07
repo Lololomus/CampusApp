@@ -102,9 +102,9 @@ const MarketCard = ({ item, onClick, index = 0 }) => {
       // Услуги
       tutor:       { emoji: '👨‍🏫', label: 'Репетитор' },
       homework:    { emoji: '📝', label: 'Курсачи' },
-      repair:      { emoji: '🛠️', label: 'Ремонт' },
-      design:      { emoji: '🎨', label: 'Дизайн' },
-      delivery:    { emoji: '🏃', label: 'Курьер' },
+      repair:      { emoji: '🛠️', label: 'Техпомощь' },
+      design:      { emoji: '🎨', label: 'Презентации' },
+      delivery:    { emoji: '💼', label: 'Подработка' },
       other_s:     { emoji: '✨', label: 'Другое' },
     };
     return categories[item.category] || { emoji: '📦', label: item.category };

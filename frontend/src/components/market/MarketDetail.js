@@ -464,9 +464,9 @@ const MarketDetail = ({ item, onClose, onUpdate }) => {
       'other_g':     '📦 Другое',
       'tutor':       '👨‍🏫 Репетитор',
       'homework':    '📝 Курсачи',
-      'repair':      '🛠️ Ремонт',
-      'design':      '🎨 Дизайн',
-      'delivery':    '🏃 Курьер',
+      'repair':      '🛠️ Техпомощь',
+      'design':      '🎨 Презентации',
+      'delivery':    '💼 Подработка',
       'other_s':     '✨ Другое',
     };
     return categories[currentItem.category] || currentItem.category;

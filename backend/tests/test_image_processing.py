@@ -70,6 +70,29 @@ class ImageProcessingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, ">20MB"):
             asyncio.run(image_utils._read_upload_content_limited(upload))
 
+    def test_output_webp_has_no_exif_metadata(self):
+        exif = Image.Exif()
+        exif[0x0132] = "2026:05:08 00:00:00"  # DateTime
+        exif[0x010F] = "CampusCam"  # Make
+        exif[0x0110] = "UnitTest"  # Model
+
+        buffer = BytesIO()
+        Image.new("RGB", (800, 600), color=(100, 120, 140)).save(
+            buffer,
+            format="JPEG",
+            exif=exif.tobytes(),
+        )
+        content = buffer.getvalue()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(image_utils, "UPLOADS_ROOT", Path(tmpdir)):
+                meta = image_utils.process_image_sync(content)
+                output_path = Path(tmpdir) / "images" / meta["url"]
+                with Image.open(output_path) as saved:
+                    self.assertEqual(saved.format, "WEBP")
+                    self.assertEqual(saved.getexif(), {})
+                    self.assertNotIn("exif", saved.info)
+
 
 if __name__ == "__main__":
     unittest.main()

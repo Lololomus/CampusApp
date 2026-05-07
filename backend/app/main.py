@@ -755,9 +755,6 @@ async def create_post_endpoint(
     if category == "confessions":
         is_anonymous = True
         enable_anonymous_comments = True
-        # Validation is inside the block and uses valid_images
-        if len(valid_images) > 0 or valid_video:
-            raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
 
     # MAX IMAGE COUNT CHECK (use valid_images)
     if len(valid_images) > 3:
@@ -1022,9 +1019,6 @@ async def update_post_endpoint(
     total_images = len(keep_images_list) + len(valid_new_images)
     if total_images > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
-
-    if post.category == "confessions" and (valid_new_images or keep_images_list or valid_new_video):
-        raise HTTPException(status_code=400, detail="Confessions не поддерживают изображения")
 
     normalized_event_type = None
     raw_event_type = event_type if isinstance(event_type, str) else None

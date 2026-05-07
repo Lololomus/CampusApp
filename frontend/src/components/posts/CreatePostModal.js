@@ -417,7 +417,7 @@ function CreatePostModal({ onClose }) {
 
     if (postCategory === 'confessions') {
       setIsAnonymous(true);
-      setAnonComments(true);
+      setAnonComments(false);
       setPhotos([]);
       setImageFiles([]);
       setProcessingImages([]);
@@ -525,7 +525,7 @@ function CreatePostModal({ onClose }) {
     setVideoFile(nextVideo);
     setVideoThumb(draft.videoThumb || null);
     setIsAnonymous(Boolean(draft.isAnonymous));
-    setAnonComments(draft.postCategory === 'confessions' ? true : Boolean(draft.anonComments));
+    setAnonComments(Boolean(draft.anonComments));
     const restoredPostScope = ['university', 'city', 'all'].includes(draft.postScope) ? draft.postScope : 'university';
     const restoredTargetUniversity = typeof draft.postTargetUniversity === 'string' ? draft.postTargetUniversity : '';
     setPostScope(restoredPostScope);
@@ -702,7 +702,15 @@ function CreatePostModal({ onClose }) {
 
   const toggleTagTool = () => {
     hapticFeedback('light');
-    setShowTagTool((prev) => !prev);
+    setShowTagTool((prev) => {
+      const next = !prev;
+      if (next) {
+        setShowScopePanel(false);
+        setScopePanelView('root');
+        setScopeSearchQuery('');
+      }
+      return next;
+    });
     setShowReqReward(false);
     setShowReqDeadline(false);
   };
@@ -1065,7 +1073,7 @@ function CreatePostModal({ onClose }) {
         formData.append('tags', JSON.stringify(postTags));
         formData.append('scope', postScope);
         formData.append('is_anonymous', isAnonymous);
-        formData.append('enable_anonymous_comments', postCategory === 'confessions' ? true : anonComments);
+        formData.append('enable_anonymous_comments', anonComments);
         if (normalizedTargetUniversity) formData.append('target_university', normalizedTargetUniversity);
 
         if (postCategory === 'lost_found') {
@@ -1290,19 +1298,43 @@ function CreatePostModal({ onClose }) {
               <div style={{ ...styles.track, transform: `translateX(${activeTab === 'post' ? '0' : '-50%'})` }}>
                 <div style={styles.slide}>
                   <div className="hide-scroll" style={styles.categoriesRow}>
-                    {CREATE_CONTENT_POST_CATEGORIES.map((cat) => (
-                      <button
-                        key={cat.value}
-                        type="button"
-                        onClick={() => { setPostCategory(cat.value); hapticFeedback('light'); }}
-                        style={postCategory === cat.value ? { ...styles.categoryChip, ...styles.categoryChipActive } : styles.categoryChip}
-                        className="create-spring-btn"
-                        disabled={isSubmitting}
-                      >
-                        <span>{cat.icon}</span>
-                        <span>{cat.label}</span>
-                      </button>
-                    ))}
+                    <div style={styles.categoriesInner}>
+                      <div style={styles.categoriesLine}>
+                        {CREATE_CONTENT_POST_CATEGORIES.slice(
+                          0,
+                          Math.ceil(CREATE_CONTENT_POST_CATEGORIES.length / 2)
+                        ).map((cat) => (
+                          <button
+                            key={cat.value}
+                            type="button"
+                            onClick={() => { setPostCategory(cat.value); hapticFeedback('light'); }}
+                            style={postCategory === cat.value ? { ...styles.categoryChip, ...styles.categoryChipActive } : styles.categoryChip}
+                            className="create-spring-btn"
+                            disabled={isSubmitting}
+                          >
+                            <span>{cat.icon}</span>
+                            <span>{cat.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div style={styles.categoriesLine}>
+                        {CREATE_CONTENT_POST_CATEGORIES.slice(
+                          Math.ceil(CREATE_CONTENT_POST_CATEGORIES.length / 2)
+                        ).map((cat) => (
+                          <button
+                            key={cat.value}
+                            type="button"
+                            onClick={() => { setPostCategory(cat.value); hapticFeedback('light'); }}
+                            style={postCategory === cat.value ? { ...styles.categoryChip, ...styles.categoryChipActive } : styles.categoryChip}
+                            className="create-spring-btn"
+                            disabled={isSubmitting}
+                          >
+                            <span>{cat.icon}</span>
+                            <span>{cat.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   <div style={styles.slideContent}>
@@ -1484,18 +1516,43 @@ function CreatePostModal({ onClose }) {
                       </div>
                     )}
 
-                    {(isAnonymous || postCategory === 'confessions') && (
+                    {(isAnonymous || anonComments || postCategory === 'confessions') && (
                       <div className="smart-block" style={styles.anonBlock}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (postCategory !== 'confessions') {
+                              setIsAnonymous(false);
+                            }
+                            setAnonComments(false);
+                          }}
+                          style={styles.anonCloseBtn}
+                          className="create-spring-btn"
+                          disabled={isSubmitting}
+                        >
+                          <X size={16} />
+                        </button>
                         <div style={styles.anonRow}>
                           <IncognitoIcon size={24} showCircle={false} shapeColor="var(--create-primary)" style={{ flexShrink: 0 }} />
                           <div style={styles.anonInfo}>
                             <div style={styles.anonTitle}>Анонимный пост</div>
-                            <div style={styles.anonSubtitle}>Авторство будет скрыто</div>
+                            <div style={styles.anonSubtitle}>Настрой отдельно автора и комментарии</div>
                           </div>
                         </div>
                         <button
                           type="button"
-                          onClick={() => { if (postCategory !== 'confessions') setAnonComments((prev) => !prev); }}
+                          onClick={() => { if (postCategory !== 'confessions') setIsAnonymous((prev) => !prev); }}
+                          style={styles.anonCommentsRow}
+                          disabled={postCategory === 'confessions'}
+                        >
+                          <span style={styles.anonCommentsLabel}>Анонимный автор</span>
+                          <div style={{ ...styles.anonToggleTrack, ...(isAnonymous ? styles.anonToggleTrackOn : {}) }}>
+                            <div style={{ ...styles.anonToggleDot, ...(isAnonymous ? styles.anonToggleDotOn : {}) }} />
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAnonComments((prev) => !prev)}
                           style={styles.anonCommentsRow}
                           disabled={postCategory === 'confessions'}
                         >
@@ -1956,7 +2013,7 @@ function CreatePostModal({ onClose }) {
                       {canUsePollByCategory && <button type="button" onClick={() => { if (postCategory !== 'polls') setHasPoll((prev) => !prev); }} style={pollVisible ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><BarChart2 size={TOOL_ICON_SIZE} /></button>}
                       {postCategory === 'help' && <button type="button" onClick={() => { setShowHelpReward((p) => !p); setShowHelpDeadline(false); setShowTagTool(false); }} style={showHelpReward || helpRewardType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Gift size={TOOL_ICON_SIZE} /></button>}
                       {postCategory === 'help' && <button type="button" onClick={() => { setShowHelpDeadline((p) => !p); setShowHelpReward(false); setShowTagTool(false); }} style={showHelpDeadline || helpDeadlineType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Clock size={TOOL_ICON_SIZE} /></button>}
-                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) { setIsAnonymous((prev) => { if (prev) setAnonComments(false); return !prev; }); } }} style={isAnonymous ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><IncognitoIcon size={TOOL_ICON_SIZE} showCircle={false} shapeColor="currentColor" /></button>
+                      <button type="button" onClick={() => { if (!categoryCapabilities.forceAnonymous) { if (!isAnonymous && !anonComments) { setIsAnonymous(true); setAnonComments(false); } else { setIsAnonymous(false); setAnonComments(false); } } }} style={isAnonymous || anonComments ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.forceAnonymous ? { ...styles.toolBtn, ...styles.toolBtnDisabled } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><IncognitoIcon size={TOOL_ICON_SIZE} showCircle={false} shapeColor="currentColor" /></button>
                       <button type="button" onClick={toggleScopePanel} style={showScopePanel || postScope !== 'university' || isCrossUniversityScope ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Globe size={TOOL_ICON_SIZE} /></button>
                     </div>
                   </>
@@ -2137,9 +2194,12 @@ const styles = {
   track: { display: 'flex', width: '200%', minHeight: '100%', transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)' },
   slide: { width: '50%', display: 'flex', flexDirection: 'column', flexShrink: 0 },
   categoriesRow: {
-    display: 'grid', gridTemplateRows: 'repeat(2, auto)', gridAutoFlow: 'column', gridAutoColumns: 'max-content',
-    gap: 8, padding: '12px 16px', overflowX: 'auto', flexShrink: 0,
+    padding: '12px 16px',
+    overflowX: 'auto',
+    flexShrink: 0,
   },
+  categoriesInner: { display: 'flex', flexDirection: 'column', gap: 8, width: 'max-content' },
+  categoriesLine: { display: 'flex', gap: 8, width: 'max-content' },
   requestCategoriesRow: {
     display: 'flex',
     gap: 8,
@@ -2149,9 +2209,9 @@ const styles = {
   },
   categoryChip: {
     border: '1px solid transparent', borderRadius: 20, background: 'var(--create-surface-elevated)', color: '#fff',
-    padding: '8px 16px', fontSize: 14, fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap', cursor: 'pointer',
+    padding: '8px 16px', fontSize: 14, fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap', cursor: 'pointer', width: 'fit-content',
   },
-  categoryChipActive: { border: '1px solid var(--create-primary)', background: 'rgba(212,255,0,0.1)', color: 'var(--create-primary)' },
+  categoryChipActive: { border: '1px solid var(--create-primary)', background: 'var(--create-primary)', color: '#0B0F1A' },
   slideContent: { padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', flex: '1 0 auto' },
   postTitleInput: {
     width: '100%', border: 'none', background: 'transparent',
@@ -2316,7 +2376,24 @@ const styles = {
   officialToggleActive: { background: 'rgba(212,255,0,0.14)', border: '1px solid rgba(212,255,0,0.48)', color: 'var(--create-primary)' },
   officialToggleDot: { width: 10, height: 10, borderRadius: 5, background: 'currentColor', boxShadow: '0 0 14px rgba(212,255,0,0.5)' },
   hiddenDateInput: { position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' },
-  anonBlock: { borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16, overflow: 'hidden' },
+  anonBlock: { position: 'relative', borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16, overflow: 'hidden' },
+  anonCloseBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    border: '1px solid rgba(255,255,255,0.16)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    zIndex: 2,
+    padding: 0,
+  },
   anonRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' },
   anonInfo: { flex: 1 },
   anonTitle: { fontSize: 14, fontWeight: 700, color: 'var(--create-primary)' },

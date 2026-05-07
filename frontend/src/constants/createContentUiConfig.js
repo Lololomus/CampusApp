@@ -92,7 +92,7 @@ export const CREATE_CONTENT_CATEGORY_CAPABILITIES = {
     allowAnonymousToggle: true,
   },
   confessions: {
-    allowImages: false,
+    allowImages: true,
     allowPoll: false,
     forceAnonymous: true,
     allowAnonymousToggle: false,
