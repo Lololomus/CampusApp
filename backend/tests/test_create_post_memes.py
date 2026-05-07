@@ -1,6 +1,6 @@
 import inspect
 import unittest
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -188,6 +188,58 @@ class CreatePostMemesTests(unittest.IsolatedAsyncioTestCase):
             viewer_city="Moscow",
             current_user_id=7,
         )
+
+    async def test_calendar_serializes_anonymous_author_name(self):
+        request = SimpleNamespace()
+        db = object()
+        user = SimpleNamespace(
+            id=7,
+            campus_id="real_campus",
+            university="Real Uni",
+            custom_university=None,
+            city="Moscow",
+            custom_city=None,
+        )
+        post = SimpleNamespace(
+            id=44,
+            author_id=9,
+            author=None,
+            category="events",
+            title="посвят",
+            body="посвят",
+            tags=[],
+            images=[],
+            is_anonymous=True,
+            event_name="посвят",
+            event_date=datetime(2026, 5, 14, 3, 2),
+            event_location="НГУ",
+            event_contact=None,
+            event_type="community",
+            scope="university",
+            target_university=None,
+            likes_count=0,
+            comments_count=0,
+            created_at=None,
+            updated_at=None,
+        )
+
+        with (
+            patch("app.main.check_rate_limit", new=AsyncMock()),
+            patch("app.main.crud.get_calendar_events", new=AsyncMock(return_value=[post])),
+        ):
+            response = await get_events_calendar(
+                request=request,
+                from_date=date(2026, 5, 1),
+                to_date=date(2026, 5, 31),
+                university=None,
+                campus_id=None,
+                viewer_city=None,
+                user=user,
+                db=db,
+            )
+
+        self.assertEqual(response["items"][0]["author"], {"name": "Аноним"})
+        self.assertIsNone(response["items"][0]["author_id"])
 
     async def test_regular_user_cannot_demote_official_event(self):
         request = SimpleNamespace()

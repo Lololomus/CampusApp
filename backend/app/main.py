@@ -651,7 +651,7 @@ async def get_events_calendar(
         items.append({
             "id": post.id,
             "author_id": None if post.is_anonymous else post.author_id,
-            "author": {"name": "РђРЅРѕРЅРёРј"} if post.is_anonymous else public_user_short(post.author, viewer_id=user.id if user else None),
+            "author": {"name": "Аноним"} if post.is_anonymous else public_user_short(post.author, viewer_id=user.id if user else None),
             "category": post.category,
             "title": post.title,
             "body": post.body,
