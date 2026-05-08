@@ -11,6 +11,7 @@ import OverflowMenuButton from '../shared/OverflowMenuButton';
 import PollWidget from './PollWidget';
 import LinkText from '../shared/LinkText';
 import MediaGrid from '../media/MediaGrid';
+import DocumentAttachmentList from '../documents/DocumentAttachmentList';
 import ReportModal from '../moderation/ReportModal';
 import Avatar, { AVATAR_BORDER_RADIUS } from '../user/Avatar';
 import ProfileMiniCard from '../user/ProfileMiniCard';
@@ -841,7 +842,6 @@ function PostCard({
           />
         </div>
 
-        {/* TODO: add post attachments for audio files and documents. */}
         {images.length > 0 && (
           isAd ? (
             // Для рекламы: простая картинка с отступами и скруглением по моку
@@ -872,6 +872,12 @@ function PostCard({
               />
             </div>
           )
+        )}
+
+        {Array.isArray(post.documents) && post.documents.length > 0 && (
+          <div style={styles.documentsWrap} onClick={(e) => e.stopPropagation()}>
+            <DocumentAttachmentList documents={post.documents} compact />
+          </div>
         )}
 
         {/* === CTA BUTTON (AD ONLY) === */}
@@ -1149,6 +1155,9 @@ const styles = {
     width: 'calc(100% + 40px)',
     maxWidth: 'calc(100% + 40px)',
     overflow: 'hidden',
+  },
+  documentsWrap: {
+    margin: '0 0 10px',
   },
   title: {
     fontSize: 17,

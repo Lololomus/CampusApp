@@ -19,6 +19,7 @@ import logging
 from app import models, schemas
 from app.crud.helpers import sanitize_json_field
 from app.utils import delete_images, delete_all_media, process_base64_images
+from app.document_utils import delete_document_files
 from app.services import notification_service as notif
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ async def get_posts(
         .options(
             selectinload(models.Post.author),
             selectinload(models.Post.poll).selectinload(models.Poll.votes),
+            selectinload(models.Post.documents),
         )
     )
 
@@ -219,7 +221,7 @@ async def get_calendar_events(
     query = (
         select(models.Post)
         .join(models.User, models.Post.author_id == models.User.id)
-        .options(selectinload(models.Post.author))
+        .options(selectinload(models.Post.author), selectinload(models.Post.documents))
         .where(
             models.Post.is_deleted == False,
             models.Post.category == 'events',
@@ -293,6 +295,7 @@ async def get_post(db: AsyncSession, post_id: int) -> Optional[models.Post]:
         .options(
             selectinload(models.Post.author),
             selectinload(models.Post.poll).selectinload(models.Poll.votes),
+            selectinload(models.Post.documents),
         )
         .where(
             models.Post.id == post_id,
@@ -308,6 +311,7 @@ async def get_user_posts(db: AsyncSession, user_id: int, limit: int = 5, offset:
         .options(
             selectinload(models.Post.author),
             selectinload(models.Post.poll).selectinload(models.Poll.votes),
+            selectinload(models.Post.documents),
         )
         .where(
             models.Post.author_id == user_id,
@@ -327,6 +331,7 @@ async def create_post(
     post: schemas.PostCreate,
     author_id: int,
     images_meta: Optional[List[dict]] = None,
+    documents_meta: Optional[List[dict]] = None,
 ) -> models.Post:
     """Создать новый пост."""
     # Rate Limiting (10 постов в час)
@@ -347,6 +352,8 @@ async def create_post(
             saved_images_meta = process_base64_images(post.images)
         except (ValueError, OSError) as e:
             raise ValueError(f"Ошибка загрузки изображений: {str(e)}")
+
+    saved_documents_meta = documents_meta or []
 
     db_post = models.Post(
         author_id=author_id,
@@ -377,12 +384,21 @@ async def create_post(
 
     try:
         db.add(db_post)
+        await db.flush()
+        for doc_meta in saved_documents_meta:
+            db.add(models.PostDocument(
+                post_id=db_post.id,
+                uploader_id=author_id,
+                **doc_meta,
+            ))
         await db.commit()
         await db.refresh(db_post)
         return db_post
     except SQLAlchemyError as e:
         if saved_images_meta:
             delete_all_media(saved_images_meta)
+        if saved_documents_meta:
+            delete_document_files(saved_documents_meta)
         raise e
 
 
@@ -393,9 +409,17 @@ async def update_post(
     new_images_meta: Optional[List[dict]] = None,
     keep_filenames: Optional[List[str]] = None,
     keep_video: bool = True,
+    new_documents_meta: Optional[List[dict]] = None,
+    keep_document_ids: Optional[List[int]] = None,
+    uploader_id: Optional[int] = None,
 ) -> Optional[models.Post]:
     """Update post (smart image merge)."""
-    db_post = await db.get(models.Post, post_id)
+    result = await db.execute(
+        select(models.Post)
+        .options(selectinload(models.Post.documents))
+        .where(models.Post.id == post_id)
+    )
+    db_post = result.scalar_one_or_none()
     if not db_post:
         return None
 
@@ -422,6 +446,24 @@ async def update_post(
     for key, value in update_data.items():
         setattr(db_post, key, value)
 
+    documents_to_delete: List[dict] = []
+    if keep_document_ids is not None or new_documents_meta is not None:
+        keep_ids = set(keep_document_ids or [])
+        for document in list(db_post.documents or []):
+            if document.id not in keep_ids:
+                documents_to_delete.append({
+                    "stored_path": document.stored_path,
+                    "preview_pdf_path": document.preview_pdf_path,
+                })
+                await db.delete(document)
+
+        for doc_meta in (new_documents_meta or []):
+            db.add(models.PostDocument(
+                post_id=db_post.id,
+                uploader_id=uploader_id or db_post.author_id,
+                **doc_meta,
+            ))
+
     db_post.updated_at = datetime.utcnow()
 
     try:
@@ -430,10 +472,14 @@ async def update_post(
         await db.rollback()
         if new_images_meta:
             delete_all_media(new_images_meta)
+        if new_documents_meta:
+            delete_document_files(new_documents_meta)
         raise
 
     if files_to_delete:
         delete_images(files_to_delete)
+    if documents_to_delete:
+        delete_document_files(documents_to_delete)
 
     await db.refresh(db_post)
     return db_post
@@ -441,7 +487,12 @@ async def update_post(
 
 async def delete_post(db: AsyncSession, post_id: int) -> bool:
     """Удалить пост и его изображения"""
-    db_post = await db.get(models.Post, post_id)
+    result = await db.execute(
+        select(models.Post)
+        .options(selectinload(models.Post.documents))
+        .where(models.Post.id == post_id)
+    )
+    db_post = result.scalar_one_or_none()
     if not db_post:
         return False
 
@@ -450,6 +501,12 @@ async def delete_post(db: AsyncSession, post_id: int) -> bool:
             delete_all_media(db_post.images)
         except OSError as e:
             logger.warning("Ошибка удаления медиа поста %s: %s", post_id, e)
+
+    if db_post.documents:
+        delete_document_files([
+            {"stored_path": doc.stored_path, "preview_pdf_path": doc.preview_pdf_path}
+            for doc in db_post.documents
+        ])
 
     await db.delete(db_post)
     await db.commit()
@@ -639,6 +696,7 @@ async def resolve_post(
         .options(
             selectinload(models.Post.author),
             selectinload(models.Post.poll).selectinload(models.Poll.votes),
+            selectinload(models.Post.documents),
         )
         .where(
             models.Post.id == post_id,

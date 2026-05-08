@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     postgresql-client \
     ffmpeg \
+    libreoffice \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -23,6 +24,8 @@ RUN mkdir -p \
     /app/uploads/images \
     /app/uploads/videos \
     /app/uploads/thumbs \
+    /app/private_documents/originals \
+    /app/private_documents/previews \
     /app/reports \
     && useradd -m -u 1000 appuser \
     && chown -R appuser:appuser /app \

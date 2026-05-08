@@ -2,6 +2,8 @@ services:
   postgres:
     image: postgres:15-alpine
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -20,6 +22,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:6380:6379"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-local-redis-password}
     command:
@@ -40,6 +44,16 @@ services:
     networks:
       - campus_internal
 
+  clamav:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3310:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    networks:
+      - campus_internal
+
   backend:
     build:
       context: ./backend
@@ -50,7 +64,10 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD:-local-redis-password}@redis:6379/0
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
       UPLOADS_DIR: /app/uploads
+      DOCUMENTS_DIR: /app/private_documents
       ANALYTICS_REPORTS_DIR: /app/reports
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     depends_on:
@@ -58,6 +75,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      clamav:
+        condition: service_started
     healthcheck:
       test:
         [
@@ -126,6 +145,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  clamav_data:
 
 networks:
   campus_internal:

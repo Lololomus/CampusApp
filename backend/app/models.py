@@ -265,12 +265,39 @@ class Post(Base):
     # Отношения
     author = relationship('User', foreign_keys=[author_id], back_populates='posts')
     comments = relationship('Comment', back_populates='post', cascade='all, delete-orphan')
+    documents = relationship('PostDocument', back_populates='post', cascade='all, delete-orphan')
     poll = relationship("Poll", back_populates="post", uselist=False, cascade="all, delete-orphan")
 
     # ✅ Фаза 1.2: Составные индексы
     __table_args__ = (
         Index('ix_post_author_deleted', 'author_id', 'is_deleted'),
         Index('ix_post_category_deleted_created', 'category', 'is_deleted', 'created_at'),
+    )
+
+
+class PostDocument(Base):
+    __tablename__ = 'post_documents'
+
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False, index=True)
+    uploader_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+
+    original_filename = Column(String(255), nullable=False)
+    stored_path = Column(String(500), nullable=False)
+    preview_pdf_path = Column(String(500), nullable=True)
+    file_ext = Column(String(20), nullable=False)
+    mime_type = Column(String(120), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    scan_status = Column(String(20), default='clean', nullable=False)
+    preview_status = Column(String(20), default='pending', nullable=False)
+
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+
+    post = relationship('Post', back_populates='documents')
+    uploader = relationship('User')
+
+    __table_args__ = (
+        Index('ix_post_document_post_created', 'post_id', 'created_at'),
     )
 
 

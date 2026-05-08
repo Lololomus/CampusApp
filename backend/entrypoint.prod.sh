@@ -7,6 +7,7 @@ DB_USER="${POSTGRES_USER:-campus}"
 DB_NAME="${POSTGRES_DB:-campusapp}"
 
 UPLOADS_DIR="${UPLOADS_DIR:-/app/uploads}"
+DOCUMENTS_DIR="${DOCUMENTS_DIR:-/app/private_documents}"
 REPORTS_DIR="${ANALYTICS_REPORTS_DIR:-/app/reports}"
 
 echo "==> Waiting for PostgreSQL at ${DB_HOST}:${DB_PORT}/${DB_NAME}"
@@ -20,6 +21,8 @@ mkdir -p \
   "$UPLOADS_DIR/images" \
   "$UPLOADS_DIR/videos" \
   "$UPLOADS_DIR/thumbs" \
+  "$DOCUMENTS_DIR/originals" \
+  "$DOCUMENTS_DIR/previews" \
   "$REPORTS_DIR"
 
 echo "==> Bootstrapping or migrating database schema"

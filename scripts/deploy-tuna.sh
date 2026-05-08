@@ -15,6 +15,9 @@ warn() {
 
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.tuna.yml)
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+CAMPUSAPP_UPLOADS_DIR="${CAMPUSAPP_UPLOADS_DIR:-/srv/campusapp/uploads}"
+CAMPUSAPP_DOCUMENTS_DIR="${CAMPUSAPP_DOCUMENTS_DIR:-/srv/campusapp/documents}"
+CAMPUSAPP_REPORTS_DIR="${CAMPUSAPP_REPORTS_DIR:-/srv/campusapp/reports}"
 SKIP_PULL=false
 
 for arg in "$@"; do
@@ -109,6 +112,12 @@ else
   git pull --ff-only origin "$DEPLOY_BRANCH"
 fi
 
+echo "==> Ensuring persistent data directories exist"
+mkdir -p "$CAMPUSAPP_UPLOADS_DIR" "$CAMPUSAPP_DOCUMENTS_DIR" "$CAMPUSAPP_REPORTS_DIR"
+[[ -w "$CAMPUSAPP_UPLOADS_DIR" ]] || die "Uploads directory is not writable: $CAMPUSAPP_UPLOADS_DIR"
+[[ -w "$CAMPUSAPP_DOCUMENTS_DIR" ]] || die "Documents directory is not writable: $CAMPUSAPP_DOCUMENTS_DIR"
+[[ -w "$CAMPUSAPP_REPORTS_DIR" ]] || die "Reports directory is not writable: $CAMPUSAPP_REPORTS_DIR"
+
 echo "==> Building and starting Tuna beta stack"
 compose up -d --build --remove-orphans
 
@@ -118,6 +127,7 @@ compose up -d --force-recreate --no-deps frontend
 echo "==> Waiting for services to stabilize"
 wait_for_service postgres 60 true
 wait_for_service redis 60 true
+wait_for_service clamav 300 true
 wait_for_service backend 120 true
 wait_for_service frontend 120 true
 echo "==> Verifying local loopback ingress"

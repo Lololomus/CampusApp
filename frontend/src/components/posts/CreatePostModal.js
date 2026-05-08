@@ -11,6 +11,7 @@ import {
   Plus,
   Hash,
   AlertCircle,
+  FileText,
   Gift,
   Clock,
   Play,
@@ -27,6 +28,14 @@ import { Z_MODAL_CREATE_POST, getOverlayZIndex } from '../../constants/zIndex';
 import { REWARD_TYPES } from '../../types';
 import { POST_LIMITS, REQUEST_LIMITS, IMAGE_SETTINGS } from '../../constants/contentConstants';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
+import {
+  DOCUMENT_ACCEPT,
+  MAX_DOCUMENTS_PER_POST,
+  formatDocumentSize,
+  getDocumentExtension,
+  getDocumentTypeLabel,
+  validateDocumentFile,
+} from '../../utils/documentValidation';
 import PollCreator from './PollCreator';
 import {
   CREATE_CONTENT_CATEGORY_CAPABILITIES,
@@ -141,6 +150,7 @@ const hasCreateContentDraftData = (draft) => {
     String(draft.postBody || '').trim().length > 0 ||
     (Array.isArray(draft.postTags) && draft.postTags.length > 0) ||
     (Array.isArray(draft.photos) && draft.photos.length > 0) ||
+    (Array.isArray(draft.postDocuments) && draft.postDocuments.length > 0) ||
     Boolean(draft.videoFile) ||
     Boolean(draft.hasPoll) ||
     String(draft.location || '').trim().length > 0 ||
@@ -193,6 +203,7 @@ function CreatePostModal({ onClose }) {
   const [processingImages, setProcessingImages] = useState([]);
   const [videoFile, setVideoFile] = useState(null);
   const [videoThumb, setVideoThumb] = useState(null);
+  const [postDocuments, setPostDocuments] = useState([]);
 
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [anonComments, setAnonComments] = useState(false);
@@ -241,6 +252,7 @@ function CreatePostModal({ onClose }) {
   const postBodyRef = useRef(null);
   const reqBodyRef = useRef(null);
   const postFileInputRef = useRef(null);
+  const documentInputRef = useRef(null);
   const postTagInputRef = useRef(null);
   const skipPostCategoryResetRef = useRef(false);
   const hasCheckedInitialDraftRef = useRef(false);
@@ -248,6 +260,7 @@ function CreatePostModal({ onClose }) {
   const photosRef = useRef(photos);
   const imageFilesRef = useRef(imageFiles);
   const videoFileRef = useRef(videoFile);
+  const postDocumentsRef = useRef(postDocuments);
   const processingImagesRef = useRef(processingImages);
 
   const categoryCapabilities =
@@ -381,6 +394,10 @@ function CreatePostModal({ onClose }) {
   }, [videoFile]);
 
   useEffect(() => {
+    postDocumentsRef.current = postDocuments;
+  }, [postDocuments]);
+
+  useEffect(() => {
     processingImagesRef.current = processingImages;
   }, [processingImages]);
 
@@ -448,6 +465,7 @@ function CreatePostModal({ onClose }) {
       postBody.trim().length > 0 ||
       postTags.length > 0 ||
       photos.length > 0 ||
+      postDocuments.length > 0 ||
       Boolean(videoFile) ||
       processingImages.length > 0 ||
       showTagTool ||
@@ -476,6 +494,7 @@ function CreatePostModal({ onClose }) {
     imageFiles: [...imageFiles],
     videoFile,
     videoThumb,
+    postDocuments: [...postDocuments],
     isAnonymous,
     anonComments,
     postScope,
@@ -512,6 +531,7 @@ function CreatePostModal({ onClose }) {
     const nextPhotos = Array.isArray(draft.photos) ? [...draft.photos] : [];
     const nextImageFiles = Array.isArray(draft.imageFiles) ? [...draft.imageFiles] : [];
     const nextVideo = draft.videoFile || null;
+    const nextPostDocuments = Array.isArray(draft.postDocuments) ? [...draft.postDocuments] : [];
 
     setActiveTab(draft.activeTab === 'request' ? 'request' : 'post');
 
@@ -524,6 +544,7 @@ function CreatePostModal({ onClose }) {
     setImageFiles(nextImageFiles);
     setVideoFile(nextVideo);
     setVideoThumb(draft.videoThumb || null);
+    setPostDocuments(nextPostDocuments);
     setIsAnonymous(Boolean(draft.isAnonymous));
     setAnonComments(Boolean(draft.anonComments));
     const restoredPostScope = ['university', 'city', 'all'].includes(draft.postScope) ? draft.postScope : 'university';
@@ -560,6 +581,7 @@ function CreatePostModal({ onClose }) {
     photosRef.current = nextPhotos;
     imageFilesRef.current = nextImageFiles;
     videoFileRef.current = nextVideo;
+    postDocumentsRef.current = nextPostDocuments;
   };
 
   const closeWithDraft = ({ keepDraft = true } = {}) => {
@@ -979,6 +1001,61 @@ function CreatePostModal({ onClose }) {
     registerMediaTask(task);
   };
 
+  const handleDocumentSelect = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (documentInputRef.current) documentInputRef.current.value = '';
+    if (!files.length) return;
+
+    const current = postDocumentsRef.current;
+    const available = MAX_DOCUMENTS_PER_POST - current.length;
+    if (available <= 0) {
+      hapticFeedback('error');
+      toast.error(`Максимум ${MAX_DOCUMENTS_PER_POST} документа`);
+      return;
+    }
+
+    const accepted = [];
+    const rejected = [];
+    files.slice(0, available).forEach((file) => {
+      const validation = validateDocumentFile(file);
+      if (!validation.valid) {
+        rejected.push(`${file.name}: ${validation.error}`);
+        return;
+      }
+      accepted.push({
+        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        name: file.name,
+        ext: getDocumentExtension(file.name),
+        size: file.size,
+      });
+    });
+
+    if (files.length > available) {
+      rejected.push(`Можно прикрепить только ${MAX_DOCUMENTS_PER_POST} документа`);
+    }
+
+    if (accepted.length) {
+      const next = [...current, ...accepted].slice(0, MAX_DOCUMENTS_PER_POST);
+      postDocumentsRef.current = next;
+      setPostDocuments(next);
+      hapticFeedback('success');
+    } else {
+      hapticFeedback('error');
+    }
+
+    if (rejected.length) {
+      toast.warning(rejected.slice(0, 2).join('; '));
+    }
+  };
+
+  const removeDocument = (documentId) => {
+    const next = postDocumentsRef.current.filter((item) => item.id !== documentId);
+    postDocumentsRef.current = next;
+    setPostDocuments(next);
+    hapticFeedback('light');
+  };
+
   const buildPollPayload = () => {
     const options = pollOptions.map((opt) => opt.trim()).filter(Boolean);
     return {
@@ -1017,6 +1094,7 @@ function CreatePostModal({ onClose }) {
     const currentPhotos = photosRef.current;
     const currentImageFiles = imageFilesRef.current;
     const currentVideoFile = videoFileRef.current;
+    const currentPostDocuments = postDocumentsRef.current;
 
     if (import.meta.env.DEV) {
       // [DIAG-5] Кол-во фото и файлов перед submit
@@ -1112,6 +1190,9 @@ function CreatePostModal({ onClose }) {
 
         currentImageFiles.forEach((file) => formData.append('images', file));
         if (currentVideoFile) formData.append('video', currentVideoFile);
+        currentPostDocuments.forEach((item) => {
+          if (item.file) formData.append('documents', item.file);
+        });
 
         if (import.meta.env.DEV) {
           // [DIAG-6] Кол-во images в FormData перед отправкой
@@ -1388,6 +1469,33 @@ function CreatePostModal({ onClose }) {
                         {processingImages.map((proc) => (
                           <div key={proc.id} style={styles.photoCard}>
                             <div style={styles.processingPlaceholder}>{Math.round(proc.progress)}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {postDocuments.length > 0 && (
+                      <div className="smart-block" style={styles.documentList}>
+                        {postDocuments.map((document) => (
+                          <div key={document.id} style={styles.documentItem}>
+                            <div style={styles.documentIcon}>
+                              <FileText size={18} />
+                            </div>
+                            <div style={styles.documentText}>
+                              <div style={styles.documentName}>{document.name}</div>
+                              <div style={styles.documentMeta}>
+                                {getDocumentTypeLabel(document.ext)} · {formatDocumentSize(document.size)}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeDocument(document.id)}
+                              style={styles.documentRemove}
+                              className="create-spring-btn"
+                              disabled={isSubmitting}
+                            >
+                              <X size={13} />
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -2005,10 +2113,12 @@ function CreatePostModal({ onClose }) {
 
               <div style={activeTab === 'request' ? { ...styles.toolbar, borderTop: '1px solid var(--create-border)' } : styles.toolbar}>
                 <input ref={postFileInputRef} type="file" multiple accept={mediaInputAccept} onChange={handleSharedFileSelect} style={{ display: 'none' }} />
+                <input ref={documentInputRef} type="file" multiple accept={DOCUMENT_ACCEPT} onChange={handleDocumentSelect} style={{ display: 'none' }} />
                 {activeTab === 'post' ? (
                   <>
                     <div style={styles.toolGroup}>
                       <button type="button" onClick={() => { if (!categoryCapabilities.allowImages) { hapticFeedback('error'); return; } postFileInputRef.current?.click(); }} style={photos.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : categoryCapabilities.allowImages ? styles.toolBtn : { ...styles.toolBtn, ...styles.toolBtnDisabled }} className="create-spring-btn" disabled={isSubmitting}><ImageIcon size={TOOL_ICON_SIZE} /></button>
+                      <button type="button" onClick={() => documentInputRef.current?.click()} style={postDocuments.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting || postDocuments.length >= MAX_DOCUMENTS_PER_POST}><FileText size={TOOL_ICON_SIZE} /></button>
                       <button type="button" onClick={toggleTagTool} style={showTagTool || postTags.length > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Hash size={TOOL_ICON_SIZE} /></button>
                       {canUsePollByCategory && <button type="button" onClick={() => { if (postCategory !== 'polls') setHasPoll((prev) => !prev); }} style={pollVisible ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><BarChart2 size={TOOL_ICON_SIZE} /></button>}
                       {postCategory === 'help' && <button type="button" onClick={() => { setShowHelpReward((p) => !p); setShowHelpDeadline(false); setShowTagTool(false); }} style={showHelpReward || helpRewardType !== 'none' ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} className="create-spring-btn" disabled={isSubmitting}><Gift size={TOOL_ICON_SIZE} /></button>}
@@ -2316,6 +2426,43 @@ const styles = {
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
   },
   processingPlaceholder: { width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--create-primary)', fontSize: 13, fontWeight: 600, borderRadius: 16, border: '1px solid var(--create-border)', background: 'var(--create-surface-elevated)' },
+  documentList: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
+  documentItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    border: '1px solid var(--create-border)',
+    background: 'rgba(255,255,255,0.04)',
+    borderRadius: 14,
+    padding: '9px 10px',
+  },
+  documentIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--create-primary)',
+    background: 'rgba(255,255,255,0.07)',
+    flexShrink: 0,
+  },
+  documentText: { minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 },
+  documentName: { fontSize: 14, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  documentMeta: { fontSize: 12, color: 'var(--create-text-muted)' },
+  documentRemove: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#fff',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  },
   pollCard: { marginBottom: 16 },
   pollCloseRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   pollX: {

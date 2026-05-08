@@ -445,6 +445,22 @@ export async function updatePost(postId, postData, onProgress = null) {
   }
 }
 
+export async function getDocumentPreviewBlob(documentId) {
+  const response = await api.get(`/documents/${documentId}/preview`, {
+    responseType: 'blob',
+    timeout: 60000,
+  });
+  return response.data;
+}
+
+export async function getDocumentDownloadBlob(documentId) {
+  const response = await api.get(`/documents/${documentId}/download`, {
+    responseType: 'blob',
+    timeout: 60000,
+  });
+  return response.data;
+}
+
 export async function deletePost(postId) {
   try {
     const response = await api.delete(`/posts/${postId}`);

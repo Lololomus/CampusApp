@@ -33,6 +33,7 @@ import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { buildMiniAppStartappUrl } from '../../utils/deepLinks';
 import { sharePostViaTelegram } from '../../utils/telegramShare';
 import { captureSourceRect } from '../../utils/mediaRect';
+import DocumentAttachmentList from '../documents/DocumentAttachmentList';
 
 const parseImages = (value) => {
   if (!value) return [];
@@ -1037,6 +1038,12 @@ function PostDetail() {
                   </div>
                 )}
 
+                {Array.isArray(post.documents) && post.documents.length > 0 && (
+                  <div style={styles.documentsWrap}>
+                    <DocumentAttachmentList documents={post.documents} />
+                  </div>
+                )}
+
                 {post.tags && post.tags.length > 0 && (
                   <div style={styles.tags}>
                     {post.tags.map((t, i) => (
@@ -1509,6 +1516,9 @@ const styles = {
     margin: '0 0 12px',
     borderRadius: 0,
     overflow: 'hidden',
+  },
+  documentsWrap: {
+    margin: `0 ${theme.spacing.lg}px 12px`,
   },
   mediaTrack: {
     height: '100%',

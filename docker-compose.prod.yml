@@ -19,12 +19,20 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  clamav:
+    mem_limit: 1g
+    memswap_limit: 1g
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
   backend:
     mem_limit: 1g
     memswap_limit: 1g
     command: ["/bin/bash", "/app/entrypoint.prod.sh"]
     volumes:
       - ${CAMPUSAPP_UPLOADS_DIR:-/srv/campusapp/uploads}:/app/uploads
+      - ${CAMPUSAPP_DOCUMENTS_DIR:-/srv/campusapp/documents}:/app/private_documents
       - ${CAMPUSAPP_REPORTS_DIR:-/srv/campusapp/reports}:/app/reports
     read_only: true
     tmpfs:

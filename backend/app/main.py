@@ -5,21 +5,29 @@ import asyncio
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Tuple
 from app import models, schemas, crud
 from app.database import engine, get_db, init_db
 from app.utils import (
     UPLOADS_ROOT,
+    delete_all_media,
     delete_images,
     get_image_urls,
     normalize_uploads_path,
     parse_keep_file_list,
     process_uploaded_files,
+)
+from app.document_utils import (
+    MAX_DOCUMENTS_PER_POST,
+    delete_document_files,
+    process_uploaded_documents,
+    resolve_document_path,
 )
 from app.video_utils import process_uploaded_video
 from app.auth_service import decode_authorization_header, require_user, optional_user
@@ -44,6 +52,57 @@ MEMES_MIN_LETTERS = 3
 EVENT_TYPES = {"community", "official"}
 EVENT_OFFICIAL_ROLES = {"ambassador", "admin", "superadmin"}
 MEMES_LETTERS_RE = re.compile(r"[A-Za-zА-Яа-яЁё]")
+
+
+def _serialize_post_documents(documents) -> List[Dict]:
+    items = []
+    for doc in documents or []:
+        has_preview = bool(doc.preview_pdf_path and doc.preview_status == "ready")
+        items.append({
+            "id": doc.id,
+            "original_filename": doc.original_filename,
+            "file_ext": doc.file_ext,
+            "mime_type": doc.mime_type,
+            "size_bytes": doc.size_bytes,
+            "scan_status": doc.scan_status,
+            "preview_status": doc.preview_status,
+            "has_preview": has_preview,
+            "preview_url": f"/api/documents/{doc.id}/preview" if has_preview else None,
+            "download_url": f"/api/documents/{doc.id}/download",
+            "created_at": doc.created_at,
+        })
+    return items
+
+
+def _post_is_visible_to_user(post: models.Post, user: models.User) -> bool:
+    if not post or post.is_deleted:
+        return False
+    if post.author_id == user.id:
+        return True
+    if getattr(post.author, "is_shadow_banned_posts", False):
+        return False
+
+    scope = post.scope or "university"
+    if scope == "all":
+        return True
+
+    if scope == "city":
+        viewer_city = (user.city or user.custom_city or "").strip().lower()
+        author_city = (post.author.city or post.author.custom_city or "").strip().lower() if post.author else ""
+        return bool(viewer_city and author_city and viewer_city == author_city)
+
+    viewer_university = (user.university or user.custom_university or "").strip().lower()
+    if not viewer_university:
+        return False
+
+    if post.target_university:
+        return viewer_university == post.target_university.strip().lower()
+
+    if user.campus_id and post.author and post.author.campus_id:
+        return user.campus_id == post.author.campus_id
+
+    author_university = (post.author.university or post.author.custom_university or "").strip().lower() if post.author else ""
+    return bool(author_university and viewer_university == author_university)
 
 
 def _parse_json_list_form_field(raw_value: Optional[str], field_name: str) -> List:
@@ -71,6 +130,15 @@ def _parse_json_list_form_field(raw_value: Optional[str], field_name: str) -> Li
             }],
         )
     return parsed
+
+
+def _filter_upload_files(files) -> List[UploadFile]:
+    if not isinstance(files, (list, tuple)):
+        return []
+    return [
+        file for file in files
+        if file and getattr(file, "filename", None) and len(file.filename) > 0
+    ]
 
 
 def _parse_post_title_and_body(raw_text: Optional[str]) -> Tuple[Optional[str], str]:
@@ -444,6 +512,7 @@ async def get_user_posts_endpoint(
             "body": post.body,
             "tags": tags,
             "images": images,
+            "documents": _serialize_post_documents(getattr(post, "documents", [])),
             "is_anonymous": post.is_anonymous,
             "enable_anonymous_comments": post.enable_anonymous_comments,
             "lost_or_found": post.lost_or_found,
@@ -578,6 +647,7 @@ async def get_posts_feed(
             "body": post.body,
             "tags": tags,
             "images": images,
+            "documents": _serialize_post_documents(getattr(post, "documents", [])),
             "is_anonymous": post.is_anonymous,
             "enable_anonymous_comments": post.enable_anonymous_comments,
             "lost_or_found": post.lost_or_found,
@@ -657,6 +727,7 @@ async def get_events_calendar(
             "body": post.body,
             "tags": post.tags or [],
             "images": get_image_urls(post.images) if post.images else [],
+            "documents": _serialize_post_documents(getattr(post, "documents", [])),
             "is_anonymous": post.is_anonymous,
             "event_name": post.event_name,
             "event_date": post.event_date,
@@ -700,6 +771,7 @@ async def create_post_endpoint(
     target_university: Optional[str] = Form(None),
     images: List[UploadFile] = File(default=[]),
     video: Optional[UploadFile] = File(None),
+    documents: List[UploadFile] = File(default=[]),
 
     poll_data: Optional[str] = Form(None),
     user: models.User = Depends(require_user),
@@ -741,15 +813,13 @@ async def create_post_endpoint(
     tags_list = _parse_json_list_form_field(tags, "tags")
     
     # FILTER OUT EMPTY FILES (KEY FIX)
-    valid_images = [
-        img for img in images 
-        if img.filename and len(img.filename) > 0
-    ]
+    valid_images = _filter_upload_files(images)
     
     logger.debug(f"Valid images after filter: {len(valid_images)}")
     
     # Проверяем валидность видео-файла
     valid_video = video if (video and video.filename) else None
+    valid_documents = _filter_upload_files(documents)
 
     # CONFESSIONS VALIDATION (fixed: moved inside IF block)
     if category == "confessions":
@@ -759,6 +829,8 @@ async def create_post_endpoint(
     # MAX IMAGE COUNT CHECK (use valid_images)
     if len(valid_images) > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
+    if len(valid_documents) > MAX_DOCUMENTS_PER_POST:
+        raise HTTPException(status_code=400, detail="Maximum 3 documents")
 
     if category == "memes":
         has_images = len(valid_images) > 0
@@ -812,11 +884,17 @@ async def create_post_endpoint(
 
     try:
         # valid_images instead of images
+        images_meta = []
+        documents_meta = []
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
         if valid_video:
             video_meta = await process_uploaded_video(valid_video)
             images_meta.append(video_meta)
-        post = await crud.create_post(db, post_data, user.id, images_meta=images_meta)
+        documents_meta = await process_uploaded_documents(valid_documents) if valid_documents else []
+        create_kwargs = {"images_meta": images_meta}
+        if documents_meta:
+            create_kwargs["documents_meta"] = documents_meta
+        post = await crud.create_post(db, post_data, user.id, **create_kwargs)
         
         if poll_data:
             try:
@@ -827,6 +905,10 @@ async def create_post_endpoint(
                 logger.debug(f"Ошибка создания опроса: {e}")
     
     except ValueError as e:
+        if "documents_meta" in locals() and documents_meta:
+            delete_document_files(documents_meta)
+        if "images_meta" in locals() and images_meta:
+            delete_all_media(images_meta)
         raise HTTPException(status_code=400, detail=str(e))
 
     await analytics_service.record_server_event(
@@ -884,6 +966,7 @@ async def get_post_endpoint(
         "body": post.body,
         "tags": tags,
         "images": images,
+        "documents": _serialize_post_documents(getattr(post, "documents", [])),
         "is_anonymous": post.is_anonymous,
         "enable_anonymous_comments": post.enable_anonymous_comments,
         "lost_or_found": post.lost_or_found,
@@ -934,6 +1017,7 @@ async def resolve_post_endpoint(
         "body": post.body,
         "tags": post.tags or [],
         "images": images,
+        "documents": _serialize_post_documents(getattr(post, "documents", [])),
         "is_anonymous": post.is_anonymous,
         "enable_anonymous_comments": post.enable_anonymous_comments,
         "lost_or_found": post.lost_or_found,
@@ -998,6 +1082,8 @@ async def update_post_endpoint(
     keep_images: Optional[str] = Form(None),
     new_video: Optional[UploadFile] = File(None),
     keep_video: Optional[bool] = Form(True),
+    new_documents: List[UploadFile] = File(default=[]),
+    keep_documents: Optional[str] = Form(None),
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -1013,12 +1099,20 @@ async def update_post_endpoint(
         keep_images_list = parse_keep_file_list(keep_images, kind="images")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    valid_new_images = [img for img in new_images if img.filename and len(img.filename) > 0]
+    valid_new_images = _filter_upload_files(new_images)
     valid_new_video = new_video if (new_video and new_video.filename) else None
+    valid_new_documents = _filter_upload_files(new_documents)
 
     total_images = len(keep_images_list) + len(valid_new_images)
     if total_images > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
+    raw_keep_documents = keep_documents if isinstance(keep_documents, str) else None
+    try:
+        keep_document_ids = [int(item) for item in (_parse_json_list_form_field(raw_keep_documents, "keep_documents") if raw_keep_documents is not None else [doc.id for doc in (getattr(post, "documents", []) or [])])]
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid keep_documents")
+    if len(set(keep_document_ids)) + len(valid_new_documents) > MAX_DOCUMENTS_PER_POST:
+        raise HTTPException(status_code=400, detail="Maximum 3 documents")
 
     normalized_event_type = None
     raw_event_type = event_type if isinstance(event_type, str) else None
@@ -1057,6 +1151,7 @@ async def update_post_endpoint(
 
     try:
         new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
+        new_documents_meta = await process_uploaded_documents(valid_new_documents) if valid_new_documents else []
 
         # Если загружено новое видео — добавляем его; старое удалится в merge_images
         if valid_new_video:
@@ -1069,8 +1164,15 @@ async def update_post_endpoint(
             new_images_meta=new_images_meta,
             keep_filenames=keep_images_list,
             keep_video=keep_video if not valid_new_video else False,
+            new_documents_meta=new_documents_meta,
+            keep_document_ids=keep_document_ids,
+            uploader_id=user.id,
         )
     except ValueError as e:
+        if "new_documents_meta" in locals() and new_documents_meta:
+            delete_document_files(new_documents_meta)
+        if "new_images_meta" in locals() and new_images_meta:
+            delete_all_media(new_images_meta)
         raise HTTPException(status_code=400, detail=str(e))
     
     return await get_post_endpoint(updated_post.id, user=user, db=db)
@@ -1091,6 +1193,67 @@ async def toggle_post_like_endpoint(
             entity_id=post_id,
         )
     return result
+
+
+async def _get_accessible_document(
+    document_id: int,
+    user: models.User,
+    db: AsyncSession,
+) -> models.PostDocument:
+    result = await db.execute(
+        select(models.PostDocument)
+        .options(selectinload(models.PostDocument.post).selectinload(models.Post.author))
+        .where(models.PostDocument.id == document_id)
+    )
+    document = result.scalar_one_or_none()
+    if not document or not document.post or not _post_is_visible_to_user(document.post, user):
+        raise HTTPException(status_code=404, detail="Document not found")
+    if document.scan_status != "clean":
+        raise HTTPException(status_code=403, detail="Document is unavailable")
+    return document
+
+
+@app.get("/documents/{document_id}/preview")
+async def preview_document_endpoint(
+    document_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await _get_accessible_document(document_id, user, db)
+    if document.preview_status != "ready" or not document.preview_pdf_path:
+        raise HTTPException(status_code=404, detail="Preview is unavailable")
+
+    path = resolve_document_path(document.preview_pdf_path, preview=True)
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail="Preview is unavailable")
+
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{document.id}.pdf"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@app.get("/documents/{document_id}/download")
+async def download_document_endpoint(
+    document_id: int,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await _get_accessible_document(document_id, user, db)
+    path = resolve_document_path(document.stored_path, preview=False)
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail="Document file is unavailable")
+
+    return FileResponse(
+        path,
+        media_type=document.mime_type or "application/octet-stream",
+        filename=document.original_filename,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 # ===== POLL ENDPOINTS (NEW) =====
 

@@ -6,6 +6,7 @@ import {
   CheckCircle,
   Circle,
   Clock,
+  FileText,
   Gift,
   Hash,
   HelpCircle,
@@ -39,6 +40,14 @@ import {
   CREATE_CONTENT_SUGGESTED_TAGS,
 } from '../../constants/createContentUiConfig';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
+import {
+  DOCUMENT_ACCEPT,
+  MAX_DOCUMENTS_PER_POST,
+  formatDocumentSize,
+  getDocumentExtension,
+  getDocumentTypeLabel,
+  validateDocumentFile,
+} from '../../utils/documentValidation';
 import { resolveImageUrl } from '../../utils/mediaUrl';
 import { composeSingleTextFromTitleBody } from '../../utils/contentTextParser';
 import { toast } from '../shared/Toast';
@@ -100,6 +109,11 @@ const parseInitialImages = (images) =>
         file: null,
       };
     })
+    .filter(Boolean);
+
+const parseInitialDocuments = (documents) =>
+  parseArrayField(documents)
+    .map((document) => (document && typeof document === 'object' ? document : null))
     .filter(Boolean);
 
 const parseInitialTags = (tags) =>
@@ -210,6 +224,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
   const initialRequestDeadline = deriveRequestDeadline(initialData?.expires_at);
   const initialTags = useMemo(() => parseInitialTags(initialData?.tags), [initialData?.tags]);
   const initialImages = useMemo(() => parseInitialImages(initialData?.images), [initialData?.images]);
+  const initialDocuments = useMemo(() => parseInitialDocuments(initialData?.documents), [initialData?.documents]);
 
   const [isMounted, setIsMounted] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -233,6 +248,8 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
   const [showTagTool, setShowTagTool] = useState(false);
   const [photos, setPhotos] = useState(initialImages);
   const [processingImages, setProcessingImages] = useState([]);
+  const [documents, setDocuments] = useState(initialDocuments);
+  const [newDocuments, setNewDocuments] = useState([]);
 
   const [isAnonymous, setIsAnonymous] = useState(Boolean(initialData?.is_anonymous) || postCategory === 'confessions');
   const [lfType, setLfType] = useState(initialData?.lost_or_found || 'lost');
@@ -279,6 +296,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
   const sheetRef = useRef(null);
   const dragHandleRef = useRef(null);
   const fileInputRef = useRef(null);
+  const documentInputRef = useRef(null);
   const postTextareaRef = useRef(null);
   const reqTextareaRef = useRef(null);
   const tagInputRef = useRef(null);
@@ -316,6 +334,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
         : (initialData?.body || '').trim(),
       tags: initialTags,
       photos: initialImages.map((item) => item.key).filter(Boolean),
+      documents: initialDocuments.map((item) => item.id).filter(Boolean),
       isAnonymous: Boolean(initialData?.is_anonymous) || postCategory === 'confessions',
       lfType: initialData?.lost_or_found || 'lost',
       location: (initialData?.location || initialData?.event_location || '').trim(),
@@ -325,7 +344,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
       rewardValue: (initialData?.reward_value || '').trim(),
       requestExpiresAt: toIso(initialData?.expires_at),
     }),
-    [initialData, initialEventPreset.custom, initialEventPreset.mode, initialImages, initialTags, postCategory, isPost]
+    [initialData, initialDocuments, initialEventPreset.custom, initialEventPreset.mode, initialImages, initialTags, postCategory, isPost]
   );
 
   const hasChanges = useMemo(() => {
@@ -341,6 +360,9 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
     if (photos.some((photo) => photo.isNew)) return true;
     const currentPhotoKeys = photos.filter((photo) => !photo.isNew).map((photo) => photo.key).filter(Boolean);
     if (currentPhotoKeys.join('|') !== baseline.photos.join('|')) return true;
+    if (newDocuments.length > 0) return true;
+    const currentDocumentIds = documents.map((document) => document.id).filter(Boolean);
+    if (currentDocumentIds.join('|') !== baseline.documents.join('|')) return true;
 
     if (isPost) {
       if (Boolean(isAnonymous) !== Boolean(baseline.isAnonymous)) return true;
@@ -369,6 +391,8 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
     isPost,
     lfType,
     location,
+    documents,
+    newDocuments,
     photos,
     postCategory,
     postTitle,
@@ -593,6 +617,56 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleDocumentSelect = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (documentInputRef.current) documentInputRef.current.value = '';
+    if (!files.length || !isPost) return;
+
+    const available = MAX_DOCUMENTS_PER_POST - documents.length - newDocuments.length;
+    if (available <= 0) {
+      toast.error(`Максимум ${MAX_DOCUMENTS_PER_POST} документа`);
+      hapticFeedback('error');
+      return;
+    }
+
+    const accepted = [];
+    const rejected = [];
+    files.slice(0, available).forEach((file) => {
+      const validation = validateDocumentFile(file);
+      if (!validation.valid) {
+        rejected.push(`${file.name}: ${validation.error}`);
+        return;
+      }
+      accepted.push({
+        id: `new-doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        original_filename: file.name,
+        file_ext: getDocumentExtension(file.name),
+        size_bytes: file.size,
+        isNew: true,
+      });
+    });
+
+    if (files.length > available) rejected.push(`Можно прикрепить только ${MAX_DOCUMENTS_PER_POST} документа`);
+    if (accepted.length) {
+      setNewDocuments((prev) => [...prev, ...accepted]);
+      hapticFeedback('success');
+    } else {
+      hapticFeedback('error');
+    }
+    if (rejected.length) toast.warning(rejected.slice(0, 2).join('; '));
+  };
+
+  const removeExistingDocument = (documentId) => {
+    setDocuments((prev) => prev.filter((document) => document.id !== documentId));
+    hapticFeedback('light');
+  };
+
+  const removeNewDocument = (documentId) => {
+    setNewDocuments((prev) => prev.filter((document) => document.id !== documentId));
+    hapticFeedback('light');
+  };
+
   const handleSubmit = async () => {
     setError('');
     if (!canSend) {
@@ -646,6 +720,10 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
           .filter((photo) => photo.isNew && photo.file)
           .forEach((photo) => formData.append('new_images', photo.file));
         formData.append('keep_images', JSON.stringify(keepImages));
+        formData.append('keep_documents', JSON.stringify(documents.map((document) => document.id).filter(Boolean)));
+        newDocuments.forEach((document) => {
+          if (document.file) formData.append('new_documents', document.file);
+        });
 
         const updatedPost = await updatePost(initialData.id, formData, (progressEvent) => {
           if (!progressEvent?.total) return;
@@ -857,6 +935,35 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
               </div>
             )}
 
+            {isPost && (documents.length > 0 || newDocuments.length > 0) ? (
+              <div style={styles.documentList}>
+                {[...documents, ...newDocuments].map((document) => {
+                  const isNewDocument = Boolean(document.isNew);
+                  const name = document.original_filename || document.name;
+                  const ext = document.file_ext || getDocumentExtension(name);
+                  const size = document.size_bytes || document.size || 0;
+                  return (
+                    <div key={`${isNewDocument ? 'new' : 'old'}-${document.id}`} style={styles.documentItem}>
+                      <div style={styles.documentIcon}><FileText size={18} /></div>
+                      <div style={styles.documentText}>
+                        <div style={styles.documentName}>{name}</div>
+                        <div style={styles.documentMeta}>{getDocumentTypeLabel(ext)} · {formatDocumentSize(size)}</div>
+                      </div>
+                      <button
+                        type="button"
+                        className="create-spring-btn"
+                        style={styles.documentRemove}
+                        onClick={() => (isNewDocument ? removeNewDocument(document.id) : removeExistingDocument(document.id))}
+                        disabled={isSubmitting}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
             {isPost && postCategory === 'lost_found' ? (
               <div style={styles.smartWrap}>
                 <div style={styles.lfRow}>
@@ -951,6 +1058,7 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
             ) : null}
 
             <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handleImageSelect} style={{ display: 'none' }} />
+            <input ref={documentInputRef} type="file" accept={DOCUMENT_ACCEPT} multiple onChange={handleDocumentSelect} style={{ display: 'none' }} />
 
             <div style={{ height: 200 }} />
           </div>
@@ -1044,6 +1152,11 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
                 <button type="button" className="create-spring-btn" style={styles.toolBtn} onClick={() => fileInputRef.current?.click()} disabled={isSubmitting}>
                   <ImageIcon size={TOOL_ICON_SIZE} />
                 </button>
+                {isPost ? (
+                  <button type="button" className="create-spring-btn" style={(documents.length + newDocuments.length) > 0 ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => documentInputRef.current?.click()} disabled={isSubmitting || documents.length + newDocuments.length >= MAX_DOCUMENTS_PER_POST}>
+                    <FileText size={TOOL_ICON_SIZE} />
+                  </button>
+                ) : null}
                 <button type="button" className="create-spring-btn" style={showTagTool ? { ...styles.toolBtn, ...styles.toolBtnActive } : styles.toolBtn} onClick={() => { setShowTagTool((prev) => !prev); setShowReqReward(false); setShowReqDeadline(false); }} disabled={isSubmitting}>
                   <Hash size={TOOL_ICON_SIZE} />
                 </button>
@@ -1243,6 +1356,43 @@ const styles = {
     backdropFilter: 'blur(8px)',
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
     flexShrink: 0,
+  },
+  documentList: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
+  documentItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    border: '1px solid var(--create-border)',
+    background: 'rgba(255,255,255,0.04)',
+    borderRadius: 14,
+    padding: '9px 10px',
+  },
+  documentIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--create-primary)',
+    background: 'rgba(255,255,255,0.07)',
+    flexShrink: 0,
+  },
+  documentText: { minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 },
+  documentName: { fontSize: 14, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  documentMeta: { fontSize: 12, color: 'var(--create-text-muted)' },
+  documentRemove: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#fff',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
   anonBlock: { borderRadius: 16, background: 'rgba(212,255,0,0.05)', border: '1px solid rgba(212,255,0,0.2)', marginBottom: 16, overflow: 'hidden' },
   anonRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' },

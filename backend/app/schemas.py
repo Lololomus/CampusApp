@@ -334,6 +334,23 @@ class ImageMeta(BaseModel):
     thumbnail_w: Optional[int] = None
     thumbnail_h: Optional[int] = None
 
+
+class DocumentResponse(BaseModel):
+    id: int
+    original_filename: str
+    file_ext: str
+    mime_type: str
+    size_bytes: int
+    scan_status: str = "clean"
+    preview_status: str = "pending"
+    has_preview: bool = False
+    preview_url: Optional[str] = None
+    download_url: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PostCreate(BaseModel):
     category: str
     title: Optional[str] = None
@@ -453,6 +470,7 @@ class PostResponse(BaseModel):
     tags: List[str] = []
     
     images: List[ImageMeta] = Field(default_factory=list)
+    documents: List[DocumentResponse] = Field(default_factory=list)
     
     # Анонимность
     is_anonymous: bool = False
@@ -516,7 +534,7 @@ class PostResponse(BaseModel):
     updated_at: Optional[datetime] = None
     
     # ✅ Фаза 5.1: единый coerce
-    @field_validator('tags', 'images', mode='before')
+    @field_validator('tags', 'images', 'documents', mode='before')
     @classmethod
     def coerce_list_fields(cls, v):
         return _coerce_json_list(v)
