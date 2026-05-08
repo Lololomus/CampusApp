@@ -2,38 +2,41 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, Download, FileText, Loader2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 
 import { getDocumentDownloadBlob, getDocumentPreviewBlob } from '../../api';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
-import { useSwipe } from '../../hooks/useSwipe';
 import theme from '../../theme';
 import { formatDocumentSize } from '../../utils/documentValidation';
-import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
 import { hapticFeedback } from '../../utils/telegram';
+import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 function DocumentViewerModal({ document, onClose }) {
   const [status, setStatus] = useState('loading');
   const [pageCount, setPageCount] = useState(0);
   const [hasPageSkeletons, setHasPageSkeletons] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   const containerRef = useRef(null);
-  const sheetRef = useRef(null);
-  const dragHandleRef = useRef(null);
   const objectUrlRef = useRef('');
+  const closeTimerRef = useRef(null);
   const isOpen = Boolean(document);
   const showDevBackButton = import.meta.env.DEV;
 
   useBodyScrollLock(isOpen);
 
   const handleClose = useCallback(() => {
+    if (isExiting) return;
     hapticFeedback('light');
-    onClose?.();
-  }, [onClose]);
+    setIsExiting(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      onClose?.();
+    }, 320);
+  }, [isExiting, onClose]);
 
   useTelegramScreen(isOpen ? {
     id: 'document-viewer-modal',
@@ -45,13 +48,18 @@ function DocumentViewerModal({ document, onClose }) {
     },
   } : { id: null });
 
-  useSwipe({
-    elementRef: sheetRef,
-    activationRef: dragHandleRef,
-    onSwipeDown: handleClose,
-    isModal: true,
-    threshold: 96,
-  });
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    ensureDocumentPreviewStyles();
+    setIsExiting(false);
+
+    return () => {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [isOpen, document?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,14 +184,22 @@ function DocumentViewerModal({ document, onClose }) {
   if (!document) return null;
 
   const content = (
-    <div
-      {...modalBoundaryProps}
-      {...modalTouchBoundaryHandlers}
-      style={styles.overlay}
-      onClick={handleClose}
+    <EdgeSwipeBack
+      onBack={onClose}
+      disabled={isExiting}
+      iosOnly={false}
+      zIndex={Z_PHOTO_VIEWER + 20}
     >
-      <div ref={sheetRef} style={styles.sheet} onClick={(event) => event.stopPropagation()}>
-        <div ref={dragHandleRef} style={styles.header}>
+      <div
+        style={{
+          ...styles.sheet,
+          animation: isExiting
+            ? 'documentViewerSlideOutRight 0.32s cubic-bezier(0.32, 0.72, 0, 1) forwards'
+            : 'documentViewerSlideInRight 0.34s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+          pointerEvents: isExiting ? 'none' : 'auto',
+        }}
+      >
+        <div style={styles.header}>
           {showDevBackButton && (
             <button type="button" style={styles.navButton} onClick={handleClose} aria-label="Закрыть">
               <ChevronLeft size={24} strokeWidth={2.4} />
@@ -235,7 +251,7 @@ function DocumentViewerModal({ document, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </EdgeSwipeBack>
   );
 
   return createPortal(content, documentRef().body);
@@ -260,28 +276,29 @@ const ensureDocumentPreviewStyles = () => {
       background-size: 220% 100%;
       animation: documentPreviewShimmer 1.15s linear infinite;
     }
+    @keyframes documentViewerSlideInRight {
+      from { transform: translate3d(100%, 0, 0); }
+      to { transform: translate3d(0, 0, 0); }
+    }
+    @keyframes documentViewerSlideOutRight {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(100%, 0, 0); }
+    }
   `;
   documentRef().head.appendChild(style);
 };
 
 const styles = {
-  overlay: {
-    position: 'fixed',
-    top: 0,
-    bottom: 0,
-    left: 'var(--app-fixed-left, 0px)',
-    width: 'var(--app-fixed-width, 100%)',
-    zIndex: Z_PHOTO_VIEWER + 20,
-    background: theme.colors.premium.bg,
-    color: theme.colors.text,
-  },
   sheet: {
     position: 'relative',
     width: '100%',
     height: '100%',
-    background: theme.colors.premium.bg,
+    background: '#080808',
+    color: theme.colors.text,
     display: 'flex',
     flexDirection: 'column',
+    overflow: 'hidden',
+    boxShadow: '-16px 0 34px rgba(0,0,0,0.22)',
   },
   header: {
     position: 'absolute',
@@ -373,7 +390,7 @@ const styles = {
     WebkitOverflowScrolling: 'touch',
   },
   pages: {
-    minHeight: '100%',
+    minHeight: 0,
   },
   state: {
     minHeight: 360,

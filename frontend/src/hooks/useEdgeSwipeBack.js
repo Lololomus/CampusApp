@@ -8,6 +8,7 @@ export const useEdgeSwipeBack = ({
   onBack,
   onInterceptBack,
   disabled = false,
+  iosOnly = true,
   edgeZone = 28,
   threshold = 90,
   allowModalBoundary = false,
@@ -58,7 +59,7 @@ export const useEdgeSwipeBack = ({
   }, [setTransform]);
 
   useEffect(() => {
-    if (!isIOS() || disabled) return;
+    if ((iosOnly && !isIOS()) || disabled) return;
 
     const handleTouchMove = (e) => {
       const t = trackingRef.current;
@@ -162,10 +163,10 @@ export const useEdgeSwipeBack = ({
       const touch = e.touches[0];
 
       // Только от левого края
-      if (touch.clientX > edgeZone) return;
-
       const wrapper = wrapperRef.current;
       if (!wrapper) return;
+      const wrapperRect = wrapper.getBoundingClientRect();
+      if (touch.clientX - wrapperRect.left > edgeZone) return;
 
       // Игнорируем если внутри галереи/карусели
       const noEdgeElement = e.target?.closest?.('[data-no-edge-swipe]');
@@ -207,7 +208,7 @@ export const useEdgeSwipeBack = ({
       // Сбрасываем transform если компонент размонтирован в середине свайпа
       trackingRef.current.active = false;
     };
-  }, [disabled, edgeZone, threshold, allowModalBoundary, cancelTracking]);
+  }, [disabled, iosOnly, edgeZone, threshold, allowModalBoundary, cancelTracking]);
 
   return { wrapperRef, isDragging };
 };
