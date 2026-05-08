@@ -234,13 +234,37 @@ async def resume_ad_post(db: AsyncSession, ad_id: int) -> Optional[models.AdPost
 
 
 async def delete_ad_post(db: AsyncSession, ad_id: int) -> bool:
-    """Удалить рекламный пост вместе с базовым постом"""
+    """Удалить рекламный пост вместе с базовым постом и его файлами."""
     db_ad = await db.get(models.AdPost, ad_id)
     if not db_ad:
         return False
 
     db_post = await db.get(models.Post, db_ad.post_id)
     if db_post:
+        # Загружаем документы поста отдельно, т.к. db.get не подгружает relationships
+        doc_result = await db.execute(
+            select(models.PostDocument).where(
+                models.PostDocument.post_id == db_post.id
+            )
+        )
+        documents = doc_result.scalars().all()
+
+        from app.utils import delete_all_media
+        from app.document_utils import delete_document_files
+
+        if db_post.images:
+            delete_all_media(db_post.images)
+        if documents:
+            delete_document_files(
+                [
+                    {
+                        "stored_path": doc.stored_path,
+                        "preview_pdf_path": doc.preview_pdf_path,
+                    }
+                    for doc in documents
+                ]
+            )
+
         await db.delete(db_post)  # CASCADE удалит и ad_post
 
     await db.commit()

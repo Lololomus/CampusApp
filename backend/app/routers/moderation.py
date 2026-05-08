@@ -19,7 +19,8 @@ from app.serialization import public_user_short
 from app.services import analytics_service
 from app.services import notification_service as notif
 from app.services.analytics_service import record_server_event
-from app.utils import delete_images
+from app.utils import delete_all_media, delete_images
+from app.document_utils import delete_document_files
 import logging
 
 logger = logging.getLogger(__name__)
@@ -128,7 +129,9 @@ async def moderate_delete_post(
     moderator = require_moderator(user)
 
     result = await db.execute(
-        select(models.Post).options(selectinload(models.Post.author)).where(models.Post.id == post_id)
+        select(models.Post)
+        .options(selectinload(models.Post.author), selectinload(models.Post.documents))
+        .where(models.Post.id == post_id)
     )
     post = result.scalar_one_or_none()
 
@@ -139,6 +142,20 @@ async def moderate_delete_post(
 
     check_scope(moderator, post.author.university)
     await check_target_not_moderator(db, post.author_id)
+
+    if post.images:
+        try:
+            delete_all_media(post.images)
+        except OSError as e:
+            logger.warning("Ошибка удаления медиа поста %s: %s", post.id, e)
+    if post.documents:
+        try:
+            delete_document_files([
+                {"stored_path": doc.stored_path, "preview_pdf_path": doc.preview_pdf_path}
+                for doc in post.documents
+            ])
+        except OSError as e:
+            logger.warning("Ошибка удаления документов поста %s: %s", post.id, e)
 
     post.is_deleted = True
     post.deleted_by = moderator.id
@@ -226,6 +243,12 @@ async def moderate_delete_request(
     check_scope(moderator, request.author.university)
     await check_target_not_moderator(db, request.author_id)
 
+    if request.images:
+        try:
+            delete_images(request.images, default_kind="images")
+        except OSError as e:
+            logger.warning("Ошибка удаления изображений запроса %s: %s", request.id, e)
+
     request.is_deleted = True
     request.deleted_by = moderator.id
     request.deleted_reason = action.reason
@@ -263,6 +286,12 @@ async def moderate_delete_market_item(
 
     check_scope(moderator, item.university)
     await check_target_not_moderator(db, item.seller_id)
+
+    if item.images:
+        try:
+            delete_all_media(item.images)
+        except OSError as e:
+            logger.warning("Ошибка удаления изображений товара %s: %s", item.id, e)
 
     item.is_deleted = True
     item.deleted_by = moderator.id
