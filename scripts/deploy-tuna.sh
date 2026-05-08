@@ -15,9 +15,6 @@ warn() {
 
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.tuna.yml)
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
-CAMPUSAPP_UPLOADS_DIR="${CAMPUSAPP_UPLOADS_DIR:-/srv/campusapp/uploads}"
-CAMPUSAPP_DOCUMENTS_DIR="${CAMPUSAPP_DOCUMENTS_DIR:-/srv/campusapp/documents}"
-CAMPUSAPP_REPORTS_DIR="${CAMPUSAPP_REPORTS_DIR:-/srv/campusapp/reports}"
 SKIP_PULL=false
 
 for arg in "$@"; do
@@ -29,6 +26,30 @@ done
 
 compose() {
   docker compose "${COMPOSE_FILES[@]}" "$@"
+}
+
+env_file_value() {
+  local key="$1"
+  local line raw
+  [[ -f .env ]] || return 0
+  line="$(grep -E "^${key}=" .env | tail -n 1 || true)"
+  [[ -n "$line" ]] || return 0
+  raw="${line#*=}"
+  raw="${raw%\"}"
+  raw="${raw#\"}"
+  raw="${raw%\'}"
+  raw="${raw#\'}"
+  printf '%s' "$raw"
+}
+
+setting_or_default() {
+  local key="$1"
+  local default="$2"
+  local value="${!key:-}"
+  if [[ -z "$value" ]]; then
+    value="$(env_file_value "$key")"
+  fi
+  printf '%s' "${value:-$default}"
 }
 
 container_id() {
@@ -113,10 +134,13 @@ else
 fi
 
 echo "==> Ensuring persistent data directories exist"
-mkdir -p "$CAMPUSAPP_UPLOADS_DIR" "$CAMPUSAPP_DOCUMENTS_DIR" "$CAMPUSAPP_REPORTS_DIR"
-[[ -w "$CAMPUSAPP_UPLOADS_DIR" ]] || die "Uploads directory is not writable: $CAMPUSAPP_UPLOADS_DIR"
-[[ -w "$CAMPUSAPP_DOCUMENTS_DIR" ]] || die "Documents directory is not writable: $CAMPUSAPP_DOCUMENTS_DIR"
-[[ -w "$CAMPUSAPP_REPORTS_DIR" ]] || die "Reports directory is not writable: $CAMPUSAPP_REPORTS_DIR"
+UPLOADS_DIR="$(setting_or_default CAMPUSAPP_UPLOADS_DIR /srv/campusapp/uploads)"
+DOCUMENTS_DIR="$(setting_or_default CAMPUSAPP_DOCUMENTS_DIR /srv/campusapp/documents)"
+REPORTS_DIR="$(setting_or_default CAMPUSAPP_REPORTS_DIR /srv/campusapp/reports)"
+mkdir -p "$UPLOADS_DIR" "$DOCUMENTS_DIR" "$REPORTS_DIR"
+[[ -w "$UPLOADS_DIR" ]] || die "Uploads directory is not writable: $UPLOADS_DIR"
+[[ -w "$DOCUMENTS_DIR" ]] || die "Documents directory is not writable: $DOCUMENTS_DIR"
+[[ -w "$REPORTS_DIR" ]] || die "Reports directory is not writable: $REPORTS_DIR"
 
 echo "==> Building and starting Tuna beta stack"
 compose up -d --build --remove-orphans
