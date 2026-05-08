@@ -1,13 +1,19 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, Download, FileText, Loader2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 
 import { getDocumentDownloadBlob, getDocumentPreviewBlob } from '../../api';
+import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { useSwipe } from '../../hooks/useSwipe';
 import theme from '../../theme';
 import { formatDocumentSize } from '../../utils/documentValidation';
+import { modalBoundaryProps, modalTouchBoundaryHandlers } from '../../utils/modalEventBoundary';
+import { hapticFeedback } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
+import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -16,7 +22,36 @@ function DocumentViewerModal({ document, onClose }) {
   const [pageCount, setPageCount] = useState(0);
   const [hasPageSkeletons, setHasPageSkeletons] = useState(false);
   const containerRef = useRef(null);
+  const sheetRef = useRef(null);
+  const dragHandleRef = useRef(null);
   const objectUrlRef = useRef('');
+  const isOpen = Boolean(document);
+  const showDevBackButton = import.meta.env.DEV;
+
+  useBodyScrollLock(isOpen);
+
+  const handleClose = useCallback(() => {
+    hapticFeedback('light');
+    onClose?.();
+  }, [onClose]);
+
+  useTelegramScreen(isOpen ? {
+    id: 'document-viewer-modal',
+    title: '',
+    priority: Z_PHOTO_VIEWER + 20,
+    back: {
+      visible: true,
+      onClick: handleClose,
+    },
+  } : { id: null });
+
+  useSwipe({
+    elementRef: sheetRef,
+    activationRef: dragHandleRef,
+    onSwipeDown: handleClose,
+    isModal: true,
+    threshold: 96,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -141,12 +176,19 @@ function DocumentViewerModal({ document, onClose }) {
   if (!document) return null;
 
   const content = (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.sheet} onClick={(event) => event.stopPropagation()}>
-        <div style={styles.header}>
-          <button type="button" style={styles.navButton} onClick={onClose} aria-label="Закрыть">
-            <ChevronLeft size={24} strokeWidth={2.4} />
-          </button>
+    <div
+      {...modalBoundaryProps}
+      {...modalTouchBoundaryHandlers}
+      style={styles.overlay}
+      onClick={handleClose}
+    >
+      <div ref={sheetRef} style={styles.sheet} onClick={(event) => event.stopPropagation()}>
+        <div ref={dragHandleRef} style={styles.header}>
+          {showDevBackButton && (
+            <button type="button" style={styles.navButton} onClick={handleClose} aria-label="Закрыть">
+              <ChevronLeft size={24} strokeWidth={2.4} />
+            </button>
+          )}
 
           <div style={styles.fileBlock}>
             <span style={styles.fileIcon}>
@@ -229,11 +271,12 @@ const styles = {
     bottom: 0,
     left: 'var(--app-fixed-left, 0px)',
     width: 'var(--app-fixed-width, 100%)',
-    zIndex: 4200,
+    zIndex: Z_PHOTO_VIEWER + 20,
     background: theme.colors.premium.bg,
     color: theme.colors.text,
   },
   sheet: {
+    position: 'relative',
     width: '100%',
     height: '100%',
     background: theme.colors.premium.bg,
@@ -241,19 +284,29 @@ const styles = {
     flexDirection: 'column',
   },
   header: {
-    minHeight: 66,
-    padding: '10px 12px',
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 'calc(22px + var(--screen-bottom-offset, 0px))',
+    zIndex: 2,
+    minHeight: 54,
+    padding: '7px 9px',
     display: 'flex',
-    gap: 10,
+    gap: 8,
     alignItems: 'center',
-    borderBottom: `1px solid ${theme.colors.premium.border}`,
-    background: theme.colors.premium.bg,
+    border: `1px solid ${theme.colors.premium.border}`,
+    borderRadius: 22,
+    background: 'rgba(21,21,22,0.94)',
+    boxShadow: '0 18px 50px rgba(0,0,0,0.48)',
+    backdropFilter: 'blur(18px)',
+    WebkitBackdropFilter: 'blur(18px)',
     flexShrink: 0,
+    touchAction: 'none',
   },
   navButton: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.lg,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     border: 'none',
     background: theme.colors.premium.border,
     color: theme.colors.text,
@@ -268,12 +321,12 @@ const styles = {
     flex: 1,
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   fileIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -286,7 +339,7 @@ const styles = {
     flex: 1,
   },
   title: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 800,
     lineHeight: 1.2,
     overflow: 'hidden',
@@ -294,15 +347,15 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   meta: {
-    marginTop: 3,
+    marginTop: 2,
     color: theme.colors.premium.textMuted,
     fontSize: 12,
     fontWeight: 600,
   },
   actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.lg,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     border: 'none',
     background: theme.colors.premium.border,
     color: theme.colors.text,
@@ -315,7 +368,7 @@ const styles = {
   body: {
     flex: 1,
     overflowY: 'auto',
-    padding: '14px 12px 28px',
+    padding: '14px 12px calc(96px + var(--screen-bottom-offset, 0px))',
     background: '#080808',
     WebkitOverflowScrolling: 'touch',
   },
