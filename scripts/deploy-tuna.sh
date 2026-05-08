@@ -13,6 +13,16 @@ warn() {
   echo "WARN: $*" >&2
 }
 
+die_data_dir_not_writable() {
+  local label="$1"
+  local path="$2"
+  die "$label directory is not writable: $path
+Run once on the server:
+  sudo mkdir -p \"$path\"
+  sudo chown -R 1000:1000 \"$path\"
+  sudo chmod -R u+rwX \"$path\""
+}
+
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.tuna.yml)
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 SKIP_PULL=false
@@ -138,9 +148,9 @@ UPLOADS_DIR="$(setting_or_default CAMPUSAPP_UPLOADS_DIR /srv/campusapp/uploads)"
 DOCUMENTS_DIR="$(setting_or_default CAMPUSAPP_DOCUMENTS_DIR /srv/campusapp/documents)"
 REPORTS_DIR="$(setting_or_default CAMPUSAPP_REPORTS_DIR /srv/campusapp/reports)"
 mkdir -p "$UPLOADS_DIR" "$DOCUMENTS_DIR" "$REPORTS_DIR"
-[[ -w "$UPLOADS_DIR" ]] || die "Uploads directory is not writable: $UPLOADS_DIR"
-[[ -w "$DOCUMENTS_DIR" ]] || die "Documents directory is not writable: $DOCUMENTS_DIR"
-[[ -w "$REPORTS_DIR" ]] || die "Reports directory is not writable: $REPORTS_DIR"
+[[ -w "$UPLOADS_DIR" ]] || die_data_dir_not_writable "Uploads" "$UPLOADS_DIR"
+[[ -w "$DOCUMENTS_DIR" ]] || die_data_dir_not_writable "Documents" "$DOCUMENTS_DIR"
+[[ -w "$REPORTS_DIR" ]] || die_data_dir_not_writable "Reports" "$REPORTS_DIR"
 
 echo "==> Building and starting Tuna beta stack"
 compose up -d --build --remove-orphans
