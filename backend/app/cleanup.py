@@ -74,7 +74,9 @@ async def collect_referenced_upload_paths(db: AsyncSession) -> Set[Path]:
             referenced.add(path)
 
     # Post images (включая видео и их превью)
-    result = await db.execute(select(models.Post.images))
+    result = await db.execute(
+        select(models.Post.images).where(models.Post.is_deleted.is_not(True))
+    )
     for (images,) in result.all():
         for url, default_kind in _jsonb_to_upload_refs(images):
             path = _resolve_upload_path(url, default_kind=default_kind)
@@ -82,7 +84,9 @@ async def collect_referenced_upload_paths(db: AsyncSession) -> Set[Path]:
                 referenced.add(path)
 
     # Comment images
-    result = await db.execute(select(models.Comment.images))
+    result = await db.execute(
+        select(models.Comment.images).where(models.Comment.is_deleted.is_not(True))
+    )
     for (images,) in result.all():
         for url, default_kind in _jsonb_to_upload_refs(images):
             path = _resolve_upload_path(url, default_kind=default_kind)
@@ -90,7 +94,9 @@ async def collect_referenced_upload_paths(db: AsyncSession) -> Set[Path]:
                 referenced.add(path)
 
     # Request images
-    result = await db.execute(select(models.Request.images))
+    result = await db.execute(
+        select(models.Request.images).where(models.Request.is_deleted.is_not(True))
+    )
     for (images,) in result.all():
         for url, default_kind in _jsonb_to_upload_refs(images):
             path = _resolve_upload_path(url, default_kind=default_kind)
@@ -98,7 +104,9 @@ async def collect_referenced_upload_paths(db: AsyncSession) -> Set[Path]:
                 referenced.add(path)
 
     # MarketItem images
-    result = await db.execute(select(models.MarketItem.images))
+    result = await db.execute(
+        select(models.MarketItem.images).where(models.MarketItem.is_deleted.is_not(True))
+    )
     for (images,) in result.all():
         for url, default_kind in _jsonb_to_upload_refs(images):
             path = _resolve_upload_path(url, default_kind=default_kind)
@@ -124,6 +132,8 @@ async def collect_referenced_document_paths(db: AsyncSession) -> Set[Path]:
             models.PostDocument.stored_path,
             models.PostDocument.preview_pdf_path,
         )
+        .join(models.Post, models.PostDocument.post_id == models.Post.id)
+        .where(models.Post.is_deleted.is_not(True))
     )
     for stored_path, preview_path in result.all():
         if stored_path:
