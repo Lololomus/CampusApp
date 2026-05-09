@@ -1,9 +1,4 @@
-import {
-  MAX_VIDEO_ENCODE_SIDE,
-  TARGET_VIDEO_BITRATE,
-  VIDEO_OUTPUT_MAX_BYTES,
-  VIDEO_TRANSCODE_SIZE_THRESHOLD_BYTES,
-} from '../videoConstants';
+import { TARGET_VIDEO_BITRATE, VIDEO_INPUT_MAX_BYTES, VIDEO_OUTPUT_MAX_BYTES } from '../videoConstants';
 
 const SUPPORTED_ISO_EXTENSIONS = new Set(['mp4', 'mov']);
 
@@ -49,18 +44,15 @@ export function hasAudioWebCodecs() {
 }
 
 /**
- * Нужен ли клиентский транскод (эвристика). WebM — false.
- * @param {{ width: number, height: number }} displayDimensions — уже с учётом отображения (videoWidth/Height).
+ * Клиентский транскод только если файл уже не проходит лимит «на выход» (100 МБ), но ещё в допустимом сыром лимите (400 МБ).
+ * Иначе грузим как есть (до 100 МБ) — сервер при необходимости дожимает.
  */
-export function shouldRunClientVideoTranscode(file, displayDimensions) {
+export function shouldRunClientVideoTranscode(file) {
   if (!file || !isIsoBmffVideoFile(file)) return false;
   if (!isClientVideoTranscodeSupported()) return false;
-  if (file.size > VIDEO_OUTPUT_MAX_BYTES) return true;
-  const w = Number(displayDimensions?.width) || 0;
-  const h = Number(displayDimensions?.height) || 0;
-  if (w > 0 && h > 0 && Math.max(w, h) > MAX_VIDEO_ENCODE_SIDE) return true;
-  if (file.size > VIDEO_TRANSCODE_SIZE_THRESHOLD_BYTES) return true;
-  return false;
+  if (file.size <= VIDEO_OUTPUT_MAX_BYTES) return false;
+  if (file.size > VIDEO_INPUT_MAX_BYTES) return false;
+  return true;
 }
 
 export function pickAvcCodec(width, height, bitrate) {

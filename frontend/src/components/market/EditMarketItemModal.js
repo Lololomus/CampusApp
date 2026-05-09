@@ -188,10 +188,7 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
           if (validation.willTranscode) {
             toast.info('Сжимаем видео…', { duration: 2800 });
           }
-          const { file: videoOut, fallbackOriginal } = await processVideoFileForUpload(
-            videoCandidate,
-            validation.displayDimensions || { width: 0, height: 0 },
-          );
+          const { file: videoOut, fallbackOriginal } = await processVideoFileForUpload(videoCandidate);
           if (fallbackOriginal) {
             toast.info('Загружаем без сжатия на устройстве', { duration: 2200 });
           }

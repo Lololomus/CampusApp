@@ -74,8 +74,8 @@ services:
     logging: *json-logging
 
   frontend:
-    mem_limit: 256m
-    memswap_limit: 256m
+    mem_limit: 512m
+    memswap_limit: 512m
     ports:
       - "80:8080"
       - "443:8443"
@@ -87,7 +87,7 @@ services:
       - ${CAMPUSAPP_SSL_DIR:-/srv/campusapp/ssl}:/etc/nginx/ssl:ro
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=64m
+      - /tmp:rw,noexec,nosuid,size=384m
       - /var/cache/nginx:rw,nosuid,size=64m
       - /var/run:rw,nosuid,size=16m
     security_opt:

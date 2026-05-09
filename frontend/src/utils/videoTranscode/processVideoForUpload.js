@@ -9,15 +9,14 @@ import { TRANSCODE_ERROR, VideoTranscodeError } from './transcodeErrors';
 
 /**
  * @param {File} file
- * @param {{ width: number, height: number }} displayDimensions
  * @param {{ signal?: AbortSignal, onProgress?: (n: number) => void }} [options]
  * @returns {Promise<{ file: File, transcoded: boolean, fallbackOriginal?: boolean }>}
  */
-export async function processVideoFileForUpload(file, displayDimensions, options = {}) {
+export async function processVideoFileForUpload(file, options = {}) {
   const eligible =
     isIsoBmffVideoFile(file) &&
     isClientVideoTranscodeSupported() &&
-    shouldRunClientVideoTranscode(file, displayDimensions);
+    shouldRunClientVideoTranscode(file);
 
   if (!eligible) {
     return { file, transcoded: false };

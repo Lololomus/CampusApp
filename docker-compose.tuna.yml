@@ -60,8 +60,9 @@ services:
     logging: *json-logging
 
   frontend:
-    mem_limit: 256m
-    memswap_limit: 256m
+    # Large POST bodies buffer in /tmp; tmpfs counts toward this limit.
+    mem_limit: 512m
+    memswap_limit: 512m
     ports:
       - "127.0.0.1:80:8080"
     volumes:
@@ -70,7 +71,8 @@ services:
       - ${CAMPUSAPP_DOCUMENTS_DIR:-/srv/campusapp/documents}:/var/www/private_documents:ro
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=64m
+      # Nginx client_body_temp_path → /tmp; allow full client_max_body_size (110m) + headroom.
+      - /tmp:rw,noexec,nosuid,size=384m
       - /var/cache/nginx:rw,nosuid,size=64m
       - /var/run:rw,nosuid,size=16m
     security_opt:

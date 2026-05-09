@@ -115,7 +115,7 @@ export const validateVideoFile = async (file) => {
   const transcodeCandidate =
     isIsoBmffVideoFile(file) &&
     isClientVideoTranscodeSupported() &&
-    shouldRunClientVideoTranscode(file, displayDimensions);
+    shouldRunClientVideoTranscode(file);
 
   if (file.size > VIDEO_OUTPUT_MAX_BYTES) {
     const canLargeInput = isIsoBmffVideoFile(file) && isClientVideoTranscodeSupported();
@@ -124,13 +124,6 @@ export const validateVideoFile = async (file) => {
         valid: false,
         error:
           'Файл больше 100 МБ. Откройте приложение в браузере с поддержкой сжатия (например Chrome) или уменьшите видео',
-      };
-    }
-    if (!transcodeCandidate) {
-      return {
-        valid: false,
-        error:
-          'Файл больше 100 МБ и не подходит для автоматического сжатия на устройстве. Выберите другое видео',
       };
     }
   }
