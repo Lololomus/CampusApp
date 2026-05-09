@@ -17,7 +17,7 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 const MAX_PREVIEW_PAGES = 100;
-const RENDER_AHEAD_PAGES = 1;
+const RENDER_AHEAD_PAGES = 2;
 const MIN_DOCUMENT_ZOOM = 1;
 const MAX_DOCUMENT_ZOOM = 4;
 const DOUBLE_TAP_MS = 280;
@@ -219,15 +219,17 @@ function DocumentViewerModal({ document, onClose }) {
     };
 
     const buildSkeleton = (pageNumber, viewport) => {
+      const width = Math.floor(viewport.width);
+      const height = Math.floor(viewport.height);
       const placeholder = documentRef().createElement('div');
       placeholder.className = 'document-preview-skeleton';
       placeholder.dataset.pageNumber = String(pageNumber);
       placeholder.style.width = '100%';
-      placeholder.style.maxWidth = `${Math.floor(viewport.width)}px`;
-      placeholder.style.aspectRatio = `${Math.floor(viewport.width)} / ${Math.floor(viewport.height)}`;
+      placeholder.style.maxWidth = `${width}px`;
+      placeholder.style.aspectRatio = `${width} / ${height}`;
       placeholder.style.margin = '0 auto 14px';
       placeholder.style.borderRadius = '6px';
-      placeholder.style.boxShadow = '0 10px 30px rgba(0,0,0,0.22)';
+      placeholder.style.boxShadow = '0 10px 30px rgba(0,0,0,0.26)';
       return placeholder;
     };
 
@@ -248,6 +250,7 @@ function DocumentViewerModal({ document, onClose }) {
       canvas.dataset.pageNumber = String(slot.pageNumber);
 
       const previousNode = slot.canvas || slot.placeholder;
+      if (previousNode) observer?.unobserve(previousNode);
       previousNode.replaceWith(canvas);
       if (slot.placeholder && slot.placeholder !== previousNode) {
         slot.placeholder.remove();
@@ -274,6 +277,7 @@ function DocumentViewerModal({ document, onClose }) {
       }
       if (!slot.canvas) return;
       const placeholder = buildSkeleton(slot.pageNumber, slot.viewport);
+      observer?.unobserve(slot.canvas);
       slot.canvas.replaceWith(placeholder);
       slot.canvas = null;
       slot.placeholder = placeholder;
@@ -358,7 +362,7 @@ function DocumentViewerModal({ document, onClose }) {
         }
         updateVisible();
       }, {
-        root: containerRef.current,
+        root: bodyRef.current,
         rootMargin: '300px 0px',
         threshold: 0,
       });
@@ -617,6 +621,7 @@ function DocumentViewerModal({ document, onClose }) {
             style={{
               ...styles.pages,
               transform: `translate3d(${zoomTransform.x}px, ${zoomTransform.y}px, 0) scale(${zoomTransform.scale})`,
+              transformOrigin: 'top left',
               transition: gestureRef.current ? 'none' : 'transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)',
               cursor: isDocumentZoomed ? 'grab' : 'zoom-in',
               willChange: isDocumentZoomed ? 'transform' : undefined,
@@ -662,9 +667,9 @@ const ensureDocumentPreviewStyles = () => {
   const style = documentRef().createElement('style');
   style.id = id;
   style.textContent = `
-    @keyframes documentPreviewShimmer {
-      0% { background-position: 120% 0; }
-      100% { background-position: -120% 0; }
+    @keyframes documentPreviewSkeletonPulse {
+      0%, 100% { opacity: 0.82; }
+      50% { opacity: 1; }
     }
     @keyframes documentPreviewSpin {
       to { transform: rotate(360deg); }
@@ -674,11 +679,17 @@ const ensureDocumentPreviewStyles = () => {
       transform-origin: center;
     }
     .document-preview-skeleton {
+      position: relative;
+      overflow: hidden;
       background:
-        linear-gradient(110deg, rgba(255,255,255,0.035) 8%, rgba(255,255,255,0.10) 18%, rgba(255,255,255,0.035) 33%),
-        #151515;
-      background-size: 220% 100%;
-      animation: documentPreviewShimmer 1.15s linear infinite;
+        linear-gradient(#deded9, #deded9) 12% 8% / 42% 10px no-repeat,
+        linear-gradient(#e2e2dd, #e2e2dd) 12% 14% / 68% 8px no-repeat,
+        linear-gradient(#e2e2dd, #e2e2dd) 12% 18% / 62% 8px no-repeat,
+        linear-gradient(#e6e6e1, #e6e6e1) 12% 28% / 76% 7px no-repeat,
+        linear-gradient(#e6e6e1, #e6e6e1) 12% 32% / 70% 7px no-repeat,
+        linear-gradient(#e6e6e1, #e6e6e1) 12% 36% / 74% 7px no-repeat,
+        #f3f3ef;
+      animation: documentPreviewSkeletonPulse 1.35s ease-in-out infinite;
     }
     @keyframes documentViewerSlideInRight {
       from { transform: translate3d(100%, 0, 0); }
