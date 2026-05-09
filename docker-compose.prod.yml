@@ -20,8 +20,21 @@ services:
       - no-new-privileges:true
 
   clamav:
-    mem_limit: 1g
-    memswap_limit: 1g
+    # 1g мало: clamd на старте грузит main.cvd (~89 МБ сжатый → ~700 МБ в памяти),
+    # daily.cvd, плюс рабочие буферы. На 1g стабильно валится OOM-killer'ом
+    # (anon-rss ~1.05 ГБ) и контейнер остаётся живой, но clamd мёртвый
+    # (freshclam-процесс не падает, поэтому Docker не делает restart).
+    mem_limit: 2g
+    memswap_limit: 2g
+    # Healthcheck через clamdscan --ping: если демон лежит, exit code != 0
+    # → контейнер unhealthy и restart-policy перезапустит его целиком.
+    # start_period крупный, т.к. первая загрузка main.cvd занимает 30-60s.
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     logging: *json-logging
     security_opt:
       - no-new-privileges:true

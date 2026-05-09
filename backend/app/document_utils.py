@@ -260,7 +260,15 @@ async def scan_document_with_clamav(
         raise DocumentProcessingError("Antivirus scanner is unavailable") from exc
 
     clean_response = response.strip().rstrip("\0")
-    if not clean_response.endswith(": OK"):
+    if clean_response.endswith(": OK"):
+        return
+
+    # Различаем реальный вирус (FOUND) и проблему сканера (ERROR / пустой ответ /
+    # любая нераспознанная строка). При FOUND блокируем загрузку и логируем
+    # SHA256 как virus FOUND. При прочих ответах считаем сканер недоступным —
+    # это типичная ситуация при OOM-кране clamd, отвалившейся базе или
+    # `INSTREAM size limit exceeded ERROR`.
+    if "FOUND" in clean_response:
         try:
             sha256 = _file_sha256(path)
         except OSError:
@@ -273,6 +281,14 @@ async def scan_document_with_clamav(
             clean_response,
         )
         raise DocumentProcessingError("Document failed antivirus scan")
+
+    logger.warning(
+        "clamav scanner ERROR user=%s file=%s response=%r",
+        user_id,
+        filename,
+        clean_response or "<empty>",
+    )
+    raise DocumentProcessingError("Antivirus scanner is unavailable")
 
 
 def make_private_document_paths(ext: str) -> tuple[str, Path, str, Path]:

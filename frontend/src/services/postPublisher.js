@@ -47,12 +47,33 @@ export function describeUploadError(error) {
   if (status === 401 || status === 403) return 'Нет прав на эту публикацию';
 
   const detail = error?.response?.data?.detail;
-  if (Array.isArray(detail)) {
-    return detail.map((item) => item.msg || item.type).filter(Boolean).join(', ') || 'Не удалось опубликовать пост';
+
+  const detailString = (() => {
+    if (Array.isArray(detail)) {
+      return detail.map((item) => item.msg || item.type).filter(Boolean).join(', ');
+    }
+    if (typeof detail === 'string') return detail;
+    return '';
+  })();
+
+  // Понятные подмены для типовых backend-сообщений
+  if (/Antivirus scanner is unavailable/i.test(detailString)) {
+    return 'Антивирус временно недоступен. Попробуйте через минуту.';
   }
-  if (typeof detail === 'string' && detail.trim()) {
-    return detail;
+  if (/Document failed antivirus scan/i.test(detailString)) {
+    return 'Файл отклонён антивирусом';
   }
+  if (/Document is suspicious \(zip bomb\)/i.test(detailString)) {
+    return 'Файл выглядит подозрительно (архив-бомба)';
+  }
+  if (/Document is too large/i.test(detailString)) {
+    return 'Файл слишком большой';
+  }
+  if (/Unsupported document type/i.test(detailString)) {
+    return 'Неподдерживаемый тип документа';
+  }
+
+  if (detailString.trim()) return detailString;
 
   return 'Не удалось опубликовать пост';
 }
