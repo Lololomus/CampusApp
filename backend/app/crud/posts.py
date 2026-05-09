@@ -10,7 +10,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import Float, String, and_, cast, func, or_, select, update as sa_update
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 from typing import Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -50,7 +50,9 @@ async def get_posts(
         .options(
             selectinload(models.Post.author),
             selectinload(models.Post.poll).selectinload(models.Poll.votes),
-            selectinload(models.Post.documents),
+            selectinload(models.Post.documents).options(
+                defer(models.PostDocument.stored_path),
+            ),
         )
     )
 

@@ -445,10 +445,52 @@ export async function updatePost(postId, postData, onProgress = null) {
   }
 }
 
+const DOCUMENT_PREVIEW_TTL_MS = 5 * 60 * 1000;
+const DOCUMENT_PREVIEW_CACHE_LIMIT = 5;
+const documentPreviewCache = new Map();
+
+function purgeExpiredPreviews() {
+  const now = Date.now();
+  for (const [id, entry] of documentPreviewCache.entries()) {
+    if (entry.expires <= now) {
+      documentPreviewCache.delete(id);
+    }
+  }
+}
+
+function evictOldestPreviewIfNeeded() {
+  if (documentPreviewCache.size < DOCUMENT_PREVIEW_CACHE_LIMIT) return;
+  const oldestKey = documentPreviewCache.keys().next().value;
+  if (oldestKey !== undefined) {
+    documentPreviewCache.delete(oldestKey);
+  }
+}
+
+export function clearDocumentPreviewCache(documentId) {
+  if (documentId === undefined) {
+    documentPreviewCache.clear();
+    return;
+  }
+  documentPreviewCache.delete(documentId);
+}
+
 export async function getDocumentPreviewBlob(documentId) {
+  purgeExpiredPreviews();
+  const cached = documentPreviewCache.get(documentId);
+  if (cached) {
+    documentPreviewCache.delete(documentId);
+    documentPreviewCache.set(documentId, cached);
+    return cached.blob;
+  }
+
   const response = await api.get(`/documents/${documentId}/preview`, {
     responseType: 'blob',
     timeout: 60000,
+  });
+  evictOldestPreviewIfNeeded();
+  documentPreviewCache.set(documentId, {
+    blob: response.data,
+    expires: Date.now() + DOCUMENT_PREVIEW_TTL_MS,
   });
   return response.data;
 }
@@ -459,6 +501,21 @@ export async function getDocumentDownloadBlob(documentId) {
     timeout: 60000,
   });
   return response.data;
+}
+
+let documentsConfigPromise = null;
+
+export function getDocumentsConfig() {
+  if (!documentsConfigPromise) {
+    documentsConfigPromise = api
+      .get('/config/documents', { timeout: 8000 })
+      .then((response) => response.data)
+      .catch((error) => {
+        documentsConfigPromise = null;
+        throw error;
+      });
+  }
+  return documentsConfigPromise;
 }
 
 export async function deletePost(postId) {

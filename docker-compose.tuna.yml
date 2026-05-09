@@ -67,6 +67,7 @@ services:
     volumes:
       - ./nginx/nginx.tuna.conf:/etc/nginx/nginx.conf:ro
       - ${CAMPUSAPP_UPLOADS_DIR:-/srv/campusapp/uploads}:/var/www/uploads:ro
+      - ${CAMPUSAPP_DOCUMENTS_DIR:-/srv/campusapp/documents}:/var/www/private_documents:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m

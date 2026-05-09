@@ -16,6 +16,9 @@ import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
+const MAX_PREVIEW_PAGES = 100;
+const RENDER_AHEAD_PAGES = 1;
+
 function DocumentViewerModal({ document, onClose }) {
   const [status, setStatus] = useState('loading');
   const [pageCount, setPageCount] = useState(0);
@@ -63,18 +66,117 @@ function DocumentViewerModal({ document, onClose }) {
 
   useEffect(() => {
     let cancelled = false;
-    let renderedFirstPage = false;
-    const renderedNodes = [];
+    let pdf = null;
+    const slots = [];
+    const visibleSet = new Set();
+    let observer = null;
 
     const cleanup = () => {
-      renderedNodes.forEach((node) => node.remove());
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+      for (const slot of slots) {
+        if (slot.renderTask) {
+          try { slot.renderTask.cancel(); } catch (_err) { /* noop */ }
+          slot.renderTask = null;
+        }
+        if (slot.canvas) slot.canvas.remove();
+        if (slot.placeholder) slot.placeholder.remove();
+      }
+      slots.length = 0;
+      if (pdf) {
+        try { pdf.destroy(); } catch (_err) { /* noop */ }
+        pdf = null;
+      }
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = '';
       }
     };
 
-    const renderPdf = async () => {
+    const buildSkeleton = (pageNumber, viewport) => {
+      const placeholder = documentRef().createElement('div');
+      placeholder.className = 'document-preview-skeleton';
+      placeholder.dataset.pageNumber = String(pageNumber);
+      placeholder.style.width = '100%';
+      placeholder.style.maxWidth = `${Math.floor(viewport.width)}px`;
+      placeholder.style.aspectRatio = `${Math.floor(viewport.width)} / ${Math.floor(viewport.height)}`;
+      placeholder.style.margin = '0 auto 14px';
+      placeholder.style.borderRadius = '6px';
+      placeholder.style.boxShadow = '0 10px 30px rgba(0,0,0,0.22)';
+      return placeholder;
+    };
+
+    const renderSlot = (slot) => {
+      if (slot.canvas || slot.renderTask) return;
+      const canvas = documentRef().createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = Math.floor(slot.viewport.width);
+      canvas.height = Math.floor(slot.viewport.height);
+      canvas.style.width = '100%';
+      canvas.style.maxWidth = `${Math.floor(slot.viewport.width)}px`;
+      canvas.style.height = 'auto';
+      canvas.style.display = 'block';
+      canvas.style.margin = '0 auto 14px';
+      canvas.style.borderRadius = '6px';
+      canvas.style.background = '#fff';
+      canvas.style.boxShadow = '0 10px 30px rgba(0,0,0,0.28)';
+      canvas.dataset.pageNumber = String(slot.pageNumber);
+
+      const previousNode = slot.canvas || slot.placeholder;
+      previousNode.replaceWith(canvas);
+      if (slot.placeholder && slot.placeholder !== previousNode) {
+        slot.placeholder.remove();
+      }
+      slot.placeholder = null;
+      slot.canvas = canvas;
+      observer?.observe(canvas);
+
+      const task = slot.page.render({ canvasContext: ctx, viewport: slot.viewport });
+      slot.renderTask = task;
+      task.promise
+        .catch(() => { /* cancellation or transient error */ })
+        .finally(() => {
+          if (slot.renderTask === task) {
+            slot.renderTask = null;
+          }
+        });
+    };
+
+    const unrenderSlot = (slot) => {
+      if (slot.renderTask) {
+        try { slot.renderTask.cancel(); } catch (_err) { /* noop */ }
+        slot.renderTask = null;
+      }
+      if (!slot.canvas) return;
+      const placeholder = buildSkeleton(slot.pageNumber, slot.viewport);
+      slot.canvas.replaceWith(placeholder);
+      slot.canvas = null;
+      slot.placeholder = placeholder;
+      observer?.observe(placeholder);
+    };
+
+    const updateVisible = () => {
+      const desired = new Set();
+      for (const num of visibleSet) {
+        for (let d = -RENDER_AHEAD_PAGES; d <= RENDER_AHEAD_PAGES; d += 1) {
+          const target = num + d;
+          if (target >= 1 && target <= slots.length) {
+            desired.add(target);
+          }
+        }
+      }
+      for (const slot of slots) {
+        if (desired.has(slot.pageNumber)) {
+          renderSlot(slot);
+        } else if (slot.canvas) {
+          unrenderSlot(slot);
+        }
+      }
+    };
+
+    const start = async () => {
       cleanup();
       setHasPageSkeletons(false);
       setPageCount(0);
@@ -82,80 +184,75 @@ function DocumentViewerModal({ document, onClose }) {
         setStatus('unavailable');
         return;
       }
-
       setStatus('loading');
-      try {
-        ensureDocumentPreviewStyles();
-        const blob = await getDocumentPreviewBlob(document.id);
+
+      const blob = await getDocumentPreviewBlob(document.id);
+      if (cancelled) return;
+      objectUrlRef.current = URL.createObjectURL(blob);
+      pdf = await pdfjsLib.getDocument(objectUrlRef.current).promise;
+      if (cancelled) return;
+
+      setPageCount(pdf.numPages);
+      if (pdf.numPages > MAX_PREVIEW_PAGES) {
+        setStatus('too_large');
+        return;
+      }
+
+      ensureDocumentPreviewStyles();
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
         if (cancelled) return;
-        const objectUrl = URL.createObjectURL(blob);
-        objectUrlRef.current = objectUrl;
-        const pdf = await pdfjsLib.getDocument(objectUrl).promise;
-        if (cancelled) return;
-        setPageCount(pdf.numPages);
+        const page = await pdf.getPage(pageNumber);
+        const containerWidth = Math.min(containerRef.current?.clientWidth || 360, 920);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const scale = Math.max(0.7, Math.min(2, (containerWidth - 28) / baseViewport.width));
+        const viewport = page.getViewport({ scale });
 
-        const pageSlots = [];
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-          if (cancelled) return;
-          const page = await pdf.getPage(pageNumber);
-          const containerWidth = Math.min(containerRef.current?.clientWidth || 360, 920);
-          const baseViewport = page.getViewport({ scale: 1 });
-          const scale = Math.max(0.7, Math.min(2, (containerWidth - 28) / baseViewport.width));
-          const viewport = page.getViewport({ scale });
+        const placeholder = buildSkeleton(pageNumber, viewport);
+        containerRef.current?.appendChild(placeholder);
+        slots.push({
+          pageNumber,
+          page,
+          viewport,
+          placeholder,
+          canvas: null,
+          renderTask: null,
+        });
+      }
 
-          const placeholder = documentRef().createElement('div');
-          placeholder.className = 'document-preview-skeleton';
-          placeholder.style.width = '100%';
-          placeholder.style.maxWidth = `${Math.floor(viewport.width)}px`;
-          placeholder.style.aspectRatio = `${Math.floor(viewport.width)} / ${Math.floor(viewport.height)}`;
-          placeholder.style.margin = '0 auto 14px';
-          placeholder.style.borderRadius = '6px';
-          placeholder.style.boxShadow = '0 10px 30px rgba(0,0,0,0.22)';
-          containerRef.current?.appendChild(placeholder);
-          renderedNodes.push(placeholder);
-          pageSlots.push({ page, viewport, placeholder });
-        }
+      if (cancelled) return;
+      setHasPageSkeletons(true);
+      setStatus('ready');
 
-        if (!cancelled) {
-          setHasPageSkeletons(true);
-          setStatus('rendering');
-        }
-
-        for (let index = 0; index < pageSlots.length; index += 1) {
-          if (cancelled) return;
-          const { page, viewport, placeholder } = pageSlots[index];
-          const canvas = documentRef().createElement('canvas');
-          const context = canvas.getContext('2d');
-          canvas.width = Math.floor(viewport.width);
-          canvas.height = Math.floor(viewport.height);
-          canvas.style.width = '100%';
-          canvas.style.maxWidth = `${Math.floor(viewport.width)}px`;
-          canvas.style.height = 'auto';
-          canvas.style.display = 'block';
-          canvas.style.margin = '0 auto 14px';
-          canvas.style.borderRadius = '6px';
-          canvas.style.background = '#fff';
-          canvas.style.boxShadow = '0 10px 30px rgba(0,0,0,0.28)';
-          await page.render({ canvasContext: context, viewport }).promise;
-          if (cancelled) return;
-          placeholder.replaceWith(canvas);
-          renderedNodes.push(canvas);
-          if (index === 0) {
-            renderedFirstPage = true;
-            setStatus('ready');
+      observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          const num = Number(entry.target.dataset.pageNumber);
+          if (!num) continue;
+          if (entry.isIntersecting) {
+            visibleSet.add(num);
+          } else {
+            visibleSet.delete(num);
           }
         }
-      } catch (error) {
-        console.error('Document preview failed:', error);
-        if (!cancelled && !renderedFirstPage) {
-          cleanup();
-          setHasPageSkeletons(false);
-          setStatus('failed');
-        }
+        updateVisible();
+      }, {
+        root: containerRef.current,
+        rootMargin: '300px 0px',
+        threshold: 0,
+      });
+
+      for (const slot of slots) {
+        observer.observe(slot.placeholder);
       }
     };
 
-    renderPdf();
+    start().catch((error) => {
+      console.error('Document preview failed:', error);
+      if (!cancelled) {
+        cleanup();
+        setHasPageSkeletons(false);
+        setStatus('failed');
+      }
+    });
 
     return () => {
       cancelled = true;
@@ -238,6 +335,14 @@ function DocumentViewerModal({ document, onClose }) {
               <FileText size={28} />
               <span style={styles.stateTitle}>Предпросмотр недоступен</span>
               <span style={styles.stateText}>Оригинал можно скачать и открыть на устройстве.</span>
+              <button type="button" style={styles.downloadButton} onClick={handleDownload}>Скачать оригинал</button>
+            </div>
+          )}
+          {status === 'too_large' && !hasPageSkeletons && (
+            <div style={styles.state}>
+              <FileText size={28} />
+              <span style={styles.stateTitle}>Документ слишком большой</span>
+              <span style={styles.stateText}>В предпросмотре больше {MAX_PREVIEW_PAGES} страниц. Скачайте оригинал, чтобы открыть.</span>
               <button type="button" style={styles.downloadButton} onClick={handleDownload}>Скачать оригинал</button>
             </div>
           )}

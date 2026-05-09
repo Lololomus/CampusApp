@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { Download, File, FileSpreadsheet, FileText, FileType, Presentation } from 'lucide-react';
 
 import { getDocumentDownloadBlob } from '../../api';
@@ -28,7 +28,10 @@ const getAccent = (ext) => {
 
 function DocumentAttachmentList({ documents = [], compact = false }) {
   const [viewerDocument, setViewerDocument] = useState(null);
-  const items = Array.isArray(documents) ? documents.filter(Boolean) : [];
+  const items = useMemo(
+    () => (Array.isArray(documents) ? documents.filter(Boolean) : []),
+    [documents],
+  );
   if (!items.length) return null;
 
   const handleDownload = async (event, document) => {

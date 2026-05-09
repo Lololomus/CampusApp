@@ -3,14 +3,14 @@
 from contextlib import asynccontextmanager
 import asyncio
 
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request, Header
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import contains_eager, selectinload
 from typing import List, Optional, Dict, Tuple
 from app import models, schemas, crud
 from app.database import engine, get_db, init_db
@@ -24,11 +24,16 @@ from app.utils import (
     process_uploaded_files,
 )
 from app.document_utils import (
+    ALLOWED_DOCUMENTS,
+    DOCUMENT_PREVIEWS_ROOT,
+    DOCUMENTS_ROOT,
+    MAX_DOCUMENT_SIZE,
     MAX_DOCUMENTS_PER_POST,
     delete_document_files,
     process_uploaded_documents,
     resolve_document_path,
 )
+from urllib.parse import quote as urlquote
 from app.video_utils import process_uploaded_video
 from app.auth_service import decode_authorization_header, require_user, optional_user
 from app.config import get_settings
@@ -67,8 +72,8 @@ def _serialize_post_documents(documents) -> List[Dict]:
             "scan_status": doc.scan_status,
             "preview_status": doc.preview_status,
             "has_preview": has_preview,
-            "preview_url": f"/api/documents/{doc.id}/preview" if has_preview else None,
-            "download_url": f"/api/documents/{doc.id}/download",
+            "preview_url": f"/documents/{doc.id}/preview" if has_preview else None,
+            "download_url": f"/documents/{doc.id}/download",
             "created_at": doc.created_at,
         })
     return items
@@ -139,6 +144,57 @@ def _filter_upload_files(files) -> List[UploadFile]:
         file for file in files
         if file and getattr(file, "filename", None) and len(file.filename) > 0
     ]
+
+
+def _parse_keep_documents_form_field(raw_value: Optional[str]) -> Optional[List[int]]:
+    """
+    Returns None when the field was not sent (= keep all current documents).
+    Returns a list of integer document IDs when the field was sent.
+    Raises 422 on malformed input.
+    """
+    if raw_value is None:
+        return None
+    parsed = _parse_json_list_form_field(raw_value, "keep_documents")
+    result: List[int] = []
+    for item in parsed:
+        try:
+            result.append(int(item))
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=422,
+                detail=[{
+                    "loc": ["body", "keep_documents"],
+                    "msg": "keep_documents must contain integer ids",
+                    "type": "type_error.integer",
+                }],
+            )
+    return result
+
+
+def _build_xaccel_response(
+    *,
+    rel_path: str,
+    is_preview: bool,
+    media_type: str,
+    content_disposition: str,
+    cache_control: str = "private, max-age=86400",
+) -> Response:
+    """
+    Returns an empty response that nginx will replace with the actual file body
+    via X-Accel-Redirect. Falls back gracefully if nginx is absent (in dev or
+    direct-access scenarios) — see /documents/* endpoints for details.
+    """
+    sub_dir = "previews" if is_preview else "originals"
+    accel_path = f"/_internal_documents/{sub_dir}/{rel_path}"
+    headers = {
+        "X-Accel-Redirect": accel_path,
+        "Content-Type": media_type,
+        "Content-Disposition": content_disposition,
+        "Cache-Control": cache_control,
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+    }
+    return Response(status_code=200, headers=headers)
 
 
 def _parse_post_title_and_body(raw_text: Optional[str]) -> Tuple[Optional[str], str]:
@@ -890,7 +946,9 @@ async def create_post_endpoint(
         if valid_video:
             video_meta = await process_uploaded_video(valid_video)
             images_meta.append(video_meta)
-        documents_meta = await process_uploaded_documents(valid_documents) if valid_documents else []
+        documents_meta = await process_uploaded_documents(
+            valid_documents, uploader_id=user.id
+        ) if valid_documents else []
         create_kwargs = {"images_meta": images_meta}
         if documents_meta:
             create_kwargs["documents_meta"] = documents_meta
@@ -919,7 +977,16 @@ async def create_post_endpoint(
         entity_id=post.id,
         properties_json={"category": category},
     )
-    
+    if documents_meta:
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "document_upload",
+            entity_type="post",
+            entity_id=post.id,
+            properties_json={"count": len(documents_meta)},
+        )
+
     return await get_post_endpoint(post.id, user=user, db=db)
 
 @app.get("/posts/{post_id}", response_model=schemas.PostResponse)
@@ -1055,9 +1122,21 @@ async def delete_post_endpoint(post_id: int, user: models.User = Depends(require
     if post.author_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    document_count = len(getattr(post, "documents", []) or [])
+
     success = await crud.delete_post(db, post_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete")
+
+    if document_count:
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "document_delete",
+            entity_type="post",
+            entity_id=post_id,
+            properties_json={"count": document_count, "reason": "post_deleted"},
+        )
 
     return {"success": True}
 
@@ -1107,10 +1186,11 @@ async def update_post_endpoint(
     if total_images > 3:
         raise HTTPException(status_code=400, detail="Maximum 3 images")
     raw_keep_documents = keep_documents if isinstance(keep_documents, str) else None
-    try:
-        keep_document_ids = [int(item) for item in (_parse_json_list_form_field(raw_keep_documents, "keep_documents") if raw_keep_documents is not None else [doc.id for doc in (getattr(post, "documents", []) or [])])]
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid keep_documents")
+    parsed_keep_document_ids = _parse_keep_documents_form_field(raw_keep_documents)
+    if parsed_keep_document_ids is None:
+        keep_document_ids = [doc.id for doc in (getattr(post, "documents", []) or [])]
+    else:
+        keep_document_ids = parsed_keep_document_ids
     if len(set(keep_document_ids)) + len(valid_new_documents) > MAX_DOCUMENTS_PER_POST:
         raise HTTPException(status_code=400, detail="Maximum 3 documents")
 
@@ -1149,9 +1229,14 @@ async def update_post_endpoint(
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
 
+    existing_document_ids = {doc.id for doc in (getattr(post, "documents", []) or [])}
+    removed_document_ids = sorted(existing_document_ids - set(keep_document_ids))
+
     try:
         new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
-        new_documents_meta = await process_uploaded_documents(valid_new_documents) if valid_new_documents else []
+        new_documents_meta = await process_uploaded_documents(
+            valid_new_documents, uploader_id=user.id
+        ) if valid_new_documents else []
 
         # Если загружено новое видео — добавляем его; старое удалится в merge_images
         if valid_new_video:
@@ -1174,7 +1259,26 @@ async def update_post_endpoint(
         if "new_images_meta" in locals() and new_images_meta:
             delete_all_media(new_images_meta)
         raise HTTPException(status_code=400, detail=str(e))
-    
+
+    if new_documents_meta:
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "document_upload",
+            entity_type="post",
+            entity_id=updated_post.id,
+            properties_json={"count": len(new_documents_meta)},
+        )
+    if removed_document_ids:
+        await analytics_service.record_server_event(
+            db,
+            user.id,
+            "document_delete",
+            entity_type="post",
+            entity_id=updated_post.id,
+            properties_json={"count": len(removed_document_ids)},
+        )
+
     return await get_post_endpoint(updated_post.id, user=user, db=db)
 
 @app.post("/posts/{post_id}/like")
@@ -1202,8 +1306,14 @@ async def _get_accessible_document(
 ) -> models.PostDocument:
     result = await db.execute(
         select(models.PostDocument)
-        .options(selectinload(models.PostDocument.post).selectinload(models.Post.author))
-        .where(models.PostDocument.id == document_id)
+        .join(models.PostDocument.post)
+        .options(
+            contains_eager(models.PostDocument.post).selectinload(models.Post.author),
+        )
+        .where(
+            models.PostDocument.id == document_id,
+            models.Post.is_deleted == False,  # noqa: E712
+        )
     )
     document = result.scalar_one_or_none()
     if not document or not document.post or not _post_is_visible_to_user(document.post, user):
@@ -1216,9 +1326,11 @@ async def _get_accessible_document(
 @app.get("/documents/{document_id}/preview")
 async def preview_document_endpoint(
     document_id: int,
+    request: Request,
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_rate_limit(request, "doc_download", limit=60, window_sec=60)
     document = await _get_accessible_document(document_id, user, db)
     if document.preview_status != "ready" or not document.preview_pdf_path:
         raise HTTPException(status_code=404, detail="Preview is unavailable")
@@ -1227,33 +1339,52 @@ async def preview_document_endpoint(
     if not path or not path.exists():
         raise HTTPException(status_code=404, detail="Preview is unavailable")
 
-    return FileResponse(
-        path,
+    rel_path = path.resolve().relative_to(DOCUMENT_PREVIEWS_ROOT.resolve()).as_posix()
+    return _build_xaccel_response(
+        rel_path=rel_path,
+        is_preview=True,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'inline; filename="{document.id}.pdf"',
-            "X-Content-Type-Options": "nosniff",
-        },
+        content_disposition=f'inline; filename="{document.id}.pdf"',
+        cache_control="private, max-age=86400, immutable",
     )
 
 
 @app.get("/documents/{document_id}/download")
 async def download_document_endpoint(
     document_id: int,
+    request: Request,
     user: models.User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await check_rate_limit(request, "doc_download", limit=60, window_sec=60)
     document = await _get_accessible_document(document_id, user, db)
     path = resolve_document_path(document.stored_path, preview=False)
     if not path or not path.exists():
         raise HTTPException(status_code=404, detail="Document file is unavailable")
 
-    return FileResponse(
-        path,
+    rel_path = path.resolve().relative_to(DOCUMENTS_ROOT.resolve()).as_posix()
+    safe_name = urlquote(document.original_filename or f"document.{document.file_ext}", safe="")
+    content_disposition = f"attachment; filename*=UTF-8''{safe_name}"
+    return _build_xaccel_response(
+        rel_path=rel_path,
+        is_preview=False,
         media_type=document.mime_type or "application/octet-stream",
-        filename=document.original_filename,
-        headers={"X-Content-Type-Options": "nosniff"},
+        content_disposition=content_disposition,
+        cache_control="private, max-age=86400, immutable",
     )
+
+
+@app.get("/config/documents")
+async def documents_config_endpoint():
+    """Public limits/extensions for the document subsystem so the frontend doesn't hardcode them."""
+    return {
+        "max_size_bytes": MAX_DOCUMENT_SIZE,
+        "max_per_post": MAX_DOCUMENTS_PER_POST,
+        "allowed_extensions": [ext.lstrip(".") for ext in ALLOWED_DOCUMENTS.keys()],
+        "mime_types": {
+            ext.lstrip("."): meta["mime"] for ext, meta in ALLOWED_DOCUMENTS.items()
+        },
+    }
 
 # ===== POLL ENDPOINTS (NEW) =====
 

@@ -1,3 +1,5 @@
+import { getDocumentsConfig } from '../api';
+
 export const MAX_DOCUMENTS_PER_POST = 3;
 export const MAX_DOCUMENT_SIZE_BYTES = 25 * 1024 * 1024;
 
@@ -25,6 +27,47 @@ export const DOCUMENT_EXTENSIONS = new Set([
   'txt',
 ]);
 
+const FALLBACK_CONFIG = Object.freeze({
+  max_size_bytes: MAX_DOCUMENT_SIZE_BYTES,
+  max_per_post: MAX_DOCUMENTS_PER_POST,
+  allowed_extensions: Array.from(DOCUMENT_EXTENSIONS),
+});
+
+let cachedConfig = FALLBACK_CONFIG;
+let configFetchStarted = false;
+
+function applyConfig(raw) {
+  if (!raw || typeof raw !== 'object') return FALLBACK_CONFIG;
+  const maxSize = Number(raw.max_size_bytes);
+  const maxPerPost = Number(raw.max_per_post);
+  const allowed = Array.isArray(raw.allowed_extensions)
+    ? raw.allowed_extensions
+        .map((ext) => String(ext || '').toLowerCase().replace(/^\./, ''))
+        .filter(Boolean)
+    : null;
+  cachedConfig = Object.freeze({
+    max_size_bytes: Number.isFinite(maxSize) && maxSize > 0 ? maxSize : FALLBACK_CONFIG.max_size_bytes,
+    max_per_post: Number.isFinite(maxPerPost) && maxPerPost > 0 ? maxPerPost : FALLBACK_CONFIG.max_per_post,
+    allowed_extensions: allowed && allowed.length > 0 ? allowed : FALLBACK_CONFIG.allowed_extensions,
+  });
+  return cachedConfig;
+}
+
+export function ensureDocumentsConfigLoaded() {
+  if (configFetchStarted) return cachedConfig;
+  configFetchStarted = true;
+  getDocumentsConfig()
+    .then(applyConfig)
+    .catch(() => {
+      configFetchStarted = false;
+    });
+  return cachedConfig;
+}
+
+export function getCachedDocumentsConfig() {
+  return cachedConfig;
+}
+
 export const getDocumentExtension = (name = '') => {
   const value = String(name || '').toLowerCase();
   const index = value.lastIndexOf('.');
@@ -49,12 +92,16 @@ export const getDocumentTypeLabel = (ext = '') => {
 
 export const validateDocumentFile = (file) => {
   if (!file) return { valid: false, error: 'Файл не выбран' };
+  ensureDocumentsConfigLoaded();
+  const config = cachedConfig;
   const ext = getDocumentExtension(file.name);
-  if (!DOCUMENT_EXTENSIONS.has(ext)) {
+  const allowed = new Set(config.allowed_extensions);
+  if (!allowed.has(ext)) {
     return { valid: false, error: 'Этот формат документа не поддерживается' };
   }
-  if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
-    return { valid: false, error: 'Документ слишком большой. Максимум 25 МБ' };
+  if (file.size > config.max_size_bytes) {
+    const limitMb = Math.round(config.max_size_bytes / (1024 * 1024));
+    return { valid: false, error: `Документ слишком большой. Максимум ${limitMb} МБ` };
   }
   if (file.size <= 0) {
     return { valid: false, error: 'Документ пустой' };

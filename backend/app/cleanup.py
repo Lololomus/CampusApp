@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import models
 from app.document_utils import (
     DOCUMENT_PREVIEWS_ROOT,
+    DOCUMENT_TMP_ROOT,
     DOCUMENTS_ROOT,
     delete_document_files,
     resolve_document_path,
@@ -214,9 +215,9 @@ async def run_cleanup(
 
     stats["upload_orphaned"] = len(upload_orphans)
 
-    # 3. Сканируем private_documents/
+    # 3. Сканируем private_documents/ (включая tmp/ — туда падают незавершённые загрузки)
     doc_orphans: List[Path] = []
-    for doc_dir in (DOCUMENTS_ROOT, DOCUMENT_PREVIEWS_ROOT):
+    for doc_dir in (DOCUMENTS_ROOT, DOCUMENT_PREVIEWS_ROOT, DOCUMENT_TMP_ROOT):
         resolved_dir = doc_dir.resolve()
         if resolved_dir.exists():
             doc_orphans.extend(

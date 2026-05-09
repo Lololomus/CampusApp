@@ -265,7 +265,12 @@ class Post(Base):
     # Отношения
     author = relationship('User', foreign_keys=[author_id], back_populates='posts')
     comments = relationship('Comment', back_populates='post', cascade='all, delete-orphan')
-    documents = relationship('PostDocument', back_populates='post', cascade='all, delete-orphan')
+    documents = relationship(
+        'PostDocument',
+        back_populates='post',
+        cascade='all, delete-orphan',
+        order_by='PostDocument.created_at',
+    )
     poll = relationship("Poll", back_populates="post", uselist=False, cascade="all, delete-orphan")
 
     # ✅ Фаза 1.2: Составные индексы

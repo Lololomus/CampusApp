@@ -26,6 +26,7 @@ services:
     volumes:
       - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
       - ./backend/uploads:/var/www/uploads:ro
+      - ./backend/private_documents:/var/www/private_documents:ro
 
   bot:
     volumes:

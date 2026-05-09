@@ -1,14 +1,15 @@
+import asyncio
+import hashlib
+import logging
 import os
 import re
 import shutil
-import socket
 import struct
 import subprocess
 import tempfile
 import uuid
 import zipfile
 from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -18,11 +19,25 @@ from starlette.concurrency import run_in_threadpool
 from app.utils import UPLOADS_ROOT, READ_CHUNK_SIZE
 
 
+logger = logging.getLogger(__name__)
+
+
 PRIVATE_DOCUMENTS_ROOT = Path(os.getenv("DOCUMENTS_DIR", str(UPLOADS_ROOT.parent / "private_documents"))).resolve()
 DOCUMENTS_ROOT = PRIVATE_DOCUMENTS_ROOT / "originals"
 DOCUMENT_PREVIEWS_ROOT = PRIVATE_DOCUMENTS_ROOT / "previews"
+DOCUMENT_TMP_ROOT = PRIVATE_DOCUMENTS_ROOT / "tmp"
+
 MAX_DOCUMENT_SIZE = int(os.getenv("MAX_DOCUMENT_SIZE_BYTES", str(25 * 1024 * 1024)))
 MAX_DOCUMENTS_PER_POST = 3
+MAX_TEXT_DOCUMENT_BYTES = int(os.getenv("MAX_TEXT_DOCUMENT_BYTES", str(2 * 1024 * 1024)))
+MAX_UNCOMPRESSED_DOCUMENT_BYTES = int(
+    os.getenv("MAX_UNCOMPRESSED_DOCUMENT_BYTES", str(200 * 1024 * 1024))
+)
+MAX_DOCUMENT_COMPRESSION_RATIO = int(os.getenv("MAX_DOCUMENT_COMPRESSION_RATIO", "100"))
+
+LIBREOFFICE_TIMEOUT_SECONDS = int(os.getenv("LIBREOFFICE_TIMEOUT_SECONDS", "60"))
+LIBREOFFICE_CONCURRENCY = max(1, int(os.getenv("LIBREOFFICE_CONCURRENCY", "2")))
+
 
 ALLOWED_DOCUMENTS: Dict[str, Dict[str, str]] = {
     ".pdf": {"mime": "application/pdf", "kind": "pdf"},
@@ -56,6 +71,18 @@ WINDOWS_LIBREOFFICE_PATHS = (
 
 DOCUMENTS_ROOT.mkdir(parents=True, exist_ok=True)
 DOCUMENT_PREVIEWS_ROOT.mkdir(parents=True, exist_ok=True)
+DOCUMENT_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+_LIBREOFFICE_SEMAPHORE: Optional[asyncio.Semaphore] = None
+
+
+def _get_libreoffice_semaphore() -> asyncio.Semaphore:
+    """Lazy-init semaphore so it binds to the current running loop."""
+    global _LIBREOFFICE_SEMAPHORE
+    if _LIBREOFFICE_SEMAPHORE is None:
+        _LIBREOFFICE_SEMAPHORE = asyncio.Semaphore(LIBREOFFICE_CONCURRENCY)
+    return _LIBREOFFICE_SEMAPHORE
 
 
 class DocumentProcessingError(ValueError):
@@ -73,48 +100,103 @@ def sanitize_original_filename(filename: str) -> str:
     return cleaned
 
 
-async def read_document_content_limited(file: UploadFile) -> bytes:
+def _file_sha256(path: Path) -> str:
+    sha = hashlib.sha256()
+    with open(path, "rb") as fp:
+        while True:
+            chunk = fp.read(READ_CHUNK_SIZE)
+            if not chunk:
+                break
+            sha.update(chunk)
+    return sha.hexdigest()
+
+
+async def save_upload_to_temp(file: UploadFile, ext: str) -> Path:
+    """Stream UploadFile to disk under DOCUMENT_TMP_ROOT without holding it in memory."""
+    tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=ext, prefix="upload_", dir=str(DOCUMENT_TMP_ROOT))
+    tmp_path = Path(tmp_path_str)
     total_size = 0
-    chunks: List[bytes] = []
-    while True:
-        chunk = await file.read(READ_CHUNK_SIZE)
-        if not chunk:
-            break
-        total_size += len(chunk)
-        if total_size > MAX_DOCUMENT_SIZE:
-            raise DocumentProcessingError(f"Document {file.filename} is too large")
-        chunks.append(chunk)
-    return b"".join(chunks)
+    try:
+        with os.fdopen(tmp_fd, "wb") as fp:
+            while True:
+                chunk = await file.read(READ_CHUNK_SIZE)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > MAX_DOCUMENT_SIZE:
+                    raise DocumentProcessingError(
+                        f"Document {file.filename} is too large"
+                    )
+                fp.write(chunk)
+        if total_size == 0:
+            raise DocumentProcessingError("Document is empty")
+        return tmp_path
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
-def validate_document_content(content: bytes, ext: str) -> None:
-    if not content:
-        raise DocumentProcessingError("Document is empty")
+def _validate_zip_against_bombs(archive: zipfile.ZipFile) -> None:
+    total_uncompressed = 0
+    total_compressed = 0
+    for info in archive.infolist():
+        if info.file_size > MAX_UNCOMPRESSED_DOCUMENT_BYTES:
+            raise DocumentProcessingError("Document is suspicious (zip bomb)")
+        total_uncompressed += info.file_size
+        total_compressed += info.compress_size
+    if total_uncompressed > MAX_UNCOMPRESSED_DOCUMENT_BYTES:
+        raise DocumentProcessingError("Document is suspicious (zip bomb)")
+    if total_compressed > 0:
+        ratio = total_uncompressed / total_compressed
+        if ratio > MAX_DOCUMENT_COMPRESSION_RATIO:
+            raise DocumentProcessingError("Document is suspicious (zip bomb)")
+
+
+def validate_document_file(path: Path, ext: str) -> None:
     if ext not in ALLOWED_DOCUMENTS:
         raise DocumentProcessingError("Unsupported document type")
 
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise DocumentProcessingError("Document is unreadable") from exc
+
+    if size == 0:
+        raise DocumentProcessingError("Document is empty")
+
     if ext == ".pdf":
-        if not content.startswith(b"%PDF-"):
+        with open(path, "rb") as fp:
+            head = fp.read(8)
+        if not head.startswith(b"%PDF-"):
             raise DocumentProcessingError("PDF signature mismatch")
         return
 
     if ext == ".rtf":
-        if not content.lstrip().startswith(b"{\\rtf"):
+        with open(path, "rb") as fp:
+            head = fp.read(16)
+        if not head.lstrip().startswith(b"{\\rtf"):
             raise DocumentProcessingError("RTF signature mismatch")
         return
 
     if ext == ".txt":
-        if b"\x00" in content[:4096]:
-            raise DocumentProcessingError("Text document contains binary data")
+        if size > MAX_TEXT_DOCUMENT_BYTES:
+            raise DocumentProcessingError(
+                f"Text document exceeds {MAX_TEXT_DOCUMENT_BYTES // 1024} KB limit"
+            )
         try:
-            content[: min(len(content), 64 * 1024)].decode("utf-8")
+            with open(path, "rb") as fp:
+                data = fp.read()
+            if b"\x00" in data:
+                raise DocumentProcessingError("Text document contains binary data")
+            data.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise DocumentProcessingError("Text document must be UTF-8") from exc
         return
 
     if ext in OOXML_REQUIRED_PARTS:
         try:
-            with zipfile.ZipFile(BytesIO(content)) as archive:
+            with zipfile.ZipFile(path) as archive:
+                _validate_zip_against_bombs(archive)
                 names = set(archive.namelist())
         except zipfile.BadZipFile as exc:
             raise DocumentProcessingError("Office document is not a valid ZIP package") from exc
@@ -124,7 +206,8 @@ def validate_document_content(content: bytes, ext: str) -> None:
 
     if ext in ODF_MIMES:
         try:
-            with zipfile.ZipFile(BytesIO(content)) as archive:
+            with zipfile.ZipFile(path) as archive:
+                _validate_zip_against_bombs(archive)
                 mimetype = archive.read("mimetype")
         except (zipfile.BadZipFile, KeyError) as exc:
             raise DocumentProcessingError("OpenDocument structure mismatch") from exc
@@ -132,25 +215,63 @@ def validate_document_content(content: bytes, ext: str) -> None:
             raise DocumentProcessingError("OpenDocument type mismatch")
 
 
-def scan_document_with_clamav(content: bytes) -> None:
+async def scan_document_with_clamav(
+    path: Path,
+    *,
+    user_id: Optional[int] = None,
+    filename: Optional[str] = None,
+) -> None:
     host = os.getenv("CLAMAV_HOST", "127.0.0.1")
     port = int(os.getenv("CLAMAV_PORT", "3310"))
     timeout = float(os.getenv("CLAMAV_TIMEOUT_SECONDS", "20"))
 
+    async def _do_scan() -> str:
+        reader, writer = await asyncio.open_connection(host, port)
+        try:
+            writer.write(b"zINSTREAM\0")
+            await writer.drain()
+            with open(path, "rb") as fp:
+                while True:
+                    chunk = fp.read(READ_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    writer.write(struct.pack(">I", len(chunk)) + chunk)
+                    await writer.drain()
+            writer.write(struct.pack(">I", 0))
+            await writer.drain()
+            response_bytes = await reader.read(4096)
+            return response_bytes.decode("utf-8", errors="replace")
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except (OSError, ConnectionError):
+                pass
+
     try:
-        with socket.create_connection((host, port), timeout=timeout) as sock:
-            sock.settimeout(timeout)
-            sock.sendall(b"zINSTREAM\0")
-            for offset in range(0, len(content), READ_CHUNK_SIZE):
-                chunk = content[offset:offset + READ_CHUNK_SIZE]
-                sock.sendall(struct.pack(">I", len(chunk)) + chunk)
-            sock.sendall(struct.pack(">I", 0))
-            response = sock.recv(4096).decode("utf-8", errors="replace")
-    except OSError as exc:
+        response = await asyncio.wait_for(_do_scan(), timeout=timeout)
+    except (OSError, asyncio.TimeoutError, ConnectionError) as exc:
+        logger.warning(
+            "clamav unavailable user=%s file=%s error=%s",
+            user_id,
+            filename,
+            exc,
+        )
         raise DocumentProcessingError("Antivirus scanner is unavailable") from exc
 
     clean_response = response.strip().rstrip("\0")
     if not clean_response.endswith(": OK"):
+        try:
+            sha256 = _file_sha256(path)
+        except OSError:
+            sha256 = "?"
+        logger.warning(
+            "clamav FOUND user=%s file=%s sha256=%s response=%r",
+            user_id,
+            filename,
+            sha256,
+            clean_response,
+        )
         raise DocumentProcessingError("Document failed antivirus scan")
 
 
@@ -182,74 +303,70 @@ def convert_document_preview(original_path: Path, preview_path: Path, ext: str) 
         return True
 
     output_dir = preview_path.parent
-    local_binary = os.getenv("LIBREOFFICE_BIN") or shutil.which("libreoffice") or shutil.which("soffice")
+    local_binary = (
+        os.getenv("LIBREOFFICE_BIN")
+        or shutil.which("libreoffice")
+        or shutil.which("soffice")
+    )
     if not local_binary:
-        local_binary = next((str(path) for path in WINDOWS_LIBREOFFICE_PATHS if path.exists()), "")
+        local_binary = next(
+            (str(path) for path in WINDOWS_LIBREOFFICE_PATHS if path.exists()), ""
+        )
 
-    if local_binary:
-        with tempfile.TemporaryDirectory(prefix="doc_preview_") as user_install_dir:
-            command = [
-                local_binary,
-                "--headless",
-                "--nologo",
-                "--nofirststartwizard",
-                "--norestore",
-                f"-env:UserInstallation=file://{user_install_dir}",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(output_dir),
-                str(original_path),
-            ]
-            try:
-                subprocess.run(command, check=True, timeout=60, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except (subprocess.SubprocessError, FileNotFoundError):
-                return "failed"
-
-        return "ready" if finalize_generated_pdf() else "failed"
-
-    docker_binary = shutil.which("docker")
-    if not docker_binary:
-        return "failed"
-
-    try:
-        original_rel = original_path.resolve().relative_to(PRIVATE_DOCUMENTS_ROOT)
-        output_rel = output_dir.resolve().relative_to(PRIVATE_DOCUMENTS_ROOT)
-    except ValueError:
+    if not local_binary:
+        logger.warning("LibreOffice binary not found; preview generation skipped")
         return "failed"
 
     with tempfile.TemporaryDirectory(prefix="doc_preview_") as user_install_dir:
-        user_install_path = Path(user_install_dir)
         command = [
-            docker_binary,
-            "run",
-            "--rm",
-            "-v",
-            f"{PRIVATE_DOCUMENTS_ROOT}:/docs",
-            "-v",
-            f"{user_install_path}:/tmp/lo-profile",
-            os.getenv("LIBREOFFICE_DOCKER_IMAGE", "campusapp-backend"),
-            "libreoffice",
+            local_binary,
             "--headless",
             "--nologo",
             "--nofirststartwizard",
             "--norestore",
-            "-env:UserInstallation=file:///tmp/lo-profile",
+            f"-env:UserInstallation=file://{user_install_dir}",
             "--convert-to",
             "pdf",
             "--outdir",
-            f"/docs/{output_rel.as_posix()}",
-            f"/docs/{original_rel.as_posix()}",
+            str(output_dir),
+            str(original_path),
         ]
         try:
-            subprocess.run(command, check=True, timeout=90, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except (subprocess.SubprocessError, FileNotFoundError):
+            subprocess.run(
+                command,
+                check=True,
+                timeout=LIBREOFFICE_TIMEOUT_SECONDS,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr_tail = (exc.stderr or b"").decode("utf-8", errors="replace")[-2000:]
+            logger.warning(
+                "LibreOffice failed (rc=%s) for %s: %s",
+                exc.returncode,
+                original_path.name,
+                stderr_tail,
+            )
+            return "failed"
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "LibreOffice timed out after %ss for %s",
+                LIBREOFFICE_TIMEOUT_SECONDS,
+                original_path.name,
+            )
+            return "failed"
+        except FileNotFoundError:
+            logger.warning("LibreOffice binary missing at runtime: %s", local_binary)
             return "failed"
 
     return "ready" if finalize_generated_pdf() else "failed"
 
 
-async def process_uploaded_documents(files: List[UploadFile]) -> List[dict]:
+async def process_uploaded_documents(
+    files: List[UploadFile],
+    *,
+    uploader_id: Optional[int] = None,
+) -> List[dict]:
     valid_files = [file for file in files if file and file.filename]
     if len(valid_files) > MAX_DOCUMENTS_PER_POST:
         raise DocumentProcessingError("Maximum 3 documents")
@@ -262,16 +379,27 @@ async def process_uploaded_documents(files: List[UploadFile]) -> List[dict]:
             if ext not in ALLOWED_DOCUMENTS:
                 raise DocumentProcessingError("Unsupported document type")
 
-            content = await read_document_content_limited(file)
-            validate_document_content(content, ext)
-            await run_in_threadpool(scan_document_with_clamav, content)
-
+            tmp_path = await save_upload_to_temp(file, ext)
             stored_rel, stored_abs, preview_rel, preview_abs = make_private_document_paths(ext)
-            tmp_path = stored_abs.with_name(f".tmp_{stored_abs.name}")
-            tmp_path.write_bytes(content)
-            os.replace(tmp_path, stored_abs)
+            try:
+                await run_in_threadpool(validate_document_file, tmp_path, ext)
+                await scan_document_with_clamav(
+                    tmp_path,
+                    user_id=uploader_id,
+                    filename=original_filename,
+                )
+                size_bytes = tmp_path.stat().st_size
+                os.replace(tmp_path, stored_abs)
+            except BaseException:
+                tmp_path.unlink(missing_ok=True)
+                raise
 
-            preview_status = await run_in_threadpool(convert_document_preview, stored_abs, preview_abs, ext)
+            semaphore = _get_libreoffice_semaphore()
+            async with semaphore:
+                preview_status = await run_in_threadpool(
+                    convert_document_preview, stored_abs, preview_abs, ext
+                )
+
             if preview_status != "ready":
                 preview_rel = ""
                 if preview_abs.exists():
@@ -283,7 +411,7 @@ async def process_uploaded_documents(files: List[UploadFile]) -> List[dict]:
                 "preview_pdf_path": preview_rel or None,
                 "file_ext": ext.lstrip("."),
                 "mime_type": ALLOWED_DOCUMENTS[ext]["mime"],
-                "size_bytes": len(content),
+                "size_bytes": size_bytes,
                 "scan_status": "clean",
                 "preview_status": preview_status,
             })
@@ -302,6 +430,14 @@ def resolve_document_path(relative_path: Optional[str], preview: bool = False) -
         return None
     root = DOCUMENT_PREVIEWS_ROOT if preview else DOCUMENTS_ROOT
     clean = str(relative_path).replace("\\", "/").lstrip("/")
+    if not clean:
+        return None
+    if (
+        clean.startswith("/")
+        or Path(clean).is_absolute()
+        or (len(clean) >= 2 and clean[1] == ":")
+    ):
+        return None
     candidate = (root / clean).resolve()
     root_resolved = root.resolve()
     if root_resolved not in candidate.parents and candidate != root_resolved:
