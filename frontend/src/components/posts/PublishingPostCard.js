@@ -36,6 +36,9 @@ function PublishingPostCard({ task }) {
     subtitle = task.errorMessage || 'Попробуйте ещё раз';
     StatusIcon = AlertTriangle;
     iconSpin = false;
+  } else if (status === 'processing') {
+    title = 'РћР±СЂР°Р±Р°С‚С‹РІР°РµРј РјРµРґРёР°вЂ¦';
+    subtitle = 'Р¤Р°Р№Р»С‹ РґРѕС€Р»Рё РґРѕ СЃРµСЂРІРµСЂР°. Р“РѕС‚РѕРІРёРј РІРёРґРµРѕ Рё РґРѕРєСѓРјРµРЅС‚С‹';
   } else {
     // uploading
     if (progress > 0 && progress < 100) {
@@ -43,7 +46,7 @@ function PublishingPostCard({ task }) {
     }
   }
 
-  const showCancel = status === 'uploading';
+  const showCancel = status === 'uploading' || status === 'processing';
   const showRetry = status === 'error';
   const showRecover = status === 'error';
 
@@ -88,7 +91,7 @@ function PublishingPostCard({ task }) {
         )}
       </div>
 
-      {status === 'uploading' && (
+      {(status === 'uploading' || status === 'processing') && (
         <div style={styles.progressTrack}>
           <div
             style={{

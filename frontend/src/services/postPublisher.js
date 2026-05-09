@@ -4,7 +4,7 @@
 // Управляет жизненным циклом задачи в zustand store, прогрессом аплоада,
 // AbortController'ом и тостами по завершении.
 
-import { createPost } from '../api';
+import { createPost, getPost } from '../api';
 import useStore from '../store';
 import { toast } from '../components/shared/Toast';
 
@@ -13,10 +13,35 @@ import { toast } from '../components/shared/Toast';
 // отрисовывается параллельно — длинный success hold создавал бы дубликат.
 const SUCCESS_HOLD_MS = 250;
 const TASK_ID_PREFIX = 'pub';
+const MEDIA_POLL_INTERVAL_MS = 4000;
+const MEDIA_POLL_MAX_ATTEMPTS = 45;
 
 function generateTaskId() {
   const rand = Math.random().toString(36).slice(2, 8);
   return `${TASK_ID_PREFIX}-${Date.now()}-${rand}`;
+}
+
+function hasProcessingMedia(post) {
+  const images = Array.isArray(post?.images) ? post.images : [];
+  const documents = Array.isArray(post?.documents) ? post.documents : [];
+  return (
+    images.some((item) => item?.processing_status === 'pending' || item?.processing_status === 'processing') ||
+    documents.some((doc) => doc?.scan_status === 'pending' || doc?.preview_status === 'pending')
+  );
+}
+
+async function pollPostMediaUntilReady(postId) {
+  for (let attempt = 0; attempt < MEDIA_POLL_MAX_ATTEMPTS; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, MEDIA_POLL_INTERVAL_MS));
+    try {
+      const post = await getPost(postId);
+      useStore.getState().updatePost(postId, post);
+      if (!hasProcessingMedia(post)) return post;
+    } catch (error) {
+      console.warn('[postPublisher] media poll failed', { postId, attempt, error });
+    }
+  }
+  return null;
 }
 
 /**
@@ -202,7 +227,8 @@ async function runUpload(taskId, formData, signal) {
     lastProgressAt = now;
 
     const speedKbps = sinceLastMs > 0 ? Math.round((deltaBytes / 1024) / (sinceLastMs / 1000)) : 0;
-    const pct = Math.round((event.loaded / event.total) * 100);
+    const rawPct = Math.round((event.loaded / event.total) * 100);
+    const pct = rawPct >= 100 ? 95 : Math.min(95, rawPct);
 
     console.info(
       `[postPublisher] task=${taskId} progress: ${event.loaded}/${event.total} bytes (${pct}%) +${deltaBytes}B in ${sinceLastMs}ms ~${speedKbps}KB/s elapsed=${elapsedMs}ms`,
@@ -211,7 +237,10 @@ async function runUpload(taskId, formData, signal) {
     const live = useStore.getState();
     const exists = live.publishingTasks.some((t) => t.id === taskId);
     if (exists) {
-      live.updatePublishingTask(taskId, { progress: pct });
+      live.updatePublishingTask(taskId, {
+        progress: pct,
+        status: rawPct >= 100 ? 'processing' : 'uploading',
+      });
     }
   };
 
@@ -244,6 +273,10 @@ async function runUpload(taskId, formData, signal) {
       createdPost: newPost,
     });
     live.clearCreateContentDraft();
+
+    if (hasProcessingMedia(newPost)) {
+      void pollPostMediaUntilReady(newPost.id);
+    }
 
     // Тост с кнопкой "Перейти к посту"
     toast.success('Пост опубликован', {

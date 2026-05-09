@@ -20,20 +20,20 @@ function hasOffscreenCanvas() {
   return typeof OffscreenCanvas !== 'undefined';
 }
 
-export function isClientVideoTranscodeSupported() {
+export async function isClientVideoTranscodeSupported() {
   if (typeof VideoEncoder === 'undefined' || typeof VideoDecoder === 'undefined') return false;
   if (typeof VideoFrame === 'undefined') return false;
   if (!hasOffscreenCanvas()) return false;
   if (typeof EncodedVideoChunk === 'undefined' || typeof EncodedAudioChunk === 'undefined') return false;
   try {
-    const ok = VideoEncoder.isTypeSupported({
+    const ok = await VideoEncoder.isConfigSupported({
       codec: 'avc1.42E01E',
       width: 640,
       height: 360,
       bitrate: 1_000_000,
       framerate: 30,
     });
-    return Boolean(ok);
+    return Boolean(ok?.supported);
   } catch {
     return false;
   }
@@ -47,27 +47,26 @@ export function hasAudioWebCodecs() {
  * Клиентский транскод только если файл уже не проходит лимит «на выход» (100 МБ), но ещё в допустимом сыром лимите (400 МБ).
  * Иначе грузим как есть (до 100 МБ) — сервер при необходимости дожимает.
  */
-export function shouldRunClientVideoTranscode(file) {
+export async function shouldRunClientVideoTranscode(file) {
   if (!file || !isIsoBmffVideoFile(file)) return false;
-  if (!isClientVideoTranscodeSupported()) return false;
+  if (!(await isClientVideoTranscodeSupported())) return false;
   if (file.size <= VIDEO_OUTPUT_MAX_BYTES) return false;
   if (file.size > VIDEO_INPUT_MAX_BYTES) return false;
   return true;
 }
 
-export function pickAvcCodec(width, height, bitrate) {
+export async function pickAvcCodec(width, height, bitrate) {
   const candidates = ['avc1.640028', 'avc1.4d4028', 'avc1.42E01E'];
   for (const codec of candidates) {
     try {
-      if (
-        VideoEncoder.isTypeSupported({
+      const support = await VideoEncoder.isConfigSupported({
           codec,
           width,
           height,
           bitrate: bitrate || TARGET_VIDEO_BITRATE,
           framerate: 30,
-        })
-      ) {
+        });
+      if (support?.supported) {
         return codec;
       }
     } catch {

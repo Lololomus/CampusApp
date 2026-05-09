@@ -451,6 +451,18 @@ def get_image_urls(images_json: Union[str, List]) -> List[dict]:
                 })
             elif isinstance(item, dict):
                 media_type = item.get("type", "image")
+                processing_status = item.get("processing_status")
+                if media_type == "video" and processing_status and not item.get("url"):
+                    result.append({
+                        "type": "video",
+                        "url": "",
+                        "w": item.get("w", 16),
+                        "h": item.get("h", 9),
+                        "processing_status": processing_status,
+                        "job_id": item.get("job_id"),
+                        "error_code": item.get("error_code"),
+                    })
+                    continue
                 url_kind = "videos" if media_type == "video" else "images"
                 normalized_url = normalize_uploads_path(item.get("url", ""), url_kind)
                 if not normalized_url:
@@ -462,6 +474,12 @@ def get_image_urls(images_json: Union[str, List]) -> List[dict]:
                     "w": item.get("w", 800),
                     "h": item.get("h", 800),
                 }
+                if processing_status:
+                    image_meta["processing_status"] = processing_status
+                if item.get("job_id") is not None:
+                    image_meta["job_id"] = item.get("job_id")
+                if item.get("error_code"):
+                    image_meta["error_code"] = item.get("error_code")
                 if item.get("format"):
                     image_meta["format"] = item.get("format")
                 if item.get("size_bytes") is not None:

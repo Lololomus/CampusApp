@@ -323,11 +323,14 @@ class PollResponse(BaseModel):
 class ImageMeta(BaseModel):
     """Model for image/video metadata"""
     type: str = "image"                    # "image" | "video"
-    url: str
-    w: int
-    h: int
+    url: Optional[str] = None
+    w: int = 0
+    h: int = 0
     format: Optional[str] = None
     size_bytes: Optional[int] = None
+    processing_status: Optional[str] = None
+    job_id: Optional[int] = None
+    error_code: Optional[str] = None
     # Поля для видео (None для изображений)
     duration: Optional[float] = None
     thumbnail_url: Optional[str] = None

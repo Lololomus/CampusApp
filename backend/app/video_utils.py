@@ -3,6 +3,7 @@
 # По аналогии с utils.py для изображений, но с subprocess вместо Pillow.
 
 import json
+import logging
 import os
 import posixpath
 import shutil
@@ -18,6 +19,8 @@ from fastapi import UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.utils import UPLOADS_ROOT, _extract_upload_parts
+
+logger = logging.getLogger(__name__)
 
 # ================= CONFIG =================
 
@@ -328,6 +331,79 @@ def _generate_thumbnail(video_path: Path, thumb_path: Path) -> Tuple[int, int]:
 
 # ================= MAIN PIPELINE =================
 
+def _validate_video_magic_from_path(input_path: Path) -> None:
+    with open(input_path, "rb") as fp:
+        head = fp.read(64)
+    if not verify_video_magic_bytes(head):
+        raise ValueError("Unsupported video format. Allowed: MP4, MOV, WebM")
+
+
+def process_video_file_sync(input_path: Path, *, request_id: str = "-") -> dict:
+    """Full video pipeline for an already persisted upload."""
+    input_path = Path(input_path)
+    _validate_video_magic_from_path(input_path)
+
+    video_rel, video_temp, video_final = _make_video_storage_paths("videos", "mp4")
+    thumb_rel, thumb_temp, thumb_final = _make_video_storage_paths("thumbs", "webp")
+
+    try:
+        logger.info("video stage=ffprobe request_id=%s path=%s", request_id, input_path.name)
+        probe = _probe_video(input_path)
+
+        logger.info("video stage=ffmpeg request_id=%s path=%s", request_id, input_path.name)
+        _compress_video(input_path, video_temp, probe)
+
+        logger.info("video stage=thumbnail request_id=%s path=%s", request_id, input_path.name)
+        _generate_thumbnail(video_temp, thumb_temp)
+
+        compressed_probe = _probe_video(video_temp)
+        vid_w = compressed_probe["width"]
+        vid_h = compressed_probe["height"]
+        duration = compressed_probe["duration"]
+
+        try:
+            thumb_probe_result = subprocess.run(
+                [
+                    _resolve_media_binary("ffprobe"), "-v", "quiet",
+                    "-print_format", "json",
+                    "-show_streams", str(thumb_temp),
+                ],
+                capture_output=True, timeout=10, check=True,
+            )
+            thumb_data = json.loads(thumb_probe_result.stdout)
+            thumb_stream = next(
+                (s for s in thumb_data.get("streams", []) if s.get("codec_type") == "video"),
+                {}
+            )
+            thumb_w = int(thumb_stream.get("width", THUMB_MAX_SIDE))
+            thumb_h = int(thumb_stream.get("height", THUMB_MAX_SIDE))
+        except Exception:
+            thumb_w, thumb_h = THUMB_MAX_SIDE, THUMB_MAX_SIDE
+
+        os.replace(video_temp, video_final)
+        os.replace(thumb_temp, thumb_final)
+
+        return {
+            "type": "video",
+            "url": video_rel,
+            "thumbnail_url": thumb_rel,
+            "w": vid_w,
+            "h": vid_h,
+            "duration": round(duration, 2),
+            "format": "mp4",
+            "size_bytes": video_final.stat().st_size,
+            "thumbnail_w": thumb_w,
+            "thumbnail_h": thumb_h,
+        }
+    except Exception:
+        for p in (video_temp, thumb_temp):
+            try:
+                if p.exists():
+                    p.unlink(missing_ok=True)
+            except Exception:
+                pass
+        raise
+
 def process_video_sync(content: bytes) -> dict:
     """
     Полный синхронный пайплайн обработки видео.
@@ -436,21 +512,23 @@ async def process_uploaded_video(file: UploadFile) -> dict:
     Читает файл чанками (лимит 100MB), затем обрабатывает в threadpool.
     """
     total_size = 0
-    chunks = []
+    tmp_path = Path(tempfile.gettempdir()) / f".tmp_video_upload_{uuid.uuid4().hex}"
     try:
-        while True:
-            chunk = await file.read(READ_CHUNK_SIZE)
-            if not chunk:
-                break
-            total_size += len(chunk)
-            if total_size > MAX_VIDEO_FILE_SIZE:
-                raise ValueError(
-                    f"Видео слишком большое (>{MAX_VIDEO_FILE_SIZE // (1024*1024)}MB)"
-                )
-            chunks.append(chunk)
-        content = b"".join(chunks)
-        return await run_in_threadpool(process_video_sync, content)
+        with open(tmp_path, "wb") as fp:
+            while True:
+                chunk = await file.read(READ_CHUNK_SIZE)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > MAX_VIDEO_FILE_SIZE:
+                    raise ValueError(
+                        f"Видео слишком большое (>{MAX_VIDEO_FILE_SIZE // (1024*1024)}MB)"
+                    )
+                fp.write(chunk)
+        logger.info("video stage=upload_read request_id=- bytes=%s", total_size)
+        return await run_in_threadpool(process_video_file_sync, tmp_path)
     finally:
+        tmp_path.unlink(missing_ok=True)
         await file.close()
 
 

@@ -58,6 +58,11 @@ const getImageUrl = (img) => {
   return resolveImageUrl(filename, 'images');
 };
 
+const isProcessingMedia = (item) => {
+  const status = item && typeof item === 'object' ? item.processing_status : '';
+  return status === 'pending' || status === 'processing' || status === 'failed';
+};
+
 const getPostDetailMediaSourceRect = (element, objectFit = 'cover') => captureSourceRect(element, {
   objectFit,
   borderRadius: 0,
@@ -429,6 +434,7 @@ function PostDetail() {
       suppressMediaOpenRef.current = false;
       return;
     }
+    if (isProcessingMedia(currentMedia) && !getImageUrl(currentMedia)) return;
     hapticFeedback('light');
     const sourceRect = resolvePostMediaSourceRect(currentImageIndex);
     openMediaViewer({
@@ -440,7 +446,7 @@ function PostDetail() {
       onIndexChange: setCurrentImageIndex,
       meta: viewerMeta,
     });
-  }, [currentImageIndex, images, openMediaViewer, postMediaViewerOwnerId, resolvePostMediaSourceRect, viewerMeta]);
+  }, [currentImageIndex, currentMedia, images, openMediaViewer, postMediaViewerOwnerId, resolvePostMediaSourceRect, viewerMeta]);
 
   const { dateText, isEdited } = useMemo(() => {
     if (!post) return { dateText: '', isEdited: false };
@@ -1010,12 +1016,18 @@ function PostDetail() {
                             visibility: isMediaSourceHidden(postMediaViewerOwnerId, index) ? 'hidden' : 'visible',
                           }}
                         >
-                          <img
-                            src={slide.url}
-                            alt=""
-                            style={{ ...styles.image, objectFit: slide.fit }}
-                            draggable={false}
-                          />
+                          {slide.url ? (
+                            <img
+                              src={slide.url}
+                              alt=""
+                              style={{ ...styles.image, objectFit: slide.fit }}
+                              draggable={false}
+                            />
+                          ) : (
+                            <div style={styles.processingMedia}>
+                              {slide.item?.processing_status === 'failed' ? 'Видео не обработалось' : 'Видео обрабатывается'}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1533,6 +1545,19 @@ const styles = {
   },
   image: {
     width: '100%', height: '100%', objectFit: 'cover', display: 'block', userSelect: 'none', WebkitUserSelect: 'none',
+  },
+  processingMedia: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    textAlign: 'center',
+    color: theme.colors.text,
+    background: theme.colors.surfaceElevated,
+    fontSize: 14,
+    fontWeight: 700,
   },
   imageCounter: {
     position: 'absolute', top: theme.spacing.md, right: theme.spacing.md,

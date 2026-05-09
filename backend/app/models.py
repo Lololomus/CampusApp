@@ -306,6 +306,32 @@ class PostDocument(Base):
     )
 
 
+class MediaProcessingJob(Base):
+    __tablename__ = 'media_processing_jobs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey('posts.id', ondelete='CASCADE'), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey('post_documents.id', ondelete='CASCADE'), nullable=True, index=True)
+
+    kind = Column(String(20), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default='pending', index=True)
+    source_path = Column(String(500), nullable=False)
+    result_payload = Column(JSONB, nullable=True)
+    error_code = Column(String(100), nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+
+    created_at = Column(DateTime, default=lambda: datetime.utcnow(), index=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    post = relationship('Post')
+    document = relationship('PostDocument')
+
+    __table_args__ = (
+        Index('ix_media_jobs_status_kind_created', 'status', 'kind', 'created_at'),
+    )
+
+
 class Poll(Base):
     """Модель опроса для постов"""
     __tablename__ = "polls"

@@ -59,6 +59,7 @@ function DocumentAttachmentList({ documents = [], compact = false }) {
           const Icon = getIcon(document.file_ext);
           const typeLabel = getDocumentTypeLabel(document.file_ext);
           const canPreview = document.has_preview && document.preview_status === 'ready';
+          const canDownload = document.scan_status === 'clean' && Boolean(document.download_url);
           const accent = getAccent(document.file_ext);
 
           return (
@@ -91,10 +92,16 @@ function DocumentAttachmentList({ documents = [], compact = false }) {
               <span
                 role="button"
                 tabIndex={0}
-                style={styles.download}
-                onClick={(event) => handleDownload(event, document)}
+                style={{ ...styles.download, ...(!canDownload ? styles.downloadDisabled : {}) }}
+                onClick={(event) => {
+                  if (!canDownload) {
+                    event.stopPropagation();
+                    return;
+                  }
+                  handleDownload(event, document);
+                }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') handleDownload(event, document);
+                  if (canDownload && (event.key === 'Enter' || event.key === ' ')) handleDownload(event, document);
                 }}
                 aria-label="Скачать документ"
               >
@@ -203,6 +210,9 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  downloadDisabled: {
+    opacity: 0.35,
   },
 };
 

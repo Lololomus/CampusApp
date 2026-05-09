@@ -59,6 +59,25 @@ services:
     init: true
     logging: *json-logging
 
+  backend-worker:
+    mem_limit: 1g
+    memswap_limit: 1g
+    command: ["python", "-m", "app.media_worker"]
+    volumes:
+      - ${CAMPUSAPP_UPLOADS_DIR:-/srv/campusapp/uploads}:/app/uploads
+      - ${CAMPUSAPP_DOCUMENTS_DIR:-/srv/campusapp/documents}:/app/private_documents
+      - ${CAMPUSAPP_REPORTS_DIR:-/srv/campusapp/reports}:/app/reports
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    init: true
+    logging: *json-logging
+
   bot:
     mem_limit: 512m
     memswap_limit: 512m

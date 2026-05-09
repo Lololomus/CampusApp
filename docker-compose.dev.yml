@@ -20,6 +20,12 @@ services:
       - ./backend:/app
       - ./reports:/app/reports
 
+  backend-worker:
+    command: ["python", "-m", "app.media_worker"]
+    volumes:
+      - ./backend:/app
+      - ./reports:/app/reports
+
   frontend:
     ports:
       - "3000:8080"

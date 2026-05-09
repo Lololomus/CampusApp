@@ -17,6 +17,17 @@ function getItemThumbnailUrl(item) {
   return resolveImageUrl(filename, 'images');
 }
 
+function getProcessingStatus(item) {
+  if (!item || typeof item !== 'object') return '';
+  return item.processing_status || '';
+}
+
+function getProcessingLabel(status) {
+  if (status === 'failed') return 'Видео не обработалось';
+  if (status === 'pending' || status === 'processing') return 'Видео обрабатывается';
+  return '';
+}
+
 const SINGLE_MEDIA_MAX_HEIGHT = 'min(640px, 78vh)';
 const LOW_TRUST_SQUARE_SIZES = new Set([800, 1000]);
 const MULTI_SIDE_CROP_CONTAIN_THRESHOLD = 0.12;
@@ -163,6 +174,21 @@ const fallbackStyle = {
   zIndex: 1,
 };
 
+const processingOverlayStyle = {
+  position: 'absolute',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  textAlign: 'center',
+  padding: 16,
+  color: theme.colors.text,
+  fontSize: 13,
+  fontWeight: 700,
+  background: theme.colors.surfaceElevated,
+  zIndex: 3,
+};
+
 const playIconStyle = {
   position: 'absolute',
   top: '50%',
@@ -305,14 +331,18 @@ const MediaCell = React.memo(function MediaCell({ item, index, total, maxVisible
 
   const url = getItemThumbnailUrl(item);
   const isVideo = typeof item === 'object' && item?.type === 'video';
+  const processingStatus = getProcessingStatus(item);
+  const processingLabel = getProcessingLabel(processingStatus);
+  const isProcessingPlaceholder = Boolean(processingLabel) && !url;
   const isOverflowCell = index === maxVisible - 1 && total > maxVisible;
   const overflowCount = total - maxVisible + 1;
   const mediaFit = getMultiMediaFit(item, measuredAr, cellAspect);
 
   const handleClick = useCallback((e) => {
     e.stopPropagation();
+    if (isProcessingPlaceholder) return;
     onItemClick(index, getSourceRect(e.currentTarget, mediaFit));
-  }, [index, mediaFit, onItemClick]);
+  }, [index, isProcessingPlaceholder, mediaFit, onItemClick]);
 
   return (
     <div
@@ -321,7 +351,7 @@ const MediaCell = React.memo(function MediaCell({ item, index, total, maxVisible
       style={{
         position: 'relative',
         overflow: 'hidden',
-        cursor: 'pointer',
+        cursor: isProcessingPlaceholder ? 'default' : 'pointer',
         width: '100%',
         height: '100%',
         backgroundColor: mediaFit === 'contain' ? '#000' : theme.colors.surfaceElevated,
@@ -334,6 +364,7 @@ const MediaCell = React.memo(function MediaCell({ item, index, total, maxVisible
       )}
       {!isHidden && !loaded && !failed && <div style={shimmerStyle} />}
       {!isHidden && failed && <div style={fallbackStyle}>Р¤РѕС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕ</div>}
+      {!isHidden && isProcessingPlaceholder && <div style={processingOverlayStyle}>{processingLabel}</div>}
       {url && (
         <img
           src={url}
@@ -360,7 +391,7 @@ const MediaCell = React.memo(function MediaCell({ item, index, total, maxVisible
           onError={() => setFailed(true)}
         />
       )}
-      {!isHidden && isVideo && !failed && (
+      {!isHidden && isVideo && !failed && !isProcessingPlaceholder && (
         <div style={playIconStyle}>
           <svg width={18} height={18} viewBox="0 0 18 18" fill="white">
             <polygon points="5,2 16,9 5,16" />
@@ -421,6 +452,7 @@ const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVi
     const measuredAr = naturalAspectRatios[0];
     const knownAr = getEffectiveMediaAspectRatio(item, measuredAr);
     const mediaFit = getSingleMediaFit(item, measuredAr);
+    const isSingleProcessingPlaceholder = Boolean(getProcessingLabel(getProcessingStatus(item))) && !getItemThumbnailUrl(item);
     return (
       <div style={wrapStyle}>
         <style>{`@keyframes mediaGridShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
@@ -432,13 +464,17 @@ const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVi
             width: '100%',
             boxSizing: 'border-box',
             overflow: 'hidden',
-            cursor: 'pointer',
+            cursor: isSingleProcessingPlaceholder ? 'default' : 'pointer',
             backgroundColor: mediaFit === 'contain' ? '#000' : theme.colors.surfaceElevated,
             minHeight: knownAr ? undefined : 200,
             maxHeight: SINGLE_MEDIA_MAX_HEIGHT,
             aspectRatio: `${getSingleDisplayAr(item, measuredAr)}`,
           }}
-          onClick={(e) => { e.stopPropagation(); onItemClick(0, getSourceRect(e.currentTarget, mediaFit)); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isSingleProcessingPlaceholder) return;
+            onItemClick(0, getSourceRect(e.currentTarget, mediaFit));
+          }}
         >
           <SingleCell
             item={item}
@@ -591,6 +627,9 @@ function SingleCell({ item, total, maxVisible, measuredAr, onNaturalAspectRatio,
 
   const url = getItemThumbnailUrl(item);
   const isVideo = typeof item === 'object' && item?.type === 'video';
+  const processingStatus = getProcessingStatus(item);
+  const processingLabel = getProcessingLabel(processingStatus);
+  const isProcessingPlaceholder = Boolean(processingLabel) && !url;
   const isOverflowCell = 0 === maxVisible - 1 && total > maxVisible;
   const overflowCount = total - maxVisible + 1;
   const mediaFit = getSingleMediaFit(item, measuredAr);
@@ -601,6 +640,7 @@ function SingleCell({ item, total, maxVisible, measuredAr, onNaturalAspectRatio,
         <ContainFillBackground hidden={isHidden} />
       )}
       {!isHidden && !loaded && !failed && <div style={shimmerStyle} />}
+      {!isHidden && isProcessingPlaceholder && <div style={processingOverlayStyle}>{processingLabel}</div>}
       {!isHidden && failed && <div style={fallbackStyle}>Р¤РѕС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕ</div>}
       {url && (
         <img
@@ -628,7 +668,7 @@ function SingleCell({ item, total, maxVisible, measuredAr, onNaturalAspectRatio,
           onError={() => setFailed(true)}
         />
       )}
-      {!isHidden && isVideo && !failed && (
+      {!isHidden && isVideo && !failed && !isProcessingPlaceholder && (
         <div style={playIconStyle}>
           <svg width={18} height={18} viewBox="0 0 18 18" fill="white">
             <polygon points="5,2 16,9 5,16" />

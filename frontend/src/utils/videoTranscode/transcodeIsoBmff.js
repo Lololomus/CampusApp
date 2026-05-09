@@ -155,7 +155,7 @@ export async function transcodeIsoBmffTo1080pMp4(file, options = {}) {
               ),
             );
 
-            const avcCodec = pickAvcCodec(encW, encH, TARGET_VIDEO_BITRATE);
+            const avcCodec = await pickAvcCodec(encW, encH, TARGET_VIDEO_BITRATE);
             if (!avcCodec) {
               reject(new VideoTranscodeError(TRANSCODE_ERROR.VIDEO_CODEC, 'no avc encoder'));
               return;

@@ -90,6 +90,33 @@ services:
     networks:
       - campus_internal
 
+  backend-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    command: ["python", "-m", "app.media_worker"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-local-redis-password}@redis:6379/0
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+      UPLOADS_DIR: /app/uploads
+      DOCUMENTS_DIR: /app/private_documents
+      ANALYTICS_REPORTS_DIR: /app/reports
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clamav:
+        condition: service_started
+    networks:
+      - campus_internal
+
   bot:
     build:
       context: ./bot

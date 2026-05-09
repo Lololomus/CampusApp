@@ -114,11 +114,11 @@ export const validateVideoFile = async (file) => {
   const displayDimensions = await loadVideoDisplayDimensions(file);
   const transcodeCandidate =
     isIsoBmffVideoFile(file) &&
-    isClientVideoTranscodeSupported() &&
-    shouldRunClientVideoTranscode(file);
+    (await isClientVideoTranscodeSupported()) &&
+    (await shouldRunClientVideoTranscode(file));
 
   if (file.size > VIDEO_OUTPUT_MAX_BYTES) {
-    const canLargeInput = isIsoBmffVideoFile(file) && isClientVideoTranscodeSupported();
+    const canLargeInput = isIsoBmffVideoFile(file) && (await isClientVideoTranscodeSupported());
     if (!canLargeInput) {
       return {
         valid: false,

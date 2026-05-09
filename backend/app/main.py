@@ -35,6 +35,17 @@ from app.document_utils import (
 )
 from urllib.parse import quote as urlquote
 from app.video_utils import process_uploaded_video
+from app.media_processing import (
+    JOB_PENDING,
+    KIND_DOCUMENT,
+    KIND_VIDEO,
+    create_media_job,
+    replace_video_job_payload,
+    resolve_job_source_path,
+    stage_document_upload,
+    stage_video_upload,
+    video_processing_placeholder,
+)
 from app.auth_service import decode_authorization_header, require_user, optional_user
 from app.config import get_settings
 from app.rate_limiter import check_rate_limit, close_redis
@@ -73,10 +84,71 @@ def _serialize_post_documents(documents) -> List[Dict]:
             "preview_status": doc.preview_status,
             "has_preview": has_preview,
             "preview_url": f"/documents/{doc.id}/preview" if has_preview else None,
-            "download_url": f"/documents/{doc.id}/download",
+            "download_url": f"/documents/{doc.id}/download" if doc.scan_status == "clean" else None,
             "created_at": doc.created_at,
         })
     return items
+
+
+def _request_id(request: Optional[Request]) -> str:
+    if request is None:
+        return "-"
+    headers = getattr(request, "headers", {}) or {}
+    return headers.get("x-request-id") or headers.get("x-correlation-id") or "-"
+
+
+def _cleanup_staged_sources(*source_paths: Optional[str]) -> None:
+    for source_path in source_paths:
+        path = resolve_job_source_path(source_path or "")
+        if path:
+            path.unlink(missing_ok=True)
+
+
+async def _enqueue_staged_media_jobs(
+    db: AsyncSession,
+    *,
+    post: models.Post,
+    uploader_id: int,
+    staged_video: Optional[tuple[str, int]] = None,
+    staged_documents: Optional[List[dict]] = None,
+) -> None:
+    if staged_video:
+        source_path, _size_bytes = staged_video
+        job = await create_media_job(
+            db,
+            post_id=post.id,
+            kind=KIND_VIDEO,
+            source_path=source_path,
+        )
+        placeholder = video_processing_placeholder(job.id, JOB_PENDING)
+        post.images = replace_video_job_payload(post.images or [], job.id, placeholder)
+
+    for staged in staged_documents or []:
+        document = models.PostDocument(
+            post_id=post.id,
+            uploader_id=uploader_id,
+            original_filename=staged["original_filename"],
+            stored_path=staged["source_path"],
+            preview_pdf_path=None,
+            file_ext=staged["file_ext"],
+            mime_type=staged["mime_type"],
+            size_bytes=staged["size_bytes"],
+            scan_status="pending",
+            preview_status="pending",
+        )
+        db.add(document)
+        await db.flush()
+        await create_media_job(
+            db,
+            post_id=post.id,
+            document_id=document.id,
+            kind=KIND_DOCUMENT,
+            source_path=staged["source_path"],
+        )
+
+    if staged_video or staged_documents:
+        await db.commit()
+        await db.refresh(post)
 
 
 def _post_is_visible_to_user(post: models.Post, user: models.User) -> bool:
@@ -938,21 +1010,25 @@ async def create_post_endpoint(
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
 
+    staged_video = None
+    staged_documents = []
     try:
-        # valid_images instead of images
-        images_meta = []
-        documents_meta = []
+        request_id = _request_id(request)
         images_meta = await process_uploaded_files(valid_images) if valid_images else []
         if valid_video:
-            video_meta = await process_uploaded_video(valid_video)
-            images_meta.append(video_meta)
-        documents_meta = await process_uploaded_documents(
-            valid_documents, uploader_id=user.id
-        ) if valid_documents else []
-        create_kwargs = {"images_meta": images_meta}
-        if documents_meta:
-            create_kwargs["documents_meta"] = documents_meta
-        post = await crud.create_post(db, post_data, user.id, **create_kwargs)
+            staged_video = await stage_video_upload(valid_video, request_id=request_id)
+            images_meta.append(video_processing_placeholder())
+        for document_file in valid_documents:
+            staged_documents.append(await stage_document_upload(document_file, request_id=request_id))
+
+        post = await crud.create_post(db, post_data, user.id, images_meta=images_meta)
+        await _enqueue_staged_media_jobs(
+            db,
+            post=post,
+            uploader_id=user.id,
+            staged_video=staged_video,
+            staged_documents=staged_documents,
+        )
         
         if poll_data:
             try:
@@ -963,10 +1039,11 @@ async def create_post_endpoint(
                 logger.debug(f"Ошибка создания опроса: {e}")
     
     except ValueError as e:
-        if "documents_meta" in locals() and documents_meta:
-            delete_document_files(documents_meta)
         if "images_meta" in locals() and images_meta:
             delete_all_media(images_meta)
+        if staged_video:
+            _cleanup_staged_sources(staged_video[0])
+        _cleanup_staged_sources(*(item.get("source_path") for item in staged_documents))
         raise HTTPException(status_code=400, detail=str(e))
 
     await analytics_service.record_server_event(
@@ -977,14 +1054,14 @@ async def create_post_endpoint(
         entity_id=post.id,
         properties_json={"category": category},
     )
-    if documents_meta:
+    if staged_documents:
         await analytics_service.record_server_event(
             db,
             user.id,
             "document_upload",
             entity_type="post",
             entity_id=post.id,
-            properties_json={"count": len(documents_meta)},
+            properties_json={"count": len(staged_documents)},
         )
 
     return await get_post_endpoint(post.id, user=user, db=db)
@@ -1143,6 +1220,7 @@ async def delete_post_endpoint(post_id: int, user: models.User = Depends(require
 @app.patch("/posts/{post_id}", response_model=schemas.PostResponse)
 async def update_post_endpoint(
     post_id: int,
+    request: Request = None,
     title: Optional[str] = Form(None),
     body: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
@@ -1232,16 +1310,19 @@ async def update_post_endpoint(
     existing_document_ids = {doc.id for doc in (getattr(post, "documents", []) or [])}
     removed_document_ids = sorted(existing_document_ids - set(keep_document_ids))
 
+    staged_video = None
+    staged_documents = []
     try:
+        request_id = _request_id(request)
         new_images_meta = await process_uploaded_files(valid_new_images) if valid_new_images else []
-        new_documents_meta = await process_uploaded_documents(
-            valid_new_documents, uploader_id=user.id
-        ) if valid_new_documents else []
+        new_documents_meta = []
+        for document_file in valid_new_documents:
+            staged_documents.append(await stage_document_upload(document_file, request_id=request_id))
 
         # Если загружено новое видео — добавляем его; старое удалится в merge_images
         if valid_new_video:
-            video_meta = await process_uploaded_video(valid_new_video)
-            new_images_meta.append(video_meta)
+            staged_video = await stage_video_upload(valid_new_video, request_id=request_id)
+            new_images_meta.append(video_processing_placeholder())
 
         # keep_video=False + нет нового видео → merge_images удалит старое само
         updated_post = await crud.update_post(
@@ -1253,21 +1334,31 @@ async def update_post_endpoint(
             keep_document_ids=keep_document_ids,
             uploader_id=user.id,
         )
+        await _enqueue_staged_media_jobs(
+            db,
+            post=updated_post,
+            uploader_id=user.id,
+            staged_video=staged_video,
+            staged_documents=staged_documents,
+        )
     except ValueError as e:
         if "new_documents_meta" in locals() and new_documents_meta:
             delete_document_files(new_documents_meta)
         if "new_images_meta" in locals() and new_images_meta:
             delete_all_media(new_images_meta)
+        if staged_video:
+            _cleanup_staged_sources(staged_video[0])
+        _cleanup_staged_sources(*(item.get("source_path") for item in staged_documents))
         raise HTTPException(status_code=400, detail=str(e))
 
-    if new_documents_meta:
+    if staged_documents:
         await analytics_service.record_server_event(
             db,
             user.id,
             "document_upload",
             entity_type="post",
             entity_id=updated_post.id,
-            properties_json={"count": len(new_documents_meta)},
+            properties_json={"count": len(staged_documents)},
         )
     if removed_document_ids:
         await analytics_service.record_server_event(

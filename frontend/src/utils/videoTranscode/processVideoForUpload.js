@@ -15,8 +15,8 @@ import { TRANSCODE_ERROR, VideoTranscodeError } from './transcodeErrors';
 export async function processVideoFileForUpload(file, options = {}) {
   const eligible =
     isIsoBmffVideoFile(file) &&
-    isClientVideoTranscodeSupported() &&
-    shouldRunClientVideoTranscode(file);
+    (await isClientVideoTranscodeSupported()) &&
+    (await shouldRunClientVideoTranscode(file));
 
   if (!eligible) {
     return { file, transcoded: false };
