@@ -18,19 +18,137 @@ pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 const MAX_PREVIEW_PAGES = 100;
 const RENDER_AHEAD_PAGES = 1;
+const MIN_DOCUMENT_ZOOM = 1;
+const MAX_DOCUMENT_ZOOM = 4;
+const DOUBLE_TAP_MS = 280;
+const TAP_MOVE_THRESHOLD = 10;
+const PAN_START_THRESHOLD = 4;
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const getTouchDistance = (touches) => {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+};
+
+const getTouchMidpoint = (touches) => ({
+  x: (touches[0].clientX + touches[1].clientX) / 2,
+  y: (touches[0].clientY + touches[1].clientY) / 2,
+});
 
 function DocumentViewerModal({ document, onClose }) {
   const [status, setStatus] = useState('loading');
   const [pageCount, setPageCount] = useState(0);
   const [hasPageSkeletons, setHasPageSkeletons] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [zoomTransform, setZoomTransform] = useState({ scale: 1, x: 0, y: 0 });
+  const bodyRef = useRef(null);
   const containerRef = useRef(null);
   const objectUrlRef = useRef('');
   const closeTimerRef = useRef(null);
+  const zoomTransformRef = useRef(zoomTransform);
+  const gestureRef = useRef(null);
+  const tapStartRef = useRef(null);
+  const lastTapRef = useRef(null);
+  const singleTapTimerRef = useRef(null);
   const isOpen = Boolean(document);
   const showDevBackButton = import.meta.env.DEV;
+  const isDocumentZoomed = zoomTransform.scale > 1.01;
 
   useBodyScrollLock(isOpen);
+
+  const clampDocumentTransform = useCallback((next) => {
+    const body = bodyRef.current;
+    const content = containerRef.current;
+    const scale = clamp(next.scale, MIN_DOCUMENT_ZOOM, MAX_DOCUMENT_ZOOM);
+    if (!body || !content || scale <= 1.01) {
+      return { scale: 1, x: 0, y: 0 };
+    }
+
+    const viewportWidth = body.clientWidth || 0;
+    const viewportHeight = body.clientHeight || 0;
+    const contentWidth = content.scrollWidth || content.offsetWidth || viewportWidth;
+    const contentHeight = content.scrollHeight || content.offsetHeight || viewportHeight;
+    const scaledWidth = contentWidth * scale;
+    const scaledHeight = contentHeight * scale;
+    const scrollTop = body.scrollTop || 0;
+    const minX = Math.min(0, viewportWidth - scaledWidth);
+    const minY = Math.min(scrollTop, scrollTop + viewportHeight - scaledHeight);
+
+    return {
+      scale,
+      x: clamp(next.x, minX, 0),
+      y: clamp(next.y, minY, scrollTop),
+    };
+  }, []);
+
+  const applyZoomTransform = useCallback((next) => {
+    const clamped = clampDocumentTransform(next);
+    zoomTransformRef.current = clamped;
+    setZoomTransform(clamped);
+    return clamped;
+  }, [clampDocumentTransform]);
+
+  const resetZoom = useCallback(() => {
+    applyZoomTransform({ scale: 1, x: 0, y: 0 });
+  }, [applyZoomTransform]);
+
+  const zoomAt = useCallback((clientX, clientY, nextScale) => {
+    const body = bodyRef.current;
+    const rect = body?.getBoundingClientRect?.();
+    if (!body || !rect) return;
+
+    const current = zoomTransformRef.current;
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const scrollTop = body.scrollTop || 0;
+    const contentX = (localX - current.x) / current.scale;
+    const contentY = (localY + scrollTop - current.y) / current.scale;
+
+    applyZoomTransform({
+      scale: nextScale,
+      x: localX - contentX * nextScale,
+      y: localY + scrollTop - contentY * nextScale,
+    });
+  }, [applyZoomTransform]);
+
+  const clearSingleTapTimer = useCallback(() => {
+    if (singleTapTimerRef.current) {
+      window.clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+  }, []);
+
+  const handleDoubleTapZoom = useCallback((clientX, clientY) => {
+    clearSingleTapTimer();
+    lastTapRef.current = null;
+    if (zoomTransformRef.current.scale > 1.01) {
+      resetZoom();
+    } else {
+      zoomAt(clientX, clientY, MAX_DOCUMENT_ZOOM);
+    }
+  }, [clearSingleTapTimer, resetZoom, zoomAt]);
+
+  const registerTap = useCallback((clientX, clientY) => {
+    const now = Date.now();
+    const previousTap = lastTapRef.current;
+    if (
+      previousTap &&
+      now - previousTap.time <= DOUBLE_TAP_MS &&
+      Math.hypot(clientX - previousTap.x, clientY - previousTap.y) <= TAP_MOVE_THRESHOLD * 2
+    ) {
+      handleDoubleTapZoom(clientX, clientY);
+      return;
+    }
+
+    clearSingleTapTimer();
+    lastTapRef.current = { time: now, x: clientX, y: clientY };
+    singleTapTimerRef.current = window.setTimeout(() => {
+      singleTapTimerRef.current = null;
+      lastTapRef.current = null;
+    }, DOUBLE_TAP_MS);
+  }, [clearSingleTapTimer, handleDoubleTapZoom]);
 
   const handleClose = useCallback(() => {
     if (isExiting) return;
@@ -61,8 +179,13 @@ function DocumentViewerModal({ document, onClose }) {
         window.clearTimeout(closeTimerRef.current);
         closeTimerRef.current = null;
       }
+      clearSingleTapTimer();
     };
-  }, [isOpen, document?.id]);
+  }, [clearSingleTapTimer, isOpen, document?.id]);
+
+  useEffect(() => {
+    resetZoom();
+  }, [document?.id, resetZoom]);
 
   useEffect(() => {
     let cancelled = false;
@@ -283,7 +406,7 @@ function DocumentViewerModal({ document, onClose }) {
   const content = (
     <EdgeSwipeBack
       onBack={onClose}
-      disabled={isExiting}
+      disabled={isExiting || isDocumentZoomed}
       iosOnly={false}
       zIndex={Z_PHOTO_VIEWER + 20}
     >
@@ -321,15 +444,184 @@ function DocumentViewerModal({ document, onClose }) {
           </button>
         </div>
 
-        <div style={styles.body}>
+        <div
+          ref={bodyRef}
+          style={{
+            ...styles.body,
+            touchAction: isDocumentZoomed ? 'none' : 'pan-y',
+          }}
+          onTouchStart={(e) => {
+            if (status !== 'ready') return;
+            if (e.touches.length === 2) {
+              if (e.cancelable) e.preventDefault();
+              e.stopPropagation();
+              const midpoint = getTouchMidpoint(e.touches);
+              gestureRef.current = {
+                type: 'pinch',
+                lastDistance: getTouchDistance(e.touches),
+                lastMidpoint: midpoint,
+              };
+              tapStartRef.current = null;
+              clearSingleTapTimer();
+              return;
+            }
+
+            if (e.touches.length !== 1) return;
+            const touch = e.touches[0];
+            tapStartRef.current = {
+              x: touch.clientX,
+              y: touch.clientY,
+              time: Date.now(),
+              moved: false,
+            };
+
+            if (zoomTransformRef.current.scale > 1.01) {
+              if (e.cancelable) e.preventDefault();
+              e.stopPropagation();
+              gestureRef.current = {
+                type: 'pan',
+                startX: touch.clientX,
+                startY: touch.clientY,
+                lastX: touch.clientX,
+                lastY: touch.clientY,
+                moved: false,
+              };
+            }
+          }}
+          onTouchMove={(e) => {
+            if (status !== 'ready') return;
+            const gesture = gestureRef.current;
+
+            if (!gesture && tapStartRef.current && e.touches.length === 1) {
+              const touch = e.touches[0];
+              if (Math.hypot(touch.clientX - tapStartRef.current.x, touch.clientY - tapStartRef.current.y) > TAP_MOVE_THRESHOLD) {
+                tapStartRef.current.moved = true;
+              }
+              return;
+            }
+
+            if (!gesture) return;
+            if (gesture.type === 'pinch' && e.touches.length === 2) {
+              if (e.cancelable) e.preventDefault();
+              e.stopPropagation();
+              const distance = getTouchDistance(e.touches);
+              const distanceRatio = gesture.lastDistance ? distance / gesture.lastDistance : 1;
+              const current = zoomTransformRef.current;
+              const nextScale = clamp(current.scale * distanceRatio, MIN_DOCUMENT_ZOOM, MAX_DOCUMENT_ZOOM);
+              const midpoint = getTouchMidpoint(e.touches);
+              zoomAt(midpoint.x, midpoint.y, nextScale);
+              gesture.lastDistance = distance;
+              gesture.lastMidpoint = midpoint;
+              return;
+            }
+
+            if (gesture.type === 'pan' && e.touches.length === 1) {
+              if (e.cancelable) e.preventDefault();
+              e.stopPropagation();
+              const touch = e.touches[0];
+              const totalDx = touch.clientX - gesture.startX;
+              const totalDy = touch.clientY - gesture.startY;
+              if (!gesture.moved && Math.hypot(totalDx, totalDy) < PAN_START_THRESHOLD) return;
+
+              gesture.moved = true;
+              if (tapStartRef.current) tapStartRef.current.moved = true;
+              const current = zoomTransformRef.current;
+              applyZoomTransform({
+                scale: current.scale,
+                x: current.x + touch.clientX - gesture.lastX,
+                y: current.y + touch.clientY - gesture.lastY,
+              });
+              gesture.lastX = touch.clientX;
+              gesture.lastY = touch.clientY;
+            }
+          }}
+          onTouchEnd={(e) => {
+            const tapStart = tapStartRef.current;
+            const changedTouch = e.changedTouches?.[0];
+            const isTapCandidate = Boolean(
+              changedTouch &&
+              tapStart &&
+              !tapStart.moved &&
+              Date.now() - tapStart.time <= 450 &&
+              Math.hypot(changedTouch.clientX - tapStart.x, changedTouch.clientY - tapStart.y) <= TAP_MOVE_THRESHOLD
+            );
+
+            if (gestureRef.current || isDocumentZoomed || isTapCandidate) {
+              if (e.cancelable) e.preventDefault();
+              e.stopPropagation();
+            }
+
+            if (e.touches.length === 0) {
+              gestureRef.current = null;
+              tapStartRef.current = null;
+              if (zoomTransformRef.current.scale <= 1.01) resetZoom();
+              if (isTapCandidate) registerTap(changedTouch.clientX, changedTouch.clientY);
+            } else if (e.touches.length === 1 && zoomTransformRef.current.scale > 1.01) {
+              const touch = e.touches[0];
+              gestureRef.current = {
+                type: 'pan',
+                startX: touch.clientX,
+                startY: touch.clientY,
+                lastX: touch.clientX,
+                lastY: touch.clientY,
+                moved: false,
+              };
+            }
+          }}
+          onTouchCancel={(e) => {
+            if (gestureRef.current || isDocumentZoomed) {
+              if (e.cancelable) e.preventDefault();
+              e.stopPropagation();
+            }
+            gestureRef.current = null;
+            tapStartRef.current = null;
+            if (zoomTransformRef.current.scale <= 1.01) resetZoom();
+          }}
+          onDoubleClick={(e) => {
+            if (status !== 'ready') return;
+            e.preventDefault();
+            e.stopPropagation();
+            handleDoubleTapZoom(e.clientX, e.clientY);
+          }}
+          onWheel={(e) => {
+            if (status !== 'ready') return;
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault();
+              e.stopPropagation();
+              const current = zoomTransformRef.current;
+              const nextScale = clamp(current.scale * (e.deltaY < 0 ? 1.12 : 0.88), MIN_DOCUMENT_ZOOM, MAX_DOCUMENT_ZOOM);
+              zoomAt(e.clientX, e.clientY, nextScale);
+              return;
+            }
+            if (zoomTransformRef.current.scale > 1.01) {
+              e.preventDefault();
+              e.stopPropagation();
+              const current = zoomTransformRef.current;
+              applyZoomTransform({
+                scale: current.scale,
+                x: current.x - e.deltaX,
+                y: current.y - e.deltaY,
+              });
+            }
+          }}
+        >
           {status === 'loading' && !hasPageSkeletons && (
             <div style={styles.state}>
-              <Loader2 size={24} className="spin" />
+              <Loader2 size={24} className="document-preview-spinner" />
               <span style={styles.stateTitle}>Готовим предпросмотр</span>
               <span style={styles.stateText}>Документ откроется здесь после загрузки PDF-версии.</span>
             </div>
           )}
-          <div ref={containerRef} style={styles.pages} />
+          <div
+            ref={containerRef}
+            style={{
+              ...styles.pages,
+              transform: `translate3d(${zoomTransform.x}px, ${zoomTransform.y}px, 0) scale(${zoomTransform.scale})`,
+              transition: gestureRef.current ? 'none' : 'transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)',
+              cursor: isDocumentZoomed ? 'grab' : 'zoom-in',
+              willChange: isDocumentZoomed ? 'transform' : undefined,
+            }}
+          />
           {status === 'unavailable' && !hasPageSkeletons && (
             <div style={styles.state}>
               <FileText size={28} />
@@ -373,6 +665,13 @@ const ensureDocumentPreviewStyles = () => {
     @keyframes documentPreviewShimmer {
       0% { background-position: 120% 0; }
       100% { background-position: -120% 0; }
+    }
+    @keyframes documentPreviewSpin {
+      to { transform: rotate(360deg); }
+    }
+    .document-preview-spinner {
+      animation: documentPreviewSpin 0.85s linear infinite;
+      transform-origin: center;
     }
     .document-preview-skeleton {
       background:
@@ -493,12 +792,15 @@ const styles = {
     padding: '14px 12px calc(96px + var(--screen-bottom-offset, 0px))',
     background: '#080808',
     WebkitOverflowScrolling: 'touch',
+    display: 'flex',
+    flexDirection: 'column',
   },
   pages: {
     minHeight: 0,
   },
   state: {
-    minHeight: 360,
+    flex: 1,
+    minHeight: '100%',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,

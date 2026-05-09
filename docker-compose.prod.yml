@@ -28,13 +28,14 @@ services:
     memswap_limit: 2g
     # Healthcheck через clamdscan --ping: если демон лежит, exit code != 0
     # → контейнер unhealthy и restart-policy перезапустит его целиком.
-    # start_period крупный, т.к. первая загрузка main.cvd занимает 30-60s.
+    # start_period 5 минут: главная база main.cvd (~89 МБ → ~700 МБ в RAM)
+    # на медленном диске может загружаться 1-3 минуты.
     healthcheck:
       test: ["CMD-SHELL", "clamdscan --ping 1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 90s
+      start_period: 300s
     logging: *json-logging
     security_opt:
       - no-new-privileges:true
