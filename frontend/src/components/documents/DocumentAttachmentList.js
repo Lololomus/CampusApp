@@ -60,6 +60,7 @@ function DocumentAttachmentList({ documents = [], compact = false }) {
           const typeLabel = getDocumentTypeLabel(document.file_ext);
           const canPreview = document.has_preview && document.preview_status === 'ready';
           const canDownload = document.scan_status === 'clean' && Boolean(document.download_url);
+          const isProcessing = document.scan_status === 'pending' || document.preview_status === 'pending';
           const accent = getAccent(document.file_ext);
 
           return (
@@ -84,7 +85,9 @@ function DocumentAttachmentList({ documents = [], compact = false }) {
                   {!canPreview ? (
                     <>
                       <span style={styles.dot} />
-                      <span style={styles.unavailable}>просмотр недоступен</span>
+                      <span style={styles.unavailable}>
+                        {isProcessing ? 'пост дорабатывается' : 'просмотр недоступен'}
+                      </span>
                     </>
                   ) : null}
                 </span>

@@ -23,8 +23,8 @@ function getProcessingStatus(item) {
 }
 
 function getProcessingLabel(status) {
-  if (status === 'failed') return 'Видео не обработалось';
-  if (status === 'pending' || status === 'processing') return 'Видео обрабатывается';
+  if (status === 'failed') return 'Медиа не обработалось';
+  if (status === 'pending' || status === 'processing') return 'Пост дорабатывается';
   return '';
 }
 
@@ -302,7 +302,7 @@ function FlexCell({ weight, children }) {
   );
 }
 
-// РЇС‡РµР№РєР° РјРµРґРёР° вЂ” РІСЃРµРіРґР° 100% СЂРѕРґРёС‚РµР»СЏ РїРѕ СЂР°Р·РјРµСЂСѓ
+// Ячейка медиа: всегда 100% родителя по размеру.
 function readNaturalAspectRatio(img) {
   const w = toPositiveNumber(img?.naturalWidth);
   const h = toPositiveNumber(img?.naturalHeight);
@@ -363,7 +363,7 @@ const MediaCell = React.memo(function MediaCell({ item, index, total, maxVisible
         <ContainFillBackground hidden={isHidden} />
       )}
       {!isHidden && !loaded && !failed && <div style={shimmerStyle} />}
-      {!isHidden && failed && <div style={fallbackStyle}>Р¤РѕС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕ</div>}
+      {!isHidden && failed && <div style={fallbackStyle}>Фото недоступно</div>}
       {!isHidden && isProcessingPlaceholder && <div style={processingOverlayStyle}>{processingLabel}</div>}
       {url && (
         <img
@@ -446,7 +446,7 @@ const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVi
 
   if (count === 0) return null;
 
-  // 1 СЌР»РµРјРµРЅС‚ вЂ” РЅР°С‚СѓСЂР°Р»СЊРЅР°СЏ РІС‹СЃРѕС‚Р°
+  // 1 элемент: натуральная высота.
   if (count === 1) {
     const item = visibleItems[0];
     const measuredAr = naturalAspectRatios[0];
@@ -491,7 +491,7 @@ const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVi
 
   const ars = visibleItems.map(getInitialLayoutAr);
 
-  // 2 СЌР»РµРјРµРЅС‚Р° вЂ” СѓРјРЅС‹Рµ РїСЂРѕРїРѕСЂС†РёРѕРЅР°Р»СЊРЅС‹Рµ РєРѕР»РѕРЅРєРё, РЅРѕ РІСЃРµРіРґР° РЅР° РІСЃСЋ С€РёСЂРёРЅСѓ.
+  // 2 элемента: умные пропорциональные колонки, всегда на всю ширину.
   if (count === 2) {
     const layoutAr = rowAspect([0, 1], ars);
     return (
@@ -620,7 +620,7 @@ const MediaGrid = React.memo(function MediaGrid({ mediaItems, onItemClick, maxVi
   );
 });
 
-// РћС‚РґРµР»СЊРЅС‹Р№ СЂРµРЅРґРµСЂ РґР»СЏ 1 СЌР»РµРјРµРЅС‚Р° (РЅР°С‚СѓСЂР°Р»СЊРЅР°СЏ РІС‹СЃРѕС‚Р° + skeleton/fallback)
+// Отдельный рендер для 1 элемента: натуральная высота + skeleton/fallback.
 function SingleCell({ item, total, maxVisible, measuredAr, onNaturalAspectRatio, isHidden }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -641,7 +641,7 @@ function SingleCell({ item, total, maxVisible, measuredAr, onNaturalAspectRatio,
       )}
       {!isHidden && !loaded && !failed && <div style={shimmerStyle} />}
       {!isHidden && isProcessingPlaceholder && <div style={processingOverlayStyle}>{processingLabel}</div>}
-      {!isHidden && failed && <div style={fallbackStyle}>Р¤РѕС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕ</div>}
+      {!isHidden && failed && <div style={fallbackStyle}>Фото недоступно</div>}
       {url && (
         <img
           src={url}

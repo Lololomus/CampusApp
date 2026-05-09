@@ -1025,7 +1025,7 @@ function PostDetail() {
                             />
                           ) : (
                             <div style={styles.processingMedia}>
-                              {slide.item?.processing_status === 'failed' ? 'Видео не обработалось' : 'Видео обрабатывается'}
+                              {slide.item?.processing_status === 'failed' ? 'Медиа не обработалось' : 'Пост дорабатывается'}
                             </div>
                           )}
                         </div>

@@ -37,8 +37,8 @@ function PublishingPostCard({ task }) {
     StatusIcon = AlertTriangle;
     iconSpin = false;
   } else if (status === 'processing') {
-    title = 'РћР±СЂР°Р±Р°С‚С‹РІР°РµРј РјРµРґРёР°вЂ¦';
-    subtitle = 'Р¤Р°Р№Р»С‹ РґРѕС€Р»Рё РґРѕ СЃРµСЂРІРµСЂР°. Р“РѕС‚РѕРІРёРј РІРёРґРµРѕ Рё РґРѕРєСѓРјРµРЅС‚С‹';
+    title = 'Пост дорабатывается…';
+    subtitle = 'Файлы дошли до сервера. Скоро обновим вложения';
   } else {
     // uploading
     if (progress > 0 && progress < 100) {
