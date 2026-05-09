@@ -401,46 +401,61 @@ export async function getCalendarEvents(filters = {}) {
   }
 }
 
-export async function createPost(postData, onProgress = null) {
+export async function createPost(postData, onProgress = null, signal = null) {
   try {
-    const hasVideo = postData instanceof FormData && postData.has('video');
     const config = {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: hasVideo ? 120000 : 15000,
+      // Тайм-аут отключён: длительные multipart-аплоады (документы, видео) контролируются
+      // через AbortController на стороне вызывающего кода, а не axios timeout'ом.
+      timeout: 0,
     };
 
     if (onProgress) {
       config.onUploadProgress = onProgress;
     }
 
+    if (signal) {
+      config.signal = signal;
+    }
+
     const response = await api.post('/posts/create', postData, config);
     return response.data;
   } catch (error) {
-    if (import.meta.env.DEV) {
+    if (error?.name !== 'CanceledError' && error?.code !== 'ERR_CANCELED') {
       console.error('Ошибка создания поста:', error);
-      console.error('Response:', error.response?.data);
+      if (error?.response?.data) {
+        console.error('Response:', error.response.data);
+      }
     }
     throw error;
   }
 }
 
 
-export async function updatePost(postId, postData, onProgress = null) {
+export async function updatePost(postId, postData, onProgress = null, signal = null) {
   try {
-    const hasVideo = postData instanceof FormData && postData.has('video');
     const config = {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: hasVideo ? 120000 : 15000,
+      timeout: 0,
     };
 
     if (onProgress) {
       config.onUploadProgress = onProgress;
     }
 
+    if (signal) {
+      config.signal = signal;
+    }
+
     const response = await api.patch(`/posts/${postId}`, postData, config);
     return response.data;
   } catch (error) {
-    console.error('Ошибка обновления поста:', error);
+    if (error?.name !== 'CanceledError' && error?.code !== 'ERR_CANCELED') {
+      console.error('Ошибка обновления поста:', error);
+      if (error?.response?.data) {
+        console.error('Response:', error.response.data);
+      }
+    }
     throw error;
   }
 }

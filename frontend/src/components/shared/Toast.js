@@ -28,7 +28,7 @@ const TOAST_CONFIG = {
 };
 
 // ===== КОМПОНЕНТ ОДИНОЧНОГО ТОСТА =====
-const Toast = ({ id, type = 'info', message, duration = 3000, onClose }) => {
+const Toast = ({ id, type = 'info', message, duration = 3000, action = null, onClose }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [progress, setProgress] = useState(100);
@@ -115,6 +115,26 @@ const Toast = ({ id, type = 'info', message, duration = 3000, onClose }) => {
 
       {/* Текст */}
       <div style={styles.message}>{message}</div>
+
+      {/* Кнопка-действие (опционально) */}
+      {action && action.label ? (
+        <button
+          onClick={() => {
+            try {
+              action.onClick?.();
+            } finally {
+              handleClose();
+            }
+          }}
+          style={{
+            ...styles.actionButton,
+            color: config.color,
+            borderColor: config.borderColor,
+          }}
+        >
+          {action.label}
+        </button>
+      ) : null}
 
       {/* Кнопка закрытия */}
       <button
@@ -239,6 +259,19 @@ const styles = {
     color: '#ffffff',
     lineHeight: 1.4,
     fontFamily: 'Arial, sans-serif',
+  },
+
+  actionButton: {
+    flexShrink: 0,
+    padding: '6px 12px',
+    borderRadius: '8px',
+    border: '1px solid',
+    background: 'rgba(255,255,255,0.06)',
+    fontSize: '13px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: 'Arial, sans-serif',
+    transition: 'all 0.2s ease',
   },
 
   closeButton: {

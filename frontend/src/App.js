@@ -19,7 +19,7 @@ import AuthModal from './components/AuthModal';
 import DevAuthPanel from './components/dev/DevAuthPanel';
 
 import SplashScreen from './components/SplashScreen';
-import ToastContainer from './components/shared/Toast';
+import ToastContainer, { toast } from './components/shared/Toast';
 import { TelegramScreenProvider } from './components/shared/telegram/TelegramScreenProvider';
 import MediaViewerProvider from './components/media/MediaViewerProvider';
 
@@ -223,6 +223,10 @@ function App() {
     showNotificationsScreen,
     publicProfilePreview,
     clearPublicProfilePreview,
+    hasPendingPublish,
+    setHasPendingPublish,
+    createContentDraft,
+    setCreateContentDraft,
   } = useStore();
   const { saveCurrentScroll, setSavedScroll } = useMainTabScrollMemory(activeTab);
 
@@ -328,6 +332,56 @@ function App() {
       setAuthReady(true);
     }
   }, [authStatus]);
+
+  // Recovery: если фоновая публикация была активна на момент закрытия/reload
+  // приложения — показываем одноразовое уведомление. Если есть остатки черновика
+  // (тексты/категория — File-объекты не переживают перезагрузку), даём кнопку
+  // открыть редактор.
+  const pendingPublishRecoveryShownRef = useRef(false);
+  useEffect(() => {
+    if (pendingPublishRecoveryShownRef.current) return;
+    if (authStatus === 'loading' || showSplash) return;
+    if (!isRegistered) return;
+    if (!hasPendingPublish) return;
+
+    pendingPublishRecoveryShownRef.current = true;
+    setHasPendingPublish(false);
+
+    const draft = createContentDraft;
+    const hasDraftFields =
+      draft && typeof draft === 'object' && (
+        String(draft.postBody || '').trim().length > 0 ||
+        String(draft.postTitle || '').trim().length > 0 ||
+        (Array.isArray(draft.postTags) && draft.postTags.length > 0) ||
+        Boolean(draft.hasPoll)
+      );
+
+    if (hasDraftFields) {
+      toast.warning('Публикация была прервана', {
+        duration: 7000,
+        action: {
+          label: 'Открыть',
+          onClick: () => {
+            setCreateContentDraft(draft);
+            setShowCreateModal(true);
+          },
+        },
+      });
+    } else {
+      toast.warning('Публикация была прервана. Попробуйте ещё раз.', {
+        duration: 5000,
+      });
+    }
+  }, [
+    authStatus,
+    showSplash,
+    isRegistered,
+    hasPendingPublish,
+    createContentDraft,
+    setCreateContentDraft,
+    setHasPendingPublish,
+    setShowCreateModal,
+  ]);
 
   useEffect(() => {
     if (!SHOULD_EAGER_PRELOAD_CHUNKS) return undefined;

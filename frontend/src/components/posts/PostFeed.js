@@ -8,6 +8,7 @@ import PostFiltersModal from './PostFiltersModal';
 import { getPosts, getAdsForFeed, triggerRegistrationPrompt } from '../../api';
 import { useStore } from '../../store';
 import PostCardSkeleton from './PostCardSkeleton';
+import PublishingPostCard from './PublishingPostCard';
 import theme from '../../theme';
 import AppHeader from '../shared/AppHeader';
 import FeedDateDivider from '../shared/FeedDateDivider';
@@ -73,6 +74,7 @@ function PostFeed() {
     clearPostsFilters,
     user,
     setShowCalendarScreen,
+    publishingTasks,
   } = useStore();
 
   const haptic = (type = 'light') => {
@@ -500,6 +502,14 @@ function PostFeed() {
         willChange: pullY !== 0 || snapping ? 'transform' : 'auto',
       }}>
         <>
+          {publishingTasks && publishingTasks.length > 0 && (
+            <>
+              {publishingTasks.map((task) => (
+                <PublishingPostCard key={task.id} task={task} />
+              ))}
+            </>
+          )}
+
           {loading && posts.length === 0 && (
             <>
               <PostCardSkeleton />
@@ -507,7 +517,7 @@ function PostFeed() {
             </>
           )}
 
-          {!loading && posts.length === 0 && (
+          {!loading && posts.length === 0 && (!publishingTasks || publishingTasks.length === 0) && (
             <div style={styles.empty}>
               {(countActiveFilters > 0 || searchQuery) ? (
                 <>

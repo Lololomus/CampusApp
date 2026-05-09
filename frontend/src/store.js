@@ -199,6 +199,26 @@ export const useStore = create(
         )
       })),
 
+      // BACKGROUND PUBLISHING STATE
+      // Список активных задач фоновой публикации постов с медиа.
+      // НЕ персистится: задачи живут только в памяти (FormData/File не сериализуются).
+      publishingTasks: [],
+      addPublishingTask: (task) => set((state) => ({
+        publishingTasks: [...state.publishingTasks, task],
+      })),
+      updatePublishingTask: (taskId, updates) => set((state) => ({
+        publishingTasks: state.publishingTasks.map((t) =>
+          t.id === taskId ? { ...t, ...updates } : t
+        ),
+      })),
+      removePublishingTask: (taskId) => set((state) => ({
+        publishingTasks: state.publishingTasks.filter((t) => t.id !== taskId),
+      })),
+      // Персистится: единственный сигнал "была активная фоновая публикация
+      // на момент закрытия/перезагрузки приложения" — для recovery-тоста.
+      hasPendingPublish: false,
+      setHasPendingPublish: (value) => set({ hasPendingPublish: Boolean(value) }),
+
       // Синхронизация между PostDetail и Feed
       updatedPostId: null,
       updatedPostData: {},
@@ -804,7 +824,9 @@ export const useStore = create(
         marketFilters: state.marketFilters,
         postsFilters: state.postsFilters,
         requestsFilters: state.requestsFilters,
+        hasPendingPublish: state.hasPendingPublish,
         // НЕ персистим moderationRole — запрашиваем с сервера при каждом входе
+        // НЕ персистим publishingTasks — File/AbortController не сериализуются
       }),
     }
   )

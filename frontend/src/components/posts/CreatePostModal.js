@@ -22,6 +22,7 @@ import { useSwipe } from '../../hooks/useSwipe';
 import { DragHandle } from '../shared/SwipeableModal';
 import { useStore } from '../../store';
 import { createPost, createRequest } from '../../api';
+import { publishPostInBackground, describeUploadError } from '../../services/postPublisher';
 import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { Z_MODAL_CREATE_POST, getOverlayZIndex } from '../../constants/zIndex';
@@ -1199,6 +1200,26 @@ function CreatePostModal({ onClose }) {
           console.log('[Submit][6] FormData images count:', formData.getAll('images').length, formData.getAll('images').map((f) => ({ name: f.name, type: f.type, size: f.size })));
         }
 
+        // Если есть документы или видео — уходим в фоновый flow (карточка-плейсхолдер
+        // в ленте + тост по завершении). Текстовые/фото-посты публикуем синхронно.
+        const hasMedia =
+          Boolean(currentVideoFile) ||
+          currentPostDocuments.some((item) => item.file);
+
+        if (hasMedia) {
+          publishPostInBackground({
+            formData,
+            draftSnapshot: buildDraftSnapshot(),
+          });
+
+          hapticFeedback('success');
+          toast.info('Публикуем в фоне', { duration: 2500 });
+          setIsSubmitting(false);
+          setUploadProgress(0);
+          setTimeout(() => closeWithDraft({ keepDraft: true }), 120);
+          return;
+        }
+
         const newPost = await createPost(formData, (progressEvent) => {
           if (!progressEvent?.total) return;
           const next = Math.round(40 + (progressEvent.loaded / progressEvent.total) * 50);
@@ -1212,12 +1233,7 @@ function CreatePostModal({ onClose }) {
         setTimeout(() => closeWithDraft({ keepDraft: false }), 120);
       } catch (submitError) {
         console.error(submitError);
-        const detail = submitError?.response?.data?.detail;
-        const message = Array.isArray(detail)
-          ? detail.map((item) => item.msg || item.type).join(', ')
-          : typeof detail === 'string'
-            ? detail
-            : 'Ошибка публикации поста';
+        const message = describeUploadError(submitError);
         setError(message);
         toast.error(message);
         setIsSubmitting(false);
