@@ -334,17 +334,21 @@ function App() {
   }, [authStatus]);
 
   // Recovery: если фоновая публикация была активна на момент закрытия/reload
-  // приложения — показываем одноразовое уведомление. Если есть остатки черновика
-  // (тексты/категория — File-объекты не переживают перезагрузку), даём кнопку
-  // открыть редактор.
+  // приложения — показываем одноразовое уведомление. Стреляет ровно один раз —
+  // на первом стабильном вычислении после старта (auth ready + splash ушёл).
+  // Дальнейшие установки `hasPendingPublish=true` (новые задачи в текущей
+  // сессии) уже не считаются recovery-кейсом.
   const pendingPublishRecoveryShownRef = useRef(false);
   useEffect(() => {
     if (pendingPublishRecoveryShownRef.current) return;
     if (authStatus === 'loading' || showSplash) return;
     if (!isRegistered) return;
+
+    // Помечаем сразу: дальше в этой сессии recovery уже не запустится.
+    pendingPublishRecoveryShownRef.current = true;
+
     if (!hasPendingPublish) return;
 
-    pendingPublishRecoveryShownRef.current = true;
     setHasPendingPublish(false);
 
     const draft = createContentDraft;

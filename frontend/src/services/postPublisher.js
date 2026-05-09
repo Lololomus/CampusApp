@@ -151,10 +151,30 @@ export function recoverDraftFromTask(taskId) {
 async function runUpload(taskId, formData, signal) {
   const store = useStore.getState();
 
+  // Диагностика: логируем КАЖДЫЙ progress-событие c байтами (не процентами).
+  // Так видно: реально ли стоят на месте (несколько одинаковых loaded подряд)
+  // или просто ползёт медленно (loaded растёт, % округлён до 2).
+  const startedAt = Date.now();
+  let lastLoaded = 0;
+  let lastProgressAt = startedAt;
+  console.info(`[postPublisher] upload start task=${taskId}`);
+
   const onProgress = (event) => {
     if (!event?.total) return;
+    const now = Date.now();
+    const elapsedMs = now - startedAt;
+    const sinceLastMs = now - lastProgressAt;
+    const deltaBytes = event.loaded - lastLoaded;
+    lastLoaded = event.loaded;
+    lastProgressAt = now;
+
+    const speedKbps = sinceLastMs > 0 ? Math.round((deltaBytes / 1024) / (sinceLastMs / 1000)) : 0;
     const pct = Math.round((event.loaded / event.total) * 100);
-    // Берём актуальный store, на случай если задача была отменена
+
+    console.info(
+      `[postPublisher] task=${taskId} progress: ${event.loaded}/${event.total} bytes (${pct}%) +${deltaBytes}B in ${sinceLastMs}ms ~${speedKbps}KB/s elapsed=${elapsedMs}ms`,
+    );
+
     const live = useStore.getState();
     const exists = live.publishingTasks.some((t) => t.id === taskId);
     if (exists) {
@@ -162,8 +182,22 @@ async function runUpload(taskId, formData, signal) {
     }
   };
 
+  // Watchdog: если 20 секунд нет ни одного progress-события — пишем варнинг.
+  const watchdog = setInterval(() => {
+    const idleMs = Date.now() - lastProgressAt;
+    if (idleMs > 20000) {
+      console.warn(
+        `[postPublisher] task=${taskId} STALLED for ${idleMs}ms at ${lastLoaded} bytes`,
+      );
+    }
+  }, 10000);
+
   try {
     const newPost = await createPost(formData, onProgress, signal);
+    clearInterval(watchdog);
+    console.info(
+      `[postPublisher] upload done task=${taskId} elapsed=${Date.now() - startedAt}ms`,
+    );
 
     const live = useStore.getState();
     // Задача могла быть отменена пока мы ждали — проверяем
@@ -199,7 +233,12 @@ async function runUpload(taskId, formData, signal) {
       }
     }, SUCCESS_HOLD_MS);
   } catch (error) {
+    clearInterval(watchdog);
     const isCanceled = error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED';
+    console.warn(
+      `[postPublisher] upload failed task=${taskId} elapsed=${Date.now() - startedAt}ms loaded=${lastLoaded} canceled=${isCanceled}`,
+      error,
+    );
     const live = useStore.getState();
     const stillExists = live.publishingTasks.some((t) => t.id === taskId);
 
