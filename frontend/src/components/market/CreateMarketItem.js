@@ -8,6 +8,11 @@ import { hapticFeedback } from '../../utils/telegram';
 import theme from '../../theme';
 import { formatImageProcessingWarning, processImageFiles } from '../../utils/media';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
+import {
+  processVideoFileForUpload,
+  getVideoTranscodeToastMessage,
+  TRANSCODE_ERROR,
+} from '../../utils/videoTranscode';
 import { toast } from '../shared/Toast';
 import { useSwipe } from '../../hooks/useSwipe';
 import { DragHandle } from '../shared/SwipeableModal';
@@ -308,10 +313,31 @@ const CreateMarketItem = ({ onClose, onSuccess }) => {
           clearInput();
           return;
         }
-        setVideoFile(videoCandidate);
-        captureVideoThumbnail(videoCandidate).then(setVideoThumb);
-        hapticFeedback('light');
-        clearInput();
+        try {
+          if (validation.willTranscode) {
+            toast.info('Сжимаем видео…', { duration: 2800 });
+          }
+          const { file: videoOut, fallbackOriginal } = await processVideoFileForUpload(
+            videoCandidate,
+            validation.displayDimensions || { width: 0, height: 0 },
+          );
+          if (fallbackOriginal) {
+            toast.info('Загружаем без сжатия на устройстве', { duration: 2200 });
+          }
+          setVideoFile(videoOut);
+          captureVideoThumbnail(videoOut).then(setVideoThumb);
+          hapticFeedback('light');
+        } catch (err) {
+          const code = err?.code;
+          if (code === TRANSCODE_ERROR.ABORTED) {
+            clearInput();
+            return;
+          }
+          hapticFeedback('error');
+          toast.error(getVideoTranscodeToastMessage(code) || err?.message || 'Не удалось обработать видео');
+        } finally {
+          clearInput();
+        }
         return;
       }
       if (photos.length + files.length > MAX_IMAGES) {

@@ -41,6 +41,11 @@ import {
 } from '../../constants/createContentUiConfig';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
 import {
+  processVideoFileForUpload,
+  getVideoTranscodeToastMessage,
+  TRANSCODE_ERROR,
+} from '../../utils/videoTranscode';
+import {
   DOCUMENT_ACCEPT,
   MAX_DOCUMENTS_PER_POST,
   formatDocumentSize,
@@ -546,10 +551,31 @@ function EditPostModal({ contentType = 'post', initialData = {}, onClose, onSucc
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
-      setVideoFile(videoCandidate);
-      captureVideoThumbnail(videoCandidate).then(setVideoThumb);
-      hapticFeedback('success');
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      try {
+        if (validation.willTranscode) {
+          toast.info('Сжимаем видео…', { duration: 2800 });
+        }
+        const { file: videoOut, fallbackOriginal } = await processVideoFileForUpload(
+          videoCandidate,
+          validation.displayDimensions || { width: 0, height: 0 },
+        );
+        if (fallbackOriginal) {
+          toast.info('Загружаем без сжатия на устройстве', { duration: 2200 });
+        }
+        setVideoFile(videoOut);
+        captureVideoThumbnail(videoOut).then(setVideoThumb);
+        hapticFeedback('success');
+      } catch (err) {
+        const code = err?.code;
+        if (code === TRANSCODE_ERROR.ABORTED) {
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
+        hapticFeedback('error');
+        toast.error(getVideoTranscodeToastMessage(code) || err?.message || 'Не удалось обработать видео');
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
       return;
     }
 

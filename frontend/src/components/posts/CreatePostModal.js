@@ -30,6 +30,11 @@ import { REWARD_TYPES } from '../../types';
 import { POST_LIMITS, REQUEST_LIMITS, IMAGE_SETTINGS } from '../../constants/contentConstants';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
 import {
+  processVideoFileForUpload,
+  getVideoTranscodeToastMessage,
+  TRANSCODE_ERROR,
+} from '../../utils/videoTranscode';
+import {
   DOCUMENT_ACCEPT,
   MAX_DOCUMENTS_PER_POST,
   formatDocumentSize,
@@ -867,7 +872,7 @@ function CreatePostModal({ onClose }) {
       return;
     }
 
-    // Handle video separately (no compression on client; backend processes it)
+    // Видео: опционально сжатие до 1080p (WebCodecs) для MP4/MOV
     const videoCandidate = files.find((file) => isVideoFileCandidate(file));
     if (videoCandidate) {
       if (activeTab === 'request') {
@@ -885,10 +890,31 @@ function CreatePostModal({ onClose }) {
         return;
       }
 
-      setVideoFile(videoCandidate);
-      captureVideoThumbnail(videoCandidate).then(setVideoThumb);
-      hapticFeedback('success');
-      clearPostFileInput();
+      try {
+        if (validation.willTranscode) {
+          toast.info('Сжимаем видео…', { duration: 2800 });
+        }
+        const { file: videoOut, fallbackOriginal } = await processVideoFileForUpload(
+          videoCandidate,
+          validation.displayDimensions || { width: 0, height: 0 },
+        );
+        if (fallbackOriginal) {
+          toast.info('Загружаем без сжатия на устройстве', { duration: 2200 });
+        }
+        setVideoFile(videoOut);
+        captureVideoThumbnail(videoOut).then(setVideoThumb);
+        hapticFeedback('success');
+      } catch (e) {
+        const code = e?.code;
+        if (code === TRANSCODE_ERROR.ABORTED) {
+          clearPostFileInput();
+          return;
+        }
+        hapticFeedback('error');
+        toast.error(getVideoTranscodeToastMessage(code) || e?.message || 'Не удалось обработать видео');
+      } finally {
+        clearPostFileInput();
+      }
       return;
     }
 

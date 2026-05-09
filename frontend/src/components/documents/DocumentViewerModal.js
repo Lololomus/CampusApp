@@ -613,7 +613,7 @@ function DocumentViewerModal({ document, onClose }) {
             <div style={styles.state}>
               <Loader2 size={24} className="document-preview-spinner" />
               <span style={styles.stateTitle}>Готовим предпросмотр</span>
-              <span style={styles.stateText}>Документ откроется здесь после загрузки PDF-версии.</span>
+              <span style={styles.stateText}>Документ откроется здесь после загрузки PDF-версии. Это быстрая версия для просмотра, поэтому качество может быть ниже. Оригинал сохраняет исходное качество.</span>
             </div>
           )}
           <div

@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
     },
     // 2. Настройка для сканера зависимостей
     optimizeDeps: {
+      include: ['mp4box', 'mp4-muxer'],
       esbuildOptions: {
         loader: {
           '.js': 'jsx',

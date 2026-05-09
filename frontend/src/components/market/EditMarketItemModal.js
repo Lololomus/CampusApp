@@ -3,6 +3,11 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Image as ImageIcon, Sparkles, MapPin, Check, Lock, Play, Loader2 } from 'lucide-react';
 import { isVideoFileCandidate, validateVideoFile } from '../../utils/videoValidation';
+import {
+  processVideoFileForUpload,
+  getVideoTranscodeToastMessage,
+  TRANSCODE_ERROR,
+} from '../../utils/videoTranscode';
 import { useSwipe } from '../../hooks/useSwipe';
 import { DragHandle } from '../shared/SwipeableModal';
 import { updateMarketItem } from '../../api';
@@ -175,11 +180,31 @@ function EditMarketItemModal({ item, onClose, onSuccess }) {
     const videoCandidate = files.find(f => isVideoFileCandidate(f));
     if (videoCandidate) {
       const validation = await validateVideoFile(videoCandidate);
-      if (!validation.valid) { hapticFeedback('error'); toast.error(validation.error); }
-      else {
-        setVideoFile(videoCandidate);
-        captureVideoThumbnail(videoCandidate).then(setVideoThumb);
-        hapticFeedback('light');
+      if (!validation.valid) {
+        hapticFeedback('error');
+        toast.error(validation.error);
+      } else {
+        try {
+          if (validation.willTranscode) {
+            toast.info('Сжимаем видео…', { duration: 2800 });
+          }
+          const { file: videoOut, fallbackOriginal } = await processVideoFileForUpload(
+            videoCandidate,
+            validation.displayDimensions || { width: 0, height: 0 },
+          );
+          if (fallbackOriginal) {
+            toast.info('Загружаем без сжатия на устройстве', { duration: 2200 });
+          }
+          setVideoFile(videoOut);
+          captureVideoThumbnail(videoOut).then(setVideoThumb);
+          hapticFeedback('light');
+        } catch (err) {
+          const code = err?.code;
+          if (code !== TRANSCODE_ERROR.ABORTED) {
+            hapticFeedback('error');
+            toast.error(getVideoTranscodeToastMessage(code) || err?.message || 'Не удалось обработать видео');
+          }
+        }
       }
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;

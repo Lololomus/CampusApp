@@ -1,12 +1,17 @@
+import {
+  VIDEO_INPUT_MAX_BYTES,
+  VIDEO_MAX_DURATION_SECONDS,
+  VIDEO_OUTPUT_MAX_BYTES,
+} from './videoConstants';
+import {
+  getFileExtension,
+  isClientVideoTranscodeSupported,
+  isIsoBmffVideoFile,
+  shouldRunClientVideoTranscode,
+} from './videoTranscode/capabilities';
+
 const SUPPORTED_VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
 const SUPPORTED_VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm'];
-const VIDEO_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
-const VIDEO_MAX_DURATION_SECONDS = 60;
-
-const getFileExtension = (fileName = '') => {
-  const parts = String(fileName).toLowerCase().split('.');
-  return parts.length > 1 ? parts.pop() : '';
-};
 
 export const isVideoFileCandidate = (file) => {
   if (!file) return false;
@@ -48,9 +53,32 @@ const loadVideoDuration = (file) =>
     video.src = objectUrl;
   });
 
+/** Размеры отображения (как в плеере; часто уже с учётом ориентации). */
+const loadVideoDisplayDimensions = (file) =>
+  new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    const done = (w, h) => {
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(objectUrl);
+      resolve({ width: w, height: h });
+    };
+    video.onloadedmetadata = () => {
+      const w = Number(video.videoWidth) || 0;
+      const h = Number(video.videoHeight) || 0;
+      done(w, h);
+    };
+    video.onerror = () => done(0, 0);
+    video.src = objectUrl;
+  });
+
 export const validateVideoFile = async (file) => {
   if (!file) {
-    return { valid: false, error: 'No file selected' };
+    return { valid: false, error: 'Файл не выбран' };
   }
 
   const mimeType = String(file.type || '').toLowerCase();
@@ -59,26 +87,68 @@ export const validateVideoFile = async (file) => {
   const allowedByExtension = SUPPORTED_VIDEO_EXTENSIONS.includes(extension);
 
   if (!allowedByMime && !allowedByExtension) {
-    return { valid: false, error: 'Only MP4, MOV, and WEBM are supported' };
+    return { valid: false, error: 'Допустимы только MP4, MOV и WebM' };
   }
 
-  if (file.size > VIDEO_MAX_FILE_SIZE_BYTES) {
-    return { valid: false, error: 'Video must be 100 MB or smaller' };
+  if (file.size > VIDEO_INPUT_MAX_BYTES) {
+    return {
+      valid: false,
+      error: `Видео слишком большое (макс. ${Math.floor(VIDEO_INPUT_MAX_BYTES / (1024 * 1024))} МБ до обработки)`,
+    };
   }
 
   let durationSeconds;
   try {
     durationSeconds = await loadVideoDuration(file);
   } catch {
-    return { valid: false, error: 'Unable to read video. Please choose a different file' };
+    return { valid: false, error: 'Не удалось прочитать видео. Выберите другой файл' };
   }
 
   if (durationSeconds > VIDEO_MAX_DURATION_SECONDS) {
     return {
       valid: false,
-      error: `Video is too long (${durationSeconds.toFixed(1)}s). Maximum is ${VIDEO_MAX_DURATION_SECONDS}s`,
+      error: `Видео слишком длинное (${durationSeconds.toFixed(1)} с). Максимум ${VIDEO_MAX_DURATION_SECONDS} с`,
     };
   }
 
-  return { valid: true, durationSeconds };
+  const displayDimensions = await loadVideoDisplayDimensions(file);
+  const transcodeCandidate =
+    isIsoBmffVideoFile(file) &&
+    isClientVideoTranscodeSupported() &&
+    shouldRunClientVideoTranscode(file, displayDimensions);
+
+  if (file.size > VIDEO_OUTPUT_MAX_BYTES) {
+    const canLargeInput = isIsoBmffVideoFile(file) && isClientVideoTranscodeSupported();
+    if (!canLargeInput) {
+      return {
+        valid: false,
+        error:
+          'Файл больше 100 МБ. Откройте приложение в браузере с поддержкой сжатия (например Chrome) или уменьшите видео',
+      };
+    }
+    if (!transcodeCandidate) {
+      return {
+        valid: false,
+        error:
+          'Файл больше 100 МБ и не подходит для автоматического сжатия на устройстве. Выберите другое видео',
+      };
+    }
+  }
+
+  const isWebm = extension === 'webm' || mimeType === 'video/webm';
+  if (isWebm && file.size > VIDEO_OUTPUT_MAX_BYTES) {
+    return {
+      valid: false,
+      error: 'WebM больше 100 МБ не поддерживается. Конвертируйте в MP4 или уменьшите файл',
+    };
+  }
+
+  return {
+    valid: true,
+    durationSeconds,
+    displayDimensions,
+    willTranscode: Boolean(transcodeCandidate),
+  };
 };
+
+export { getFileExtension as getVideoFileExtension };
