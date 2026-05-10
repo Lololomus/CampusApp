@@ -333,6 +333,9 @@ function Profile() {
                       post={post}
                       onClick={handlePostClick}
                       onPostDeleted={(postId) => setPosts(prev => prev.filter(p => p.id !== postId))}
+                      onHighlightCommentLikeUpdate={(postId, highlight_comment) =>
+                        setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, highlight_comment } : p)))
+                      }
                       openMediaViewer={openMediaViewer}
                       activeMediaIndex={String(post.id) === String(activePostCardId) ? activeIndex : null}
                     />

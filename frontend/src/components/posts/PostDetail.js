@@ -143,6 +143,7 @@ function PostDetail() {
     : Boolean(post?.is_liked);
 
   const [replyTo, setReplyTo] = useState(null);
+  const [commentBarFocusNonce, setCommentBarFocusNonce] = useState(0);
   const [menuOpen, setMenuOpen] = useState(null);
   const [postMenuOpen, setPostMenuOpen] = useState(false);
   const postMenuRef = useRef(null);
@@ -267,8 +268,26 @@ function PostDetail() {
           initialLikes[comment.id] = { isLiked: comment.is_liked || false, count: comment.likes || 0 };
         });
         setCommentLikes(initialLikes);
+
+        const pending = useStore.getState().pendingCommentReply;
+        if (pending && Number(pending.postId) === Number(viewPostId)) {
+          const match = commentsArray.find((c) => Number(c.id) === Number(pending.commentId));
+          setReplyTo(pending.commentId);
+          if (match && match.author) {
+            const authorName = typeof match.author === 'object' ? match.author?.name : match.author;
+            setReplyToName(authorName || pending.replyToName || '');
+          } else {
+            setReplyToName(pending.replyToName || '');
+          }
+          useStore.getState().clearPendingCommentReply();
+          setCommentBarFocusNonce((n) => n + 1);
+        }
       } catch (error) {
         console.error('Comments error:', error);
+        const pc = useStore.getState().pendingCommentReply;
+        if (pc && Number(pc.postId) === Number(viewPostId)) {
+          useStore.getState().clearPendingCommentReply();
+        }
       }
     } catch (error) {
       console.error('Post loading error:', error);
@@ -1161,6 +1180,7 @@ function PostDetail() {
           replyToName={replyToName}
           onCancelReply={() => { setReplyTo(null); setReplyToName(''); }}
           disableKeyboardLift={Boolean(editingComment)}
+          focusNonce={commentBarFocusNonce}
         />
 
         <ConfirmationDialog

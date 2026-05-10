@@ -2,7 +2,8 @@
 # Comments CRUD: create, update, delete, likes
 
 import logging
-from typing import List, Optional
+from collections import defaultdict
+from typing import Dict, List, Optional
 
 from sqlalchemy import func, or_, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,6 +107,122 @@ async def get_post_comments(db: AsyncSession, post_id: int, user_id: Optional[in
             comment.is_liked = False
 
     return comments
+
+
+def _pick_highlight_comment(comments: List[models.Comment]) -> Optional[models.Comment]:
+    """Каскад: единственный комментарий → макс. лайки → корень самого большого поддерева при нулевых лайках."""
+    if not comments:
+        return None
+    if len(comments) == 1:
+        return comments[0]
+
+    max_likes = max((c.likes_count or 0) for c in comments)
+    if max_likes > 0:
+        pool = [c for c in comments if (c.likes_count or 0) == max_likes]
+        return max(pool, key=lambda c: c.created_at)
+
+    return _pick_root_largest_subtree(comments)
+
+
+def _pick_root_largest_subtree(comments: List[models.Comment]) -> models.Comment:
+    by_id = {c.id: c for c in comments}
+    visible_ids = set(by_id.keys())
+    children: Dict[int, List[models.Comment]] = {cid: [] for cid in visible_ids}
+
+    roots: List[models.Comment] = []
+    for c in comments:
+        pid = c.parent_id
+        if pid is None or pid not in visible_ids:
+            roots.append(c)
+        else:
+            children[pid].append(c)
+
+    def subtree_size(root_id: int) -> int:
+        stack = [root_id]
+        seen = set()
+        n = 0
+        while stack:
+            cid = stack.pop()
+            if cid in seen:
+                continue
+            seen.add(cid)
+            n += 1
+            for ch in children.get(cid, []):
+                stack.append(ch.id)
+        return n
+
+    best_root: Optional[models.Comment] = None
+    best_size = -1
+    for r in roots:
+        sz = subtree_size(r.id)
+        if sz > best_size:
+            best_size = sz
+            best_root = r
+        elif sz == best_size and best_root is not None and r.created_at > best_root.created_at:
+            best_root = r
+    return best_root
+
+
+async def get_highlight_comments_for_posts(
+    db: AsyncSession,
+    post_ids: List[int],
+    viewer_user_id: Optional[int],
+) -> Dict[int, models.Comment]:
+    """Один «выделенный» комментарий на пост для превью в ленте."""
+    if not post_ids:
+        return {}
+
+    query = (
+        select(models.Comment)
+        .options(selectinload(models.Comment.author))
+        .where(
+            models.Comment.post_id.in_(post_ids),
+            models.Comment.is_deleted == False,
+        )
+    )
+
+    if viewer_user_id:
+        query = query.join(models.User, models.Comment.author_id == models.User.id).where(
+            or_(
+                models.User.is_shadow_banned_comments == False,
+                models.Comment.author_id == viewer_user_id,
+            )
+        )
+    else:
+        query = query.join(models.User, models.Comment.author_id == models.User.id).where(
+            models.User.is_shadow_banned_comments == False
+        )
+
+    result = await db.execute(query)
+    rows = result.scalars().all()
+
+    by_post: Dict[int, List[models.Comment]] = defaultdict(list)
+    for c in rows:
+        by_post[c.post_id].append(c)
+
+    chosen: Dict[int, models.Comment] = {}
+    comment_ids_to_like_check: List[int] = []
+
+    for pid, clist in by_post.items():
+        hl = _pick_highlight_comment(clist)
+        if hl:
+            chosen[pid] = hl
+            comment_ids_to_like_check.append(hl.id)
+
+    liked_ids: set = set()
+    if viewer_user_id and comment_ids_to_like_check:
+        liked_result = await db.execute(
+            select(models.CommentLike.comment_id).where(
+                models.CommentLike.comment_id.in_(comment_ids_to_like_check),
+                models.CommentLike.user_id == viewer_user_id,
+            )
+        )
+        liked_ids = {row[0] for row in liked_result.all()}
+
+    for _pid, c in chosen.items():
+        c.is_liked = c.id in liked_ids if viewer_user_id else False
+
+    return chosen
 
 
 async def count_post_comments(db: AsyncSession, post_id: int) -> int:

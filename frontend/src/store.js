@@ -136,6 +136,8 @@ export const useStore = create(
       createContentDraft: null,
       createMarketDraft: null,
       viewPostId: null,
+      /** Открыть PostDetail с ответом на комментарий: { postId, commentId, replyToName } */
+      pendingCommentReply: null,
       showEditModal: false,
       publicProfilePreview: null,
       setShowAuthModal: (show) => set({ showAuthModal: show }),
@@ -148,6 +150,8 @@ export const useStore = create(
       setCreateMarketDraft: (draft) => set({ createMarketDraft: draft }),
       clearCreateMarketDraft: () => set({ createMarketDraft: null }),
       setViewPostId: (id) => set({ viewPostId: id }),
+      setPendingCommentReply: (pendingCommentReply) => set({ pendingCommentReply }),
+      clearPendingCommentReply: () => set({ pendingCommentReply: null }),
       setEditPostId: (id) => set({ editPostId: id }),
       setShowEditModal: (show) => set({ showEditModal: show }),
       setPublicProfilePreview: (publicProfilePreview) => set({ publicProfilePreview }),

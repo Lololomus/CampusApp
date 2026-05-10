@@ -669,7 +669,16 @@ async def get_user_posts_endpoint(
             **ad_data #
         }
         result.append(post_dict)
-    
+
+    ids_with_comments = [p["id"] for p in result if (p.get("comments_count") or 0) > 0]
+    highlights = await crud.get_highlight_comments_for_posts(db, ids_with_comments, user.id)
+    for p in result:
+        hid = highlights.get(p["id"])
+        if hid:
+            p["highlight_comment"] = _comment_model_to_response_dict(hid, user, strip_images=True)
+        else:
+            p["highlight_comment"] = None
+
     return normalize_datetime_payload(result)
 
 @app.get("/users/{user_id}/stats")
@@ -696,6 +705,65 @@ async def get_user_public_profile(user_id: int, db: AsyncSession = Depends(get_d
     if not user or user.show_profile is not True:
         raise HTTPException(status_code=404, detail="User not found")
     return public_user_short(user)
+
+
+def _comment_model_to_response_dict(
+    comment: models.Comment,
+    user: Optional[models.User],
+    *,
+    strip_images: bool = False,
+) -> dict:
+    """Сериализация комментария как в GET /posts/{id}/comments."""
+    author_data = None
+    author_id_data = comment.author_id
+
+    if comment.is_anonymous:
+        if comment.anonymous_index == 0 or comment.anonymous_index is None:
+            author_name = "Автор"
+        else:
+            author_name = f"Аноним #{comment.anonymous_index}"
+
+        author_data = {
+            "name": author_name,
+            "id": None,
+            "telegram_id": None,
+            "avatar": None,
+            "university": None,
+            "institute": None,
+            "course": None,
+        }
+        author_id_data = comment.author_id
+    else:
+        if comment.author:
+            short = public_user_short(
+                comment.author,
+                viewer_id=user.id if user else None,
+            )
+            author_data = short.model_dump() if short else None
+
+    images_out = []
+    if not strip_images and comment.images:
+        images_out = get_image_urls(comment.images)
+
+    return {
+        "id": comment.id,
+        "post_id": comment.post_id,
+        "author_id": author_id_data,
+        "author": author_data,
+        "body": comment.body,
+        "parent_id": comment.parent_id,
+        "is_anonymous": comment.is_anonymous,
+        "anonymous_index": comment.anonymous_index,
+        "is_deleted": comment.is_deleted,
+        "likes": comment.likes_count,
+        "is_liked": getattr(comment, "is_liked", False),
+        "images": images_out,
+        "created_at": comment.created_at,
+        "is_edited": getattr(comment, "is_edited", False),
+        "deleted_reason": getattr(comment, "deleted_reason", None),
+        "updated_at": getattr(comment, "updated_at", None),
+    }
+
 
 # ===== POST ENDPOINTS + POLLS =====
 @app.get("/posts/feed", response_model=schemas.PostsFeedResponse)
@@ -803,6 +871,15 @@ async def get_posts_feed(
             "updated_at": post.updated_at
         }
         result.append(post_dict)
+
+    ids_with_comments = [p["id"] for p in result if (p.get("comments_count") or 0) > 0]
+    highlights = await crud.get_highlight_comments_for_posts(db, ids_with_comments, current_user_id)
+    for p in result:
+        hid = highlights.get(p["id"])
+        if hid:
+            p["highlight_comment"] = _comment_model_to_response_dict(hid, user, strip_images=True)
+        else:
+            p["highlight_comment"] = None
 
     return normalize_datetime_payload({
         "items": result,
@@ -1501,53 +1578,11 @@ async def get_post_comments_endpoint(
     db: AsyncSession = Depends(get_db)
 ):
     comments = await crud.get_post_comments(db, post_id, user.id if user else None)
-    
+
     result = []
     for comment in comments:
-        author_data = None
-        author_id_data = comment.author_id
-        
-        if comment.is_anonymous:
-            if comment.anonymous_index == 0 or comment.anonymous_index is None:
-                author_name = "Автор"
-            else:
-                author_name = f"Аноним #{comment.anonymous_index}"
-            
-            author_data = {
-                "name": author_name,
-                "id": None,
-                "telegram_id": None,
-                "avatar": None,
-                "university": None,
-                "institute": None,
-                "course": None
-            }
-            author_id_data = comment.author_id
-        else:
-            if comment.author:
-                short = public_user_short(
-                    comment.author,
-                    viewer_id=user.id if user else None,
-                )
-                author_data = short.model_dump() if short else None
+        result.append(_comment_model_to_response_dict(comment, user))
 
-        comment_dict = {
-            "id": comment.id,
-            "post_id": comment.post_id,
-            "author_id": author_id_data,
-            "author": author_data,
-            "body": comment.body,
-            "parent_id": comment.parent_id,
-            "is_anonymous": comment.is_anonymous,
-            "anonymous_index": comment.anonymous_index,
-            "is_deleted": comment.is_deleted,
-            "likes": comment.likes_count,
-            "is_liked": comment.is_liked,
-            "images": get_image_urls(comment.images) if comment.images else [],
-            "created_at": comment.created_at
-        }
-        result.append(comment_dict)
-    
     return normalize_datetime_payload({"items": result, "total": len(result)})
 
 @app.post("/posts/{post_id}/comments", response_model=schemas.CommentResponse)

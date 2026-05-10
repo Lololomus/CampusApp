@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { Heart, MessageCircle, MapPin, Calendar, ArrowUpRight, Megaphone, Link, Share2, Edit2, Trash2, Flag, EyeOff, CheckCircle } from 'lucide-react';
 import { MENU_ACTIONS } from '../../constants/contentConstants';
 import { hapticFeedback } from '../../utils/telegram';
-import { likePost, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd, triggerRegistrationPrompt, resolvePost } from '../../api';
+import { likePost, likeComment, deletePost, trackAdImpression, trackAdClick, hideAd, unhideAd, triggerRegistrationPrompt, resolvePost } from '../../api';
 import { useStore } from '../../store';
 import theme from '../../theme';
 import DropdownMenu from '../shared/DropdownMenu';
@@ -49,6 +49,7 @@ function PostCard({
   post,
   onClick,
   onLikeUpdate,
+  onHighlightCommentLikeUpdate,
   onPostDeleted,
   onAdHidden,
   onPostResolved,
@@ -57,7 +58,16 @@ function PostCard({
   openMediaViewer,
   activeMediaIndex = null,
 }) {
-  const { likedPosts, setPostLiked, user, setEditingContent, isRegistered, updatePost } = useStore();
+  const {
+    likedPosts,
+    setPostLiked,
+    user,
+    setEditingContent,
+    isRegistered,
+    updatePost,
+    setViewPostId,
+    setPendingCommentReply,
+  } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
@@ -76,6 +86,8 @@ function PostCard({
   const cardRef = useRef(null);
   const bodyRef = useRef(null);
   const bodyWrapRef = useRef(null);
+  const highlightBodyRef = useRef(null);
+  const highlightBodyWrapRef = useRef(null);
   const [isExpanding, setIsExpanding] = useState(false);
   const impressionTracked = useRef(false);
   const [adHidden, setAdHidden] = useState(false);
@@ -115,6 +127,91 @@ function PostCard({
   useEffect(() => {
     setLocalLikesCount(post.likes_count || 0);
   }, [post.id, post.likes_count]);
+
+  const highlightComment = post.highlight_comment;
+  const [hlLiked, setHlLiked] = useState(Boolean(highlightComment?.is_liked));
+  const [hlLikes, setHlLikes] = useState(Number(highlightComment?.likes ?? 0));
+  useEffect(() => {
+    if (!highlightComment) return;
+    setHlLiked(Boolean(highlightComment.is_liked));
+    setHlLikes(Number(highlightComment.likes ?? 0));
+  }, [post.id, highlightComment?.id, highlightComment?.is_liked, highlightComment?.likes]);
+
+  const highlightAuthorMeta = useMemo(() => {
+    if (!highlightComment?.author?.university || highlightComment.is_anonymous) return null;
+    return [
+      highlightComment.author.university,
+      highlightComment.author.course ? `${highlightComment.author.course}к` : null,
+    ].filter(Boolean).join(' · ');
+  }, [highlightComment]);
+
+  const [isHighlightExpanded, setIsHighlightExpanded] = useState(false);
+  const [isHighlightExpanding, setIsHighlightExpanding] = useState(false);
+  const [isHighlightOverflowing, setIsHighlightOverflowing] = useState(false);
+
+  useEffect(() => {
+    setIsHighlightExpanded(false);
+    setIsHighlightExpanding(false);
+  }, [post.id, highlightComment?.id]);
+
+  useEffect(() => {
+    if (!highlightComment?.body || isHighlightExpanded || isHighlightExpanding) {
+      if (!highlightComment?.body) setIsHighlightOverflowing(false);
+      return undefined;
+    }
+
+    const measure = () => {
+      const el = highlightBodyRef.current;
+      if (!el) {
+        setIsHighlightOverflowing(false);
+        return;
+      }
+      const { scrollHeight, clientHeight } = el;
+      setIsHighlightOverflowing(scrollHeight - clientHeight > 1);
+    };
+
+    const frame = requestAnimationFrame(measure);
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== 'undefined' && highlightBodyRef.current) {
+      resizeObserver = new ResizeObserver(measure);
+      resizeObserver.observe(highlightBodyRef.current);
+    }
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (resizeObserver) resizeObserver.disconnect();
+    };
+  }, [highlightComment?.body, highlightComment?.id, isHighlightExpanded, isHighlightExpanding]);
+
+  const handleHighlightExpand = useCallback((e) => {
+    e.stopPropagation();
+    const wrap = highlightBodyWrapRef.current;
+    const p = highlightBodyRef.current;
+    if (!wrap || !p) {
+      setIsHighlightExpanded(true);
+      return;
+    }
+
+    const fromH = p.clientHeight;
+
+    flushSync(() => setIsHighlightExpanding(true));
+
+    const toH = p.scrollHeight;
+
+    wrap.style.height = `${fromH}px`;
+    wrap.style.overflow = 'hidden';
+    wrap.offsetHeight;
+    wrap.style.transition = 'height 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
+    wrap.style.height = `${toH}px`;
+
+    setTimeout(() => {
+      wrap.style.height = '';
+      wrap.style.overflow = '';
+      wrap.style.transition = '';
+      setIsHighlightExpanded(true);
+      setIsHighlightExpanding(false);
+    }, 360);
+  }, []);
 
   // Определяем, является ли пост рекламой
   const isAd = post.category === 'ad' || post._isAd;
@@ -485,6 +582,60 @@ function PostCard({
       setPostLiked(post.id, isLiked);
       setLocalLikesCount(post.likes_count || 0);
     }
+  };
+
+  const handleHighlightCommentLike = async (e) => {
+    e.stopPropagation();
+    const hc = post.highlight_comment;
+    if (!hc) return;
+    if (!isRegistered) {
+      hapticFeedback('light');
+      triggerRegistrationPrompt('feed_comment_like');
+      return;
+    }
+    hapticFeedback('medium');
+
+    const prevLiked = hlLiked;
+    const prevCount = hlLikes;
+    const nextLiked = !prevLiked;
+    setHlLiked(nextLiked);
+    setHlLikes((c) => Math.max(0, c + (nextLiked ? 1 : -1)));
+
+    try {
+      const result = await likeComment(hc.id);
+      setHlLiked(result.is_liked);
+      setHlLikes(result.likes);
+      const nextHc = {
+        ...hc,
+        is_liked: result.is_liked,
+        likes: result.likes,
+      };
+      if (typeof onHighlightCommentLikeUpdate === 'function') {
+        onHighlightCommentLikeUpdate(post.id, nextHc);
+      } else {
+        updatePost(post.id, { highlight_comment: nextHc });
+      }
+    } catch (err) {
+      console.error('Highlight comment like error:', err);
+      setHlLiked(prevLiked);
+      setHlLikes(prevCount);
+    }
+  };
+
+  const handleHighlightReply = (e) => {
+    e.stopPropagation();
+    const hc = post.highlight_comment;
+    if (!hc) return;
+    hapticFeedback('light');
+    const authorName = typeof hc.author === 'object' && hc.author
+      ? hc.author.name
+      : hc.author;
+    setPendingCommentReply({
+      postId: post.id,
+      commentId: hc.id,
+      replyToName: authorName || '',
+    });
+    setViewPostId(post.id);
   };
 
   const handleEdit = () => {
@@ -897,57 +1048,156 @@ function PostCard({
           </div>
         )}
 
-        {/* TODO: decide how to show the first or popular comment in feed without opening PostDetail. */}
-
         {/* === FOOTER (СКРЫТ ДЛЯ РЕКЛАМЫ) === */}
         {!isAd && (
-          <div style={{ ...styles.footer, marginTop: hasTags ? 10 : styles.footer.marginTop }}>
-            <div style={styles.footerLeft}>
-              <span style={styles.dateText}>{dateText}</span>
-              {isEdited && <span style={styles.editedLabel}>(изм.)</span>}
+          <>
+            <div style={{ ...styles.footer, marginTop: hasTags ? 10 : styles.footer.marginTop }}>
+              <div style={styles.footerLeft}>
+                <span style={styles.dateText}>{dateText}</span>
+                {isEdited && <span style={styles.editedLabel}>(изм.)</span>}
+              </div>
+
+              <div style={styles.footerRight}>
+                {/* Share — icon-only */}
+                <button
+                  className="pressable"
+                  style={styles.shareBtn}
+                  onClick={(e) => { e.stopPropagation(); handleShareLink(); }}
+                >
+                  <Share2 size={18} />
+                </button>
+
+                {/* Comments */}
+                <button
+                  className="pressable"
+                  style={styles.metricPill}
+                  onClick={(e) => { e.stopPropagation(); if(onClick) onClick(post.id); }}
+                >
+                  <MessageCircle size={18} strokeWidth={2.5} />
+                  <span>{post.comments_count || 0}</span>
+                </button>
+
+                {/* Likes */}
+                <button
+                  className="pressable"
+                  style={{ ...styles.metricPill, color: isLiked ? theme.colors.accent : theme.colors.text }}
+                  onClick={handleLike}
+                >
+                  <span style={{
+                    display: 'inline-flex',
+                    animation: isLikeAnimating ? 'heartBurst 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
+                    willChange: isLikeAnimating ? 'transform' : 'auto',
+                  }}>
+                    <Heart
+                      size={18}
+                      fill={isLiked ? theme.colors.accent : 'none'}
+                      strokeWidth={isLiked ? 0 : 2.5}
+                    />
+                  </span>
+                  <span>{localLikesCount}</span>
+                </button>
+              </div>
             </div>
 
-            <div style={styles.footerRight}>
-              {/* Share — icon-only */}
-              <button
-                className="pressable"
-                style={styles.shareBtn}
-                onClick={(e) => { e.stopPropagation(); handleShareLink(); }}
-              >
-                <Share2 size={18} />
-              </button>
-
-              {/* Comments */}
-              <button
-                className="pressable"
-                style={styles.metricPill}
-                onClick={(e) => { e.stopPropagation(); if(onClick) onClick(post.id); }}
-              >
-                <MessageCircle size={18} strokeWidth={2.5} />
-                <span>{post.comments_count || 0}</span>
-              </button>
-
-              {/* Likes */}
-              <button
-                className="pressable"
-                style={{ ...styles.metricPill, color: isLiked ? theme.colors.accent : theme.colors.text }}
-                onClick={handleLike}
-              >
-                <span style={{
-                  display: 'inline-flex',
-                  animation: isLikeAnimating ? 'heartBurst 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none',
-                  willChange: isLikeAnimating ? 'transform' : 'auto',
-                }}>
-                  <Heart
-                    size={18}
-                    fill={isLiked ? theme.colors.accent : 'none'}
-                    strokeWidth={isLiked ? 0 : 2.5}
-                  />
-                </span>
-                <span>{localLikesCount}</span>
-              </button>
-            </div>
-          </div>
+            {highlightComment && (post.comments_count || 0) > 0 && (
+              <div style={styles.highlightWrap}>
+                <div style={styles.highlightTopRow}>
+                  <div style={styles.highlightLeftTop}>
+                    {highlightComment.is_anonymous ? (
+                      <Avatar size={36} isAnonymous showProfile={false} />
+                    ) : (
+                      <Avatar
+                        user={highlightComment.author}
+                        size={36}
+                        showProfile={false}
+                      />
+                    )}
+                    <div style={styles.highlightHeaderMain}>
+                      <div style={styles.highlightNameRow}>
+                        <span style={styles.highlightAuthor}>
+                          {highlightComment.author?.name
+                            || (highlightComment.is_anonymous && (highlightComment.anonymous_index === 0 || highlightComment.anonymous_index == null)
+                              ? 'Автор'
+                              : highlightComment.is_anonymous
+                                ? `Аноним #${highlightComment.anonymous_index}`
+                                : 'Комментарий')}
+                        </span>
+                      </div>
+                      {highlightAuthorMeta ? (
+                        <span style={styles.highlightCommentMeta}>{highlightAuthorMeta}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div style={styles.highlightActions}>
+                    <button
+                      type="button"
+                      className="pressable"
+                      style={styles.highlightReplyPill}
+                      onClick={handleHighlightReply}
+                    >
+                      Ответить
+                    </button>
+                    <button
+                      type="button"
+                      className="pressable"
+                      style={{
+                        ...styles.highlightLikePill,
+                        color: hlLiked ? theme.colors.accent : theme.colors.text,
+                      }}
+                      onClick={handleHighlightCommentLike}
+                    >
+                      <Heart
+                        size={16}
+                        fill={hlLiked ? theme.colors.accent : 'none'}
+                        strokeWidth={hlLiked ? 0 : 2.5}
+                      />
+                      <span>{hlLikes}</span>
+                    </button>
+                  </div>
+                </div>
+                <div style={styles.highlightBodySection}>
+                  <div ref={highlightBodyWrapRef} style={styles.bodyWrap}>
+                    <p
+                      ref={highlightBodyRef}
+                      style={{
+                        ...styles.highlightBody,
+                        color: theme.colors.textSecondary,
+                        ...(isHighlightExpanded || isHighlightExpanding
+                          ? {
+                            display: 'block',
+                            overflow: 'visible',
+                            WebkitLineClamp: 'unset',
+                          }
+                          : {
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }),
+                      }}
+                    >
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <LinkText text={highlightComment.body || ''} />
+                      </span>
+                    </p>
+                    {!isHighlightExpanded && !isHighlightExpanding && isHighlightOverflowing && (
+                      <div style={styles.bodyBottomFade} />
+                    )}
+                  </div>
+                  {!isHighlightExpanded && !isHighlightExpanding && isHighlightOverflowing && (
+                    <button
+                      type="button"
+                      onClick={handleHighlightExpand}
+                      style={styles.expandButton}
+                      className="pressable"
+                    >
+                      Показать всё
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
       </div>
@@ -1250,6 +1500,102 @@ const styles = {
   tags: {
     display: 'flex', flexWrap: 'wrap', gap: theme.spacing.sm,
     marginBottom: 0,
+  },
+  highlightWrap: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTop: '1px solid rgba(255,255,255,0.07)',
+  },
+  highlightTopRow: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    minWidth: 0,
+  },
+  highlightLeftTop: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  highlightBodySection: {
+    marginTop: 8,
+    minWidth: 0,
+  },
+  /* Как PostDetail: commentHeaderMain + commentNameRow + commentAuthor / meta (одна строка с кнопками) */
+  highlightHeaderMain: {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+    flex: 1,
+    marginBottom: 0,
+  },
+  highlightNameRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
+    flexWrap: 'wrap',
+  },
+  highlightAuthor: {
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+  },
+  highlightCommentMeta: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textDisabled,
+    marginTop: 2,
+  },
+  /* База как PostDetail commentText; clamp 2 строки и «Показать всё» — инлайн при свёрнутом */
+  highlightBody: {
+    margin: '0 0 8px',
+    fontSize: 14,
+    lineHeight: 1.45,
+    wordBreak: 'break-word',
+    overflowWrap: 'break-word',
+  },
+  highlightActions: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-end',
+    gap: 8,
+    flexShrink: 0,
+  },
+  highlightReplyPill: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '6px 11px',
+    borderRadius: theme.radius.md,
+    background: theme.colors.premium.border,
+    border: 'none',
+    cursor: 'pointer',
+    fontWeight: theme.fontWeight.semibold,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
+    whiteSpace: 'nowrap',
+  },
+  /* Чуть меньше футерного metricPill поста (там 8px 14px, Heart 18) */
+  highlightLikePill: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+    padding: '6px 11px',
+    borderRadius: theme.radius.md,
+    background: theme.colors.premium.border,
+    border: 'none',
+    cursor: 'pointer',
+    fontWeight: theme.fontWeight.bold,
+    fontSize: theme.fontSize.sm,
+    transition: 'all 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
+    fontVariantNumeric: 'tabular-nums',
   },
   footer: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',

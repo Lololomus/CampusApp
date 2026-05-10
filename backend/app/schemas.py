@@ -532,6 +532,8 @@ class PostResponse(BaseModel):
     comments_count: int = 0
     views_count: int = 0
     is_liked: bool = False
+
+    highlight_comment: Optional["CommentResponse"] = None
     
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -1510,3 +1512,6 @@ class AnalyticsHealthResponse(BaseModel):
     missing_events_rate: Optional[float] = None
     late_events_rate: Optional[float] = None
     metric_drift_rate: Optional[float] = None
+
+
+PostResponse.model_rebuild()

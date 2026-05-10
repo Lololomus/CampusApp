@@ -14,6 +14,7 @@ function PostCommentBar({
   onCancelReply = null,
   maxImages = 3,
   disableKeyboardLift = false,
+  focusNonce = 0,
 }) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -35,6 +36,13 @@ function PostCommentBar({
     textareaRef.current.style.height = '22px';
     textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 100)}px`;
   }, [text]);
+
+  useEffect(() => {
+    if (!focusNonce) return;
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }, [focusNonce]);
 
   useEffect(() => {
     let rafId;

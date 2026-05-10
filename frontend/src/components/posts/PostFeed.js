@@ -105,6 +105,12 @@ function PostFeed() {
     );
   }, []);
 
+  const handleHighlightCommentLikeUpdate = useCallback((postId, highlight_comment) => {
+    setPosts((prevPosts) =>
+      prevPosts.map((p) => (p.id === postId ? { ...p, highlight_comment } : p))
+    );
+  }, []);
+
   const handlePostDeleted = useCallback((postId) => {
     setPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
   }, []);
@@ -555,6 +561,7 @@ function PostFeed() {
                   post={row.item}
                   onClick={row.item._isAd ? undefined : handlePostClick}
                   onLikeUpdate={row.item._isAd ? undefined : handleLikeUpdate}
+                  onHighlightCommentLikeUpdate={row.item._isAd ? undefined : handleHighlightCommentLikeUpdate}
                   onPostDeleted={row.item._isAd ? undefined : handlePostDeleted}
                   onAdHidden={row.item._isAd ? handleAdHidden : undefined}
                   registerReveal={registerReveal}

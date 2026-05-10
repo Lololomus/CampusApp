@@ -163,6 +163,9 @@ function UserPosts() {
   const handlePostClick = (postId) => { hapticFeedback('light'); setViewPostId(postId); };
   const handlePostDeleted = (postId) => { setPosts((prev) => prev.filter((p) => p.id !== postId)); hapticFeedback('success'); };
   const handleLikeUpdate = (postId, updates) => { setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, ...updates } : p))); };
+  const handleHighlightCommentLikeUpdate = (postId, highlight_comment) => {
+    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, highlight_comment } : p)));
+  };
 
   const handleScroll = (e) => {
     const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 2;
@@ -243,6 +246,7 @@ function UserPosts() {
                   onClick={handlePostClick}
                   onPostDeleted={handlePostDeleted}
                   onLikeUpdate={handleLikeUpdate}
+                  onHighlightCommentLikeUpdate={handleHighlightCommentLikeUpdate}
                   skipReveal
                   openMediaViewer={openMediaViewer}
                   activeMediaIndex={String(row.item.id) === String(activePostCardId) ? activeIndex : null}
