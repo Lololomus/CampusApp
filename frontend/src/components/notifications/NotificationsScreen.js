@@ -828,18 +828,6 @@ function NotificationsScreen() {
           sticky={false}
           showDivider={false}
           background="#000000"
-          rightSlot={hasUnread ? (
-            <button
-              onClick={handleMarkAllRead}
-              style={{
-                background: 'none', border: 'none',
-                color: COLORS.lime, fontSize: 14, fontWeight: 700,
-                cursor: 'pointer', padding: '4px 0',
-              }}
-            >
-              Прочитать всё
-            </button>
-          ) : null}
         />
 
         <div style={{
@@ -861,6 +849,33 @@ function NotificationsScreen() {
             ))}
           </div>
         </div>
+
+        {hasUnread && !loading && (
+          <button
+            onClick={handleMarkAllRead}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              width: 'calc(100% - 32px)',
+              margin: '12px 16px 4px',
+              padding: '12px 16px',
+              borderRadius: 14,
+              border: 'none',
+              background: COLORS.surface,
+              color: COLORS.lime,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <Check size={16} strokeWidth={2.5} />
+            Прочитать всё
+          </button>
+        )}
 
         {loading ? (
           <div style={{ padding: '60px 16px', textAlign: 'center', color: COLORS.muted, fontSize: 15 }}>
