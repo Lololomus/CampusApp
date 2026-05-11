@@ -430,3 +430,23 @@ export function showBackButton(onClick) {
 export function hideBackButton() {
   setBackButton({ visible: false });
 }
+
+export function downloadFile(url, fileName) {
+  const tg = getTelegramWebApp();
+  if (typeof tg?.downloadFile === 'function' && _isTelegramVersionAtLeast(tg, '7.7')) {
+    tg.downloadFile({ url, file_name: fileName });
+    return;
+  }
+  if (typeof tg?.openLink === 'function') {
+    tg.openLink(url);
+    return;
+  }
+  window.open(url, '_blank');
+}
+
+function _isTelegramVersionAtLeast(tg, required) {
+  if (!tg?.version) return false;
+  const [reqMajor, reqMinor = 0] = required.split('.').map(Number);
+  const [major, minor = 0] = String(tg.version).split('.').map(Number);
+  return major > reqMajor || (major === reqMajor && minor >= reqMinor);
+}

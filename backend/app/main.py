@@ -5,7 +5,7 @@ import asyncio
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Body, File, UploadFile, Form, Request, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -58,6 +58,7 @@ from app.routers import dating, moderation, ads, notifications, auth_router, dev
 from app.services import analytics_service, market_expiry_service, notification_service
 import os
 import logging
+import secrets
 from datetime import date, datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
@@ -266,6 +267,18 @@ def _build_xaccel_response(
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "strict-origin-when-cross-origin",
     }
+    if not settings.is_prod:
+        full_path = (DOCUMENT_PREVIEWS_ROOT if is_preview else DOCUMENTS_ROOT) / rel_path
+        if full_path.exists():
+            return FileResponse(
+                path=str(full_path),
+                media_type=media_type,
+                headers={
+                    "Content-Disposition": content_disposition,
+                    "Cache-Control": cache_control,
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
     return Response(status_code=200, headers=headers)
 
 
@@ -479,6 +492,14 @@ async def auth_middleware(request: Request, call_next):
     is_public_path = path in PUBLIC_PATHS or any(
         path == prefix or path.startswith(prefix + "/") for prefix in PUBLIC_PREFIXES
     ) or _is_public_read_get_path(request.method, path)
+
+    # Requests authenticated via one-time download token bypass JWT auth entirely;
+    # the download endpoint validates the token itself.
+    if (
+        request.url.path.endswith("/download")
+        and "download_token" in request.query_params
+    ):
+        return await call_next(request)
 
     auth_header = request.headers.get("authorization")
     payload = None
@@ -1521,9 +1542,32 @@ async def preview_document_endpoint(
 async def download_document_endpoint(
     document_id: int,
     request: Request,
-    user: models.User = Depends(require_user),
+    download_token: Optional[str] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
+    now = datetime.utcnow()
+
+    if download_token:
+        result = await db.execute(
+            select(models.DownloadToken).where(
+                models.DownloadToken.token == download_token,
+                models.DownloadToken.document_id == document_id,
+                models.DownloadToken.used_at.is_(None),
+                models.DownloadToken.expires_at > now,
+            )
+        )
+        dt = result.scalar_one_or_none()
+        if not dt:
+            raise HTTPException(status_code=403, detail="Invalid or expired download token")
+        dt.used_at = now
+        await db.commit()
+        result2 = await db.execute(select(models.User).where(models.User.id == dt.user_id))
+        user = result2.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=403, detail="User not found")
+    else:
+        user = await require_user(request=request, db=db)
+
     await check_rate_limit(request, "doc_download", limit=60, window_sec=60)
     document = await _get_accessible_document(document_id, user, db)
     path = resolve_document_path(document.stored_path, preview=False)
@@ -1538,8 +1582,32 @@ async def download_document_endpoint(
         is_preview=False,
         media_type=document.mime_type or "application/octet-stream",
         content_disposition=content_disposition,
-        cache_control="private, max-age=86400, immutable",
+        cache_control="private, no-store",
     )
+
+
+@app.post("/documents/{document_id}/download-token")
+async def create_document_download_token(
+    document_id: int,
+    request: Request,
+    user: models.User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await check_rate_limit(request, "doc_download_token", limit=120, window_sec=60)
+    await _get_accessible_document(document_id, user, db)
+
+    token_value = secrets.token_urlsafe(48)
+    dt = models.DownloadToken(
+        token=token_value,
+        document_id=document_id,
+        user_id=user.id,
+        expires_at=datetime.utcnow() + timedelta(minutes=30),
+    )
+    db.add(dt)
+    await db.commit()
+
+    url = f"/api/documents/{document_id}/download?download_token={token_value}"
+    return {"url": url}
 
 
 @app.get("/config/documents")

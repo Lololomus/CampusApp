@@ -1,9 +1,10 @@
 import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { Download, File, FileSpreadsheet, FileText, FileType, Presentation } from 'lucide-react';
 
-import { getDocumentDownloadBlob } from '../../api';
+import { getDocumentDownloadUrl } from '../../api';
 import theme from '../../theme';
 import { formatDocumentSize, getDocumentTypeLabel } from '../../utils/documentValidation';
+import { downloadFile as telegramDownloadFile } from '../../utils/telegram';
 import { toast } from '../shared/Toast';
 
 const DocumentViewerModal = lazy(() => import('./DocumentViewerModal'));
@@ -37,17 +38,9 @@ function DocumentAttachmentList({ documents = [], compact = false }) {
   const handleDownload = async (event, document) => {
     event.stopPropagation();
     try {
-      const blob = await getDocumentDownloadBlob(document.id);
-      const url = URL.createObjectURL(blob);
-      const link = window.document.createElement('a');
-      link.href = url;
-      link.download = document.original_filename || 'document';
-      window.document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (error) {
-      console.error('Document download failed:', error);
+      const url = await getDocumentDownloadUrl(document.id);
+      telegramDownloadFile(url, document.original_filename || 'document');
+    } catch {
       toast.error('Не удалось скачать документ');
     }
   };

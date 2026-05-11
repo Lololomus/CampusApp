@@ -510,6 +510,16 @@ export async function getDocumentPreviewBlob(documentId) {
   return response.data;
 }
 
+export function buildDocumentDownloadUrl(documentId) {
+  const base = `${window.location.origin}/api/documents/${documentId}/download`;
+  return accessToken ? `${base}?access_token=${encodeURIComponent(accessToken)}` : base;
+}
+
+export async function getDocumentDownloadUrl(documentId) {
+  const response = await api.post(`/documents/${documentId}/download-token`);
+  return `${window.location.origin}${response.data.url}`;
+}
+
 export async function getDocumentDownloadBlob(documentId) {
   const response = await api.get(`/documents/${documentId}/download`, {
     responseType: 'blob',

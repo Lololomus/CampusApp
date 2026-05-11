@@ -4,12 +4,12 @@ import { ChevronLeft, Download, FileText, Loader2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 
-import { getDocumentDownloadBlob, getDocumentPreviewBlob } from '../../api';
+import { getDocumentDownloadUrl, getDocumentPreviewBlob } from '../../api';
 import { Z_PHOTO_VIEWER } from '../../constants/zIndex';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import theme from '../../theme';
 import { formatDocumentSize } from '../../utils/documentValidation';
-import { hapticFeedback } from '../../utils/telegram';
+import { hapticFeedback, downloadFile as telegramDownloadFile } from '../../utils/telegram';
 import EdgeSwipeBack from '../shared/EdgeSwipeBack';
 import { toast } from '../shared/Toast';
 import { useTelegramScreen } from '../shared/telegram/useTelegramScreen';
@@ -389,18 +389,11 @@ function DocumentViewerModal({ document, onClose }) {
 
   const handleDownload = async () => {
     if (!document?.id) return;
+    hapticFeedback('light');
     try {
-      const blob = await getDocumentDownloadBlob(document.id);
-      const url = URL.createObjectURL(blob);
-      const link = documentRef().createElement('a');
-      link.href = url;
-      link.download = document.original_filename || 'document';
-      documentRef().body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (error) {
-      console.error('Document download failed:', error);
+      const url = await getDocumentDownloadUrl(document.id);
+      telegramDownloadFile(url, document.original_filename || 'document');
+    } catch {
       toast.error('Не удалось скачать документ');
     }
   };

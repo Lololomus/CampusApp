@@ -1289,3 +1289,16 @@ class Followup(Base):
         Index('ix_followup_scheduled', 'status', 'scheduled_at'),
         Index('ix_followup_target', 'target_type', 'target_id', 'user_id'),
     )
+
+
+class DownloadToken(Base):
+    """Одноразовые токены для скачивания файлов (используются в Telegram Mini App)."""
+    __tablename__ = 'download_tokens'
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey('post_documents.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
