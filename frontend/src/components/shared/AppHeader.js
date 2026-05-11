@@ -411,7 +411,7 @@ const AppHeader = ({
       const swipeThreshold = 16;
       const morphHeightTransition = premiumMorphReady ? `height 0.45s ${springSmooth}` : 'none';
       const morphOpacityTransition = premiumMorphReady ? `opacity 0.5s ${springMorph}, transform 0.5s ${springMorph}` : 'none';
-      const compactPillTransition = premiumMorphReady ? morphOpacityTransition : 'none';
+      const compactPillTransition = premiumMorphReady ? `background 0.5s ${springMorph}` : 'none';
       const morphButtonTransition = premiumMorphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.45s ${springMorph}, height 0.45s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}, color 0.3s ${springSmooth}, opacity 0.3s ease, transform 0.2s ${springSmooth}, filter 0.2s ${springSmooth}` : 'none';
       const morphSearchTransition = premiumMorphReady ? `top 0.5s ${springMorph}, left 0.5s ${springMorph}, width 0.5s ${springMorph}, height 0.5s ${springMorph}, border-radius 0.5s ${springMorph}, background 0.3s ${springSmooth}` : 'none';
       const morphIconTransition = premiumMorphReady ? `left 0.5s ${springMorph}, top 0.5s ${springMorph}, color 0.3s ${springSmooth}` : 'none';
@@ -507,7 +507,7 @@ const AppHeader = ({
               width: 'var(--app-fixed-width)',
               boxSizing: 'border-box',
               zIndex: 100,
-              background: '#08080A',
+              background: 'transparent',
               paddingTop: 'calc(var(--screen-top-offset, 0px) + 4px)',
               paddingLeft: 16,
               paddingRight: 16,
@@ -530,11 +530,10 @@ const AppHeader = ({
                   width: compactPillWidth,
                   height: compactPillHeight,
                   borderRadius: 24,
-                  background: 'rgba(8,8,10,0.78)',
-                  opacity: isCompact ? 1 : 0,
+                  background: isCompact ? 'rgba(8,8,10,0.78)' : 'rgba(8,8,10,0)',
                   pointerEvents: 'none',
-                  boxShadow: '0 14px 34px rgba(0,0,0,0.42), inset 0 1px 1px rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  boxShadow: isCompact ? '0 14px 34px rgba(0,0,0,0.42), inset 0 1px 1px rgba(255,255,255,0.05)' : 'none',
+                  border: `1px solid rgba(255,255,255,${isCompact ? '0.06' : '0'})`,
                   backdropFilter: isCompact ? 'blur(10px) saturate(120%)' : 'none',
                   WebkitBackdropFilter: isCompact ? 'blur(10px) saturate(120%)' : 'none',
                   transition: compactPillTransition,
@@ -850,7 +849,7 @@ const AppHeader = ({
     }
 
     return (
-      <div ref={stickyRef} style={{ position: 'fixed', top: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', boxSizing: 'border-box', zIndex: 100, background: '#08080A', display: 'flex', flexDirection: 'column', paddingTop: 'calc(var(--screen-top-offset, 0px) + 4px)', paddingLeft: 16, paddingRight: 16, paddingBottom: 0 }}>
+      <div ref={stickyRef} style={{ position: 'fixed', top: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', boxSizing: 'border-box', zIndex: 100, background: 'transparent', display: 'flex', flexDirection: 'column', paddingTop: 'calc(var(--screen-top-offset, 0px) + 4px)', paddingLeft: 16, paddingRight: 16, paddingBottom: 0 }}>
         {(Boolean(title) || showCollapsedToolbar) && (
           <div style={{ position: 'relative', height: premiumTopRowHeight, marginBottom: premiumTopRowMarginBottom }}>
             {Boolean(title) && (
