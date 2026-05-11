@@ -18,6 +18,14 @@ const ACTION_CONFIG = {
   shadow_unban: { icon: CheckCircle, label: 'Разбан', color: '#22c55e' },
   pin_post: { icon: Pin, label: 'Закреплён пост', color: '#3b82f6' },
   unpin_post: { icon: Pin, label: 'Откреплён пост', color: '#6b7280' },
+  resolve_report: { icon: CheckCircle, label: 'Решена жалоба', color: '#22c55e' },
+  dismiss_report: { icon: XCircle, label: 'Отклонена жалоба', color: '#6b7280' },
+  restore_post: { icon: RefreshCw, label: 'Восстановлен пост', color: '#22c55e' },
+  restore_comment: { icon: RefreshCw, label: 'Восстановлен комментарий', color: '#22c55e' },
+  restore_request: { icon: RefreshCw, label: 'Восстановлен запрос', color: '#22c55e' },
+  restore_market_item: { icon: RefreshCw, label: 'Восстановлен товар', color: '#22c55e' },
+  approve_appeal: { icon: CheckCircle, label: 'Одобрена апелляция', color: '#22c55e' },
+  reject_appeal: { icon: XCircle, label: 'Отклонена апелляция', color: '#6b7280' },
 };
 
 const STATUS_CONFIG = {

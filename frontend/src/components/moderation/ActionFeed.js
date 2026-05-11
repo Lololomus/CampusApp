@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   RotateCcw, Trash2, Ban, Pin, CheckCircle, Eye,
-  Filter, RefreshCw, AlertTriangle, Clock, Shield
+  Filter, RefreshCw, AlertTriangle, Clock, Shield,
+  XCircle
 } from 'lucide-react';
 import { getModerationLogs } from '../../api';
 import { useStore } from '../../store';
@@ -22,6 +23,14 @@ const ACTION_CONFIG = {
   shadow_unban: { icon: CheckCircle, label: 'Разбанил', color: '#22c55e', heavy: false },
   pin_post: { icon: Pin, label: 'Закрепил', color: '#3b82f6', heavy: false },
   unpin_post: { icon: Pin, label: 'Открепил', color: '#6b7280', heavy: false },
+  resolve_report: { icon: CheckCircle, label: 'Решил жалобу', color: '#22c55e', heavy: false },
+  dismiss_report: { icon: XCircle, label: 'Отклонил жалобу', color: '#6b7280', heavy: false },
+  restore_post: { icon: RefreshCw, label: 'Восстановил пост', color: '#22c55e', heavy: false },
+  restore_comment: { icon: RefreshCw, label: 'Восстановил коммент', color: '#22c55e', heavy: false },
+  restore_request: { icon: RefreshCw, label: 'Восстановил запрос', color: '#22c55e', heavy: false },
+  restore_market_item: { icon: RefreshCw, label: 'Восстановил товар', color: '#22c55e', heavy: false },
+  approve_appeal: { icon: CheckCircle, label: 'Одобрил апелляцию', color: '#22c55e', heavy: false },
+  reject_appeal: { icon: XCircle, label: 'Отклонил апелляцию', color: '#6b7280', heavy: false },
 };
 
 function ActionFeed({ onReverse }) {

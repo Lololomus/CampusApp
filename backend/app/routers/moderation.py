@@ -598,8 +598,170 @@ async def get_reports(
     )
     reports = result.scalars().all()
 
+    # Batch-load targets by type
+    post_ids = []
+    comment_ids = []
+    request_ids = []
+    market_item_ids = []
+    user_ids = []
+    for r in reports:
+        if r.target_type == 'post':
+            post_ids.append(r.target_id)
+        elif r.target_type == 'comment':
+            comment_ids.append(r.target_id)
+        elif r.target_type == 'request':
+            request_ids.append(r.target_id)
+        elif r.target_type == 'market_item':
+            market_item_ids.append(r.target_id)
+        elif r.target_type == 'user':
+            user_ids.append(r.target_id)
+
+    post_map = {}
+    if post_ids:
+        res = await db.execute(
+            select(models.Post).options(selectinload(models.Post.author)).where(models.Post.id.in_(post_ids))
+        )
+        for p in res.scalars().all():
+            post_map[p.id] = p
+
+    comment_map = {}
+    if comment_ids:
+        res = await db.execute(
+            select(models.Comment)
+            .options(selectinload(models.Comment.author), selectinload(models.Comment.post))
+            .where(models.Comment.id.in_(comment_ids))
+        )
+        for c in res.scalars().all():
+            comment_map[c.id] = c
+
+    request_map = {}
+    if request_ids:
+        res = await db.execute(
+            select(models.Request).options(selectinload(models.Request.author)).where(models.Request.id.in_(request_ids))
+        )
+        for req in res.scalars().all():
+            request_map[req.id] = req
+
+    market_item_map = {}
+    if market_item_ids:
+        res = await db.execute(
+            select(models.MarketItem).options(selectinload(models.MarketItem.seller)).where(models.MarketItem.id.in_(market_item_ids))
+        )
+        for item in res.scalars().all():
+            market_item_map[item.id] = item
+
+    user_map = {}
+    if user_ids:
+        res = await db.execute(select(models.User).where(models.User.id.in_(user_ids)))
+        for u in res.scalars().all():
+            user_map[u.id] = u
+
+    # Ban counts for target users
+    target_user_ids = set()
+    for r in reports:
+        if r.target_type == 'post':
+            p = post_map.get(r.target_id)
+            if p and p.author_id:
+                target_user_ids.add(p.author_id)
+        elif r.target_type == 'comment':
+            c = comment_map.get(r.target_id)
+            if c and c.author_id:
+                target_user_ids.add(c.author_id)
+        elif r.target_type == 'request':
+            req = request_map.get(r.target_id)
+            if req and req.author_id:
+                target_user_ids.add(req.author_id)
+        elif r.target_type == 'market_item':
+            item = market_item_map.get(r.target_id)
+            if item and item.seller_id:
+                target_user_ids.add(item.seller_id)
+        elif r.target_type == 'user':
+            target_user_ids.add(r.target_id)
+
+    ban_counts = {}
+    if target_user_ids:
+        res = await db.execute(
+            select(models.ModerationLog.target_user_id, func.count(models.ModerationLog.id))
+            .where(
+                models.ModerationLog.target_user_id.in_(list(target_user_ids)),
+                models.ModerationLog.action == 'shadow_ban',
+            )
+            .group_by(models.ModerationLog.target_user_id)
+        )
+        ban_counts = {uid: cnt for uid, cnt in res.all()}
+
+    def _first_image_url(images):
+        if not images:
+            return None
+        if isinstance(images, list) and len(images) > 0:
+            first = images[0]
+            if isinstance(first, dict):
+                return first.get('url')
+            if isinstance(first, str):
+                return first
+        return None
+
     items = []
     for r in reports:
+        target_type = r.target_type
+        target_id = r.target_id
+        content_preview = None
+        content_image = None
+        target_user_id = None
+        target_user_name = None
+        target_user_ban_count = None
+        post_id = None
+
+        if target_type == 'post':
+            p = post_map.get(target_id)
+            if p:
+                content_preview = p.body[:300] if p.body else None
+                content_image = _first_image_url(p.images)
+                if p.author:
+                    target_user_id = p.author_id
+                    target_user_name = p.author.name
+        elif target_type == 'comment':
+            c = comment_map.get(target_id)
+            if c:
+                content_preview = c.body[:300] if c.body else None
+                content_image = _first_image_url(c.images)
+                if c.author:
+                    target_user_id = c.author_id
+                    target_user_name = c.author.name
+                post_id = c.post_id
+        elif target_type == 'request':
+            req = request_map.get(target_id)
+            if req:
+                parts = [req.title]
+                if req.body:
+                    parts.append(req.body[:300])
+                content_preview = ' '.join(parts)
+                content_image = _first_image_url(req.images)
+                if req.author:
+                    target_user_id = req.author_id
+                    target_user_name = req.author.name
+        elif target_type == 'market_item':
+            item = market_item_map.get(target_id)
+            if item:
+                parts = [item.title]
+                if item.description:
+                    parts.append(item.description[:300])
+                content_preview = ' '.join(parts)
+                content_image = _first_image_url(item.images)
+                if item.seller:
+                    target_user_id = item.seller_id
+                    target_user_name = item.seller.name
+        elif target_type == 'user':
+            u = user_map.get(target_id)
+            if u:
+                content_preview = u.name
+                content_image = u.avatar
+                target_user_id = u.id
+                target_user_name = u.name
+
+        if target_user_id is not None:
+            target_user_ban_count = ban_counts.get(target_user_id, 0)
+
         items.append({
             "id": r.id,
             "reporter_id": r.reporter_id,
@@ -615,6 +777,12 @@ async def get_reports(
             "moderator_note": r.moderator_note,
             "created_at": r.created_at,
             "reviewed_at": r.reviewed_at,
+            "content_preview": content_preview,
+            "content_image": content_image,
+            "target_user_id": target_user_id,
+            "target_user_name": target_user_name,
+            "target_user_ban_count": target_user_ban_count,
+            "post_id": post_id,
         })
 
     return {"items": items, "total": total, "has_more": offset + limit < total}

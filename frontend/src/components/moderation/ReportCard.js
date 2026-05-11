@@ -3,13 +3,14 @@
 import React, { useState } from 'react';
 import {
   SkipForward, CheckCircle, Trash2, Clock, Ban,
-  AlertTriangle, MessageSquare, User, Image, ChevronDown, ChevronUp
+  AlertTriangle, MessageSquare, User, Image, ChevronDown, ChevronUp,
+  Eye
 } from 'lucide-react';
 import { hapticFeedback } from '../../utils/telegram';
 import {
   reviewReport, moderateDeletePost, moderateDeleteRequest,
   moderateDeleteMarketItem, moderateDeleteComment,
-  shadowBanUser
+  shadowBanUser, getUserPublic
 } from '../../api';
 import { toast } from '../shared/Toast';
 import { useStore } from '../../store';
@@ -48,7 +49,7 @@ const TARGET_ICONS = {
 };
 
 function ReportCard({ report, onProcessed, compact = false }) {
-  const { user } = useStore();
+  const { user, setActiveTab, setFeedSubTab, setViewPostId, setPendingRequestId, setPendingMarketItemId, setPublicProfilePreview } = useStore();
   const [actionMode, setActionMode] = useState(null); // 'delete' | 'timeout' | 'permaban'
   const [reason, setReason] = useState('');
   const [banDays, setBanDays] = useState(3);
@@ -65,6 +66,41 @@ function ReportCard({ report, onProcessed, compact = false }) {
   const canBanTarget = Boolean(targetUserId) && !isSelf;
 
   // === ACTIONS ===
+
+  const handleOpenTarget = async () => {
+    hapticFeedback('light');
+    if (targetType === 'post') {
+      setActiveTab('feed');
+      setFeedSubTab('posts');
+      setViewPostId(report.target_id);
+    } else if (targetType === 'comment') {
+      if (report.post_id) {
+        setActiveTab('feed');
+        setFeedSubTab('posts');
+        setViewPostId(report.post_id);
+      }
+    } else if (targetType === 'request') {
+      setActiveTab('feed');
+      setFeedSubTab('requests');
+      setPendingRequestId(report.target_id);
+    } else if (targetType === 'market_item') {
+      setActiveTab('market');
+      setPendingMarketItemId(report.target_id);
+    } else if (targetType === 'user') {
+      try {
+        const userData = await getUserPublic(report.target_id);
+        setPublicProfilePreview(userData);
+      } catch (err) {
+        toast.error('Не удалось открыть профиль');
+      }
+    }
+  };
+
+  const handleCardClick = (e) => {
+    // Не переходить при клике на кнопки или поля ввода
+    if (e.target.closest('button, textarea, input')) return;
+    handleOpenTarget();
+  };
 
   const handleSkip = () => {
     hapticFeedback('light');
@@ -161,11 +197,14 @@ function ReportCard({ report, onProcessed, compact = false }) {
   // === RENDER ===
 
   return (
-    <div style={styles.card}>
+    <div style={styles.card} onClick={handleCardClick}>
       {/* Header */}
       <div
         style={styles.cardHeader}
-        onClick={compact ? () => setExpanded(!expanded) : undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (compact) setExpanded(!expanded);
+        }}
       >
         <div style={styles.typeTag}>
           <TargetIcon size={14} />
@@ -183,7 +222,21 @@ function ReportCard({ report, onProcessed, compact = false }) {
           <div style={styles.reasonTag}>
             {REASON_LABELS[report.reason] || report.reason}
           </div>
-          {compact && (expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
+          {compact && (
+            <span
+              style={{ display: 'flex', alignItems: 'center' }}
+              onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+            >
+              {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </span>
+          )}
+          <span
+            style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+            onClick={(e) => { e.stopPropagation(); handleOpenTarget(); }}
+            title="Открыть контент"
+          >
+            <Eye size={16} color={theme.colors.textTertiary} />
+          </span>
         </div>
       </div>
 
