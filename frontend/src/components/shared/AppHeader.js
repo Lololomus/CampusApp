@@ -507,7 +507,7 @@ const AppHeader = ({
               width: 'var(--app-fixed-width)',
               boxSizing: 'border-box',
               zIndex: 100,
-              background: 'transparent',
+              background: '#08080A',
               paddingTop: 'calc(var(--screen-top-offset, 0px) + 4px)',
               paddingLeft: 16,
               paddingRight: 16,
@@ -850,7 +850,7 @@ const AppHeader = ({
     }
 
     return (
-      <div ref={stickyRef} style={{ position: 'fixed', top: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', boxSizing: 'border-box', zIndex: 100, background: 'transparent', display: 'flex', flexDirection: 'column', paddingTop: 'calc(var(--screen-top-offset, 0px) + 4px)', paddingLeft: 16, paddingRight: 16, paddingBottom: 0 }}>
+      <div ref={stickyRef} style={{ position: 'fixed', top: 0, left: 'var(--app-fixed-left)', width: 'var(--app-fixed-width)', boxSizing: 'border-box', zIndex: 100, background: '#08080A', display: 'flex', flexDirection: 'column', paddingTop: 'calc(var(--screen-top-offset, 0px) + 4px)', paddingLeft: 16, paddingRight: 16, paddingBottom: 0 }}>
         {(Boolean(title) || showCollapsedToolbar) && (
           <div style={{ position: 'relative', height: premiumTopRowHeight, marginBottom: premiumTopRowMarginBottom }}>
             {Boolean(title) && (
